@@ -25,7 +25,10 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isEmailValid = false;
   bool _isPasswordValid = false;
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId:
+        '590744030274-ukapr3qs3e7l2ulvd6dkvv9pdah5q77e.apps.googleusercontent.com',
+  );
 
   bool get _isFormValid => _isEmailValid && _isPasswordValid;
 
