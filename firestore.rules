@@ -1,0 +1,64 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    // User-Dokumente
+    match /users/{uid} {
+      allow get, create, update, delete: if signedIn() && uid == request.auth.uid;
+    }
+    function signedIn() { return request.auth != null; }
+    function isOwner(data) { return signedIn() && data.userId == request.auth.uid; }
+    function validTimestamp(ts) { return ts is int && ts > 0; }
+    function validString(s, min, max) { return s is string && s.size() >= min && s.size() <= max; }
+    function stringList(l, maxItems, maxLen) {
+      return l is list && l.size() <= maxItems && l.hasOnly(l.where(e, e is string && e.size() <= maxLen));
+    }
+
+    match /avatars/{avatarId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'id','userId','firstName','nickname','lastName',
+          'birthDate','deathDate','calculatedAge','avatarImageUrl',
+          'imageUrls','videoUrls','textFileUrls','writtenTexts',
+          'lastMessage','lastMessageTime','createdAt','updatedAt','isPublic'
+        ])
+        && validString(request.resource.data.firstName, 1, 100)
+        && (!('nickname' in request.resource.data) || validString(request.resource.data.nickname, 0, 100))
+        && (!('lastName' in request.resource.data) || validString(request.resource.data.lastName, 0, 100))
+        && (!('avatarImageUrl' in request.resource.data) || validString(request.resource.data.avatarImageUrl, 1, 2000))
+        && (!('birthDate' in request.resource.data) || request.resource.data.birthDate is int)
+        && (!('deathDate' in request.resource.data) || request.resource.data.deathDate is int)
+        && (!('calculatedAge' in request.resource.data) || request.resource.data.calculatedAge is int)
+        && (!('lastMessage' in request.resource.data) || validString(request.resource.data.lastMessage, 0, 1000))
+        && (!('lastMessageTime' in request.resource.data) || request.resource.data.lastMessageTime is int)
+        && stringList(request.resource.data.imageUrls, 300, 2000)
+        && stringList(request.resource.data.videoUrls, 300, 2000)
+        && stringList(request.resource.data.textFileUrls, 1000, 2000)
+        && stringList(request.resource.data.writtenTexts, 2000, 5000)
+        && validTimestamp(request.resource.data.createdAt)
+        && validTimestamp(request.resource.data.updatedAt)
+        && (!('isPublic' in request.resource.data) || request.resource.data.isPublic is bool);
+
+      allow get, list: if isOwner(resource.data) || (resource.data.isPublic == true);
+      allow update: if isOwner(resource.data)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.id == resource.data.id
+        && validTimestamp(request.resource.data.updatedAt);
+      allow delete: if isOwner(resource.data);
+    }
+
+    match /avatars/{avatarId}/freetexts/{docId} {
+      allow create: if signedIn()
+        && isOwner(get(/databases/$(db)/documents/avatars/$(avatarId)).data)
+        && request.resource.data.keys().hasOnly(['userId','text','createdAt'])
+        && request.resource.data.userId == request.auth.uid
+        && validString(request.resource.data.text, 1, 20000)
+        && validTimestamp(request.resource.data.createdAt);
+
+      allow get, list, update, delete:
+        if isOwner(get(/databases/$(db)/documents/avatars/$(avatarId)).data);
+    }
+  }
+}
+
+

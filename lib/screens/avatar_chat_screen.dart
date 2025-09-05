@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'dart:io';
-import 'package:record/record.dart';
+// import 'package:permission_handler/permission_handler.dart';
+// import 'dart:io';
+// import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/avatar_data.dart';
 
@@ -21,7 +21,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   bool _isTyping = false;
 
   AvatarData? _avatarData;
-  final AudioRecorder _recorder = AudioRecorder();
+  // Aufnahme temporär deaktiviert
+  // final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
   String? _lastRecordingPath;
 
@@ -358,9 +359,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         children: [
           // Mikrofon-Button
           GestureDetector(
-            onTap: _toggleRecording,
-            onLongPressStart: (_) => _startRecording(),
-            onLongPressEnd: (_) => _stopRecording(),
+            // Aufnahme deaktiviert: Buttons ohne Aktion
+            onTap: () {
+              _showSystemSnack('Sprachaufnahme vorübergehend deaktiviert');
+            },
+            onLongPressStart: (_) {},
+            onLongPressEnd: (_) {},
             child: Container(
               width: 50,
               height: 50,
@@ -440,25 +444,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     );
   }
 
-  void _toggleRecording() {
-    setState(() {
-      _isRecording = !_isRecording;
-    });
+  // void _toggleRecording() {}
 
-    if (_isRecording) {
-      _startRecording();
-    } else {
-      _stopRecording();
-    }
-  }
+  // void _startRecording() {}
 
-  void _startRecording() {
-    _recordVoice();
-  }
-
-  void _stopRecording() {
-    _stopAndSave();
-  }
+  // void _stopRecording() {}
 
   void _sendMessage() {
     if (_messageController.text.trim().isNotEmpty) {
@@ -494,64 +484,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     });
   }
 
-  Future<void> _recordVoice() async {
-    try {
-      final mic = await Permission.microphone.request();
-      if (!mic.isGranted) {
-        _showSystemSnack('Mikrofon-Zugriff verweigert');
-        return;
-      }
+  // Future<void> _recordVoice() async {}
 
-      final canRecord = await _recorder.hasPermission();
-      if (!canRecord) {
-        _showSystemSnack('Keine Aufnahme-Berechtigung');
-        return;
-      }
-
-      // Verwende temporäres Verzeichnis über systemTemp
-      final filePath =
-          '${Directory.systemTemp.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-
-      await _recorder.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc,
-          bitRate: 128000,
-          sampleRate: 44100,
-        ),
-        path: filePath,
-      );
-
-      if (!mounted) return;
-      setState(() {
-        _isRecording = true;
-        _lastRecordingPath = filePath;
-      });
-      HapticFeedback.mediumImpact();
-    } catch (e) {
-      _showSystemSnack('Aufnahmefehler: $e');
-    }
-  }
-
-  Future<void> _stopAndSave() async {
-    try {
-      final path = await _recorder.stop();
-      if (!mounted) return;
-      setState(() {
-        _isRecording = false;
-        _lastRecordingPath = path ?? _lastRecordingPath;
-      });
-      HapticFeedback.mediumImpact();
-
-      if (_lastRecordingPath != null) {
-        _addMessage(
-          '🎤 Sprachnachricht aufgenommen · Tippen zum Abspielen',
-          true,
-        );
-      }
-    } catch (e) {
-      _showSystemSnack('Fehler beim Beenden der Aufnahme: $e');
-    }
-  }
+  // Future<void> _stopAndSave() async {}
 
   Future<void> _playLastRecording() async {
     if (_lastRecordingPath == null) return;

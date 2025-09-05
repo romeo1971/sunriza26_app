@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 // import 'ai_assistant_screen.dart';
 import '../services/firebase_diagnostics.dart';
+import 'user_profile_screen.dart';
 import '../services/auth_service.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -33,6 +34,14 @@ class WelcomeScreen extends StatelessWidget {
                     SnackBar(content: Text('Diag: ' + res.toString())),
                   );
                 }
+              } else if (value == 'profile') {
+                if (context.mounted) {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const UserProfileScreen(),
+                    ),
+                  );
+                }
               }
             },
             itemBuilder: (context) => [
@@ -53,6 +62,16 @@ class WelcomeScreen extends StatelessWidget {
                     Icon(Icons.health_and_safety, color: Color(0xFF00FF94)),
                     SizedBox(width: 8),
                     Text('Firebase Test'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'profile',
+                child: Row(
+                  children: [
+                    Icon(Icons.person, color: Color(0xFF00FF94)),
+                    SizedBox(width: 8),
+                    Text('Profil bearbeiten'),
                   ],
                 ),
               ),
