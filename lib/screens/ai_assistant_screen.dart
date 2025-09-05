@@ -6,11 +6,11 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/ai_service.dart';
 import '../services/video_stream_service.dart';
-import '../services/media_upload_service.dart';
 import '../widgets/video_player_widget.dart';
 import '../widgets/text_input_widget.dart';
 import '../widgets/status_widget.dart';
 import '../widgets/media_upload_widget.dart';
+import '../services/media_upload_service.dart';
 
 class AIAssistantScreen extends StatefulWidget {
   const AIAssistantScreen({super.key});
@@ -23,12 +23,10 @@ class _AIAssistantScreenState extends State<AIAssistantScreen> {
   final TextEditingController _textController = TextEditingController();
   final AIService _aiService = AIService();
   final VideoStreamService _videoService = VideoStreamService();
-  final MediaUploadService _uploadService = MediaUploadService();
 
   bool _isGenerating = false;
   String _statusMessage = 'Bereit für Texteingabe';
   String? _errorMessage;
-  String? _referenceVideoUrl;
   final List<String> _trainingMediaUrls = [];
   StreamSubscription? _videoStreamSubscription;
 
@@ -322,7 +320,6 @@ class _AIAssistantScreenState extends State<AIAssistantScreen> {
                     onUploadComplete: (result) {
                       if (result.success == true && mounted) {
                         setState(() {
-                          _referenceVideoUrl = result.downloadUrl;
                           _statusMessage = 'Referenzvideo hochgeladen';
                         });
                       }

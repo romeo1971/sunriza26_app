@@ -7,6 +7,10 @@ import 'auth_gate.dart';
 import 'services/ai_service.dart';
 import 'services/video_stream_service.dart';
 import 'services/auth_service.dart';
+import 'screens/avatar_upload_memories_screen.dart';
+import 'screens/avatar_details_screen.dart';
+import 'screens/avatar_chat_screen.dart';
+import 'screens/avatar_list_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,6 +47,12 @@ class SunrizaApp extends StatelessWidget {
         ),
         home: const AuthGate(),
         debugShowCheckedModeBanner: false,
+        routes: {
+          '/avatar-upload': (context) => const AvatarUploadMemoriesScreen(),
+          '/avatar-details': (context) => const AvatarDetailsScreen(),
+          '/avatar-chat': (context) => const AvatarChatScreen(),
+          '/avatar-list': (context) => const AvatarListScreen(),
+        },
       ),
     );
   }

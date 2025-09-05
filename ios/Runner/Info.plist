@@ -47,5 +47,14 @@
 			</array>
 		</dict>
 	</array>
+	<!-- iOS Berechtigungen für Upload/Audio -->
+	<key>NSCameraUsageDescription</key>
+	<string>Kamera wird für Foto-/Video-Uploads benötigt.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Zugriff auf die Fotomediathek für Uploads.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Zum Speichern exportierter Medien in der Fotomediathek.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Mikrofon für Sprachaufnahmen im Chat.</string>
 </dict>
 </plist>

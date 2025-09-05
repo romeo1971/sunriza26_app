@@ -4,7 +4,8 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'ai_assistant_screen.dart';
+// import 'ai_assistant_screen.dart';
+import '../services/firebase_diagnostics.dart';
 import '../services/auth_service.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -25,6 +26,13 @@ class WelcomeScreen extends StatelessWidget {
             onSelected: (value) async {
               if (value == 'logout') {
                 await authService.signOut();
+              } else if (value == 'diag') {
+                final res = await FirebaseDiagnostics.runAll();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Diag: ' + res.toString())),
+                  );
+                }
               }
             },
             itemBuilder: (context) => [
@@ -35,6 +43,16 @@ class WelcomeScreen extends StatelessWidget {
                     const Icon(Icons.person, color: Color(0xFF00FF94)),
                     const SizedBox(width: 8),
                     Text(authService.userEmail ?? 'User'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'diag',
+                child: Row(
+                  children: [
+                    Icon(Icons.health_and_safety, color: Color(0xFF00FF94)),
+                    SizedBox(width: 8),
+                    Text('Firebase Test'),
                   ],
                 ),
               ),
@@ -306,21 +324,21 @@ class WelcomeScreen extends StatelessWidget {
           const SizedBox(height: 32),
 
           // Mini Features
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          Wrap(
+            alignment: WrapAlignment.center,
+            spacing: 24,
+            runSpacing: 12,
             children: [
               _buildMiniFeature(
                 context,
                 Icons.security,
                 'Sichere Cloud-Speicherung',
               ),
-              const SizedBox(width: 32),
               _buildMiniFeature(
                 context,
                 Icons.psychology,
                 'KI-gestützte Analyse',
               ),
-              const SizedBox(width: 32),
               _buildMiniFeature(
                 context,
                 Icons.privacy_tip,
@@ -430,11 +448,7 @@ class WelcomeScreen extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(28),
           onTap: () {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(
-                builder: (context) => const AIAssistantScreen(),
-              ),
-            );
+            Navigator.of(context).pushReplacementNamed('/avatar-list');
           },
           child: Center(
             child: Text(

@@ -5,7 +5,6 @@ library;
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 
@@ -14,7 +13,7 @@ class AIService {
   factory AIService() => _instance;
   AIService._internal();
 
-  final FirebaseFunctions _functions = FirebaseFunctions.instance;
+  // Hinweis: Cloud Functions Client aktuell ungenutzt
 
   // Cloud Function URLs (nach Deployment)
   static const String _generateLiveVideoUrl =
@@ -60,6 +59,8 @@ class AIService {
       // Video-Metadaten aus Headers extrahieren
       final contentType =
           streamedResponse.headers['content-type'] ?? 'video/mp4';
+      // Optional: könnte zur UI-Anzeige genutzt werden
+      onProgress?.call('Content-Type: $contentType');
       final metadataHeader = streamedResponse.headers['x-video-metadata'];
 
       if (metadataHeader != null) {
