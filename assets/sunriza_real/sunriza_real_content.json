@@ -1,0 +1,101 @@
+{
+  "hero_title": "SUNRIZA",
+  "hero_subtitle": "Revolutionäre KI-Technologie für personalisierte Spiritualität",
+  "hero_description": "Sunriza verbindet modernste Künstliche Intelligenz mit spiritueller Weisheit. Entdecken Sie eine neue Dimension der digitalen Spiritualität und persönlichen Transformation.",
+  "hero_image": "assets/sunriza_real/images/sunset1.jpg",
+  "logo": "assets/sunriza_real/images/logoSunriza_2021.png",
+  
+  "videos": [
+    {
+      "type": "local",
+      "path": "assets/sunriza_real/videos/candle1.mp4",
+      "title": "Meditation mit Kerze",
+      "description": "Eine beruhigende Kerzen-Meditation für inneren Frieden"
+    },
+    {
+      "type": "youtube",
+      "id": "dQw4w9WgXcQ",
+      "title": "Sunriza Einführung",
+      "description": "Entdecken Sie die Möglichkeiten von Sunriza"
+    }
+  ],
+  
+  "features": [
+    {
+      "icon": "self_improvement",
+      "title": "Spirituelle KI",
+      "description": "Künstliche Intelligenz trifft auf spirituelle Weisheit für persönliche Transformation."
+    },
+    {
+      "icon": "psychology",
+      "title": "Bewusstseins-Erweiterung",
+      "description": "Erweitern Sie Ihr Bewusstsein durch KI-gestützte Meditation und Reflexion."
+    },
+    {
+      "icon": "favorite",
+      "title": "Herz-zentriert",
+      "description": "Technologie die vom Herzen kommt und das Herz berührt."
+    },
+    {
+      "icon": "wb_sunny",
+      "title": "Licht & Transformation",
+      "description": "Bringen Sie Licht in Ihr Leben durch digitale spirituelle Praktiken."
+    },
+    {
+      "icon": "auto_awesome",
+      "title": "Intuitive Führung",
+      "description": "Lassen Sie sich von KI-gestützter Intuition auf Ihrem spirituellen Weg leiten."
+    },
+    {
+      "icon": "spa",
+      "title": "Innerer Frieden",
+      "description": "Finden Sie Ruhe und Frieden durch personalisierte Meditationen."
+    }
+  ],
+  
+  "images": [
+    {
+      "path": "assets/sunriza_real/images/sunset1.jpg",
+      "title": "Sonnenuntergang",
+      "description": "Symbol für Transformation und spirituelles Erwachen"
+    },
+    {
+      "path": "assets/sunriza_real/images/cross2.jpeg",
+      "title": "Spirituelles Symbol",
+      "description": "Zeichen für Glauben und spirituelle Verbindung"
+    },
+    {
+      "path": "assets/sunriza_real/images/logoSunriza_2021.png",
+      "title": "Sunriza Logo",
+      "description": "Das offizielle Logo von Sunriza"
+    }
+  ],
+  
+  "texts": [
+    {
+      "type": "h2",
+      "content": "Unsere Vision: Spiritualität trifft Technologie"
+    },
+    {
+      "type": "p",
+      "content": "Bei Sunriza glauben wir daran, dass Technologie und Spiritualität Hand in Hand gehen können. Unsere KI-Plattform wurde entwickelt, um Menschen auf ihrem spirituellen Weg zu begleiten und zu unterstützen."
+    },
+    {
+      "type": "h2",
+      "content": "Die Kraft der digitalen Meditation"
+    },
+    {
+      "type": "p",
+      "content": "Durch die Verbindung von künstlicher Intelligenz mit jahrhundertealten spirituellen Praktiken schaffen wir neue Wege für persönliche Transformation und spirituelles Wachstum."
+    },
+    {
+      "type": "p",
+      "content": "Unsere Plattform nutzt fortschrittliche Algorithmen, um personalisierte Meditationen, spirituelle Führung und Bewusstseinserweiterung zu ermöglichen."
+    }
+  ],
+  
+  "call_to_action": {
+    "primary_button": "Spirituelle Reise beginnen",
+    "secondary_button": "Mehr über Sunriza erfahren"
+  }
+}

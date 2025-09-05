@@ -1,5 +1,6 @@
 /// Media Upload Widget für Veo 3 Training
 /// Stand: 04.09.2025 - Upload von Bildern und Videos für AI-Training
+library;
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -230,87 +231,111 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
 
   /// Upload-Bild
   Future<void> _uploadImage(ImageSource source) async {
-    setState(() {
-      _status = UploadStatus.uploading;
-      _progress = 0.0;
-      _errorMessage = null;
-    });
+    if (mounted) {
+      setState(() {
+        _status = UploadStatus.uploading;
+        _progress = 0.0;
+        _errorMessage = null;
+      });
+    }
 
     try {
       final result = await _uploadService.uploadImage(
         type: widget.uploadType,
         source: source,
         onProgress: (progress) {
-          setState(() {
-            _progress = progress;
-          });
+          if (mounted) {
+            setState(() {
+              _progress = progress;
+            });
+          }
           widget.onProgress?.call(progress);
         },
       );
 
-      setState(() {
-        _status = result.success ? UploadStatus.completed : UploadStatus.error;
-        _errorMessage = result.error;
-      });
+      if (mounted) {
+        setState(() {
+          _status = result.success
+              ? UploadStatus.completed
+              : UploadStatus.error;
+          _errorMessage = result.error;
+        });
+      }
 
       widget.onUploadComplete?.call(result);
     } catch (e) {
-      setState(() {
-        _status = UploadStatus.error;
-        _errorMessage = 'Upload fehlgeschlagen: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _status = UploadStatus.error;
+          _errorMessage = 'Upload fehlgeschlagen: $e';
+        });
+      }
     }
   }
 
   /// Upload-Video
   Future<void> _uploadVideo(ImageSource source) async {
-    setState(() {
-      _status = UploadStatus.uploading;
-      _progress = 0.0;
-      _errorMessage = null;
-    });
+    if (mounted) {
+      setState(() {
+        _status = UploadStatus.uploading;
+        _progress = 0.0;
+        _errorMessage = null;
+      });
+    }
 
     try {
       final result = await _uploadService.uploadVideo(
         type: widget.uploadType,
         source: source,
         onProgress: (progress) {
-          setState(() {
-            _progress = progress;
-          });
+          if (mounted) {
+            setState(() {
+              _progress = progress;
+            });
+          }
           widget.onProgress?.call(progress);
         },
       );
 
-      setState(() {
-        _status = result.success ? UploadStatus.completed : UploadStatus.error;
-        _errorMessage = result.error;
-      });
+      if (mounted) {
+        setState(() {
+          _status = result.success
+              ? UploadStatus.completed
+              : UploadStatus.error;
+          _errorMessage = result.error;
+        });
+      }
 
       widget.onUploadComplete?.call(result);
     } catch (e) {
-      setState(() {
-        _status = UploadStatus.error;
-        _errorMessage = 'Upload fehlgeschlagen: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _status = UploadStatus.error;
+          _errorMessage = 'Upload fehlgeschlagen: $e';
+        });
+      }
     }
   }
 
   /// Upload mehrerer Dateien
   Future<void> _uploadMultipleFiles() async {
-    setState(() {
-      _status = UploadStatus.uploading;
-      _progress = 0.0;
-      _errorMessage = null;
-    });
+    if (mounted) {
+      setState(() {
+        _status = UploadStatus.uploading;
+        _progress = 0.0;
+        _errorMessage = null;
+      });
+    }
 
     try {
       final results = await _uploadService.uploadMultipleFiles(
         type: widget.uploadType,
         onProgress: (progress) {
-          setState(() {
-            _progress = progress;
-          });
+          if (mounted) {
+            setState(() {
+              _progress = progress;
+            });
+          }
           widget.onProgress?.call(progress);
         },
       );
@@ -318,12 +343,14 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
       final successCount = results.where((r) => r.success).length;
       final errorCount = results.where((r) => !r.success).length;
 
-      setState(() {
-        _status = UploadStatus.completed;
-        _errorMessage = errorCount > 0
-            ? '$successCount erfolgreich, $errorCount Fehler'
-            : null;
-      });
+      if (mounted) {
+        setState(() {
+          _status = UploadStatus.completed;
+          _errorMessage = errorCount > 0
+              ? '$successCount erfolgreich, $errorCount Fehler'
+              : null;
+        });
+      }
 
       // Erste erfolgreiche Upload-Result weiterleiten
       final firstSuccess = results.firstWhere(
@@ -332,10 +359,12 @@ class _MediaUploadWidgetState extends State<MediaUploadWidget> {
       );
       widget.onUploadComplete?.call(firstSuccess);
     } catch (e) {
-      setState(() {
-        _status = UploadStatus.error;
-        _errorMessage = 'Multi-Upload fehlgeschlagen: $e';
-      });
+      if (mounted) {
+        setState(() {
+          _status = UploadStatus.error;
+          _errorMessage = 'Multi-Upload fehlgeschlagen: $e';
+        });
+      }
     }
   }
 

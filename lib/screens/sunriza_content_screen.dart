@@ -11,7 +11,8 @@ class SunrizaContentScreen extends StatefulWidget {
 
 class _SunrizaContentScreenState extends State<SunrizaContentScreen> {
   // YouTube Video ID für "Sunriza - Die Zukunft der KI"
-  final String _videoId = 'YOUR_VIDEO_ID'; // Wird später ersetzt
+  final String _videoId =
+      'dQw4w9WgXcQ'; // Rick Astley - Never Gonna Give You Up (Demo)
 
   @override
   Widget build(BuildContext context) {
@@ -159,7 +160,7 @@ class _SunrizaContentScreenState extends State<SunrizaContentScreen> {
           // Screenshot Grid
           GridView.builder(
             shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
+            physics: const ClampingScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
               crossAxisSpacing: 16,
@@ -279,7 +280,7 @@ class _SunrizaContentScreenState extends State<SunrizaContentScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          ...features.map((feature) => _buildFeatureCard(feature)).toList(),
+          ...features.map((feature) => _buildFeatureCard(feature)),
         ],
       ),
     );

@@ -1,7 +1,6 @@
-/**
- * Text Input Widget für AI-Assistenten
- * Stand: 04.09.2025 - Mit Validierung und Charakter-Zähler
- */
+/// Text Input Widget für AI-Assistenten
+/// Stand: 04.09.2025 - Mit Validierung und Charakter-Zähler
+library;
 
 import 'package:flutter/material.dart';
 

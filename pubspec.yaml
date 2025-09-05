@@ -66,6 +66,7 @@ dependencies:
   image: ^4.1.7
   video_thumbnail: ^0.5.3
   flutter_inappwebview: ^6.1.5
+  url_launcher: ^6.2.5
 
 dev_dependencies:
   flutter_test:
@@ -90,9 +91,14 @@ flutter:
   uses-material-design: true
 
   # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  assets:
+    - assets/screenshots/
+    - assets/scraped/data/
+    - assets/sunriza_complete/
+    - assets/sunriza_complete/images/
+    - assets/sunriza_complete/videos/
+    - assets/sunriza_complete/gifs/
+    - assets/sunriza_complete/texts/
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

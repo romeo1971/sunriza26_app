@@ -1,5 +1,6 @@
 /// Welcome Screen - Post-Login Startseite
 /// Stand: 04.09.2025 - Moderne Startseite im Firebase/Apple Stil
+library;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';

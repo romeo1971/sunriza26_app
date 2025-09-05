@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// YouTube Player für Web (da youtube_player_flutter nicht für Web optimiert ist)
 class YouTubePlayerWeb extends StatelessWidget {
@@ -34,10 +35,11 @@ class YouTubePlayerWeb extends StatelessWidget {
     if (kIsWeb) {
       // Für Web: Zeige YouTube Link mit Preview
       return GestureDetector(
-        onTap: () {
+        onTap: () async {
           // Öffne YouTube Video in neuem Tab
-          if (kIsWeb) {
-            // Web-spezifischer Code würde hier stehen
+          final url = Uri.parse('https://www.youtube.com/watch?v=$videoId');
+          if (await canLaunchUrl(url)) {
+            await launchUrl(url, mode: LaunchMode.externalApplication);
           }
         },
         child: Container(

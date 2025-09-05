@@ -2,6 +2,7 @@
 /// Stand: 04.09.2025 - Mit geklonter Stimme und Echtzeit-Lippensynchronisation
 library;
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/ai_service.dart';
 import '../services/video_stream_service.dart';
@@ -28,7 +29,8 @@ class _AIAssistantScreenState extends State<AIAssistantScreen> {
   String _statusMessage = 'Bereit für Texteingabe';
   String? _errorMessage;
   String? _referenceVideoUrl;
-  List<String> _trainingMediaUrls = [];
+  final List<String> _trainingMediaUrls = [];
+  StreamSubscription? _videoStreamSubscription;
 
   @override
   void initState() {
@@ -40,6 +42,7 @@ class _AIAssistantScreenState extends State<AIAssistantScreen> {
   @override
   void dispose() {
     _textController.dispose();
+    _videoStreamSubscription?.cancel();
     _videoService.dispose();
     super.dispose();
   }
@@ -48,52 +51,56 @@ class _AIAssistantScreenState extends State<AIAssistantScreen> {
   Future<void> _checkServiceHealth() async {
     try {
       final health = await _aiService.checkHealth();
-      if (health['status'] == 'healthy') {
+      if (mounted) {
         setState(() {
-          _statusMessage = 'AI-Services sind bereit';
-        });
-      } else {
-        setState(() {
-          _statusMessage = 'AI-Services nicht verfügbar';
-          _errorMessage = health['error'];
+          if (health['status'] == 'healthy') {
+            _statusMessage = 'AI-Services sind bereit';
+          } else {
+            _statusMessage = 'AI-Services nicht verfügbar';
+            _errorMessage = health['error'];
+          }
         });
       }
     } catch (e) {
-      setState(() {
-        _statusMessage = 'Fehler beim Verbinden mit AI-Services';
-        _errorMessage = e.toString();
-      });
+      if (mounted) {
+        setState(() {
+          _statusMessage = 'Fehler beim Verbinden mit AI-Services';
+          _errorMessage = e.toString();
+        });
+      }
     }
   }
 
   /// Setzt Video-Stream Listener auf
   void _setupVideoStreamListener() {
-    _videoService.stateStream.listen((state) {
-      setState(() {
-        switch (state) {
-          case VideoStreamState.initializing:
-            _statusMessage = 'Initialisiere Video-Stream...';
-            break;
-          case VideoStreamState.ready:
-            _statusMessage = 'Video bereit für Wiedergabe';
-            break;
-          case VideoStreamState.streaming:
-            _statusMessage = 'Video wird gestreamt...';
-            break;
-          case VideoStreamState.completed:
-            _statusMessage = 'Video-Generierung abgeschlossen';
-            _isGenerating = false;
-            break;
-          case VideoStreamState.error:
-            _statusMessage = 'Fehler beim Video-Streaming';
-            _isGenerating = false;
-            break;
-          case VideoStreamState.stopped:
-            _statusMessage = 'Video-Stream gestoppt';
-            _isGenerating = false;
-            break;
-        }
-      });
+    _videoStreamSubscription = _videoService.stateStream.listen((state) {
+      if (mounted) {
+        setState(() {
+          switch (state) {
+            case VideoStreamState.initializing:
+              _statusMessage = 'Initialisiere Video-Stream...';
+              break;
+            case VideoStreamState.ready:
+              _statusMessage = 'Video bereit für Wiedergabe';
+              break;
+            case VideoStreamState.streaming:
+              _statusMessage = 'Video wird gestreamt...';
+              break;
+            case VideoStreamState.completed:
+              _statusMessage = 'Video-Generierung abgeschlossen';
+              _isGenerating = false;
+              break;
+            case VideoStreamState.error:
+              _statusMessage = 'Fehler beim Video-Streaming';
+              _isGenerating = false;
+              break;
+            case VideoStreamState.stopped:
+              _statusMessage = 'Video-Stream gestoppt';
+              _isGenerating = false;
+              break;
+          }
+        });
+      }
     });
   }
 
@@ -108,26 +115,32 @@ class _AIAssistantScreenState extends State<AIAssistantScreen> {
       return;
     }
 
-    setState(() {
-      _isGenerating = true;
-      _statusMessage = 'Starte Video-Generierung...';
-      _errorMessage = null;
-    });
+    if (mounted) {
+      setState(() {
+        _isGenerating = true;
+        _statusMessage = 'Starte Video-Generierung...';
+        _errorMessage = null;
+      });
+    }
 
     try {
       // Live-Video-Stream starten
       final videoStream = await _aiService.generateLiveVideo(
         text: text,
         onProgress: (progress) {
-          setState(() {
-            _statusMessage = progress;
-          });
+          if (mounted) {
+            setState(() {
+              _statusMessage = progress;
+            });
+          }
         },
         onError: (error) {
-          setState(() {
-            _errorMessage = error;
-            _isGenerating = false;
-          });
+          if (mounted) {
+            setState(() {
+              _errorMessage = error;
+              _isGenerating = false;
+            });
+          }
         },
       );
 
@@ -135,32 +148,40 @@ class _AIAssistantScreenState extends State<AIAssistantScreen> {
       await _videoService.startStreaming(
         videoStream,
         onProgress: (progress) {
-          setState(() {
-            _statusMessage = progress;
-          });
+          if (mounted) {
+            setState(() {
+              _statusMessage = progress;
+            });
+          }
         },
         onError: (error) {
-          setState(() {
-            _errorMessage = error;
-            _isGenerating = false;
-          });
+          if (mounted) {
+            setState(() {
+              _errorMessage = error;
+              _isGenerating = false;
+            });
+          }
         },
       );
     } catch (e) {
-      setState(() {
-        _errorMessage = 'Fehler bei der Video-Generierung: $e';
-        _isGenerating = false;
-      });
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Fehler bei der Video-Generierung: $e';
+          _isGenerating = false;
+        });
+      }
     }
   }
 
   /// Stoppt Video-Generierung
   Future<void> _stopGeneration() async {
     await _videoService.stopStreaming();
-    setState(() {
-      _isGenerating = false;
-      _statusMessage = 'Video-Generierung gestoppt';
-    });
+    if (mounted) {
+      setState(() {
+        _isGenerating = false;
+        _statusMessage = 'Video-Generierung gestoppt';
+      });
+    }
   }
 
   /// Testet Text-to-Speech ohne Video
@@ -172,9 +193,11 @@ class _AIAssistantScreenState extends State<AIAssistantScreen> {
       return;
     }
 
-    setState(() {
-      _statusMessage = 'Teste Text-to-Speech...';
-    });
+    if (mounted) {
+      setState(() {
+        _statusMessage = 'Teste Text-to-Speech...';
+      });
+    }
 
     try {
       final audioData = await _aiService.testTextToSpeech(text);
@@ -297,9 +320,9 @@ class _AIAssistantScreenState extends State<AIAssistantScreen> {
                   MediaUploadWidget(
                     uploadType: UploadType.referenceVideo,
                     onUploadComplete: (result) {
-                      if (result?.success == true) {
+                      if (result.success == true && mounted) {
                         setState(() {
-                          _referenceVideoUrl = result!.downloadUrl;
+                          _referenceVideoUrl = result.downloadUrl;
                           _statusMessage = 'Referenzvideo hochgeladen';
                         });
                       }
@@ -312,9 +335,9 @@ class _AIAssistantScreenState extends State<AIAssistantScreen> {
                   MediaUploadWidget(
                     uploadType: UploadType.trainingImages,
                     onUploadComplete: (result) {
-                      if (result?.success == true) {
+                      if (result.success == true && mounted) {
                         setState(() {
-                          _trainingMediaUrls.add(result!.downloadUrl!);
+                          _trainingMediaUrls.add(result.downloadUrl!);
                           _statusMessage = 'Training-Bilder hochgeladen';
                         });
                       }

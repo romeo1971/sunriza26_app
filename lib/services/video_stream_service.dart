@@ -1,7 +1,6 @@
-/**
- * Video Stream Service für Live-Video-Wiedergabe
- * Stand: 04.09.2025 - Optimiert für Echtzeit-Streaming
- */
+/// Video Stream Service für Live-Video-Wiedergabe
+/// Stand: 04.09.2025 - Optimiert für Echtzeit-Streaming
+library;
 
 import 'dart:async';
 import 'dart:io';
@@ -26,9 +25,7 @@ class VideoStreamService {
 
   Stream<VideoStreamState> get stateStream => _stateController.stream;
 
-  /**
-   * Startet Live-Video-Streaming
-   */
+  /// Startet Live-Video-Streaming
   Future<void> startStreaming(
     Stream<Uint8List> videoStream, {
     Function(String)? onProgress,
@@ -77,9 +74,7 @@ class VideoStreamService {
     }
   }
 
-  /**
-   * Initialisiert Video-Controller für Wiedergabe
-   */
+  /// Initialisiert Video-Controller für Wiedergabe
   Future<void> _initializeVideoController(String videoPath) async {
     try {
       _controller = VideoPlayerController.file(File(videoPath));
@@ -101,9 +96,7 @@ class VideoStreamService {
     }
   }
 
-  /**
-   * Stoppt Video-Streaming und bereinigt Ressourcen
-   */
+  /// Stoppt Video-Streaming und bereinigt Ressourcen
   Future<void> stopStreaming() async {
     try {
       _isStreaming = false;
@@ -130,34 +123,22 @@ class VideoStreamService {
     }
   }
 
-  /**
-   * Gibt Video-Controller für UI zurück
-   */
+  /// Gibt Video-Controller für UI zurück
   VideoPlayerController? get controller => _controller;
 
-  /**
-   * Prüft ob Video-Stream aktiv ist
-   */
+  /// Prüft ob Video-Stream aktiv ist
   bool get isStreaming => _isStreaming;
 
-  /**
-   * Prüft ob Video bereit für Wiedergabe ist
-   */
+  /// Prüft ob Video bereit für Wiedergabe ist
   bool get isReady => _controller?.value.isInitialized ?? false;
 
-  /**
-   * Gibt aktuelle Video-Position zurück
-   */
+  /// Gibt aktuelle Video-Position zurück
   Duration get position => _controller?.value.position ?? Duration.zero;
 
-  /**
-   * Gibt Video-Dauer zurück
-   */
+  /// Gibt Video-Dauer zurück
   Duration get duration => _controller?.value.duration ?? Duration.zero;
 
-  /**
-   * Pausiert/Setzt Video fort
-   */
+  /// Pausiert/Setzt Video fort
   Future<void> togglePlayPause() async {
     if (_controller != null) {
       if (_controller!.value.isPlaying) {
@@ -168,27 +149,21 @@ class VideoStreamService {
     }
   }
 
-  /**
-   * Setzt Video-Position
-   */
+  /// Setzt Video-Position
   Future<void> seekTo(Duration position) async {
     if (_controller != null) {
       await _controller!.seekTo(position);
     }
   }
 
-  /**
-   * Bereinigt alle Ressourcen
-   */
+  /// Bereinigt alle Ressourcen
   Future<void> dispose() async {
     await stopStreaming();
     await _stateController.close();
   }
 }
 
-/**
- * Video Stream States für UI-Updates
- */
+/// Video Stream States für UI-Updates
 enum VideoStreamState {
   initializing,
   ready,

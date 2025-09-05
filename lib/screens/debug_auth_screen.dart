@@ -1,5 +1,6 @@
 /// Debug Auth Screen für Testing
 /// Stand: 04.09.2025
+library;
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';

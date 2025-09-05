@@ -1,5 +1,6 @@
 /// AI Service für Live-Video-Generierung
 /// Stand: 04.09.2025 - Integration mit Firebase Cloud Functions
+library;
 
 import 'dart:async';
 import 'dart:io';
@@ -23,10 +24,8 @@ class AIService {
   static const String _testTtsUrl =
       'https://us-central1-sunriza26.cloudfunctions.net/testTTS';
 
-  /**
-   * Generiert Live-Video mit geklonter Stimme und Lippen-Synchronisation
-   * Gibt einen Stream zurück für Echtzeit-Wiedergabe
-   */
+  /// Generiert Live-Video mit geklonter Stimme und Lippen-Synchronisation
+  /// Gibt einen Stream zurück für Echtzeit-Wiedergabe
   Future<Stream<Uint8List>> generateLiveVideo({
     required String text,
     Function(String)? onProgress,
@@ -75,10 +74,8 @@ class AIService {
     }
   }
 
-  /**
-   * Testet Text-to-Speech ohne Video-Generierung
-   * Nützlich für Debugging und schnelle Tests
-   */
+  /// Testet Text-to-Speech ohne Video-Generierung
+  /// Nützlich für Debugging und schnelle Tests
   Future<Uint8List> testTextToSpeech(String text) async {
     try {
       final request = http.Request('POST', Uri.parse(_testTtsUrl));
@@ -109,9 +106,7 @@ class AIService {
     }
   }
 
-  /**
-   * Überprüft den Status der AI-Services
-   */
+  /// Überprüft den Status der AI-Services
   Future<Map<String, dynamic>> checkHealth() async {
     try {
       final response = await http.get(
@@ -129,9 +124,7 @@ class AIService {
     }
   }
 
-  /**
-   * Speichert Audio-Daten temporär für Tests
-   */
+  /// Speichert Audio-Daten temporär für Tests
   Future<String> saveAudioToFile(Uint8List audioData) async {
     try {
       final directory = await getTemporaryDirectory();
@@ -143,18 +136,14 @@ class AIService {
     }
   }
 
-  /**
-   * Validiert Text für AI-Verarbeitung
-   */
+  /// Validiert Text für AI-Verarbeitung
   bool validateText(String text) {
     if (text.trim().isEmpty) return false;
     if (text.length > 5000) return false; // Google TTS Limit
     return true;
   }
 
-  /**
-   * Escaped JSON-String für sichere Übertragung
-   */
+  /// Escaped JSON-String für sichere Übertragung
   String _escapeJson(String text) {
     return text
         .replaceAll('\\', '\\\\')

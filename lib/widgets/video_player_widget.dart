@@ -1,7 +1,6 @@
-/**
- * Video Player Widget für Live-Streaming
- * Stand: 04.09.2025 - Optimiert für Echtzeit-Video-Wiedergabe
- */
+/// Video Player Widget für Live-Streaming
+/// Stand: 04.09.2025 - Optimiert für Echtzeit-Video-Wiedergabe
+library;
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';

@@ -1,0 +1,189 @@
+{
+  "hero": {
+    "title": "SUNRIZA",
+    "subtitle": "Revolutionäre KI-Technologie für personalisierte Spiritualität",
+    "description": "Sunriza verbindet modernste Künstliche Intelligenz mit spiritueller Weisheit. Entdecken Sie eine neue Dimension der digitalen Spiritualität und persönlichen Transformation.",
+    "background_image": "assets/sunriza_complete/images/sunset1.jpg",
+    "logo": "assets/sunriza_complete/images/logoSunriza_2021.png"
+  },
+  
+  "images": [
+    {
+      "path": "assets/sunriza_complete/images/sunset1.jpg",
+      "title": "Spiritueller Sonnenuntergang",
+      "description": "Symbol für Transformation und spirituelles Erwachen",
+      "category": "header"
+    },
+    {
+      "path": "assets/sunriza_complete/images/cross2.jpeg", 
+      "title": "Spirituelles Kreuz",
+      "description": "Zeichen für Glauben und spirituelle Verbindung",
+      "category": "spiritual"
+    },
+    {
+      "path": "assets/sunriza_complete/images/logoSunriza_2021.png",
+      "title": "Sunriza Logo 2021",
+      "description": "Das offizielle Logo von Sunriza",
+      "category": "branding"
+    },
+    {
+      "path": "assets/sunriza_complete/images/headerBflyBank.jpeg",
+      "title": "Butterfly Bank Header",
+      "description": "Spirituelle Transformation symbolisiert durch Schmetterlinge",
+      "category": "header"
+    },
+    {
+      "path": "assets/sunriza_complete/images/headerBflyBank_mobile.jpeg",
+      "title": "Butterfly Bank Mobile",
+      "description": "Mobile Version des Butterfly Headers",
+      "category": "header"
+    },
+    {
+      "path": "assets/sunriza_complete/images/hp_topMain_bFly_0921_1.jpeg",
+      "title": "Homepage Butterfly Main",
+      "description": "Hauptbild der Homepage mit Schmetterling",
+      "category": "homepage"
+    },
+    {
+      "path": "assets/sunriza_complete/images/sea-5603352_1920.jpg",
+      "title": "Spirituelles Meer",
+      "description": "Das Meer als Symbol für Unendlichkeit und spirituelle Tiefe",
+      "category": "nature"
+    },
+    {
+      "path": "assets/sunriza_complete/images/mmb_promo_banner_1.jpg",
+      "title": "Promo Banner",
+      "description": "Werbebanner für Sunriza Angebote",
+      "category": "marketing"
+    },
+    {
+      "path": "assets/sunriza_complete/images/sunriza_logoGrey_de.png",
+      "title": "Sunriza Logo Grau Deutsch",
+      "description": "Deutsche Version des grauen Sunriza Logos",
+      "category": "branding"
+    }
+  ],
+  
+  "videos": [
+    {
+      "type": "local",
+      "path": "assets/sunriza_complete/videos/candle1.mp4",
+      "title": "Kerzen-Meditation",
+      "description": "Eine beruhigende Kerzen-Meditation für inneren Frieden und Konzentration"
+    },
+    {
+      "type": "local", 
+      "path": "assets/sunriza_complete/videos/candle1_landscape.mp4",
+      "title": "Kerzen-Meditation Querformat",
+      "description": "Querformat Version der Kerzen-Meditation"
+    },
+    {
+      "type": "local",
+      "path": "assets/sunriza_complete/videos/Wasserfall - 135901.mp4", 
+      "title": "Wasserfall Meditation",
+      "description": "Beruhigende Wasserfall-Geräusche für tiefe Meditation"
+    }
+  ],
+  
+  "gifs": [
+    {
+      "path": "assets/sunriza_complete/gifs/candle_12659_7sec.gif",
+      "title": "Flackernde Kerze",
+      "description": "7-Sekunden GIF einer flackernden Kerze für Meditation",
+      "duration": "7 seconds"
+    }
+  ],
+  
+  "text_files": [
+    "assets/sunriza_complete/texts/text_01_main_title.txt",
+    "assets/sunriza_complete/texts/text_02_vision.txt", 
+    "assets/sunriza_complete/texts/text_03_ai_spirituality.txt",
+    "assets/sunriza_complete/texts/text_04_meditation_power.txt",
+    "assets/sunriza_complete/texts/text_05_spiritual_features.txt",
+    "assets/sunriza_complete/texts/text_06_about_sunriza.txt",
+    "assets/sunriza_complete/texts/text_07_call_to_action.txt",
+    "assets/sunriza_complete/texts/text_08_meditation_benefits.txt"
+  ],
+  
+  "features": [
+    {
+      "icon": "self_improvement",
+      "title": "Spirituelle KI",
+      "description": "Künstliche Intelligenz trifft auf spirituelle Weisheit für persönliche Transformation."
+    },
+    {
+      "icon": "psychology",
+      "title": "Bewusstseins-Erweiterung", 
+      "description": "Erweitern Sie Ihr Bewusstsein durch KI-gestützte Meditation und Reflexion."
+    },
+    {
+      "icon": "favorite",
+      "title": "Herz-zentriert",
+      "description": "Technologie die vom Herzen kommt und das Herz berührt."
+    },
+    {
+      "icon": "wb_sunny",
+      "title": "Licht & Transformation",
+      "description": "Bringen Sie Licht in Ihr Leben durch digitale spirituelle Praktiken."
+    },
+    {
+      "icon": "auto_awesome", 
+      "title": "Intuitive Führung",
+      "description": "Lassen Sie sich von KI-gestützter Intuition auf Ihrem spirituellen Weg leiten."
+    },
+    {
+      "icon": "spa",
+      "title": "Innerer Frieden",
+      "description": "Finden Sie Ruhe und Frieden durch personalisierte Meditationen."
+    },
+    {
+      "icon": "healing",
+      "title": "Spirituelle Heilung",
+      "description": "Heilung auf allen Ebenen durch KI-gestützte spirituelle Praktiken."
+    },
+    {
+      "icon": "energy_savings_leaf",
+      "title": "Energetische Reinigung", 
+      "description": "Reinigen und harmonisieren Sie Ihre Energie mit digitalen Heilmethoden."
+    }
+  ],
+  
+  "spiritual_practices": [
+    "KI-gestützte Meditation",
+    "Digitale Achtsamkeit",
+    "Chakra-Harmonisierung", 
+    "Energetische Heilung",
+    "Bewusstseinserweiterung",
+    "Spirituelle Beratung",
+    "Transformative Visualisierung",
+    "Intuitive Führung"
+  ],
+  
+  "benefits": [
+    "Personalisierte spirituelle Erfahrungen",
+    "24/7 spirituelle Begleitung",
+    "Wissenschaftlich fundierte Meditation",
+    "Individuelle Bewusstseinsentwicklung",
+    "Stress-Reduktion und innerer Frieden",
+    "Erhöhte Intuition und Klarheit",
+    "Energetische Balance und Heilung",
+    "Spirituelles Wachstum und Transformation"
+  ],
+  
+  "call_to_action": {
+    "primary_button": "Spirituelle Reise beginnen",
+    "secondary_button": "Mehr über Sunriza erfahren",
+    "tertiary_button": "Kostenlose Meditation testen"
+  },
+  
+  "metadata": {
+    "website": "www.sunriza.com",
+    "scraped_date": "2024",
+    "content_type": "Spirituelle KI-Plattform",
+    "language": "Deutsch",
+    "total_images": 9,
+    "total_videos": 3,
+    "total_gifs": 1,
+    "total_text_files": 8
+  }
+}

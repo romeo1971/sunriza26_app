@@ -1,5 +1,6 @@
 /// Media Upload Service für Veo 3 Training
 /// Stand: 04.09.2025 - Upload von Bildern und Videos für AI-Training
+library;
 
 import 'dart:io';
 import 'dart:typed_data';

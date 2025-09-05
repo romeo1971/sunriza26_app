@@ -1,5 +1,6 @@
 /// Auth Screen für Login/Registration
 /// Stand: 04.09.2025 - Basierend auf struppi-Implementation
+library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;

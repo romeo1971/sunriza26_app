@@ -1,5 +1,6 @@
 /// Auth Gate - Route Protection
 /// Stand: 04.09.2025 - Basierend auf struppi-Implementation
+library;
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';

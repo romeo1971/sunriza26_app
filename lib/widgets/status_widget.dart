@@ -1,7 +1,6 @@
-/**
- * Status Widget für AI-Assistenten
- * Stand: 04.09.2025 - Zeigt Generierungs-Status und Fehler an
- */
+/// Status Widget für AI-Assistenten
+/// Stand: 04.09.2025 - Zeigt Generierungs-Status und Fehler an
+library;
 
 import 'package:flutter/material.dart';
 

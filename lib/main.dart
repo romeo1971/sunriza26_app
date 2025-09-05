@@ -4,7 +4,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'auth_gate.dart';
-import 'screens/debug_auth_screen.dart';
 import 'services/ai_service.dart';
 import 'services/video_stream_service.dart';
 import 'services/auth_service.dart';

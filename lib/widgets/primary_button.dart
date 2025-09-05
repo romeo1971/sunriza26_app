@@ -1,5 +1,6 @@
 /// Primary Button Widget
 /// Stand: 04.09.2025 - Basierend auf struppi-Implementation
+library;
 
 import 'package:flutter/material.dart';
 

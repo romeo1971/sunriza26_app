@@ -1,0 +1,75 @@
+{
+  "hero_title": "Sunriza Content",
+  "hero_subtitle": "Spirituelle Inhalte und Meditationen",
+  "hero_description": "Entdecken Sie spirituelle Inhalte, Meditationen und transformative Erfahrungen mit Sunriza.",
+  "hero_image": "assets/screenshots/screenshot1.png",
+  "logo": "assets/screenshots/screenshot2.png",
+  
+  "videos": [
+    {
+      "type": "youtube",
+      "id": "dQw4w9WgXcQ",
+      "title": "Meditation und Achtsamkeit",
+      "description": "Eine geführte Meditation für inneren Frieden"
+    },
+    {
+      "type": "youtube", 
+      "id": "jNQXAC9IVRw",
+      "title": "Spirituelle Transformation",
+      "description": "Entdecken Sie Ihren spirituellen Weg"
+    }
+  ],
+  
+  "images": [
+    {
+      "path": "assets/screenshots/screenshot1.png",
+      "title": "Spirituelle Landschaft",
+      "description": "Ein Ort der Ruhe und Besinnung",
+      "category": "nature"
+    },
+    {
+      "path": "assets/screenshots/screenshot2.png", 
+      "title": "Meditation",
+      "description": "Innere Ruhe finden",
+      "category": "meditation"
+    }
+  ],
+  
+  "features": [
+    {
+      "title": "🧘‍♀️ Meditation",
+      "description": "Geführte Meditationen für jeden Tag",
+      "icon": "meditation"
+    },
+    {
+      "title": "✨ Spiritualität",
+      "description": "Entdecken Sie Ihren spirituellen Weg",
+      "icon": "spirituality"
+    },
+    {
+      "title": "🌟 Transformation",
+      "description": "Persönliche Entwicklung und Wachstum",
+      "icon": "transformation"
+    },
+    {
+      "title": "❤️ Achtsamkeit",
+      "description": "Bewusst im Moment leben",
+      "icon": "mindfulness"
+    }
+  ],
+  
+  "texts": [
+    {
+      "title": "Willkommen bei Sunriza",
+      "content": "Sunriza ist Ihre digitale Begleitung auf dem Weg zu spirituellem Wachstum und innerer Ruhe. Entdecken Sie die Kraft der Meditation und Achtsamkeit."
+    },
+    {
+      "title": "Spirituelle Praxis",
+      "content": "Durch regelmäßige spirituelle Praxis können Sie tieferen Frieden und Klarheit in Ihr Leben bringen. Lassen Sie sich von unseren Inhalten inspirieren."
+    },
+    {
+      "title": "Transformation",
+      "content": "Wahre Transformation beginnt von innen. Mit den richtigen Werkzeugen und Führung können Sie Ihr volles Potenzial entfalten."
+    }
+  ]
+}

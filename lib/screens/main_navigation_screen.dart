@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'welcome_screen.dart';
-import 'sunriza_content_screen.dart';
+import 'sunriza_content_screen_real.dart';
 import 'ai_assistant_screen.dart';
+import 'sunriza_real_screen.dart';
 
 /// Hauptnavigation zwischen verschiedenen Screens
 class MainNavigationScreen extends StatefulWidget {
@@ -16,8 +17,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   final List<Widget> _screens = [
     const WelcomeScreen(),
-    const SunrizaContentScreen(),
+    const SunrizaContentScreenReal(),
     const AIAssistantScreen(),
+    const SunrizaRealScreen(),
   ];
 
   @override
@@ -43,6 +45,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
             icon: Icon(Icons.smart_toy),
             label: 'KI-Assistent',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.web), label: 'Sunriza.com'),
         ],
       ),
     );
