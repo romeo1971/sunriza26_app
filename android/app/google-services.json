@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "590744030274",
+    "project_id": "sunriza26",
+    "storage_bucket": "sunriza26.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:590744030274:android:3127e193b4a471843b31db",
+        "android_client_info": {
+          "package_name": "com.example.sunriza26"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "590744030274-ajb16p9sfpfgqhnn6imc6lvlimbceipo.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDF_npJHEnCQcmqZTBRfWeho9BLwhCexow"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "590744030274-ajb16p9sfpfgqhnn6imc6lvlimbceipo.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
