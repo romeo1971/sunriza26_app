@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/avatar_data.dart' as model;
 import '../widgets/app_drawer.dart';
+import '../services/avatar_service.dart';
 
 class AvatarListScreen extends StatefulWidget {
   const AvatarListScreen({super.key});
@@ -10,39 +11,38 @@ class AvatarListScreen extends StatefulWidget {
 }
 
 class _AvatarListScreenState extends State<AvatarListScreen> {
-  // TODO: Replace with actual data from Firestore
-  final List<model.AvatarData> _avatars = [
-    model.AvatarData(
-      id: '1',
-      userId: 'demo',
-      firstName: 'Oma Maria',
-      nickname: 'Oma',
-      avatarImageUrl: null,
-      imageUrls: const [],
-      videoUrls: const [],
-      textFileUrls: const [],
-      writtenTexts: const [],
-      lastMessage: 'Wie geht es dir heute?',
-      lastMessageTime: DateTime.now().subtract(const Duration(hours: 2)),
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    ),
-    model.AvatarData(
-      id: '2',
-      userId: 'demo',
-      firstName: 'Opa Hans',
-      nickname: 'Opa',
-      avatarImageUrl: null,
-      imageUrls: const [],
-      videoUrls: const [],
-      textFileUrls: const [],
-      writtenTexts: const [],
-      lastMessage: 'Erzähl mir von deinem Tag',
-      lastMessageTime: DateTime.now().subtract(const Duration(days: 1)),
-      createdAt: DateTime.now(),
-      updatedAt: DateTime.now(),
-    ),
-  ];
+  final AvatarService _avatarService = AvatarService();
+  List<model.AvatarData> _avatars = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAvatars();
+  }
+
+  Future<void> _loadAvatars() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final avatars = await _avatarService.getUserAvatars();
+      setState(() {
+        _avatars = avatars;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Laden der Avatare: $e')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -54,13 +54,22 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
         foregroundColor: Colors.white,
         actions: [
           IconButton(
+            onPressed: _loadAvatars,
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Aktualisieren',
+          ),
+          IconButton(
             onPressed: _createNewAvatar,
             icon: const Icon(Icons.add),
             tooltip: 'Neuen Avatar erstellen',
           ),
         ],
       ),
-      body: _avatars.isEmpty ? _buildEmptyState() : _buildAvatarList(),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _avatars.isEmpty
+          ? _buildEmptyState()
+          : _buildAvatarList(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _createNewAvatar,
         backgroundColor: Colors.deepPurple,
@@ -263,7 +272,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
   }
 
   void _createNewAvatar() {
-    Navigator.pushNamed(context, '/avatar-upload');
+    Navigator.pushNamed(context, '/avatar-creation');
   }
 
   void _openAvatarChat(model.AvatarData avatar) {

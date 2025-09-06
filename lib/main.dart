@@ -13,6 +13,8 @@ import 'screens/avatar_details_screen.dart';
 import 'screens/avatar_chat_screen.dart';
 import 'screens/avatar_list_screen.dart';
 import 'screens/legal_page_screen.dart';
+import 'screens/firebase_test_screen.dart';
+import 'screens/avatar_creation_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -60,6 +62,8 @@ class SunrizaApp extends StatelessWidget {
           '/legal-terms': (context) => const LegalPageScreen(type: 'terms'),
           '/legal-imprint': (context) => const LegalPageScreen(type: 'imprint'),
           '/legal-privacy': (context) => const LegalPageScreen(type: 'privacy'),
+          '/firebase-test': (context) => const FirebaseTestScreen(),
+          '/avatar-creation': (context) => const AvatarCreationScreen(),
         },
       ),
     );

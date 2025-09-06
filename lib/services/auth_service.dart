@@ -2,9 +2,12 @@
 /// Stand: 04.09.2025 - Basierend auf struppi-Implementation
 library;
 
+import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'user_service.dart';
+import '../models/user_profile.dart';
 
 class AuthService {
   static final AuthService _instance = AuthService._internal();
@@ -14,6 +17,7 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final UserService _userService = UserService();
 
   /// Aktueller User
   User? get currentUser => _auth.currentUser;
@@ -86,7 +90,7 @@ class AuthService {
   Future<UserCredential?> signInWithGoogle() async {
     try {
       // Google Sign-In durchführen (7.x)
-      final GoogleSignInAccount? googleUser = await _googleSignIn
+      final GoogleSignInAccount googleUser = await _googleSignIn
           .authenticate();
       if (googleUser == null) return null;
 
@@ -138,28 +142,43 @@ class AuthService {
     }
   }
 
-  /// User-Profil in Firestore erstellen/aktualisieren
+  /// User-Profil in Firestore erstellen/aktualisieren (Struppi-System)
   Future<void> _createUserProfile(User user) async {
     try {
       final userDoc = _firestore.collection('users').doc(user.uid);
+      final now = DateTime.now().millisecondsSinceEpoch;
 
-      final userData = {
-        'uid': user.uid,
-        'email': user.email,
-        'displayName': user.displayName ?? '',
-        'photoURL': user.photoURL ?? '',
-        'emailVerified': user.emailVerified,
-        'createdAt': FieldValue.serverTimestamp(),
-        'lastLoginAt': FieldValue.serverTimestamp(),
-        'avatarData': {
-          'totalDocuments': 0,
-          'lastTrainingAt': null,
-          'isTrained': false,
-        },
-      };
-
-      // User-Daten aktualisieren (merge: true für Updates)
-      await userDoc.set(userData, SetOptions(merge: true));
+      // Prüfe ob User bereits existiert
+      final snap = await userDoc.get();
+      if (snap.exists) {
+        // Update bestehender User
+        await userDoc.update({
+          'email': user.email,
+          'displayName': user.displayName ?? '',
+          'photoURL': user.photoURL ?? '',
+          'emailVerified': user.emailVerified,
+          'lastLoginAt': now,
+          'updatedAt': now,
+        });
+      } else {
+        // Erstelle neuen User (Struppi-System)
+        await userDoc.set({
+          'uid': user.uid,
+          'email': user.email,
+          'displayName': user.displayName ?? '',
+          'photoURL': user.photoURL ?? '',
+          'emailVerified': user.emailVerified,
+          'isOnboarded': false,
+          'createdAt': now,
+          'lastLoginAt': now,
+          'updatedAt': now,
+          'avatarData': {
+            'totalDocuments': 0,
+            'lastTrainingAt': null,
+            'isTrained': false,
+          },
+        });
+      }
     } catch (e) {
       // print('Fehler beim Erstellen des User-Profils: $e');
       // Nicht rethrow, da Login trotzdem funktionieren soll
@@ -205,6 +224,40 @@ class AuthService {
       // print('Fehler beim Abrufen der User-Daten: $e');
       return null;
     }
+  }
+
+  /// Struppi User-System Integration
+
+  /// User-Profil erstellen/aktualisieren (Struppi-System)
+  Future<UserProfile> upsertCurrentUserProfile({String? displayName}) async {
+    return await _userService.upsertCurrentUserProfile(
+      displayName: displayName,
+    );
+  }
+
+  /// Aktuelles User-Profil abrufen
+  Future<UserProfile?> getCurrentUserProfile() async {
+    return await _userService.getCurrentUserProfile();
+  }
+
+  /// User-Foto hochladen
+  Future<String?> uploadUserPhoto(File file) async {
+    return await _userService.uploadUserPhoto(file);
+  }
+
+  /// User-Foto löschen
+  Future<bool> deleteUserPhoto() async {
+    return await _userService.deleteUserPhoto();
+  }
+
+  /// Onboarding-Status setzen
+  Future<void> markOnboarded(bool value) async {
+    await _userService.markOnboarded(value);
+  }
+
+  /// Erweiterte Profil-Update-Methode (Struppi-System)
+  Future<void> updateUserProfileData(UserProfile profile) async {
+    await _userService.updateUserProfile(profile);
   }
 
   /// Avatar-Training-Status aktualisieren

@@ -1,8 +1,50 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
+    // Helper Functions (Struppi-System)
+    function signedIn() { return request.auth != null; }
+    function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
+    function isValidFileType() {
+      return resource.contentType.matches('image/.*') ||
+             resource.contentType.matches('video/.*') ||
+             resource.contentType.matches('audio/.*') ||
+             resource.contentType.matches('text/.*') ||
+             resource.contentType.matches('application/pdf');
+    }
+    function isValidFileSize() {
+      return resource.size < 50 * 1024 * 1024; // 50MB limit
+    }
+
+    // Avatar Files (Struppi-System)
     match /avatars/{userId}/{allPaths=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if isOwner(userId) && isValidFileType() && isValidFileSize();
+    }
+
+    // User Photos (Struppi-System)
+    match /users/{userId}/photos/{allPaths=**} {
+      allow read, write: if isOwner(userId) && isValidFileType() && isValidFileSize();
+    }
+
+    // Chat Files (Struppi-System)
+    match /chats/{chatId}/files/{allPaths=**} {
+      allow read, write: if signedIn() && isValidFileType() && isValidFileSize();
+    }
+
+    // Legal Pages Files (Struppi-System)
+    match /legal_pages/{type}/{allPaths=**} {
+      allow read: if true; // Öffentlich lesbar
+      allow write: if signedIn() && isValidFileType() && isValidFileSize();
+    }
+
+    // Analytics Files (Struppi-System)
+    match /analytics/{userId}/{allPaths=**} {
+      allow read, write: if isOwner(userId) && isValidFileType() && isValidFileSize();
+    }
+
+    // Public Assets (Struppi-System)
+    match /public/{allPaths=**} {
+      allow read: if true; // Öffentlich lesbar
+      allow write: if signedIn() && isValidFileType() && isValidFileSize();
     }
   }
 }

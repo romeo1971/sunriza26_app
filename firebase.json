@@ -30,6 +30,9 @@
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
   },
+  "database": {
+    "rules": "database.rules.json"
+  },
   "hosting": {
     "public": "build/web",
     "ignore": [

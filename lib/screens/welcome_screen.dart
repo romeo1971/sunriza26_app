@@ -33,7 +33,7 @@ class WelcomeScreen extends StatelessWidget {
                 final res = await FirebaseDiagnostics.runAll();
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Diag: ' + res.toString())),
+                    SnackBar(content: Text('Diag: $res')),
                   );
                 }
               } else if (value == 'profile') {

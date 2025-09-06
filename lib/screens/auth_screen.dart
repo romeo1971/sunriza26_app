@@ -169,7 +169,7 @@ class _AuthScreenState extends State<AuthScreen> {
         await FirebaseAuth.instance.signInWithPopup(provider);
       } else {
         // Mobile: google_sign_in + Firebase Credential
-        final GoogleSignInAccount? googleUser = await _googleSignIn
+        final GoogleSignInAccount googleUser = await _googleSignIn
             .authenticate();
         if (googleUser == null) {
           setState(() {

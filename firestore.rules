@@ -1,10 +1,7 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{db}/documents {
-    // User-Dokumente
-    match /users/{uid} {
-      allow get, create, update, delete: if signedIn() && uid == request.auth.uid;
-    }
+    // Helper Functions (Struppi-System)
     function signedIn() { return request.auth != null; }
     function isOwner(data) { return signedIn() && data.userId == request.auth.uid; }
     function validTimestamp(ts) { return ts is int && ts > 0; }
@@ -12,7 +9,18 @@ service cloud.firestore {
     function stringList(l, maxItems, maxLen) {
       return l is list && l.size() <= maxItems && l.hasOnly(l.where(e, e is string && e.size() <= maxLen));
     }
+    function isAdmin() {
+      return signedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
 
+    // User-Dokumente (Struppi-System)
+    match /users/{uid} {
+      allow get, create, update, delete: if signedIn() && uid == request.auth.uid;
+    }
+
+    // Avatar-Dokumente (Struppi-System)
     match /avatars/{avatarId} {
       allow create: if signedIn()
         && request.resource.data.userId == request.auth.uid
@@ -47,6 +55,7 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data);
     }
 
+    // Avatar Freetexts (Struppi-System)
     match /avatars/{avatarId}/freetexts/{docId} {
       allow create: if signedIn()
         && isOwner(get(/databases/$(db)/documents/avatars/$(avatarId)).data)
@@ -64,12 +73,49 @@ service cloud.firestore {
       allow read: if true; // Öffentlich lesbar
       allow write: if signedIn() && isAdmin();
     }
-    
-    // Admin-Funktion
-    function isAdmin() {
-      return signedIn() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+
+    // Chat Messages (Struppi-System)
+    match /chats/{chatId}/messages/{messageId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['userId','text','timestamp','type'])
+        && validString(request.resource.data.text, 1, 10000)
+        && validTimestamp(request.resource.data.timestamp)
+        && request.resource.data.type in ['user', 'avatar'];
+
+      allow get, list: if signedIn() && 
+        (resource.data.userId == request.auth.uid || 
+         isOwner(get(/databases/$(db)/documents/avatars/$(chatId)).data));
+    }
+
+    // User Settings (Struppi-System)
+    match /user_settings/{uid} {
+      allow get, create, update, delete: if signedIn() && uid == request.auth.uid;
+    }
+
+    // Notifications (Struppi-System)
+    match /notifications/{notificationId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['userId','title','message','type','read','createdAt'])
+        && validString(request.resource.data.title, 1, 200)
+        && validString(request.resource.data.message, 1, 1000)
+        && validTimestamp(request.resource.data.createdAt)
+        && request.resource.data.read is bool;
+
+      allow get, list, update: if signedIn() && resource.data.userId == request.auth.uid;
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    // Analytics (Struppi-System)
+    match /analytics/{docId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['userId','event','data','timestamp'])
+        && validString(request.resource.data.event, 1, 100)
+        && validTimestamp(request.resource.data.timestamp);
+
+      allow get, list: if signedIn() && resource.data.userId == request.auth.uid;
     }
   }
 }
