@@ -8,6 +8,7 @@ import 'package:provider/provider.dart';
 import '../services/firebase_diagnostics.dart';
 import 'user_profile_screen.dart';
 import '../services/auth_service.dart';
+import '../widgets/app_drawer.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -18,6 +19,7 @@ class WelcomeScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,

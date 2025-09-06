@@ -22,20 +22,6 @@
 	<string>$(FLUTTER_BUILD_NAME)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
-	<key>CFBundleVersion</key>
-	<string>$(FLUTTER_BUILD_NUMBER)</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<key>UIApplicationSupportsIndirectInputEvents</key>
-	<true/>
-	<key>UILaunchStoryboardName</key>
-	<string>LaunchScreen</string>
-	<key>UIMainStoryboardFile</key>
-	<string>Main</string>
-	<key>UISupportedInterfaceOrientations</key>
-	<array>
-		<string>UIInterfaceOrientationPortrait</string>
-	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -47,14 +33,33 @@
 			</array>
 		</dict>
 	</array>
-	<!-- iOS Berechtigungen für Upload/Audio -->
+	<!-- Google Sign-In v9+ benötigt GIDClientID -->
+	<key>GIDClientID</key>
+	<string>590744030274-ukapr3qs3e7l2ulvd6dkvv9pdah5q77e.apps.googleusercontent.com</string>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Kamera wird für Foto-/Video-Uploads benötigt.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Zugriff auf die Fotomediathek für Uploads.</string>
-	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>Zum Speichern exportierter Medien in der Fotomediathek.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Mikrofon für Sprachaufnahmen im Chat.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Zum Speichern exportierter Medien in der Fotomediathek.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Zugriff auf die Fotomediathek für Uploads.</string>
+	<key>UIApplicationSupportsIndirectInputEvents</key>
+	<true/>
+	<key>UILaunchStoryboardName</key>
+	<string>LaunchScreen</string>
+	<key>UIMainStoryboardFile</key>
+	<string>Main</string>
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+	</array>
 </dict>
 </plist>

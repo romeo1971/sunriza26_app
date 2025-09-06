@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/avatar_data.dart' as model;
+import '../widgets/app_drawer.dart';
 
 class AvatarListScreen extends StatefulWidget {
   const AvatarListScreen({super.key});
@@ -46,6 +47,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      drawer: const AppDrawer(),
       appBar: AppBar(
         title: const Text('Meine Avatare'),
         backgroundColor: Colors.deepPurple,

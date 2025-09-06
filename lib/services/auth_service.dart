@@ -12,7 +12,7 @@ class AuthService {
   AuthService._internal();
 
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
   /// Aktueller User
@@ -85,17 +85,16 @@ class AuthService {
   /// Google Sign-In
   Future<UserCredential?> signInWithGoogle() async {
     try {
-      // Google Sign-In durchführen
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+      // Google Sign-In durchführen (7.x)
+      final GoogleSignInAccount? googleUser = await _googleSignIn
+          .authenticate();
       if (googleUser == null) return null;
 
-      // Google Sign-In Credentials abrufen
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      // Google Sign-In Credentials abrufen (v7: authentication ist sync)
+      final GoogleSignInAuthentication googleAuth = googleUser.authentication;
 
-      // Firebase Auth Credentials erstellen
+      // Firebase Auth Credentials erstellen (7.x: accessToken ggf. nicht verfügbar)
       final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 

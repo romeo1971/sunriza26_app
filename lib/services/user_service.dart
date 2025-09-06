@@ -83,4 +83,9 @@ class UserService {
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
     });
   }
+
+  // Erweiterte Profil-Update-Methode
+  Future<void> updateUserProfile(UserProfile profile) async {
+    await _col.doc(profile.uid).set(profile.toMap(), SetOptions(merge: true));
+  }
 }

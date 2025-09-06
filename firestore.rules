@@ -58,6 +58,19 @@ service cloud.firestore {
       allow get, list, update, delete:
         if isOwner(get(/databases/$(db)/documents/avatars/$(avatarId)).data);
     }
+    
+    // Legal Pages - öffentlich lesbar, nur Admins können schreiben
+    match /legal_pages/{type} {
+      allow read: if true; // Öffentlich lesbar
+      allow write: if signedIn() && isAdmin();
+    }
+    
+    // Admin-Funktion
+    function isAdmin() {
+      return signedIn() && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+    }
   }
 }
 

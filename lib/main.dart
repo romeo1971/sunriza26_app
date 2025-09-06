@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'firebase_options.dart';
 import 'auth_gate.dart';
 import 'services/ai_service.dart';
@@ -11,12 +12,16 @@ import 'screens/avatar_upload_memories_screen.dart';
 import 'screens/avatar_details_screen.dart';
 import 'screens/avatar_chat_screen.dart';
 import 'screens/avatar_list_screen.dart';
+import 'screens/legal_page_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Firebase initialisieren
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Google Sign-In initialisieren (7.x)
+  await GoogleSignIn.instance.initialize();
 
   // Firebase Auth Sprache auf Gerätesprache setzen
   await FirebaseAuth.instance.setLanguageCode(null);
@@ -52,6 +57,9 @@ class SunrizaApp extends StatelessWidget {
           '/avatar-details': (context) => const AvatarDetailsScreen(),
           '/avatar-chat': (context) => const AvatarChatScreen(),
           '/avatar-list': (context) => const AvatarListScreen(),
+          '/legal-terms': (context) => const LegalPageScreen(type: 'terms'),
+          '/legal-imprint': (context) => const LegalPageScreen(type: 'imprint'),
+          '/legal-privacy': (context) => const LegalPageScreen(type: 'privacy'),
         },
       ),
     );

@@ -26,10 +26,7 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isEmailValid = false;
   bool _isPasswordValid = false;
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn(
-    clientId:
-        '590744030274-ukapr3qs3e7l2ulvd6dkvv9pdah5q77e.apps.googleusercontent.com',
-  );
+  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
 
   bool get _isFormValid => _isEmailValid && _isPasswordValid;
 
@@ -172,17 +169,17 @@ class _AuthScreenState extends State<AuthScreen> {
         await FirebaseAuth.instance.signInWithPopup(provider);
       } else {
         // Mobile: google_sign_in + Firebase Credential
-        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+        final GoogleSignInAccount? googleUser = await _googleSignIn
+            .authenticate();
         if (googleUser == null) {
           setState(() {
             _isLoading = false;
           });
           return;
         }
-        final GoogleSignInAuthentication googleAuth =
-            await googleUser.authentication;
+        // v7: authentication ist synchron und kein Future
+        final GoogleSignInAuthentication googleAuth = googleUser.authentication;
         final credential = GoogleAuthProvider.credential(
-          accessToken: googleAuth.accessToken,
           idToken: googleAuth.idToken,
         );
         await FirebaseAuth.instance.signInWithCredential(credential);
