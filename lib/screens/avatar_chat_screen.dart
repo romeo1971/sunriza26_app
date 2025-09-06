@@ -115,65 +115,52 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   Widget _buildAvatarImage() {
+    final hasImage = _avatarData?.avatarImageUrl != null;
+
     return Container(
       width: double.infinity,
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.deepPurple.shade800,
-            Colors.deepPurple.shade900,
-            Colors.black,
-          ],
-        ),
-      ),
-      child: Stack(
-        children: [
-          // Avatar-Bild
-          Center(
-            child: Container(
-              width: 200,
-              height: 200,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.white, width: 4),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.white.withOpacity(0.3),
-                    blurRadius: 20,
-                    spreadRadius: 5,
-                  ),
+      decoration: hasImage
+          ? null
+          : BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.deepPurple.shade800,
+                  Colors.deepPurple.shade900,
+                  Colors.black,
                 ],
               ),
-              child: _avatarData?.avatarImageUrl != null
-                  ? ClipOval(
-                      child: Image.network(
-                        _avatarData!.avatarImageUrl!,
-                        width: 200,
-                        height: 200,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            const CircleAvatar(
-                              backgroundColor: Colors.white,
-                              child: Icon(
-                                Icons.person,
-                                size: 120,
-                                color: Colors.deepPurple,
-                              ),
-                            ),
-                      ),
-                    )
-                  : const CircleAvatar(
-                      backgroundColor: Colors.white,
-                      child: Icon(
-                        Icons.person,
-                        size: 120,
-                        color: Colors.deepPurple,
-                      ),
-                    ),
             ),
-          ),
+      child: Stack(
+        children: [
+          // Avatar-Bild nur anzeigen wenn kein Background-Bild
+          if (!hasImage)
+            Center(
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.white.withOpacity(0.3),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: const CircleAvatar(
+                  backgroundColor: Colors.white,
+                  child: Icon(
+                    Icons.person,
+                    size: 120,
+                    color: Colors.deepPurple,
+                  ),
+                ),
+              ),
+            ),
 
           // Typing-Indikator
           if (_isTyping)

@@ -932,8 +932,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ],
             ),
           );
+          // Lokale Daten aktualisieren
+          _applyAvatar(updated);
           if (!mounted) return;
-          Navigator.pop(context, updated);
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Speichern fehlgeschlagen')),
