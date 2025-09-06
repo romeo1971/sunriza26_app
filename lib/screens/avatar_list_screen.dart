@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
 import '../models/avatar_data.dart' as model;
 import '../widgets/app_drawer.dart';
 import '../services/avatar_service.dart';
@@ -32,6 +33,18 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
         _avatars = avatars;
         _isLoading = false;
       });
+    } on FirebaseException catch (e) {
+      if (mounted) {
+        final msg = e.code == 'failed-precondition'
+            ? 'Firestore-Index fehlt. Führe: firebase deploy --only firestore:indexes'
+            : e.message ?? e.toString();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Laden der Avatare: $msg')),
+        );
+      }
+      setState(() {
+        _isLoading = false;
+      });
     } catch (e) {
       setState(() {
         _isLoading = false;
@@ -58,25 +71,28 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
             icon: const Icon(Icons.refresh),
             tooltip: 'Aktualisieren',
           ),
-          IconButton(
-            onPressed: _createNewAvatar,
-            icon: const Icon(Icons.add),
-            tooltip: 'Neuen Avatar erstellen',
-          ),
+          if (!_isLoading && _avatars.isNotEmpty)
+            IconButton(
+              onPressed: _createNewAvatar,
+              icon: const Icon(Icons.add),
+              tooltip: 'Neuen Avatar erstellen',
+            ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _avatars.isEmpty
-          ? _buildEmptyState()
-          : _buildAvatarList(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _createNewAvatar,
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('Neuer Avatar'),
-      ),
+          : RefreshIndicator(
+              onRefresh: _loadAvatars,
+              child: _avatars.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: [_buildEmptyState()],
+                    )
+                  : _buildAvatarList(),
+            ),
+      // Kein zusätzliches FAB: im Empty-State führt der zentrale Button,
+      // bei bestehenden Avataren reicht das Plus-Symbol in der AppBar.
+      floatingActionButton: null,
     );
   }
 

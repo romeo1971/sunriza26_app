@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import '../services/avatar_service.dart';
 import '../widgets/primary_button.dart';
 
@@ -255,6 +256,15 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
           ),
           maxLines: 5,
         ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _isLoading ? null : _saveWrittenTextsAsFile,
+            icon: const Icon(Icons.save_alt),
+            label: const Text('Text sichern und hochladen'),
+          ),
+        ),
       ],
     );
   }
@@ -310,11 +320,24 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
   }
 
   Future<void> _pickTextFiles() async {
-    // Hier würde normalerweise ein File Picker verwendet werden
-    // Für Demo-Zwecke simulieren wir das
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Textdateien-Upload wird implementiert')),
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['txt', 'md', 'rtf'],
+      allowMultiple: true,
+      withData: false,
     );
+    if (result != null && result.files.isNotEmpty) {
+      setState(() {
+        for (final f in result.files) {
+          if (f.path != null) _textFiles.add(File(f.path!));
+        }
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${result.files.length} Textdatei(en) gewählt')),
+        );
+      }
+    }
   }
 
   Future<void> _selectDate(BuildContext context, bool isBirthDate) async {
@@ -398,5 +421,43 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
         });
       }
     }
+  }
+
+  Future<void> _saveWrittenTextsAsFile() async {
+    final content = _writtenTextsController.text.trim();
+    if (content.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Kein Text zum Speichern vorhanden.')),
+      );
+      return;
+    }
+
+    try {
+      setState(() => _isLoading = true);
+      final dir = await _ensureTempDir();
+      final file = File('${dir.path}/written_${DateTime.now().millisecondsSinceEpoch}.txt');
+      await file.writeAsString(content);
+      setState(() {
+        _textFiles.add(file);
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Text als Datei hinzugefügt.')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Speichern: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<Directory> _ensureTempDir() async {
+    final dir = await Directory.systemTemp.createTemp('sunriza_texts');
+    return dir;
   }
 }

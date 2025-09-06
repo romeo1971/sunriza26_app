@@ -69,6 +69,16 @@ class AppDrawer extends StatelessWidget {
               children: [
                 _buildDrawerItem(
                   context,
+                  icon: Icons.bolt,
+                  title: 'Firebase Test',
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.pushNamed(context, '/firebase-test');
+                  },
+                ),
+                const Divider(color: Colors.grey),
+                _buildDrawerItem(
+                  context,
                   icon: Icons.person,
                   title: 'Profil bearbeiten',
                   onTap: () {

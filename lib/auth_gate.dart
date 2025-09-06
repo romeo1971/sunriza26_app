@@ -37,7 +37,33 @@ class AuthGate extends StatelessWidget {
         }
 
         final user = snapshot.data;
-        if (user == null || !user.emailVerified) {
+        if (user == null) {
+          return const AuthScreen();
+        }
+
+        // Falls der User in Firebase entfernt wurde, lokale Session säubern
+        return FutureBuilder<void>(
+          future: user.reload(),
+          builder: (context, reloadSnap) {
+            // Bei Fehlern (z.B. user-not-found) → ausloggen
+            if (reloadSnap.hasError) {
+              FirebaseAuth.instance.signOut();
+              return const AuthScreen();
+            }
+
+            final current = FirebaseAuth.instance.currentUser;
+            if (current == null || !(current.emailVerified)) {
+              if (current != null && !(current.emailVerified)) {
+                FirebaseAuth.instance.signOut();
+              }
+              return const AuthScreen();
+            }
+
+            return const MainNavigationScreen();
+          },
+        );
+
+        /* if (user == null || !user.emailVerified) {
           // Wenn User eingeloggt, aber nicht verifiziert, sofort ausloggen
           if (user != null && !user.emailVerified) {
             FirebaseAuth.instance.signOut();
@@ -47,7 +73,7 @@ class AuthGate extends StatelessWidget {
         }
 
         // Nur wenn eingeloggt UND E-Mail bestätigt: WelcomeScreen anzeigen
-        return const MainNavigationScreen();
+        return const MainNavigationScreen(); */
       },
     );
   }

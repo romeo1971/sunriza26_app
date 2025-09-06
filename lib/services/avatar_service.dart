@@ -107,10 +107,34 @@ class AvatarService {
         writtenTexts: writtenTexts ?? [],
         createdAt: now,
         updatedAt: now,
+        training: {
+          'status': 'pending',
+          'startedAt': null,
+          'finishedAt': null,
+          'lastRunAt': null,
+          'progress': 0.0,
+          'totalDocuments': (writtenTexts?.length ?? 0) + imageUrls.length + videoUrls.length + textFileUrls.length,
+          'totalFiles': {
+            'texts': writtenTexts?.length ?? 0,
+            'images': imageUrls.length,
+            'videos': videoUrls.length,
+            'others': textFileUrls.length,
+          },
+          'totalChunks': 0,
+          'chunkSize': 0,
+          'totalTokens': 0,
+          'vector': null,
+          'lastError': null,
+          'jobId': null,
+          'needsRetrain': false,
+        },
       );
 
       await _avatarsCollection.doc(avatarId).set(avatarData.toMap());
       return avatarData;
+    } on FirebaseException catch (e) {
+      // Reiche spezifische Firestore-Fehler nach oben weiter
+      rethrow;
     } catch (e) {
       print('Fehler beim Erstellen des Avatars: $e');
       return null;
@@ -131,6 +155,9 @@ class AvatarService {
       return querySnapshot.docs
           .map((doc) => AvatarData.fromMap(doc.data()))
           .toList();
+    } on FirebaseException catch (e) {
+      // Reiche spezifische Firestore-Fehler nach oben weiter (Index, Rules etc.)
+      rethrow;
     } catch (e) {
       print('Fehler beim Laden der Avatare: $e');
       return [];

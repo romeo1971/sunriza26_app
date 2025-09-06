@@ -5,8 +5,6 @@ library;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 // import 'ai_assistant_screen.dart';
-import '../services/firebase_diagnostics.dart';
-import 'user_profile_screen.dart';
 import '../services/auth_service.dart';
 import '../widgets/app_drawer.dart';
 
@@ -15,7 +13,7 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final authService = Provider.of<AuthService>(context);
+    Provider.of<AuthService>(context);
 
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
@@ -23,73 +21,7 @@ class WelcomeScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.account_circle, color: Color(0xFF00FF94)),
-            onSelected: (value) async {
-              if (value == 'logout') {
-                await authService.signOut();
-              } else if (value == 'diag') {
-                final res = await FirebaseDiagnostics.runAll();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Diag: $res')),
-                  );
-                }
-              } else if (value == 'profile') {
-                if (context.mounted) {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const UserProfileScreen(),
-                    ),
-                  );
-                }
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(
-                value: 'profile',
-                child: Row(
-                  children: [
-                    const Icon(Icons.person, color: Color(0xFF00FF94)),
-                    const SizedBox(width: 8),
-                    Text(authService.userEmail ?? 'User'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'diag',
-                child: Row(
-                  children: [
-                    Icon(Icons.health_and_safety, color: Color(0xFF00FF94)),
-                    SizedBox(width: 8),
-                    Text('Firebase Test'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'profile',
-                child: Row(
-                  children: [
-                    Icon(Icons.person, color: Color(0xFF00FF94)),
-                    SizedBox(width: 8),
-                    Text('Profil bearbeiten'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'logout',
-                child: Row(
-                  children: [
-                    Icon(Icons.logout, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Abmelden', style: TextStyle(color: Colors.red)),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
+        actions: const [],
       ),
       body: SingleChildScrollView(
         child: Column(

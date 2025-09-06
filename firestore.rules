@@ -28,7 +28,8 @@ service cloud.firestore {
           'id','userId','firstName','nickname','lastName',
           'birthDate','deathDate','calculatedAge','avatarImageUrl',
           'imageUrls','videoUrls','textFileUrls','writtenTexts',
-          'lastMessage','lastMessageTime','createdAt','updatedAt','isPublic'
+          'lastMessage','lastMessageTime','createdAt','updatedAt','isPublic',
+          'training'
         ])
         && validString(request.resource.data.firstName, 1, 100)
         && (!('nickname' in request.resource.data) || validString(request.resource.data.nickname, 0, 100))
@@ -45,7 +46,8 @@ service cloud.firestore {
         && stringList(request.resource.data.writtenTexts, 2000, 5000)
         && validTimestamp(request.resource.data.createdAt)
         && validTimestamp(request.resource.data.updatedAt)
-        && (!('isPublic' in request.resource.data) || request.resource.data.isPublic is bool);
+        && (!('isPublic' in request.resource.data) || request.resource.data.isPublic is bool)
+        && (!('training' in request.resource.data) || request.resource.data.training is map);
 
       allow get, list: if isOwner(resource.data) || (resource.data.isPublic == true);
       allow update: if isOwner(resource.data)

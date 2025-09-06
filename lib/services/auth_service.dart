@@ -56,7 +56,8 @@ class AuthService {
           message: 'Bitte bestätige zuerst deine E-Mail-Adresse.',
         );
       }
-
+      // Sicherstellen, dass ein User-Dokument existiert (Backfill für Alt-Accounts)
+      await _createUserProfile(userCredential.user!);
       return userCredential;
     } on FirebaseAuthException {
       rethrow;
@@ -172,11 +173,6 @@ class AuthService {
           'createdAt': now,
           'lastLoginAt': now,
           'updatedAt': now,
-          'avatarData': {
-            'totalDocuments': 0,
-            'lastTrainingAt': null,
-            'isTrained': false,
-          },
         });
       }
     } catch (e) {

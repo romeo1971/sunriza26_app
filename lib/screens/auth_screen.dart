@@ -5,8 +5,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
-import 'package:google_sign_in/google_sign_in.dart';
 import '../widgets/primary_button.dart';
+import '../services/auth_service.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -26,7 +26,8 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isEmailValid = false;
   bool _isPasswordValid = false;
 
-  final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
+  // GoogleSignIn wird über AuthService genutzt
+  final AuthService _authService = AuthService();
 
   bool get _isFormValid => _isEmailValid && _isPasswordValid;
 
@@ -53,33 +54,15 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       if (_isLogin) {
-        final userCredential = await FirebaseAuth.instance
-            .signInWithEmailAndPassword(
-              email: _enteredEmail,
-              password: _enteredPassword,
-            );
-        if (!(userCredential.user?.emailVerified ?? false)) {
-          await FirebaseAuth.instance.signOut();
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Bitte bestätige zuerst deine E-Mail-Adresse. Prüfe dein Postfach.',
-                ),
-                backgroundColor: Colors.red,
-              ),
-            );
-          }
-          return;
-        }
+        await _authService.signInWithEmailAndPassword(
+          email: _enteredEmail,
+          password: _enteredPassword,
+        );
       } else {
-        final userCredential = await FirebaseAuth.instance
-            .createUserWithEmailAndPassword(
-              email: _enteredEmail,
-              password: _enteredPassword,
-            );
-        // E-Mail-Bestätigung senden
-        await userCredential.user?.sendEmailVerification();
+        await _authService.createUserWithEmailAndPassword(
+          email: _enteredEmail,
+          password: _enteredPassword,
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -98,8 +81,7 @@ class _AuthScreenState extends State<AuthScreen> {
             _emailController.clear();
             _passwordController.clear();
           });
-          await FirebaseAuth.instance.signOut();
-          // Kein automatischer Login nach Registrierung!
+          await _authService.signOut();
           return;
         }
       }
@@ -168,21 +150,8 @@ class _AuthScreenState extends State<AuthScreen> {
         provider.setCustomParameters({'prompt': 'select_account'});
         await FirebaseAuth.instance.signInWithPopup(provider);
       } else {
-        // Mobile: google_sign_in + Firebase Credential
-        final GoogleSignInAccount googleUser = await _googleSignIn
-            .authenticate();
-        if (googleUser == null) {
-          setState(() {
-            _isLoading = false;
-          });
-          return;
-        }
-        // v7: authentication ist synchron und kein Future
-        final GoogleSignInAuthentication googleAuth = googleUser.authentication;
-        final credential = GoogleAuthProvider.credential(
-          idToken: googleAuth.idToken,
-        );
-        await FirebaseAuth.instance.signInWithCredential(credential);
+        // Mobile: zentral über AuthService (legt User-Dokument in Firestore an)
+        await _authService.signInWithGoogle();
       }
 
       if (mounted) {
