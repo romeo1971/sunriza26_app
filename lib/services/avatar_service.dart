@@ -113,7 +113,11 @@ class AvatarService {
           'finishedAt': null,
           'lastRunAt': null,
           'progress': 0.0,
-          'totalDocuments': (writtenTexts?.length ?? 0) + imageUrls.length + videoUrls.length + textFileUrls.length,
+          'totalDocuments':
+              (writtenTexts?.length ?? 0) +
+              imageUrls.length +
+              videoUrls.length +
+              textFileUrls.length,
           'totalFiles': {
             'texts': writtenTexts?.length ?? 0,
             'images': imageUrls.length,
@@ -130,10 +134,23 @@ class AvatarService {
         },
       );
 
-      await _avatarsCollection.doc(avatarId).set(avatarData.toMap());
+      final payload = avatarData.toMap();
+      // Debug-Logging: zu speichernde Felder
+      try {
+        print(
+          'Avatar create payload keys: '
+          '${payload.keys.toList()}',
+        );
+        print('Avatar create payload: ${payload}');
+      } catch (_) {}
+
+      await _avatarsCollection.doc(avatarId).set(payload);
       return avatarData;
     } on FirebaseException catch (e) {
-      // Reiche spezifische Firestore-Fehler nach oben weiter
+      // Zusätzliche Diagnoseausgabe
+      print(
+        'Firestore error on createAvatar: code=${e.code} message=${e.message}',
+      );
       rethrow;
     } catch (e) {
       print('Fehler beim Erstellen des Avatars: $e');
@@ -183,7 +200,25 @@ class AvatarService {
       if (user == null || avatar.userId != user.uid) return false;
 
       final updatedAvatar = avatar.copyWith(updatedAt: DateTime.now());
-      await _avatarsCollection.doc(avatar.id).update(updatedAvatar.toMap());
+      final payload = updatedAvatar.toMap();
+      try {
+        print('Avatar update payload keys: ${payload.keys.toList()}');
+        print(
+          'imageUrls: ${(payload['imageUrls'] as List?)?.length} - ${payload['imageUrls']}',
+        );
+        print(
+          'videoUrls: ${(payload['videoUrls'] as List?)?.length} - ${payload['videoUrls']}',
+        );
+        print(
+          'textFileUrls: ${(payload['textFileUrls'] as List?)?.length} - ${payload['textFileUrls']}',
+        );
+        print('training: ${payload['training']}');
+        print('Full update payload: $payload');
+      } catch (_) {}
+
+      await _avatarsCollection
+          .doc(avatar.id)
+          .set(payload, SetOptions(merge: true));
       return true;
     } catch (e) {
       print('Fehler beim Aktualisieren des Avatars: $e');

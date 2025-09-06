@@ -71,26 +71,35 @@ class AvatarData {
 
   // ToMap für Firestore
   Map<String, dynamic> toMap() {
-    return {
+    final map = <String, dynamic>{
       'id': id,
       'userId': userId,
       'firstName': firstName,
-      'nickname': nickname,
-      'lastName': lastName,
-      'birthDate': birthDate?.millisecondsSinceEpoch,
-      'deathDate': deathDate?.millisecondsSinceEpoch,
-      'calculatedAge': calculatedAge,
-      'avatarImageUrl': avatarImageUrl,
       'imageUrls': imageUrls,
       'videoUrls': videoUrls,
       'textFileUrls': textFileUrls,
       'writtenTexts': writtenTexts,
-      'lastMessage': lastMessage,
-      'lastMessageTime': lastMessageTime?.millisecondsSinceEpoch,
       'createdAt': createdAt.millisecondsSinceEpoch,
       'updatedAt': updatedAt.millisecondsSinceEpoch,
-      if (training != null) 'training': training,
     };
+
+    if (nickname != null) map['nickname'] = nickname;
+    if (lastName != null) map['lastName'] = lastName;
+    if (birthDate != null) {
+      map['birthDate'] = birthDate!.millisecondsSinceEpoch;
+    }
+    if (deathDate != null) {
+      map['deathDate'] = deathDate!.millisecondsSinceEpoch;
+    }
+    if (calculatedAge != null) map['calculatedAge'] = calculatedAge;
+    if (avatarImageUrl != null) map['avatarImageUrl'] = avatarImageUrl;
+    if (lastMessage != null) map['lastMessage'] = lastMessage;
+    if (lastMessageTime != null) {
+      map['lastMessageTime'] = lastMessageTime!.millisecondsSinceEpoch;
+    }
+    if (training != null) map['training'] = training;
+
+    return map;
   }
 
   // Copy with method

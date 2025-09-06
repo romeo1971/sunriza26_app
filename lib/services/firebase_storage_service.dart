@@ -28,6 +28,7 @@ class FirebaseStorageService {
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
+      debugPrint('uploadImage OK → $downloadUrl');
       return downloadUrl;
     } catch (e) {
       debugPrint('Fehler beim Upload des Bildes: $e');
@@ -55,6 +56,7 @@ class FirebaseStorageService {
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
+      debugPrint('uploadVideo OK → $downloadUrl');
       return downloadUrl;
     } catch (e) {
       debugPrint('Fehler beim Upload des Videos: $e');
@@ -77,11 +79,15 @@ class FirebaseStorageService {
           customPath ?? 'avatars/${user.uid}/texts/${timestamp}_$fileName';
 
       final ref = _storage.ref().child(filePath);
-      final uploadTask = ref.putFile(textFile);
+      final uploadTask = ref.putFile(
+        textFile,
+        SettableMetadata(contentType: 'text/plain'),
+      );
 
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();
 
+      debugPrint('uploadTextFile OK → $downloadUrl');
       return downloadUrl;
     } catch (e) {
       debugPrint('Fehler beim Upload der Textdatei: $e');
@@ -101,7 +107,25 @@ class FirebaseStorageService {
         downloadUrls.add(url);
       }
     }
+    debugPrint('uploadMultipleImages count=${downloadUrls.length}');
+    return downloadUrls;
+  }
 
+  /// Upload mehrere Bilder unter einem Avatar-Pfad
+  static Future<List<String>> uploadAvatarImages(
+    List<File> imageFiles,
+    String avatarId,
+  ) async {
+    final List<String> downloadUrls = [];
+    final user = _auth.currentUser;
+    if (user == null) return downloadUrls;
+    for (int i = 0; i < imageFiles.length; i++) {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final path = 'avatars/${user.uid}/$avatarId/images/${ts}_$i.jpg';
+      final url = await uploadImage(imageFiles[i], customPath: path);
+      if (url != null) downloadUrls.add(url);
+    }
+    debugPrint('uploadAvatarImages count=${downloadUrls.length}');
     return downloadUrls;
   }
 
@@ -117,7 +141,25 @@ class FirebaseStorageService {
         downloadUrls.add(url);
       }
     }
+    debugPrint('uploadMultipleVideos count=${downloadUrls.length}');
+    return downloadUrls;
+  }
 
+  /// Upload mehrere Videos unter einem Avatar-Pfad
+  static Future<List<String>> uploadAvatarVideos(
+    List<File> videoFiles,
+    String avatarId,
+  ) async {
+    final List<String> downloadUrls = [];
+    final user = _auth.currentUser;
+    if (user == null) return downloadUrls;
+    for (int i = 0; i < videoFiles.length; i++) {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final path = 'avatars/${user.uid}/$avatarId/videos/${ts}_$i.mp4';
+      final url = await uploadVideo(videoFiles[i], customPath: path);
+      if (url != null) downloadUrls.add(url);
+    }
+    debugPrint('uploadAvatarVideos count=${downloadUrls.length}');
     return downloadUrls;
   }
 
@@ -133,7 +175,25 @@ class FirebaseStorageService {
         downloadUrls.add(url);
       }
     }
+    debugPrint('uploadMultipleTextFiles count=${downloadUrls.length}');
+    return downloadUrls;
+  }
 
+  /// Upload mehrere Textdateien unter einem Avatar-Pfad
+  static Future<List<String>> uploadAvatarTextFiles(
+    List<File> textFiles,
+    String avatarId,
+  ) async {
+    final List<String> downloadUrls = [];
+    final user = _auth.currentUser;
+    if (user == null) return downloadUrls;
+    for (int i = 0; i < textFiles.length; i++) {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final path = 'avatars/${user.uid}/$avatarId/texts/${ts}_$i.txt';
+      final url = await uploadTextFile(textFiles[i], customPath: path);
+      if (url != null) downloadUrls.add(url);
+    }
+    debugPrint('uploadAvatarTextFiles count=${downloadUrls.length}');
     return downloadUrls;
   }
 

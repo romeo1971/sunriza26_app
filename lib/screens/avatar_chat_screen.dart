@@ -1,8 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-// import 'package:permission_handler/permission_handler.dart';
-// import 'dart:io';
-// import 'package:record/record.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/avatar_data.dart';
 
@@ -42,23 +38,39 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final backgroundImage = _avatarData?.avatarImageUrl;
+
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          children: [
-            // App Bar
-            _buildAppBar(),
+      body: Container(
+        decoration: backgroundImage != null
+            ? BoxDecoration(
+                image: DecorationImage(
+                  image: NetworkImage(backgroundImage),
+                  fit: BoxFit.cover,
+                  colorFilter: ColorFilter.mode(
+                    Colors.black.withOpacity(0.7),
+                    BlendMode.darken,
+                  ),
+                ),
+              )
+            : null,
+        child: SafeArea(
+          child: Column(
+            children: [
+              // App Bar
+              _buildAppBar(),
 
-            // Avatar-Bild (bildschirmfüllend)
-            Expanded(flex: 3, child: _buildAvatarImage()),
+              // Avatar-Bild (bildschirmfüllend)
+              Expanded(flex: 3, child: _buildAvatarImage()),
 
-            // Chat-Nachrichten
-            Expanded(flex: 2, child: _buildChatMessages()),
+              // Chat-Nachrichten
+              Expanded(flex: 2, child: _buildChatMessages()),
 
-            // Input-Bereich
-            _buildInputArea(),
-          ],
+              // Input-Bereich
+              _buildInputArea(),
+            ],
+          ),
         ),
       ),
     );
@@ -84,17 +96,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             icon: const Icon(Icons.arrow_back, color: Colors.white),
           ),
           const SizedBox(width: 12),
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: Colors.white,
-            backgroundImage: _avatarData?.avatarImageUrl != null
-                ? NetworkImage(_avatarData!.avatarImageUrl!)
-                : null,
-            child: _avatarData?.avatarImageUrl == null
-                ? const Icon(Icons.person, color: Colors.deepPurple)
-                : null,
-          ),
-          const SizedBox(width: 12),
+          // Mini-Avatar in der AppBar ausgeblendet
+          const SizedBox(width: 0),
           Expanded(
             child: Text(
               _avatarData?.displayName ?? 'Avatar Chat',
@@ -105,10 +108,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               ),
             ),
           ),
-          IconButton(
-            onPressed: _showSettings,
-            icon: const Icon(Icons.settings, color: Colors.white),
-          ),
+          // Settings-Icon entfernt
         ],
       ),
     );
@@ -221,8 +221,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   Widget _buildChatMessages() {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey.shade900,
+      decoration: const BoxDecoration(
+        color: Color(0x20000000),
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
@@ -230,25 +230,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       ),
       child: Column(
         children: [
-          // Nachrichten-Header
-          Container(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Icon(Icons.chat, color: Colors.deepPurple.shade300),
-                const SizedBox(width: 8),
-                Text(
-                  'Unterhaltung',
-                  style: TextStyle(
-                    color: Colors.deepPurple.shade300,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
           // Nachrichten-Liste
           Expanded(
             child: _messages.isEmpty
@@ -256,9 +237,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _messages.length,
+                    itemCount: (_messages.length >= 2) ? 2 : _messages.length,
                     itemBuilder: (context, index) {
-                      return _buildMessageBubble(_messages[index]);
+                      final startIndex = (_messages.length >= 2)
+                          ? _messages.length - 2
+                          : 0;
+                      return _buildMessageBubble(_messages[startIndex + index]);
                     },
                   ),
           ),
@@ -272,24 +256,20 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 64,
-            color: Colors.grey.shade600,
-          ),
+          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.white70),
           const SizedBox(height: 16),
           Text(
             'Starte eine Unterhaltung',
             style: TextStyle(
               fontSize: 18,
-              color: Colors.grey.shade600,
+              color: Colors.white,
               fontWeight: FontWeight.w500,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'Schreibe eine Nachricht oder nutze das Mikrofon',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+            style: TextStyle(fontSize: 14, color: Colors.white70),
             textAlign: TextAlign.center,
           ),
         ],
@@ -307,14 +287,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             ? MainAxisAlignment.end
             : MainAxisAlignment.start,
         children: [
-          if (!isUser) ...[
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.deepPurple.shade300,
-              child: const Icon(Icons.person, size: 16, color: Colors.white),
-            ),
-            const SizedBox(width: 8),
-          ],
+          // Mini-Avatar (KI) ausgeblendet
           Flexible(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -335,14 +308,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               ),
             ),
           ),
-          if (isUser) ...[
-            const SizedBox(width: 8),
-            CircleAvatar(
-              radius: 16,
-              backgroundColor: Colors.deepPurple,
-              child: const Icon(Icons.person, size: 16, color: Colors.white),
-            ),
-          ],
+          // Mini-Avatar (User) ausgeblendet
         ],
       ),
     );
@@ -351,9 +317,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   Widget _buildInputArea() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade900,
-        border: Border(top: BorderSide(color: Colors.grey.shade700)),
+      decoration: const BoxDecoration(
+        color: Color(0x20000000),
+        border: Border(top: BorderSide(color: Color(0x40FFFFFF))),
       ),
       child: Row(
         children: [
@@ -394,26 +360,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.grey.shade800,
+                color: Colors.transparent,
                 borderRadius: BorderRadius.circular(25),
-                border: Border.all(color: Colors.grey.shade600),
+                border: Border.all(color: Colors.white.withOpacity(0.5)),
               ),
-              child: TextField(
-                controller: _messageController,
-                decoration: const InputDecoration(
-                  hintText: 'Nachricht eingeben...',
-                  hintStyle: TextStyle(color: Colors.grey),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                ),
-                style: const TextStyle(color: Colors.white),
-                maxLines: null,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _sendMessage(),
-              ),
+              child: const _ChatInputField(),
             ),
           ),
 
@@ -573,6 +524,29 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+}
+
+class _ChatInputField extends StatelessWidget {
+  const _ChatInputField();
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.findAncestorStateOfType<_AvatarChatScreenState>();
+    final controller = state!._messageController;
+    return TextField(
+      controller: controller,
+      decoration: const InputDecoration(
+        hintText: 'Nachricht eingeben...',
+        hintStyle: TextStyle(color: Colors.white70),
+        border: InputBorder.none,
+        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      ),
+      style: const TextStyle(color: Colors.white),
+      maxLines: null,
+      textInputAction: TextInputAction.send,
+      onSubmitted: (_) => state._sendMessage(),
+    );
   }
 }
 

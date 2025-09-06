@@ -5,14 +5,14 @@ service firebase.storage {
     function signedIn() { return request.auth != null; }
     function isOwner(userId) { return signedIn() && request.auth.uid == userId; }
     function isValidFileType() {
-      return resource.contentType.matches('image/.*') ||
-             resource.contentType.matches('video/.*') ||
-             resource.contentType.matches('audio/.*') ||
-             resource.contentType.matches('text/.*') ||
-             resource.contentType.matches('application/pdf');
+      return request.resource.contentType.matches('image/.*') ||
+             request.resource.contentType.matches('video/.*') ||
+             request.resource.contentType.matches('audio/.*') ||
+             request.resource.contentType.matches('text/.*') ||
+             request.resource.contentType.matches('application/pdf');
     }
     function isValidFileSize() {
-      return resource.size < 50 * 1024 * 1024; // 50MB limit
+      return request.resource.size < 50 * 1024 * 1024; // 50MB limit
     }
 
     // Avatar Files (Struppi-System)

@@ -218,7 +218,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w600,
-                        color: Colors.black87,
+                        color: Colors.white,
                       ),
                     ),
                     if (avatar.nickname != null &&
@@ -236,7 +236,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                       avatar.lastMessage ?? 'Noch keine Nachrichten',
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey.shade600,
+                        color: Colors.grey.shade400,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -245,15 +245,22 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                 ),
               ),
 
-              // Zeit und Pfeil
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
+              // Edit und Pfeil
+              Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    _formatTime(avatar.lastMessageTime ?? DateTime.now()),
-                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  IconButton(
+                    tooltip: 'Avatar bearbeiten',
+                    icon: const Icon(Icons.edit, size: 18, color: Colors.white),
+                    onPressed: () {
+                      Navigator.pushNamed(
+                        context,
+                        '/avatar-details',
+                        arguments: avatar,
+                      );
+                    },
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(width: 4),
                   Icon(
                     Icons.arrow_forward_ios,
                     size: 16,
@@ -272,23 +279,14 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
     return Icon(Icons.person, size: 30, color: Colors.deepPurple.shade300);
   }
 
-  String _formatTime(DateTime time) {
-    final now = DateTime.now();
-    final difference = now.difference(time);
+  // Entfernt: Zeitstempelanzeige wird aktuell nicht verwendet
 
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m';
-    } else {
-      return 'Jetzt';
+  Future<void> _createNewAvatar() async {
+    final result = await Navigator.pushNamed(context, '/avatar-creation');
+    if (!mounted) return;
+    if (result != null) {
+      await _loadAvatars();
     }
-  }
-
-  void _createNewAvatar() {
-    Navigator.pushNamed(context, '/avatar-creation');
   }
 
   void _openAvatarChat(model.AvatarData avatar) {
