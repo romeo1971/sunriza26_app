@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'firebase_options.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'auth_gate.dart';
 import 'services/ai_service.dart';
 import 'services/video_stream_service.dart';
@@ -18,6 +19,9 @@ import 'screens/avatar_creation_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // .env laden (für Firebase Web API Key etc.)
+  await dotenv.load(fileName: '.env');
 
   // Firebase initialisieren
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);

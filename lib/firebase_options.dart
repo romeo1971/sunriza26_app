@@ -3,8 +3,13 @@
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 /// Default [FirebaseOptions] for use with your Firebase apps.
+///
+/// These are PUBLIC client-side configuration keys that are safe to include
+/// in the client application. They are different from server-side API keys
+/// which should be kept in environment variables.
 ///
 /// Example:
 /// ```dart
@@ -40,8 +45,8 @@ class DefaultFirebaseOptions {
     }
   }
 
-  static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyDzgTKSf4yBpGd9udWlCsw6MdtoE2Tynxs',
+  static FirebaseOptions get web => FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
     appId: '1:590744030274:web:d2dcc5434d73cb483b31db',
     messagingSenderId: '590744030274',
     projectId: 'sunriza26',
@@ -49,16 +54,16 @@ class DefaultFirebaseOptions {
     storageBucket: 'sunriza26.firebasestorage.app',
   );
 
-  static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyDzgTKSf4yBpGd9udWlCsw6MdtoE2Tynxs',
+  static FirebaseOptions get android => FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
     appId: '1:590744030274:android:d2dcc5434d73cb483b31db',
     messagingSenderId: '590744030274',
     projectId: 'sunriza26',
     storageBucket: 'sunriza26.firebasestorage.app',
   );
 
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyDzgTKSf4yBpGd9udWlCsw6MdtoE2Tynxs',
+  static FirebaseOptions get ios => FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
     appId: '1:590744030274:ios:d2dcc5434d73cb483b31db',
     messagingSenderId: '590744030274',
     projectId: 'sunriza26',
@@ -66,8 +71,8 @@ class DefaultFirebaseOptions {
     iosBundleId: 'com.example.sunriza26',
   );
 
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyDzgTKSf4yBpGd9udWlCsw6MdtoE2Tynxs',
+  static FirebaseOptions get macos => FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
     appId: '1:590744030274:ios:d2dcc5434d73cb483b31db',
     messagingSenderId: '590744030274',
     projectId: 'sunriza26',
@@ -75,8 +80,8 @@ class DefaultFirebaseOptions {
     iosBundleId: 'com.example.sunriza26',
   );
 
-  static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'AIzaSyDzgTKSf4yBpGd9udWlCsw6MdtoE2Tynxs',
+  static FirebaseOptions get windows => FirebaseOptions(
+    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
     appId: '1:590744030274:web:d2dcc5434d73cb483b31db',
     messagingSenderId: '590744030274',
     projectId: 'sunriza26',

@@ -26,7 +26,7 @@ export class RAGService {
   constructor() {
     this.pineconeService = new PineconeService();
     this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY || 'your-openai-api-key',
+      apiKey: process.env.OPENAI_API_KEY!,
     });
   }
 

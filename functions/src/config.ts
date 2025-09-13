@@ -51,12 +51,12 @@ export async function loadConfig(): Promise<AppConfig> {
     
     // Fallback auf Umgebungsvariablen oder Standardwerte
     return {
-      projectId: process.env.GOOGLE_CLOUD_PROJECT_ID || 'sunriza26',
-      location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
-      customVoiceName: process.env.CUSTOM_VOICE_NAME || 'projects/sunriza26/locations/us-central1/voices/default-voice',
-      referenceVideoUrl: process.env.REFERENCE_VIDEO_URL || 'gs://sunriza26.firebasestorage.app/reference-video.mp4',
-      vertexAiModelId: process.env.VERTEX_AI_MODEL_ID || 'imagen-video-generator',
-      vertexAiEndpoint: process.env.VERTEX_AI_ENDPOINT || 'us-central1-aiplatform.googleapis.com',
+      projectId: process.env.GOOGLE_CLOUD_PROJECT_ID!,
+      location: process.env.GOOGLE_CLOUD_LOCATION!,
+      customVoiceName: process.env.CUSTOM_VOICE_NAME!,
+      referenceVideoUrl: process.env.REFERENCE_VIDEO_URL!,
+      vertexAiModelId: process.env.VERTEX_AI_MODEL_ID!,
+      vertexAiEndpoint: process.env.VERTEX_AI_ENDPOINT!,
     };
   }
 }
