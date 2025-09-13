@@ -6,6 +6,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
 import '../services/firebase_storage_service.dart';
 import '../services/avatar_service.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:path/path.dart' as p;
 
 class AvatarDetailsScreen extends StatefulWidget {
   const AvatarDetailsScreen({super.key});
@@ -41,11 +46,56 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   bool _isSaving = false;
   final Set<String> _selectedRemoteImages = {};
   final Set<String> _selectedLocalImages = {};
+  bool _isDirty = false;
+
+  void _updateDirty() {
+    final current = _avatarData;
+    if (current == null) {
+      if (mounted) setState(() => _isDirty = false);
+      return;
+    }
+
+    bool dirty = false;
+
+    // Textfelder
+    if (_firstNameController.text.trim() != current.firstName) dirty = true;
+    if ((_nicknameController.text.trim()) != (current.nickname ?? ''))
+      dirty = true;
+    if ((_lastNameController.text.trim()) != (current.lastName ?? ''))
+      dirty = true;
+
+    // Dates (nur Datum vergleichen)
+    bool sameDate(DateTime? a, DateTime? b) {
+      if (a == null && b == null) return true;
+      if (a == null || b == null) return false;
+      return a.year == b.year && a.month == b.month && a.day == b.day;
+    }
+
+    if (!sameDate(_birthDate, current.birthDate)) dirty = true;
+    if (!sameDate(_deathDate, current.deathDate)) dirty = true;
+
+    // Krone / Profilbild geändert
+    final baselineCrown = current.avatarImageUrl;
+    if ((_profileImageUrl ?? '') != (baselineCrown ?? '')) dirty = true;
+
+    // Neue lokale Dateien oder Freitext
+    if (_newImageFiles.isNotEmpty ||
+        _newVideoFiles.isNotEmpty ||
+        _newTextFiles.isNotEmpty)
+      dirty = true;
+    if (_textAreaController.text.trim().isNotEmpty) dirty = true;
+
+    if (mounted) setState(() => _isDirty = dirty);
+  }
 
   @override
   void initState() {
     super.initState();
     // Empfange AvatarData von der vorherigen Seite
+    _firstNameController.addListener(_updateDirty);
+    _nicknameController.addListener(_updateDirty);
+    _lastNameController.addListener(_updateDirty);
+    _textAreaController.addListener(_updateDirty);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args is AvatarData) {
@@ -93,6 +143,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           data.avatarImageUrl ??
           (_imageUrls.isNotEmpty ? _imageUrls.first : null);
       _profileLocalPath = null;
+      _isDirty = false;
     });
   }
 
@@ -109,11 +160,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
-          IconButton(
-            tooltip: 'Speichern',
-            icon: const Icon(Icons.save),
-            onPressed: _saveAvatarDetails,
-          ),
+          if (_isDirty)
+            IconButton(
+              tooltip: 'Speichern',
+              icon: const Icon(Icons.save),
+              onPressed: _saveAvatarDetails,
+            ),
         ],
       ),
       body: Container(
@@ -240,7 +292,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   return _imageThumbNetwork(url, isCrown);
                 } else {
                   final file = _newImageFiles[index - remoteCount];
-                  final isCrown = false;
                   return _imageThumbFile(file);
                 }
               },
@@ -306,40 +357,259 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ),
           style: const TextStyle(color: Colors.white),
         ),
-        // Hinweis: Text wird beim Speichern automatisch als .txt hinzugefügt
+        const SizedBox(height: 12),
+        if (_textFileUrls.isNotEmpty || _newTextFiles.isNotEmpty)
+          _buildTextFilesList(),
       ],
     );
   }
 
-  Widget _buildCrownSelector() {
-    return Container(
-      width: 96,
-      height: 96,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white24),
-      ),
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: const [
-            Icon(Icons.emoji_events, color: Colors.amber, size: 28),
-            SizedBox(height: 4),
-            Text(
-              'Profilbild',
-              style: TextStyle(color: Colors.white70, fontSize: 10),
-            ),
-          ],
+  Widget _buildTextFilesList() {
+    // Kombiniere Remote- und lokale Textdateien
+    final List<Widget> tiles = [];
+
+    // Remote URLs aus Firestore
+    for (final url in _textFileUrls) {
+      tiles.add(
+        ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.description, color: Colors.white70),
+          title: Text(
+            _fileNameFromUrl(url),
+            style: const TextStyle(color: Colors.white),
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Öffnen',
+                icon: const Icon(Icons.open_in_new, color: Colors.white70),
+                onPressed: () => _openUrl(url),
+              ),
+              IconButton(
+                tooltip: 'Löschen',
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                onPressed: () => _confirmDeleteRemoteText(url),
+              ),
+            ],
+          ),
         ),
+      );
+    }
+
+    // Lokale (neu hinzugefügte) Textdateien – noch nicht hochgeladen
+    for (final f in _newTextFiles) {
+      tiles.add(
+        ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(
+            Icons.description_outlined,
+            color: Colors.white54,
+          ),
+          title: Text(
+            pathFromLocalFile(f.path),
+            style: const TextStyle(color: Colors.white70),
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Anzeigen',
+                icon: const Icon(
+                  Icons.visibility_outlined,
+                  color: Colors.white70,
+                ),
+                onPressed: () => _openLocalFile(f),
+              ),
+              IconButton(
+                tooltip: 'Entfernen',
+                icon: const Icon(Icons.close, color: Colors.white54),
+                onPressed: () => _confirmDeleteLocalText(f),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Textdateien',
+          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        ...tiles,
+      ],
+    );
+  }
+
+  String _fileNameFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      // Bei Firebase-Download-URLs ist das letzte Segment URL-encodiert (z.B. avatars%2F...%2Ffile.txt)
+      final lastSegment = uri.pathSegments.isNotEmpty
+          ? uri.pathSegments.last
+          : uri.path;
+      final decoded = Uri.decodeComponent(lastSegment);
+      final fileName = decoded.split('/').isNotEmpty
+          ? decoded.split('/').last
+          : decoded;
+      return fileName.isNotEmpty ? fileName : url;
+    } catch (_) {
+      return url;
+    }
+  }
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _openLocalFile(File f) async {
+    final uri = Uri.file(f.path);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.platformDefault);
+    }
+  }
+
+  Future<void> _confirmDeleteLocalText(File f) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Datei entfernen?'),
+        content: Text('${pathFromLocalFile(f.path)} wirklich entfernen?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen'),
+          ),
+        ],
       ),
     );
+    if (ok == true && mounted) {
+      setState(() => _newTextFiles.remove(f));
+    }
+  }
+
+  Future<void> _confirmDeleteRemoteText(String url) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Datei löschen?'),
+        content: Text('${_fileNameFromUrl(url)} endgültig löschen?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      try {
+        await FirebaseStorageService.deleteFile(url);
+        _textFileUrls.remove(url);
+        await _persistTextFileUrls();
+        if (mounted) setState(() {});
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _persistTextFileUrls() async {
+    if (_avatarData == null) return;
+    final allImages = [..._imageUrls];
+    final allVideos = [..._videoUrls];
+    final allTexts = [..._textFileUrls];
+
+    final totalDocuments =
+        allImages.length +
+        allVideos.length +
+        allTexts.length +
+        (_avatarData!.writtenTexts.length);
+    final training = {
+      'status': 'pending',
+      'startedAt': null,
+      'finishedAt': null,
+      'lastRunAt': null,
+      'progress': 0.0,
+      'totalDocuments': totalDocuments,
+      'totalFiles': {
+        'texts': allTexts.length,
+        'images': allImages.length,
+        'videos': allVideos.length,
+        'others': 0,
+      },
+      'totalChunks': 0,
+      'chunkSize': 0,
+      'totalTokens': 0,
+      'vector': null,
+      'lastError': null,
+      'jobId': null,
+      'needsRetrain': true,
+    };
+
+    final updated = _avatarData!.copyWith(
+      textFileUrls: allTexts,
+      imageUrls: allImages,
+      videoUrls: allVideos,
+      training: training,
+      updatedAt: DateTime.now(),
+    );
+    await _avatarService.updateAvatar(updated);
+    _applyAvatar(updated);
+  }
+
+  String pathFromLocalFile(String p) {
+    try {
+      final parts = p.split('/');
+      return parts.isNotEmpty ? parts.last : p;
+    } catch (_) {
+      return p;
+    }
+  }
+
+  String _slugify(String input) {
+    var text = input.trim().toLowerCase();
+    // Verwende die ersten ~6 Wörter als Schwerpunkt
+    final words = text
+        .replaceAll(RegExp(r"[\n\r\t_]+"), ' ')
+        .split(' ')
+        .where((w) => w.isNotEmpty)
+        .take(6)
+        .toList();
+    var slug = words.join('-');
+    // Nur a-z0-9- erlauben
+    slug = slug.replaceAll(RegExp(r"[^a-z0-9-]+"), '');
+    slug = slug.replaceAll(RegExp(r"-+"), '-');
+    slug = slug.replaceAll(RegExp(r"(^-+|-+$)"), '');
+    if (slug.length > 32) slug = slug.substring(0, 32);
+    if (slug.isEmpty) slug = 'text';
+    return slug;
   }
 
   Widget _imageThumbNetwork(String url, bool isCrown) {
     final selected = _selectedRemoteImages.contains(url);
     return GestureDetector(
-      onTap: () => setState(() => _profileImageUrl = url),
+      onTap: () => setState(() {
+        _profileImageUrl = url;
+        _updateDirty();
+      }),
       onLongPress: () => setState(() {
         if (selected) {
           _selectedRemoteImages.remove(url);
@@ -386,7 +656,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final key = file.path;
     final selected = _selectedLocalImages.contains(key);
     return GestureDetector(
-      onTap: () => setState(() => _profileLocalPath = key),
+      onTap: () => setState(() {
+        _profileLocalPath = key;
+        _updateDirty();
+      }),
       onLongPress: () => setState(() {
         if (selected) {
           _selectedLocalImages.remove(key);
@@ -466,6 +739,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (files.isNotEmpty) {
         setState(() {
           _newImageFiles.addAll(files.map((x) => File(x.path)));
+          _updateDirty();
           _profileImageUrl ??= (_imageUrls.isNotEmpty)
               ? _imageUrls.first
               : (files.isNotEmpty ? null : _profileImageUrl);
@@ -481,6 +755,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (x != null) {
         setState(() {
           _newImageFiles.add(File(x.path));
+          _updateDirty();
         });
       }
     }
@@ -494,13 +769,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         source: ImageSource.gallery,
         maxDuration: const Duration(minutes: 5),
       );
-      if (x != null) setState(() => _newVideoFiles.add(File(x.path)));
+      if (x != null)
+        setState(() {
+          _newVideoFiles.add(File(x.path));
+          _updateDirty();
+        });
     } else {
       final x = await _picker.pickVideo(
         source: ImageSource.camera,
         maxDuration: const Duration(minutes: 5),
       );
-      if (x != null) setState(() => _newVideoFiles.add(File(x.path)));
+      if (x != null)
+        setState(() {
+          _newVideoFiles.add(File(x.path));
+          _updateDirty();
+        });
     }
   }
 
@@ -515,6 +798,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         for (final f in result.files) {
           if (f.path != null) _newTextFiles.add(File(f.path!));
         }
+        _updateDirty();
       });
     }
   }
@@ -539,22 +823,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _addTextAreaAsFile() async {
-    final text = _textAreaController.text.trim();
-    if (text.isEmpty) return;
-    final tmp = await File(
-      '${Directory.systemTemp.path}/user_text_${DateTime.now().millisecondsSinceEpoch}.txt',
-    ).create();
-    await tmp.writeAsString(text);
-    setState(() => _newTextFiles.add(tmp));
-    _textAreaController.clear();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Text als .txt hinzugefügt')),
-      );
-    }
   }
 
   Widget _buildInputFields() {
@@ -817,8 +1085,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         // 0) Freitext beim Speichern automatisch als .txt hinzufügen
         final freeText = _textAreaController.text.trim();
         if (freeText.isNotEmpty) {
+          final slug = _slugify(freeText);
+          final ts = DateTime.now().millisecondsSinceEpoch;
+          final filename = 'schatzy_${slug}_$ts.txt';
           final tmp = await File(
-            '${Directory.systemTemp.path}/user_text_${DateTime.now().millisecondsSinceEpoch}.txt',
+            '${Directory.systemTemp.path}/$filename',
           ).create();
           await tmp.writeAsString(freeText);
           _newTextFiles.add(tmp);
@@ -853,10 +1124,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
         // Upload Text Files einzeln
         for (int i = 0; i < _newTextFiles.length; i++) {
+          final baseName = p.basename(_newTextFiles[i].path);
+          final safeName = baseName.endsWith('.txt')
+              ? baseName
+              : '$baseName.txt';
           final url = await FirebaseStorageService.uploadTextFile(
             _newTextFiles[i],
             customPath:
-                'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/texts/${DateTime.now().millisecondsSinceEpoch}_$i.txt',
+                'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/texts/$safeName',
           );
           if (url != null) allTexts.add(url);
         }
@@ -936,7 +1211,40 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           );
           // Lokale Daten aktualisieren
           _applyAvatar(updated);
+          // Nach persistiertem Upload: lokale Textdateien-Liste leeren, um Duplikate zu vermeiden
+          _newTextFiles.clear();
           if (!mounted) return;
+
+          // 5) Nach erfolgreichem Speichern: Kombinierten Text an Memory-API senden (fire-and-forget)
+          final String uid = FirebaseAuth.instance.currentUser!.uid;
+          // kombiniere Freitext + Inhalte der neuen Textdateien
+          String combinedText = '';
+          if (freeText.isNotEmpty) {
+            combinedText += '$freeText\n\n';
+          }
+          for (final f in _newTextFiles) {
+            try {
+              final content = await f.readAsString();
+              if (content.trim().isNotEmpty) {
+                combinedText += '${content.trim()}\n\n';
+              }
+            } catch (_) {}
+          }
+          if (combinedText.trim().isNotEmpty) {
+            () async {
+              try {
+                await _triggerMemoryInsert(
+                  userId: uid,
+                  avatarId: updated.id,
+                  fullText: combinedText,
+                );
+              } catch (e) {
+                // nur loggen, UI nicht stören
+                // ignore: avoid_print
+                print('Memory insert failed: $e');
+              }
+            }();
+          }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Speichern fehlgeschlagen')),
@@ -948,25 +1256,39 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('Fehler: $e')));
       } finally {
-        if (mounted) setState(() => _isSaving = false);
+        if (mounted)
+          setState(() {
+            _isSaving = false;
+            _isDirty = false;
+          });
       }
     }();
   }
 
-  void _showSuccessSnackBar(String message) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Erfolgreich gespeichert'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
+  String _memoryApiBaseUrl() {
+    return dotenv.env['MEMORY_API_BASE_URL'] ?? 'http://127.0.0.1:8000';
+  }
+
+  Future<void> _triggerMemoryInsert({
+    required String userId,
+    required String avatarId,
+    required String fullText,
+  }) async {
+    final uri = Uri.parse('${_memoryApiBaseUrl()}/avatar/memory/insert');
+    final body = jsonEncode({
+      'user_id': userId,
+      'avatar_id': avatarId,
+      'full_text': fullText,
+      'source': 'app',
+    });
+    final res = await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: body,
     );
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      throw Exception('Memory insert HTTP ${res.statusCode}: ${res.body}');
+    }
   }
 
   Future<void> _confirmDeleteSelectedImages() async {
