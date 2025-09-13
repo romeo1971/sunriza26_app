@@ -3,6 +3,7 @@
  * Stand: 04.09.2025 - Mit geklonter Stimme und Echtzeit-Video-Lippensynchronisation
  */
 
+import 'dotenv/config';
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
 import * as cors from 'cors';

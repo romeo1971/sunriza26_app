@@ -29,7 +29,7 @@ export class PineconeService {
   constructor() {
     // Pinecone initialisieren
     this.pinecone = new Pinecone({
-      apiKey: process.env.PINECONE_API_KEY || 'pcsk_4QPp6e_FmTVRL4LAtjkgvo2zmsW2P5nu2wKXAQ2AVHpmL4U2dsfUrQjEvq83BTVh63yxos',
+      apiKey: process.env.PINECONE_API_KEY!,
     });
 
     // OpenAI für Embeddings
@@ -81,7 +81,7 @@ export class PineconeService {
         const index = this.pinecone.index(this.indexName);
         const stats = await index.describeIndexStats();
         
-        if (stats.totalVectorCount !== undefined) {
+        if (stats.totalRecordCount !== undefined) {
           console.log('Pinecone index is ready');
           return;
         }
@@ -152,7 +152,7 @@ export class PineconeService {
         {
           id: documentId,
           values: embedding,
-          metadata: metadata,
+          metadata: metadata as Record<string, any>,
         },
       ]);
 
@@ -196,7 +196,7 @@ export class PineconeService {
       const results: DocumentVector[] = searchResponse.matches?.map(match => ({
         id: match.id,
         values: match.values || [],
-        metadata: match.metadata as DocumentMetadata,
+        metadata: match.metadata as unknown as DocumentMetadata,
       })) || [];
 
       return results;
