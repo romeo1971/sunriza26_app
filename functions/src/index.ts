@@ -6,12 +6,12 @@
 import 'dotenv/config';
 import * as functions from 'firebase-functions';
 import * as admin from 'firebase-admin';
-import * as cors from 'cors';
+import cors from 'cors';
 import { generateSpeech } from './textToSpeech';
 import { generateLipsyncVideo, validateVideoRequest } from './vertexAI';
 import { getConfig } from './config';
 import { RAGService } from './rag_service';
-import { PineconeService, DocumentMetadata } from './pinecone_service';
+// Entfernt: Unbenutzte Importe aus pinecone_service
 
 // Firebase Admin initialisieren: lokal mit expliziten Credentials, in Cloud mit Default
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIREBASE_CLIENT_EMAIL) {
@@ -132,7 +132,7 @@ export const generateLiveVideo = functions
         res.status(200);
 
         // Video-Stream an Client weiterleiten
-        videoResponse.videoStream.on('data', (chunk) => {
+        videoResponse.videoStream.on('data', (chunk: any) => {
           res.write(chunk);
         });
 
@@ -141,7 +141,7 @@ export const generateLiveVideo = functions
           res.end();
         });
 
-        videoResponse.videoStream.on('error', (error) => {
+        videoResponse.videoStream.on('error', (error: any) => {
           console.error('Stream-Fehler:', error);
           if (!res.headersSent) {
             res.status(500).json({ error: 'Stream-Fehler aufgetreten' });
@@ -153,7 +153,9 @@ export const generateLiveVideo = functions
         // Client-Disconnect Handling
         req.on('close', () => {
           console.log('Client hat Verbindung getrennt');
-          videoResponse.videoStream.destroy();
+          if ((videoResponse.videoStream as any).destroy) {
+            (videoResponse.videoStream as any).destroy();
+          }
         });
 
       } catch (error) {

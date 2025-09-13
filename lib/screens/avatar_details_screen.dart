@@ -843,6 +843,28 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return slug;
   }
 
+  String _buildProfileTextContent({
+    required String firstName,
+    String? lastName,
+    String? nickname,
+    DateTime? birthDate,
+    DateTime? deathDate,
+    int? calculatedAge,
+  }) {
+    final List<String> lines = [];
+    final String fullName = [
+      firstName,
+      if (lastName != null && lastName.isNotEmpty) lastName,
+    ].join(' ').trim();
+    if (fullName.isNotEmpty) lines.add('Name: $fullName');
+    if (nickname != null && nickname.isNotEmpty)
+      lines.add('Spitzname: $nickname');
+    if (birthDate != null) lines.add('Geburtsdatum: ${_formatDate(birthDate)}');
+    if (deathDate != null) lines.add('Sterbedatum: ${_formatDate(deathDate)}');
+    if (calculatedAge != null) lines.add('Alter (berechnet): $calculatedAge');
+    return lines.join('\n');
+  }
+
   Widget _imageThumbNetwork(String url, bool isCrown) {
     final selected = _selectedRemoteImages.contains(url);
     return GestureDetector(
@@ -1340,9 +1362,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
     () async {
       try {
-        // 0) Freitext beim Speichern automatisch als .txt hinzufügen
+        // 0) Freitext lokal als Datei anlegen (nicht in der Liste anzeigen)
         final freeText = _textAreaController.text.trim();
         String? freeTextLocalFileName;
+        File? freeTextLocalFile;
         if (freeText.isNotEmpty) {
           final slug = _slugify(freeText);
           final ts = DateTime.now().millisecondsSinceEpoch;
@@ -1351,7 +1374,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             '${Directory.systemTemp.path}/$filename',
           ).create();
           await tmp.writeAsString(freeText);
-          _newTextFiles.add(tmp);
+          freeTextLocalFile = tmp;
           freeTextLocalFileName = filename;
           _textAreaController.clear();
         }
@@ -1382,10 +1405,51 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           if (url != null) allVideos.add(url);
         }
 
-        // Upload Text Files einzeln
+        // Upload Text Files
         String? freeTextUploadedUrl;
         String? freeTextUploadedPath;
         String? freeTextUploadedName;
+        // a) profile.txt mit Basisdaten immer aktualisieren (nicht in Liste)
+        final String uid = FirebaseAuth.instance.currentUser!.uid;
+        final String profilePath = 'avatars/$uid/$avatarId/texts/profile.txt';
+        final String profileContent = _buildProfileTextContent(
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim().isEmpty
+              ? null
+              : _lastNameController.text.trim(),
+          nickname: _nicknameController.text.trim().isEmpty
+              ? null
+              : _nicknameController.text.trim(),
+          birthDate: _birthDate,
+          deathDate: _deathDate,
+          calculatedAge: _calculatedAge,
+        );
+        final File profileTmp = await File(
+          '${Directory.systemTemp.path}/profile_${DateTime.now().millisecondsSinceEpoch}.txt',
+        ).create();
+        await profileTmp.writeAsString(profileContent);
+        await FirebaseStorageService.uploadTextFile(
+          profileTmp,
+          customPath: profilePath,
+        );
+
+        // b) Freitext als sichtbare Datei hochladen (in Liste aufnehmen)
+        if (freeTextLocalFile != null && freeTextLocalFileName != null) {
+          final storageCopyPath =
+              'avatars/$uid/$avatarId/texts/$freeTextLocalFileName';
+          final copyUrl = await FirebaseStorageService.uploadTextFile(
+            freeTextLocalFile,
+            customPath: storageCopyPath,
+          );
+          if (copyUrl != null) {
+            allTexts.add(copyUrl);
+            freeTextUploadedUrl = copyUrl;
+            freeTextUploadedPath = storageCopyPath;
+            freeTextUploadedName = freeTextLocalFileName;
+          }
+        }
+
+        // c) sonstige neue Textdateien hochladen (sichtbar)
         for (int i = 0; i < _newTextFiles.length; i++) {
           final baseName = p.basename(_newTextFiles[i].path);
           final safeName = baseName.endsWith('.txt')
@@ -1399,12 +1463,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           );
           if (url != null) {
             allTexts.add(url);
-            if (freeTextLocalFileName != null &&
-                baseName == freeTextLocalFileName) {
-              freeTextUploadedUrl = url;
-              freeTextUploadedPath = storagePath;
-              freeTextUploadedName = safeName;
-            }
           }
         }
 
@@ -1528,7 +1586,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   fileUrl: freeTextUploadedUrl,
                   fileName: freeTextUploadedName,
                   filePath: freeTextUploadedPath,
-                  source: freeTextUploadedUrl != null ? 'file_upload' : 'app',
+                  source: 'app',
                 );
               } catch (e) {
                 // nur loggen, UI nicht stören
@@ -1537,6 +1595,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               }
             }();
           }
+          // Immer: profile.txt als Chunks in Pinecone aktualisieren (stable file)
+          () async {
+            try {
+              await _triggerMemoryInsert(
+                userId: uid,
+                avatarId: updated.id,
+                fullText: profileContent,
+                fileName: 'profile.txt',
+                filePath: profilePath,
+                source: 'profile',
+              );
+            } catch (e) {
+              // ignore
+            }
+          }();
           // Jetzt lokale Textdateien leeren (nachdem wir sie gelesen/gesendet haben)
           _newTextFiles.clear();
           _newAudioFiles.clear();

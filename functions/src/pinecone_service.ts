@@ -50,7 +50,7 @@ export class PineconeService {
         console.log(`Creating Pinecone index: ${this.indexName}`);
         await this.pinecone.createIndex({
           name: this.indexName,
-          dimension: 1536, // OpenAI text-embedding-ada-002 dimension
+          dimension: 1536, // OpenAI text-embedding-3-small dimension
           metric: 'cosine',
           spec: {
             serverless: {
@@ -100,7 +100,7 @@ export class PineconeService {
   async generateTextEmbedding(text: string): Promise<number[]> {
     try {
       const response = await this.openai.embeddings.create({
-        model: 'text-embedding-ada-002',
+        model: 'text-embedding-3-small',
         input: text,
       });
 

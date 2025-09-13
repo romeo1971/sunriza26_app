@@ -4,6 +4,7 @@ from typing import List, Dict, Any
 import time, uuid
 
 from fastapi import FastAPI, HTTPException
+import re
 import logging
 from pydantic import BaseModel
 from dotenv import load_dotenv, find_dotenv
@@ -60,10 +61,15 @@ EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1536"))
 GPT_SYSTEM_PROMPT = os.getenv(
     "GPT_SYSTEM_PROMPT",
     (
-        "Du bist ein menschlicher, freundlicher Assistent. "
-        "Antworte IMMER auf Deutsch, so kurz wie möglich (max. 1–2 Sätze, kein Fülltext). "
-        "Nutze Kontext, wenn vorhanden; falls nichts Relevantes da ist, sag kurz, dass du es nicht weißt. "
-        "Wenn sinnvoll, stelle genau EINE kurze Rückfrage, um das Gespräch natürlich fortzuführen."
+        "Du bist der Avatar und sprichst strikt in der Ich-Form; den Nutzer sprichst du mit 'du' an. "
+        "Regeln: "
+        "1) Erkenne und korrigiere Tippfehler automatisch, ohne die Bedeutung zu ändern. "
+        "2) Nutze bereitgestellten Kontext (Pinecone/Avatar-Wissen) nur, wenn er eindeutig zur Frage passt. Wenn nicht, ignoriere ihn. "
+        "3) Wenn Kontext fehlt oder nicht reicht, antworte mit deinem allgemeinen Wissen – ohne zu erwähnen, ob/welcher Kontext genutzt wurde. "
+        "4) Keine Meta-Sätze wie 'Ich habe keine spezifischen Informationen ...' oder Hinweise auf Datenbanken/Kontextquellen. "
+        "5) Antworte flüssig und natürlich in EINEM kurzen Satz (max. 1–2 Sätze). "
+        "6) Bei sehr allgemeinen Eingaben (nur Stichwort), stelle genau EINE kurze, smarte Rückfrage oder biete 1–2 naheliegende Optionen an. "
+        "7) Antworte in der Sprache der Nutzerfrage (Spiegeln). Wenn unklar, antworte auf Deutsch."
     ),
 )
 
@@ -174,6 +180,20 @@ def insert_avatar_memory(payload: InsertRequest) -> InsertResponse:
                 return None
 
         file_name = payload.file_name or _extract_file_name(payload.file_url)
+
+        # Falls ein stabiler Datei-Bezug vorhanden ist (z. B. profile.txt):
+        # Alte Chunks zu dieser Datei vor dem Insert entfernen (Update-Semantik)
+        if storage_path or file_name:
+            try:
+                ors = []
+                if storage_path:
+                    ors.append({"file_path": {"$eq": storage_path}})
+                if file_name:
+                    ors.append({"file_name": {"$eq": file_name}})
+                flt = ors[0] if len(ors) == 1 else {"$or": ors}
+                delete_by_filter(pc=pc, index_name=PINECONE_INDEX, namespace=namespace, flt=flt)
+            except Exception:
+                pass
 
         for i, chunk in enumerate(chunks):
             meta = {
@@ -343,6 +363,7 @@ class ChatRequest(BaseModel):
     message: str
     top_k: int = 5
     voice_id: str | None = None
+    avatar_name: str | None = None
 
 
 class ChatResponse(BaseModel):
@@ -401,6 +422,12 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
 
 @app.post("/avatar/chat", response_model=ChatResponse)
 def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
+    # Pre-Normalisierung: häufige Tippfehler korrigieren
+    msg = payload.message
+    msg = re.sub(r"\bdiesel jahr\b", "dieses Jahr", msg, flags=re.IGNORECASE)
+    msg = re.sub(r"\bdieses jahr\b", "dieses Jahr", msg, flags=re.IGNORECASE)
+    msg = re.sub(r"fussball", "Fußball", msg, flags=re.IGNORECASE)
+    payload.message = msg
     # 1) RAG: relevante Schnipsel holen
     qres = memory_query(QueryRequest(
         user_id=payload.user_id,
@@ -417,14 +444,34 @@ def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
             context_texts.append(f"- {t}")
     context_block = "\n".join(context_texts) if context_texts else ""
 
+    # Heuristik: Allgemeine Wissensfrage nach "(Fußball-)Weltmeister" → Kontext ignorieren
+    champion_q = re.search(r"weltmeister", msg, flags=re.IGNORECASE)
+    if champion_q:
+        context_block = ""
+
     # 2) Prompt bauen (kurz & menschlich)
     system = GPT_SYSTEM_PROMPT
+    if payload.avatar_name:
+        system = system + f" Dein Name ist {payload.avatar_name}."
+    # Ohne Kontext: erlaube allgemeines Wissen statt “weiß ich nicht”
+    if not context_block:
+        system = (
+            "Du bist der Avatar (Ich-Form, duzen). "
+            "Korrigiere Tippfehler automatisch. "
+            "Keine Meta-Hinweise zu Quellen/Kontext. "
+            "Antworte kurz (1–2 Sätze) mit deinem allgemeinen Wissen. "
+            "Bei sehr allgemeinem Prompt stelle genau EINE kurze Rückfrage. "
+            "Antwortsprache = Sprache der Nutzerfrage; wenn unklar, Deutsch."
+        )
     user_msg = payload.message
     if context_block:
         user_msg = (
             f"Kontext:\n{context_block}\n\nFrage: {payload.message}\n"
-            "Antworte ausschließlich basierend auf dem Kontext, wenn möglich."
+            "Nutze den obigen Kontext vorrangig. Wenn der Kontext die Antwort nicht eindeutig enthält, beantworte korrekt mit deinem allgemeinen Wissen."
         )
+    # Spezifische Klärung für Weltmeister-Fragen: gib amtierenden Titelträger
+    if champion_q:
+        user_msg += "\nHinweis: Gemeint ist der aktuell amtierende Weltmeister (Herren, sofern nicht 'Frauen' erwähnt). Antworte knapp: Land + Jahr des Titels."
 
     # 3) OpenAI Chat
     try:

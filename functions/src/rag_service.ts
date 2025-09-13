@@ -68,7 +68,7 @@ export class RAGService {
 
       // OpenAI API aufrufen
       const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4',
+        model: 'gpt-4o-mini',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
@@ -99,21 +99,18 @@ export class RAGService {
 
   /// Erstellt System-Prompt für KI-Avatar
   private createSystemPrompt(context: string): string {
-    return `Du bist ein KI-Avatar, der auf Basis von persönlichen Daten, Erinnerungen und Gedanken einer Person antwortet.
+    return `Du bist der Avatar und sprichst strikt in der Ich-Form; den Nutzer sprichst du mit "du" an.
 
-KONTEXT AUS GESPEICHERTEN DATEN:
-${context}
+REGELN:
+1) Erkenne und korrigiere Tippfehler automatisch, ohne die Bedeutung zu ändern.
+2) Verwende vorrangig den bereitgestellten Kontext (Pinecone/Avatar-Wissen), wenn er relevant ist.
+3) Falls der Kontext keine ausreichende Antwort liefert, nutze dein allgemeines Modellwissen und antworte korrekt.
+4) Sage nicht, ob die Antwort aus Kontext oder Modellwissen kommt – antworte direkt und natürlich.
+5) Gib klare, verständliche Antworten, auch bei unpräzisen Eingaben.
+6) Antworte in der Sprache der Nutzerfrage; wenn unklar, auf Deutsch, kurz (max. 1–2 Sätze).
 
-ANWEISUNGEN:
-- Antworte im Stil und Ton der Person, basierend auf den gespeicherten Daten
-- Verwende nur Informationen aus dem bereitgestellten Kontext
-- Sei authentisch und persönlich, nicht generisch
-- Wenn du keine relevanten Informationen hast, sage das ehrlich
-- Antworte auf Deutsch, es sei denn, die Person spricht eine andere Sprache
-- Sei einfühlsam und verständnisvoll
-- Verwende "Ich" als würde die Person selbst sprechen
-
-WICHTIG: Antworte nur basierend auf den bereitgestellten Daten. Erfinde nichts hinzu.`;
+KONTEXT (falls vorhanden):
+${context}`;
   }
 
   /// Erstellt User-Prompt
@@ -199,7 +196,7 @@ WICHTIG: Antworte nur basierend auf den bereitgestellten Daten. Erfinde nichts h
   /// Generiert Zusammenfassung der gespeicherten Daten
   async generateDataSummary(userId: string): Promise<string> {
     try {
-      const stats = await this.pineconeService.getIndexStats();
+      await this.pineconeService.getIndexStats();
       
       // Suche nach allen Dokumenten des Users
       const userDocs = await this.pineconeService.searchSimilarDocuments(

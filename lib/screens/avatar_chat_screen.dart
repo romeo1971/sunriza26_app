@@ -428,6 +428,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                     ? _avatarData!.training!['voice']['elevenVoiceId']
                     : null)
               : null,
+          'avatar_name': _avatarData?.displayName,
         }),
       );
       if (res.statusCode >= 200 && res.statusCode < 300) {

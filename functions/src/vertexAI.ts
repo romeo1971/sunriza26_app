@@ -5,7 +5,7 @@
 
 import { VertexAI } from '@google-cloud/vertexai';
 import { getConfig } from './config';
-import { TTSResponse } from './textToSpeech';
+// import { TTSResponse } from './textToSpeech';
 
 export interface VideoGenerationRequest {
   audioBuffer: Buffer;
@@ -18,7 +18,8 @@ export interface VideoGenerationRequest {
 }
 
 export interface VideoGenerationResponse {
-  videoStream: NodeJS.ReadableStream;
+  // Vermeide NodeJS Namespace-Typ im Build-Target
+  videoStream: any;
   contentType: string;
   metadata: {
     duration: number;
@@ -90,14 +91,14 @@ export async function generateLipsyncVideo(request: VideoGenerationRequest): Pro
     const result = await model.generateContentStream(generativeRequest);
     
     // Stream für Live-Übertragung vorbereiten
-    const videoStream = new NodeJS.ReadableStream({
+    const videoStream: any = new (require('stream').Readable)({
       read() {
         // Stream wird von Vertex AI gefüllt
       }
     });
 
     // Vertex AI Response verarbeiten und in Stream umleiten
-    result.stream.on('data', (chunk) => {
+    ;(result as any).stream.on('data', (chunk: any) => {
       if (chunk.candidates?.[0]?.content?.parts?.[0]?.inlineData) {
         const videoData = chunk.candidates[0].content.parts[0].inlineData.data;
         const videoBuffer = Buffer.from(videoData, 'base64');
@@ -105,11 +106,11 @@ export async function generateLipsyncVideo(request: VideoGenerationRequest): Pro
       }
     });
 
-    result.stream.on('end', () => {
+    ;(result as any).stream.on('end', () => {
       videoStream.push(null); // Stream beenden
     });
 
-    result.stream.on('error', (error) => {
+    ;(result as any).stream.on('error', (error: any) => {
       console.error('Vertex AI Stream Fehler:', error);
       videoStream.destroy(error);
     });
