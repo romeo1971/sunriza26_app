@@ -75,7 +75,19 @@ def fetch_vectors(
     ids: List[str],
 ) -> Dict[str, Any]:
     index = pc.Index(index_name)
-    return index.fetch(ids=ids, namespace=namespace)
+    res = index.fetch(ids=ids, namespace=namespace)
+    # Vereinheitliche Ausgabe auf Dict
+    if isinstance(res, dict):
+        return res
+    # pinecone>=5 liefert Response-Objekte
+    try:
+        # neuere Clients haben to_dict()
+        return res.to_dict()  # type: ignore[attr-defined]
+    except Exception:
+        vectors = getattr(res, "vectors", None)
+        if isinstance(vectors, dict):
+            return {"vectors": vectors}
+        return {"vectors": {}}
 
 
 def delete_vectors(
@@ -86,4 +98,14 @@ def delete_vectors(
 ) -> None:
     index = pc.Index(index_name)
     index.delete(ids=ids, namespace=namespace)
+
+
+def delete_by_filter(
+    pc: Pinecone,
+    index_name: str,
+    namespace: str,
+    flt: Dict[str, Any],
+) -> None:
+    index = pc.Index(index_name)
+    index.delete(filter=flt, namespace=namespace)
 

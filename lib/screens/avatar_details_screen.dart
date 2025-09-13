@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
 import '../services/firebase_storage_service.dart';
@@ -11,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path/path.dart' as p;
+import 'package:file_picker/file_picker.dart';
 
 class AvatarDetailsScreen extends StatefulWidget {
   const AvatarDetailsScreen({super.key});
@@ -41,6 +41,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final List<File> _newImageFiles = [];
   final List<File> _newVideoFiles = [];
   final List<File> _newTextFiles = [];
+  final List<File> _newAudioFiles = [];
+  String? _activeAudioUrl; // ausgewählte Stimmprobe
   String? _profileImageUrl; // Krone
   String? _profileLocalPath; // Krone (lokal, noch nicht hochgeladen)
   bool _isSaving = false;
@@ -143,6 +145,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           data.avatarImageUrl ??
           (_imageUrls.isNotEmpty ? _imageUrls.first : null);
       _profileLocalPath = null;
+      // aktive Stimme aus training.voice.activeUrl lesen (falls vorhanden)
+      final voice = (data.training != null) ? data.training!['voice'] : null;
+      _activeAudioUrl = (voice is Map && voice['activeUrl'] is String)
+          ? voice['activeUrl'] as String
+          : (data.audioUrls.isNotEmpty ? data.audioUrls.first : null);
       _isDirty = false;
     });
   }
@@ -267,6 +274,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             _bigMediaButton(Icons.photo_library, 'Bilder', _onAddImages),
             _bigMediaButton(Icons.videocam, 'Videos', _onAddVideos),
             _bigMediaButton(Icons.text_snippet, 'Texte', _onAddTexts),
+            _bigMediaButton(Icons.graphic_eq, 'Audio', _onAddAudio),
           ],
         ),
         const SizedBox(height: 8),
@@ -360,6 +368,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         const SizedBox(height: 12),
         if (_textFileUrls.isNotEmpty || _newTextFiles.isNotEmpty)
           _buildTextFilesList(),
+
+        const SizedBox(height: 12),
+        if ((_avatarData?.audioUrls.isNotEmpty == true) ||
+            _newAudioFiles.isNotEmpty)
+          _buildAudioList(),
       ],
     );
   }
@@ -383,6 +396,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              IconButton(
+                tooltip: 'Als Stimme wählen',
+                icon: Icon(
+                  _activeAudioUrl == url ? Icons.star : Icons.star_border,
+                  color: _activeAudioUrl == url ? Colors.amber : Colors.white70,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _activeAudioUrl = url;
+                    _updateDirty();
+                  });
+                },
+              ),
               IconButton(
                 tooltip: 'Öffnen',
                 icon: const Icon(Icons.open_in_new, color: Colors.white70),
@@ -449,6 +475,183 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
   }
 
+  Widget _buildAudioList() {
+    final List<Widget> tiles = [];
+
+    // Remote Audios
+    for (final url in (_avatarData?.audioUrls ?? const [])) {
+      tiles.add(
+        ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.audiotrack, color: Colors.white70),
+          title: Text(
+            _fileNameFromUrl(url),
+            style: const TextStyle(color: Colors.white),
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                tooltip: 'Abspielen',
+                icon: const Icon(Icons.play_arrow, color: Colors.white70),
+                onPressed: () => _openUrl(url),
+              ),
+              IconButton(
+                tooltip: 'Löschen',
+                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                onPressed: () async {
+                  final ok = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Audio löschen?'),
+                      content: Text(
+                        '${_fileNameFromUrl(url)} endgültig löschen?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('Abbrechen'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          child: const Text('Löschen'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (ok == true) {
+                    await FirebaseStorageService.deleteFile(url);
+                    _avatarData!.audioUrls.remove(url);
+                    await _persistTextFileUrls();
+                    setState(() {});
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // Lokale Audios
+    for (final f in _newAudioFiles) {
+      tiles.add(
+        ListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.audiotrack_outlined, color: Colors.white54),
+          title: Text(
+            pathFromLocalFile(f.path),
+            style: const TextStyle(color: Colors.white70),
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: IconButton(
+            tooltip: 'Entfernen',
+            icon: const Icon(Icons.close, color: Colors.white54),
+            onPressed: () {
+              setState(() {
+                _newAudioFiles.remove(f);
+              });
+            },
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Audio (Stimmproben)',
+          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        ...tiles,
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: ElevatedButton.icon(
+            onPressed: _onCloneVoice,
+            icon: const Icon(Icons.auto_fix_high),
+            label: const Text('Stimme klonen'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.deepPurple,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _onCloneVoice() async {
+    if (_avatarData == null) return;
+    if (_newAudioFiles.isNotEmpty) {
+      _showSystemSnack('Bitte zuerst speichern, dann klonen.');
+      return;
+    }
+    final audios = List<String>.from(_avatarData!.audioUrls);
+    if (audios.isEmpty) {
+      _showSystemSnack('Keine Audio-Stimmprobe vorhanden.');
+      return;
+    }
+    setState(() => _isSaving = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final uri = Uri.parse(
+        '${dotenv.env['MEMORY_API_BASE_URL']}/avatar/voice/create',
+      );
+      final res = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': uid,
+          'avatar_id': _avatarData!.id,
+          'audio_urls': audios.take(3).toList(),
+          'name': _avatarData!.displayName,
+        }),
+      );
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final voiceId = data['voice_id'] as String?;
+        if (voiceId != null && voiceId.isNotEmpty) {
+          // training.voice.elevenVoiceId speichern
+          final existingVoice = (_avatarData!.training != null)
+              ? Map<String, dynamic>.from(_avatarData!.training!['voice'] ?? {})
+              : <String, dynamic>{};
+          existingVoice['elevenVoiceId'] = voiceId;
+          existingVoice['activeUrl'] = _activeAudioUrl;
+          existingVoice['candidates'] = _avatarData!.audioUrls;
+
+          final updated = _avatarData!.copyWith(
+            training: {
+              ...(_avatarData!.training ?? {}),
+              'voice': existingVoice,
+            },
+            updatedAt: DateTime.now(),
+          );
+          final ok = await _avatarService.updateAvatar(updated);
+          if (ok) {
+            _applyAvatar(updated);
+            _showSystemSnack('Stimme geklont. Voice-ID gespeichert.');
+          } else {
+            _showSystemSnack('Speichern der Voice-ID fehlgeschlagen.');
+          }
+        } else {
+          _showSystemSnack('ElevenLabs: keine voice_id erhalten.');
+        }
+      } else {
+        _showSystemSnack('Klonen fehlgeschlagen: ${res.statusCode}');
+      }
+    } catch (e) {
+      _showSystemSnack('Klon-Fehler: $e');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   String _fileNameFromUrl(String url) {
     try {
       final uri = Uri.parse(url);
@@ -466,6 +669,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
+  String _storagePathFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final path = uri.path; // enthält ggf. /o/<ENCODED_PATH>
+      String enc;
+      if (path.contains('/o/')) {
+        enc = path.split('/o/').last;
+      } else {
+        enc = path.startsWith('/') ? path.substring(1) : path;
+      }
+      final decoded = Uri.decodeComponent(enc);
+      final clean = decoded.split('?').first;
+      return clean;
+    } catch (_) {
+      return url;
+    }
+  }
+
   Future<void> _openUrl(String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
@@ -478,6 +699,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.platformDefault);
     }
+  }
+
+  void _showSystemSnack(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _confirmDeleteLocalText(File f) async {
@@ -524,6 +752,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (ok == true) {
       try {
         await FirebaseStorageService.deleteFile(url);
+        // Pinecone: zugehörige Chunks löschen (OR: file_url / file_path / file_name)
+        try {
+          final uid = FirebaseAuth.instance.currentUser!.uid;
+          final avatarId = _avatarData!.id;
+          await _triggerMemoryDelete(
+            userId: uid,
+            avatarId: avatarId,
+            fileUrl: url,
+            fileName: _fileNameFromUrl(url),
+            filePath: _storagePathFromUrl(url),
+          );
+        } catch (_) {}
         _textFileUrls.remove(url);
         await _persistTextFileUrls();
         if (mounted) setState(() {});
@@ -799,6 +1039,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       setState(() {
         for (final f in result.files) {
           if (f.path != null) _newTextFiles.add(File(f.path!));
+        }
+        _updateDirty();
+      });
+    }
+  }
+
+  Future<void> _onAddAudio() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['mp3', 'm4a', 'wav', 'aac'],
+      allowMultiple: true,
+    );
+    if (result != null) {
+      setState(() {
+        for (final f in result.files) {
+          if (f.path != null) _newAudioFiles.add(File(f.path!));
         }
         _updateDirty();
       });
@@ -1086,6 +1342,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       try {
         // 0) Freitext beim Speichern automatisch als .txt hinzufügen
         final freeText = _textAreaController.text.trim();
+        String? freeTextLocalFileName;
         if (freeText.isNotEmpty) {
           final slug = _slugify(freeText);
           final ts = DateTime.now().millisecondsSinceEpoch;
@@ -1095,6 +1352,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ).create();
           await tmp.writeAsString(freeText);
           _newTextFiles.add(tmp);
+          freeTextLocalFileName = filename;
           _textAreaController.clear();
         }
 
@@ -1125,17 +1383,45 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         }
 
         // Upload Text Files einzeln
+        String? freeTextUploadedUrl;
+        String? freeTextUploadedPath;
+        String? freeTextUploadedName;
         for (int i = 0; i < _newTextFiles.length; i++) {
           final baseName = p.basename(_newTextFiles[i].path);
           final safeName = baseName.endsWith('.txt')
               ? baseName
               : '$baseName.txt';
+          final storagePath =
+              'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/texts/$safeName';
           final url = await FirebaseStorageService.uploadTextFile(
             _newTextFiles[i],
-            customPath:
-                'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/texts/$safeName',
+            customPath: storagePath,
           );
-          if (url != null) allTexts.add(url);
+          if (url != null) {
+            allTexts.add(url);
+            if (freeTextLocalFileName != null &&
+                baseName == freeTextLocalFileName) {
+              freeTextUploadedUrl = url;
+              freeTextUploadedPath = storagePath;
+              freeTextUploadedName = safeName;
+            }
+          }
+        }
+
+        // Upload Audio Files einzeln (nur speichern, nicht in Pinecone)
+        final List<String> allAudios = [...(_avatarData?.audioUrls ?? [])];
+        for (int i = 0; i < _newAudioFiles.length; i++) {
+          final baseName = p.basename(_newAudioFiles[i].path);
+          final ts = DateTime.now().millisecondsSinceEpoch;
+          final safeName = baseName.endsWith('.mp3')
+              ? baseName
+              : '${baseName}_$ts.mp3';
+          final url = await FirebaseStorageService.uploadAudio(
+            _newAudioFiles[i],
+            customPath:
+                'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/audio/$safeName',
+          );
+          if (url != null) allAudios.add(url);
         }
 
         // 3) Profilbild setzen, falls noch nicht gewählt
@@ -1170,6 +1456,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           'lastError': null,
           'jobId': null,
           'needsRetrain': true,
+          'voice': {'activeUrl': _activeAudioUrl, 'candidates': allAudios},
         };
 
         // 4) Avatar updaten
@@ -1188,6 +1475,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           imageUrls: allImages,
           videoUrls: allVideos,
           textFileUrls: allTexts,
+          audioUrls: allAudios,
           avatarImageUrl: avatarImageUrl,
           training: training,
         );
@@ -1237,6 +1525,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   userId: uid,
                   avatarId: updated.id,
                   fullText: combinedText,
+                  fileUrl: freeTextUploadedUrl,
+                  fileName: freeTextUploadedName,
+                  filePath: freeTextUploadedPath,
+                  source: freeTextUploadedUrl != null ? 'file_upload' : 'app',
                 );
               } catch (e) {
                 // nur loggen, UI nicht stören
@@ -1247,6 +1539,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
           // Jetzt lokale Textdateien leeren (nachdem wir sie gelesen/gesendet haben)
           _newTextFiles.clear();
+          _newAudioFiles.clear();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Speichern fehlgeschlagen')),
@@ -1275,22 +1568,53 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     required String userId,
     required String avatarId,
     required String fullText,
+    String? fileUrl,
+    String? fileName,
+    String? filePath,
+    String? source,
   }) async {
     final uri = Uri.parse('${_memoryApiBaseUrl()}/avatar/memory/insert');
-    final body = jsonEncode({
+    final Map<String, dynamic> payload = {
       'user_id': userId,
       'avatar_id': avatarId,
       'full_text': fullText,
-      'source': 'app',
-    });
+      'source': source ?? 'app',
+      if (fileUrl != null) 'file_url': fileUrl,
+      if (fileName != null) 'file_name': fileName,
+      if (filePath != null) 'file_path': filePath,
+    };
     final res = await http.post(
       uri,
       headers: {'Content-Type': 'application/json'},
-      body: body,
+      body: jsonEncode(payload),
     );
     if (res.statusCode < 200 || res.statusCode >= 300) {
       throw Exception('Memory insert HTTP ${res.statusCode}: ${res.body}');
     }
+  }
+
+  Future<void> _triggerMemoryDelete({
+    required String userId,
+    required String avatarId,
+    String? fileUrl,
+    String? fileName,
+    String? filePath,
+  }) async {
+    final uri = Uri.parse(
+      '${_memoryApiBaseUrl()}/avatar/memory/delete/by-file',
+    );
+    final Map<String, dynamic> payload = {
+      'user_id': userId,
+      'avatar_id': avatarId,
+      if (fileUrl != null) 'file_url': fileUrl,
+      if (fileName != null) 'file_name': fileName,
+      if (filePath != null) 'file_path': filePath,
+    };
+    await http.post(
+      uri,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    );
   }
 
   Future<void> _confirmDeleteSelectedImages() async {

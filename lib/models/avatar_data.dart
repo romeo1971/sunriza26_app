@@ -11,6 +11,7 @@ class AvatarData {
   final List<String> imageUrls;
   final List<String> videoUrls;
   final List<String> textFileUrls;
+  final List<String> audioUrls;
   final List<String> writtenTexts;
   final String? lastMessage;
   final DateTime? lastMessageTime;
@@ -31,6 +32,7 @@ class AvatarData {
     this.imageUrls = const [],
     this.videoUrls = const [],
     this.textFileUrls = const [],
+    this.audioUrls = const [],
     this.writtenTexts = const [],
     this.lastMessage,
     this.lastMessageTime,
@@ -58,6 +60,7 @@ class AvatarData {
       imageUrls: List<String>.from(map['imageUrls'] ?? []),
       videoUrls: List<String>.from(map['videoUrls'] ?? []),
       textFileUrls: List<String>.from(map['textFileUrls'] ?? []),
+      audioUrls: List<String>.from(map['audioUrls'] ?? []),
       writtenTexts: List<String>.from(map['writtenTexts'] ?? []),
       lastMessage: map['lastMessage'],
       lastMessageTime: map['lastMessageTime'] != null
@@ -78,6 +81,7 @@ class AvatarData {
       'imageUrls': imageUrls,
       'videoUrls': videoUrls,
       'textFileUrls': textFileUrls,
+      'audioUrls': audioUrls,
       'writtenTexts': writtenTexts,
       'createdAt': createdAt.millisecondsSinceEpoch,
       'updatedAt': updatedAt.millisecondsSinceEpoch,
@@ -117,6 +121,7 @@ class AvatarData {
     List<String>? videoUrls,
     List<String>? textFileUrls,
     List<String>? writtenTexts,
+    List<String>? audioUrls,
     String? lastMessage,
     DateTime? lastMessageTime,
     DateTime? createdAt,
@@ -137,6 +142,7 @@ class AvatarData {
       videoUrls: videoUrls ?? this.videoUrls,
       textFileUrls: textFileUrls ?? this.textFileUrls,
       writtenTexts: writtenTexts ?? this.writtenTexts,
+      audioUrls: audioUrls ?? this.audioUrls,
       lastMessage: lastMessage ?? this.lastMessage,
       lastMessageTime: lastMessageTime ?? this.lastMessageTime,
       createdAt: createdAt ?? this.createdAt,
@@ -180,6 +186,7 @@ class AvatarData {
     return imageUrls.isNotEmpty ||
         videoUrls.isNotEmpty ||
         textFileUrls.isNotEmpty ||
+        audioUrls.isNotEmpty ||
         writtenTexts.isNotEmpty;
   }
 
@@ -188,6 +195,7 @@ class AvatarData {
     return imageUrls.length +
         videoUrls.length +
         textFileUrls.length +
+        audioUrls.length +
         writtenTexts.length;
   }
 }

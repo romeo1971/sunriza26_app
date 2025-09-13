@@ -1,5 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'dart:convert';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:path_provider/path_provider.dart';
 import '../models/avatar_data.dart';
 
 class AvatarChatScreen extends StatefulWidget {
@@ -392,7 +398,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     if (_messageController.text.trim().isNotEmpty) {
       _addMessage(_messageController.text.trim(), true);
       _messageController.clear();
-      _simulateAvatarResponse();
+      _chatWithBackend(_messages.last.text);
     }
   }
 
@@ -403,23 +409,52 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     _scrollToBottom();
   }
 
-  void _simulateAvatarResponse() {
-    if (!mounted) return;
-    setState(() {
-      _isTyping = true;
-    });
-
-    // Simulate thinking time
-    Future.delayed(const Duration(seconds: 2), () {
-      if (!mounted) return;
-      setState(() {
-        _isTyping = false;
-        _addMessage(
-          'Das ist eine interessante Nachricht! Erzähl mir mehr darüber.',
-          false,
-        );
-      });
-    });
+  Future<void> _chatWithBackend(String userText) async {
+    if (_avatarData == null) return;
+    setState(() => _isTyping = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final uri = Uri.parse('${dotenv.env['MEMORY_API_BASE_URL']}/avatar/chat');
+      final res = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': uid,
+          'avatar_id': _avatarData!.id,
+          'message': userText,
+          'top_k': 5,
+          'voice_id': _avatarData?.training != null
+              ? (_avatarData!.training!['voice'] != null
+                    ? _avatarData!.training!['voice']['elevenVoiceId']
+                    : null)
+              : null,
+        }),
+      );
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final answer = (data['answer'] as String?)?.trim();
+        if (answer != null && answer.isNotEmpty) {
+          _addMessage(answer, false);
+        }
+        final tts = data['tts_audio_b64'] as String?;
+        if (tts != null && tts.isNotEmpty) {
+          final bytes = base64Decode(tts);
+          final dir = await getTemporaryDirectory();
+          final file = File(
+            '${dir.path}/avatar_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
+          );
+          await file.writeAsBytes(bytes, flush: true);
+          _lastRecordingPath = file.path;
+          await _playLastRecording();
+        }
+      } else {
+        _showSystemSnack('Chat-Fehler: ${res.statusCode}');
+      }
+    } catch (e) {
+      _showSystemSnack('Chat-Fehler: $e');
+    } finally {
+      if (mounted) setState(() => _isTyping = false);
+    }
   }
 
   // Future<void> _recordVoice() async {}
