@@ -769,21 +769,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         source: ImageSource.gallery,
         maxDuration: const Duration(minutes: 5),
       );
-      if (x != null)
+      if (x != null) {
         setState(() {
           _newVideoFiles.add(File(x.path));
           _updateDirty();
         });
+      }
     } else {
       final x = await _picker.pickVideo(
         source: ImageSource.camera,
         maxDuration: const Duration(minutes: 5),
       );
-      if (x != null)
+      if (x != null) {
         setState(() {
           _newVideoFiles.add(File(x.path));
           _updateDirty();
         });
+      }
     }
   }
 
@@ -1211,8 +1213,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           );
           // Lokale Daten aktualisieren
           _applyAvatar(updated);
-          // Nach persistiertem Upload: lokale Textdateien-Liste leeren, um Duplikate zu vermeiden
-          _newTextFiles.clear();
           if (!mounted) return;
 
           // 5) Nach erfolgreichem Speichern: Kombinierten Text an Memory-API senden (fire-and-forget)
@@ -1245,6 +1245,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               }
             }();
           }
+          // Jetzt lokale Textdateien leeren (nachdem wir sie gelesen/gesendet haben)
+          _newTextFiles.clear();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Speichern fehlgeschlagen')),
