@@ -123,7 +123,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   image: NetworkImage(backgroundImage),
                   fit: BoxFit.cover,
                   colorFilter: ColorFilter.mode(
-                    Colors.black.withOpacity(0.7),
+                    Colors.black.withValues(alpha: 0.7),
                     BlendMode.darken,
                   ),
                 ),
@@ -168,7 +168,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           border: Border.all(color: Colors.white, width: 3),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.3),
+              color: Colors.black.withValues(alpha: 0.3),
               blurRadius: 10,
               offset: const Offset(0, 5),
             ),
@@ -177,7 +177,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         child: (_profileImageUrl ?? _avatarData?.avatarImageUrl) != null
             ? ClipOval(
                 child: Image.network(
-                  (_profileImageUrl ?? _avatarData!.avatarImageUrl!)!,
+                  (_profileImageUrl ?? _avatarData!.avatarImageUrl!),
                   width: 150,
                   height: 150,
                   fit: BoxFit.cover,
@@ -292,10 +292,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             hintText: 'Schreibe Gedanken/Erinnerungen…',
             hintStyle: const TextStyle(color: Colors.white54),
             filled: true,
-            fillColor: Colors.white.withOpacity(0.06),
+            fillColor: Colors.white.withValues(alpha: 0.06),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.3)),
+              borderSide: BorderSide(
+                color: Colors.white.withValues(alpha: 0.3),
+              ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
@@ -314,7 +316,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       width: 96,
       height: 96,
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.06),
+        color: Colors.white.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.white24),
       ),
@@ -436,7 +438,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             width: 72,
             height: 72,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.08),
+              color: Colors.white.withValues(alpha: 0.08),
               shape: BoxShape.circle,
               border: Border.all(color: Colors.white24),
             ),
@@ -993,8 +995,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     for (final url in _selectedRemoteImages) {
       await FirebaseStorageService.deleteFile(url);
       _imageUrls.remove(url);
-      if (_profileImageUrl == url)
+      if (_profileImageUrl == url) {
         _profileImageUrl = _imageUrls.isNotEmpty ? _imageUrls.first : null;
+      }
     }
     // Local entfernen
     _newImageFiles.removeWhere((f) => _selectedLocalImages.contains(f.path));

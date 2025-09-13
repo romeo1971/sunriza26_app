@@ -13,8 +13,37 @@ import { getConfig } from './config';
 import { RAGService } from './rag_service';
 import { PineconeService, DocumentMetadata } from './pinecone_service';
 
-// Firebase Admin initialisieren
-admin.initializeApp();
+// Firebase Admin initialisieren: lokal mit expliziten Credentials, in Cloud mit Default
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIREBASE_CLIENT_EMAIL) {
+  // Lokale Entwicklung: nutze Service-Account aus .env oder Datei
+  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+
+  if (clientEmail && privateKey) {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: projectId,
+        clientEmail: clientEmail,
+        privateKey: privateKey,
+      }),
+      projectId: projectId,
+    });
+  } else {
+    // Fallback auf Datei, wenn gesetzt
+    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+      admin.initializeApp({
+        credential: admin.credential.applicationDefault(),
+        projectId: projectId,
+      });
+    } else {
+      admin.initializeApp();
+    }
+  }
+} else {
+  // In Cloud Functions: Default Credentials
+  admin.initializeApp();
+}
 
 // CORS für Cross-Origin Requests
 const corsHandler = cors({ origin: true });

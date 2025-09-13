@@ -141,7 +141,7 @@ class AvatarService {
           'Avatar create payload keys: '
           '${payload.keys.toList()}',
         );
-        print('Avatar create payload: ${payload}');
+        print('Avatar create payload: $payload');
       } catch (_) {}
 
       await _avatarsCollection.doc(avatarId).set(payload);
@@ -172,7 +172,7 @@ class AvatarService {
       return querySnapshot.docs
           .map((doc) => AvatarData.fromMap(doc.data()))
           .toList();
-    } on FirebaseException catch (e) {
+    } on FirebaseException {
       // Reiche spezifische Firestore-Fehler nach oben weiter (Index, Rules etc.)
       rethrow;
     } catch (e) {

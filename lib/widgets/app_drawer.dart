@@ -54,7 +54,7 @@ class AppDrawer extends StatelessWidget {
                 Text(
                   user?.email ?? '',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.8),
+                    color: Colors.white.withValues(alpha: 0.8),
                     fontSize: 14,
                   ),
                 ),
@@ -192,7 +192,7 @@ class AppDrawer extends StatelessWidget {
         style: TextStyle(color: textColor ?? Colors.white, fontSize: 16),
       ),
       onTap: onTap,
-      hoverColor: Colors.deepPurple.withOpacity(0.1),
+      hoverColor: Colors.deepPurple.withValues(alpha: 0.1),
     );
   }
 }

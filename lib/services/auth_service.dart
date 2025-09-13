@@ -91,9 +91,7 @@ class AuthService {
   Future<UserCredential?> signInWithGoogle() async {
     try {
       // Google Sign-In durchführen (7.x)
-      final GoogleSignInAccount googleUser = await _googleSignIn
-          .authenticate();
-      if (googleUser == null) return null;
+      final GoogleSignInAccount googleUser = await _googleSignIn.authenticate();
 
       // Google Sign-In Credentials abrufen (v7: authentication ist sync)
       final GoogleSignInAuthentication googleAuth = googleUser.authentication;

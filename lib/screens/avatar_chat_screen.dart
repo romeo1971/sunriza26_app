@@ -13,7 +13,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
-  bool _isRecording = false;
+  final bool _isRecording = false;
   bool _isTyping = false;
 
   AvatarData? _avatarData;
@@ -49,7 +49,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                   image: NetworkImage(backgroundImage),
                   fit: BoxFit.cover,
                   colorFilter: ColorFilter.mode(
-                    Colors.black.withOpacity(0.7),
+                    Colors.black.withValues(alpha: 0.7),
                     BlendMode.darken,
                   ),
                 ),
@@ -83,7 +83,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         color: Colors.deepPurple,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.3),
+            color: Colors.black.withValues(alpha: 0.3),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -145,7 +145,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                   border: Border.all(color: Colors.white, width: 4),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.white.withOpacity(0.3),
+                      color: Colors.white.withValues(alpha: 0.3),
                       blurRadius: 20,
                       spreadRadius: 5,
                     ),
@@ -175,7 +175,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.7),
+                    color: Colors.black.withValues(alpha: 0.7),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
@@ -210,7 +210,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     return Container(
       decoration: const BoxDecoration(
         color: Color(0x20000000),
-        borderRadius: const BorderRadius.only(
+        borderRadius: BorderRadius.only(
           topLeft: Radius.circular(20),
           topRight: Radius.circular(20),
         ),
@@ -327,7 +327,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 boxShadow: [
                   BoxShadow(
                     color: (_isRecording ? Colors.red : Colors.deepPurple)
-                        .withOpacity(0.3),
+                        .withValues(alpha: 0.3),
                     blurRadius: 10,
                     spreadRadius: 2,
                   ),
@@ -349,7 +349,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               decoration: BoxDecoration(
                 color: Colors.transparent,
                 borderRadius: BorderRadius.circular(25),
-                border: Border.all(color: Colors.white.withOpacity(0.5)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
               ),
               child: const _ChatInputField(),
             ),
@@ -368,7 +368,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.deepPurple.withOpacity(0.3),
+                    color: Colors.deepPurple.withValues(alpha: 0.3),
                     blurRadius: 10,
                     spreadRadius: 2,
                   ),

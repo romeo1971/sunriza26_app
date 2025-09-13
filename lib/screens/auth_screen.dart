@@ -240,7 +240,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 Container(
                   height: 120,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF00FF94).withOpacity(0.1),
+                    color: const Color(0xFF00FF94).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(60),
                   ),
                   child: const Icon(
