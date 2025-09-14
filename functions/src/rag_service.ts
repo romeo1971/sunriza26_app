@@ -2,7 +2,6 @@
 /// Stand: 04.09.2025 - Retrieval-Augmented Generation mit Pinecone
 
 import { PineconeService, DocumentMetadata } from './pinecone_service';
-import { OpenAI } from 'openai';
 
 export interface RAGRequest {
   userId: string;
@@ -21,13 +20,9 @@ export interface RAGResponse {
 
 export class RAGService {
   private pineconeService: PineconeService;
-  private openai: OpenAI;
 
   constructor() {
     this.pineconeService = new PineconeService();
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!,
-    });
   }
 
   /// Verarbeitet hochgeladenes Dokument für RAG-System
@@ -105,18 +100,25 @@ export class RAGService {
       const systemPrompt = this.createSystemPrompt(mergedContext);
       const userPrompt = this.createUserPrompt(request.query, request.context);
 
-      // OpenAI API aufrufen
-      const completion = await this.openai.chat.completions.create({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        max_tokens: request.maxTokens || 500,
-        temperature: request.temperature || 0.7,
-      });
-
-      const response = completion.choices[0]?.message?.content || 'Entschuldigung, ich konnte keine Antwort generieren.';
+      // LLM Router aufrufen (OpenAI primär, Gemini Fallback)
+      const llmUrl = process.env.LLM_ENDPOINT || 'https://us-central1-sunriza26.cloudfunctions.net/llm';
+      const r = await (globalThis as any).fetch(llmUrl as any, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' } as any,
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          maxTokens: request.maxTokens || 500,
+          temperature: request.temperature ?? 0.7,
+        }),
+      } as any);
+      if (!(r as any).ok) {
+        throw new Error(`LLM Router HTTP ${(r as any).status}`);
+      }
+      const jr = await (r as any).json();
+      const response = (jr?.answer as string) || 'Entschuldigung, ich konnte keine Antwort generieren.';
 
       // Quellen aus Kontext extrahieren
       const sources = this.extractSources(mergedContext);

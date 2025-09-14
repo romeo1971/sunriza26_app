@@ -61,10 +61,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
     // Textfelder
     if (_firstNameController.text.trim() != current.firstName) dirty = true;
-    if ((_nicknameController.text.trim()) != (current.nickname ?? ''))
+    if ((_nicknameController.text.trim()) != (current.nickname ?? '')) {
       dirty = true;
-    if ((_lastNameController.text.trim()) != (current.lastName ?? ''))
+    }
+    if ((_lastNameController.text.trim()) != (current.lastName ?? '')) {
       dirty = true;
+    }
 
     // Dates (nur Datum vergleichen)
     bool sameDate(DateTime? a, DateTime? b) {
@@ -83,8 +85,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // Neue lokale Dateien oder Freitext
     if (_newImageFiles.isNotEmpty ||
         _newVideoFiles.isNotEmpty ||
-        _newTextFiles.isNotEmpty)
+        _newTextFiles.isNotEmpty) {
       dirty = true;
+    }
     if (_textAreaController.text.trim().isNotEmpty) dirty = true;
 
     if (mounted) setState(() => _isDirty = dirty);
@@ -397,19 +400,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                tooltip: 'Als Stimme wählen',
-                icon: Icon(
-                  _activeAudioUrl == url ? Icons.star : Icons.star_border,
-                  color: _activeAudioUrl == url ? Colors.amber : Colors.white70,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _activeAudioUrl = url;
-                    _updateDirty();
-                  });
-                },
-              ),
-              IconButton(
                 tooltip: 'Öffnen',
                 icon: const Icon(Icons.open_in_new, color: Colors.white70),
                 onPressed: () => _openUrl(url),
@@ -493,6 +483,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           trailing: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              IconButton(
+                tooltip: 'Als Stimme wählen',
+                icon: Icon(
+                  _activeAudioUrl == url ? Icons.star : Icons.star_border,
+                  color: _activeAudioUrl == url ? Colors.amber : Colors.white70,
+                ),
+                onPressed: () {
+                  setState(() {
+                    _activeAudioUrl = url;
+                    _updateDirty();
+                  });
+                },
+              ),
               IconButton(
                 tooltip: 'Abspielen',
                 icon: const Icon(Icons.play_arrow, color: Colors.white70),
@@ -597,6 +600,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       _showSystemSnack('Keine Audio-Stimmprobe vorhanden.');
       return;
     }
+    // Sicherstellen, dass die markierte Probe zuerst verwendet wird
+    List<String> selected = [];
+    if (_activeAudioUrl != null &&
+        _activeAudioUrl!.isNotEmpty &&
+        audios.contains(_activeAudioUrl)) {
+      selected.add(_activeAudioUrl!);
+    }
+    for (final u in audios) {
+      if (selected.length >= 3) break;
+      if (u == _activeAudioUrl) continue;
+      selected.add(u);
+    }
+    if (selected.isEmpty) {
+      _showSystemSnack('Bitte markiere eine Audio-Datei mit dem Stern.');
+      return;
+    }
     setState(() => _isSaving = true);
     try {
       final uid = FirebaseAuth.instance.currentUser!.uid;
@@ -609,7 +628,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         body: jsonEncode({
           'user_id': uid,
           'avatar_id': _avatarData!.id,
-          'audio_urls': audios.take(3).toList(),
+          'audio_urls': selected,
           'name': _avatarData!.displayName,
         }),
       );
@@ -857,8 +876,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (lastName != null && lastName.isNotEmpty) lastName,
     ].join(' ').trim();
     if (fullName.isNotEmpty) lines.add('Name: $fullName');
-    if (nickname != null && nickname.isNotEmpty)
+    if (nickname != null && nickname.isNotEmpty) {
       lines.add('Spitzname: $nickname');
+    }
     if (birthDate != null) lines.add('Geburtsdatum: ${_formatDate(birthDate)}');
     if (deathDate != null) lines.add('Sterbedatum: ${_formatDate(deathDate)}');
     if (calculatedAge != null) lines.add('Alter (berechnet): $calculatedAge');
@@ -1634,11 +1654,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           context,
         ).showSnackBar(SnackBar(content: Text('Fehler: $e')));
       } finally {
-        if (mounted)
+        if (mounted) {
           setState(() {
             _isSaving = false;
             _isDirty = false;
           });
+        }
       }
     }();
   }

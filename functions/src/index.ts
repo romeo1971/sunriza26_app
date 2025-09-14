@@ -5,13 +5,16 @@
 
 import 'dotenv/config';
 import * as functions from 'firebase-functions';
-import * as admin from 'firebase-admin';
+// admin ist bereits oben initialisiert
 import cors from 'cors';
 import { generateSpeech } from './textToSpeech';
 import { generateLipsyncVideo, validateVideoRequest } from './vertexAI';
 import { getConfig } from './config';
 import { RAGService } from './rag_service';
 // Entfernt: Unbenutzte Importe aus pinecone_service
+import fetch from 'node-fetch';
+import OpenAI from 'openai';
+import * as admin from 'firebase-admin';
 
 // Firebase Admin initialisieren: lokal mit expliziten Credentials, in Cloud mit Default
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIREBASE_CLIENT_EMAIL) {
@@ -283,6 +286,195 @@ export const testTTS = functions
 
 // Produktiver Alias: gleicher Handler wie testTTS, aber unter dem Namen "tts"
 export const tts = testTTS;
+
+/**
+ * LLM Router: OpenAI primär (gpt-4o-mini), Gemini Fallback
+ * Body: { messages: [{role:'system'|'user'|'assistant', content:string}], maxTokens?, temperature? }
+ */
+export const llm = functions
+  .region('us-central1')
+  .runWith({ secrets: ['OPENAI_API_KEY', 'GEMINI_API_KEY'] })
+  .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+      try {
+        if (req.method !== 'POST') {
+          res.status(405).json({ error: 'Nur POST Requests erlaubt' });
+          return;
+        }
+        const { messages, maxTokens, temperature } = req.body || {};
+        if (!Array.isArray(messages) || messages.length === 0) {
+          res.status(400).json({ error: 'messages[] ist erforderlich' });
+          return;
+        }
+        // OpenAI primär
+        const openaiKey = process.env.OPENAI_API_KEY;
+        const geminiKey = process.env.GEMINI_API_KEY;
+        const joined = messages
+          .map((m: any) => `${m.role || 'user'}: ${m.content || ''}`)
+          .join('\n');
+
+        const tryOpenAI = async () => {
+          if (!openaiKey) throw new Error('OPENAI_API_KEY fehlt');
+          const client = new OpenAI({ apiKey: openaiKey });
+          const resp = await client.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: messages.map((m: any) => ({ role: m.role, content: m.content })),
+            max_tokens: maxTokens || 300,
+            temperature: temperature ?? 0.6,
+          });
+          const text = resp.choices?.[0]?.message?.content || '';
+          return text.trim();
+        };
+
+        const tryGemini = async () => {
+          if (!geminiKey) throw new Error('GEMINI_API_KEY fehlt');
+          const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
+          const body = {
+            contents: [
+              {
+                parts: [{ text: joined }],
+              },
+            ],
+            generationConfig: {
+              temperature: temperature ?? 0.6,
+              maxOutputTokens: maxTokens || 300,
+            },
+          } as any;
+          const r = await (fetch as any)(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+          });
+          if (!(r as any).ok) throw new Error(`Gemini HTTP ${(r as any).status}`);
+          const j = await (r as any).json();
+          const text = j?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+          return (text as string).trim();
+        };
+
+        let answer = '';
+        try {
+          answer = await tryOpenAI();
+        } catch (e) {
+          console.warn('OpenAI Fehler, fallback auf Gemini:', e);
+          answer = await tryGemini();
+        }
+        res.status(200).json({ answer });
+      } catch (error) {
+        console.error('LLM Router Fehler:', error);
+        res.status(500).json({
+          error: 'LLM Fehler',
+          details: error instanceof Error ? error.message : 'Unbekannter Fehler',
+        });
+      }
+    });
+  });
+
+/**
+ * Talking-Head: Jobs anlegen / Status / Callback (für SadTalker2 o.ä.)
+ * Firestore: collection 'renderJobs/{jobId}'
+ */
+export const createTalkingHeadJob = functions
+  .region('us-central1')
+  .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+      try {
+        if (req.method !== 'POST') {
+          res.status(405).json({ error: 'Nur POST Requests erlaubt' });
+          return;
+        }
+        const { imageUrl, audioUrl, preset, userId, avatarId } = req.body || {};
+        if (!imageUrl || !audioUrl) {
+          res.status(400).json({ error: 'imageUrl und audioUrl sind erforderlich' });
+          return;
+        }
+        const db = admin.firestore();
+        const doc = db.collection('renderJobs').doc();
+        const jobId = doc.id;
+        const job = {
+          jobId,
+          userId: userId || null,
+          avatarId: avatarId || null,
+          type: 'talking_head',
+          status: 'queued',
+          progress: 0,
+          input: { imageUrl, audioUrl, preset: preset || '1080p30' },
+          outputUrl: null,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        } as any;
+        await doc.set(job);
+
+        // Optional: direkt an Worker weiterleiten, wenn SADTALKER_BASE_URL vorhanden
+        const base = process.env.SADTALKER_BASE_URL;
+        if (base) {
+          try {
+            const cbUrl = `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/talkingHeadCallback`;
+            const r = await (fetch as any)(`${base.replace(/\/$/, '')}/jobs`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                ...(process.env.SADTALKER_TOKEN ? { Authorization: `Bearer ${process.env.SADTALKER_TOKEN}` } : {}),
+              } as any,
+              body: JSON.stringify({ jobId, imageUrl, audioUrl, preset: preset || '1080p30', callbackUrl: cbUrl }),
+            } as any);
+            if (!(r as any).ok) {
+              console.warn('SadTalker dispatch HTTP', (r as any).status);
+            } else {
+              await doc.update({ status: 'running', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            }
+          } catch (e) {
+            console.warn('SadTalker dispatch Fehler:', e);
+          }
+        }
+
+        res.status(200).json({ jobId });
+      } catch (error) {
+        console.error('createTalkingHeadJob Fehler:', error);
+        res.status(500).json({ error: 'Job-Erstellung fehlgeschlagen' });
+      }
+    });
+  });
+
+export const talkingHeadStatus = functions
+  .region('us-central1')
+  .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+      try {
+        const jobId = (req.query.jobId as string) || (req.body && req.body.jobId);
+        if (!jobId) { res.status(400).json({ error: 'jobId fehlt' }); return; }
+        const db = admin.firestore();
+        const snap = await db.collection('renderJobs').doc(jobId).get();
+        if (!snap.exists) { res.status(404).json({ error: 'Job nicht gefunden' }); return; }
+        res.status(200).json(snap.data());
+      } catch (e) {
+        res.status(500).json({ error: 'Status-Fehler' });
+      }
+    });
+  });
+
+export const talkingHeadCallback = functions
+  .region('us-central1')
+  .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+      try {
+        if (req.method !== 'POST') { res.status(405).json({ error: 'Nur POST' }); return; }
+        const { jobId, status, progress, outputUrl, error } = req.body || {};
+        if (!jobId) { res.status(400).json({ error: 'jobId fehlt' }); return; }
+        const db = admin.firestore();
+        const ref = db.collection('renderJobs').doc(jobId);
+        const update: any = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+        if (status) update.status = status;
+        if (typeof progress === 'number') update.progress = progress;
+        if (outputUrl) update.outputUrl = outputUrl;
+        if (error) update.error = error;
+        await ref.set(update, { merge: true });
+        res.status(200).json({ ok: true });
+      } catch (e) {
+        console.error('Callback Fehler:', e);
+        res.status(500).json({ error: 'Callback-Fehler' });
+      }
+    });
+  });
 
 /**
  * RAG-System: Verarbeitet hochgeladene Dokumente

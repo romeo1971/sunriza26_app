@@ -37,13 +37,9 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RAGService = void 0;
 const pinecone_service_1 = require("./pinecone_service");
-const openai_1 = require("openai");
 class RAGService {
     constructor() {
         this.pineconeService = new pinecone_service_1.PineconeService();
-        this.openai = new openai_1.OpenAI({
-            apiKey: process.env.OPENAI_API_KEY,
-        });
     }
     /// Verarbeitet hochgeladenes Dokument für RAG-System
     async processUploadedDocument(userId, documentId, content, metadata) {
@@ -60,11 +56,32 @@ class RAGService {
     }
     /// Generiert KI-Avatar Antwort basierend auf RAG
     async generateAvatarResponse(request) {
-        var _a, _b;
+        var _a;
         try {
             console.log(`Generating avatar response for user ${request.userId}`);
-            // Kontext aus ähnlichen Dokumenten generieren
-            const context = await this.pineconeService.generateAvatarContext(request.query, request.userId, 2000);
+            // Kontext aus ähnlichen Dokumenten generieren (global + user-spezifisch)
+            const maxCtx = 2000;
+            const globalDocs = await this.pineconeService.searchSimilarDocuments(request.query, 'global', 6);
+            const userDocs = await this.pineconeService.searchSimilarDocuments(request.query, request.userId, 6);
+            const assembleContext = (docs) => {
+                var _a, _b, _c;
+                let ctx = '';
+                let len = 0;
+                for (const doc of docs) {
+                    const docContent = ((_a = doc.metadata) === null || _a === void 0 ? void 0 : _a.description) ||
+                        ((_b = doc.metadata) === null || _b === void 0 ? void 0 : _b.originalFileName) || 'Eintrag';
+                    const line = `[${(((_c = doc.metadata) === null || _c === void 0 ? void 0 : _c.type) || 'text').toString().toUpperCase()}] ${docContent}\n\n`;
+                    if (len + line.length <= maxCtx) {
+                        ctx += line;
+                        len += line.length;
+                    }
+                    else {
+                        break;
+                    }
+                }
+                return ctx;
+            };
+            const context = (assembleContext(globalDocs) + assembleContext(userDocs)).trim() || 'Keine relevanten Informationen gefunden.';
             // Wenn kaum/kein Kontext vorhanden ist, Live-Wissens-Snippet aus dem Web laden (Wikipedia)
             let liveSnippet = '';
             if (!context || context.includes('Keine relevanten Informationen') || context.length < 80) {
@@ -84,17 +101,25 @@ class RAGService {
             const mergedContext = [context, liveSnippet].filter(Boolean).join('\n\n');
             const systemPrompt = this.createSystemPrompt(mergedContext);
             const userPrompt = this.createUserPrompt(request.query, request.context);
-            // OpenAI API aufrufen
-            const completion = await this.openai.chat.completions.create({
-                model: 'gpt-4o-mini',
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt },
-                ],
-                max_tokens: request.maxTokens || 500,
-                temperature: request.temperature || 0.7,
+            // LLM Router aufrufen (OpenAI primär, Gemini Fallback)
+            const llmUrl = process.env.LLM_ENDPOINT || 'https://us-central1-sunriza26.cloudfunctions.net/llm';
+            const r = await globalThis.fetch(llmUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: userPrompt },
+                    ],
+                    maxTokens: request.maxTokens || 500,
+                    temperature: (_a = request.temperature) !== null && _a !== void 0 ? _a : 0.7,
+                }),
             });
-            const response = ((_b = (_a = completion.choices[0]) === null || _a === void 0 ? void 0 : _a.message) === null || _b === void 0 ? void 0 : _b.content) || 'Entschuldigung, ich konnte keine Antwort generieren.';
+            if (!r.ok) {
+                throw new Error(`LLM Router HTTP ${r.status}`);
+            }
+            const jr = await r.json();
+            const response = (jr === null || jr === void 0 ? void 0 : jr.answer) || 'Entschuldigung, ich konnte keine Antwort generieren.';
             // Quellen aus Kontext extrahieren
             const sources = this.extractSources(mergedContext);
             // Confidence basierend auf Kontext-Länge berechnen

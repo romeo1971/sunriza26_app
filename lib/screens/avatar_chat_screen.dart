@@ -472,9 +472,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           (_partnerName != null && _partnerName!.isNotEmpty)) {
         final first = _shortFirstName(_partnerName!);
         final suffix = _affectionateSuffix();
-        await _botSay(
-          'Klar – du bist ' + first + suffix.replaceFirst(',', '') + '',
-        );
+        await _botSay('Klar – du bist $first${suffix.replaceFirst(',', '')}');
         _addMessage(text, true);
         _messageController.clear();
         return;
@@ -519,9 +517,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           _savePartnerName(candidate);
           final first = _shortFirstName(candidate);
           final tail = (_partnerPetName != null && _partnerPetName!.isNotEmpty)
-              ? ', mein ' + _partnerPetName! + '!'
+              ? ', mein ${_partnerPetName!}!'
               : '!';
-          await _botSay('Alles klar – du bist ' + first + tail);
+          await _botSay('Alles klar – du bist $first$tail');
           return;
         }
       }
@@ -542,7 +540,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             final ln = loose.toLowerCase();
             final an = authName.toLowerCase();
             final starts =
-                an.startsWith(ln + " ") || an.startsWith(ln + "-") || an == ln;
+                an.startsWith("$ln ") || an.startsWith("$ln-") || an == ln;
             if (starts && authName.length > loose.length) {
               _pendingLooseName = _capitalize(loose);
               _pendingFullName = authName;
@@ -565,9 +563,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           _pendingFullName = null;
           _pendingIsKnownPartner = true;
           _awaitingNameConfirm = true;
-          await _botSay(
-            'Ach, das ist interessant – heißt du "' + splitName + '"?',
-          );
+          await _botSay('Ach, das ist interessant – heißt du "$splitName"?');
           return;
         }
         // Ultimativer Fallback: Ein-Wort-Name direkt übernehmen
@@ -589,7 +585,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       final pet = _extractPetName(text);
       if (pet != null && pet.isNotEmpty) {
         _savePartnerPetName(pet);
-        _botSay("Alles klar – ich nenne dich ab jetzt '" + pet + "'.");
+        _botSay("Alles klar – ich nenne dich ab jetzt '$pet'.");
         return;
       }
 
@@ -1015,16 +1011,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     final suffix = _affectionateSuffix();
     final first = _shortFirstName(name);
     final variants = [
-      'Hallo ' + first + ', schön dich zu sehen' + suffix,
-      'Hey ' + first + ', gut dass du da bist' + suffix,
-      'Hi ' + first + ', ich freue mich, dich zu sprechen' + suffix,
+      'Hallo $first, schön dich zu sehen$suffix',
+      'Hey $first, gut dass du da bist$suffix',
+      'Hi $first, ich freue mich, dich zu sprechen$suffix',
     ];
     return variants[DateTime.now().millisecondsSinceEpoch % variants.length];
   }
 
   String _affectionateSuffix() {
     if (_partnerPetName != null && _partnerPetName!.isNotEmpty) {
-      return ', mein ' + _partnerPetName! + '!';
+      return ', mein ${_partnerPetName!}!';
     }
     if (_isKnownPartner) {
       const options = [', mein Schatz!', ', mein Lieber!', ', mein Herz!'];
@@ -1108,7 +1104,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
       await _saveInsight(
-        'Anrede/Kosename: ' + _partnerPetName!,
+        'Anrede/Kosename: ${_partnerPetName!}',
         source: 'profile',
         fileName: 'petname.txt',
       );
@@ -1139,7 +1135,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
       await _saveInsight(
-        'Beziehungsrolle: ' + role,
+        'Beziehungsrolle: $role',
         source: 'profile',
         fileName: 'relationship.txt',
       );

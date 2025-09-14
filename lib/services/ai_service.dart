@@ -21,7 +21,7 @@ class AIService {
   static const String _healthCheckUrl =
       'https://us-central1-sunriza26.cloudfunctions.net/healthCheck';
   static const String _testTtsUrl =
-      'https://us-central1-sunriza26.cloudfunctions.net/testTTS';
+      'https://us-central1-sunriza26.cloudfunctions.net/tts';
 
   /// Generiert Live-Video mit geklonter Stimme und Lippen-Synchronisation
   /// Gibt einen Stream zurück für Echtzeit-Wiedergabe
@@ -82,7 +82,7 @@ class AIService {
       final request = http.Request('POST', Uri.parse(_testTtsUrl));
       request.headers.addAll({
         'Content-Type': 'application/json',
-        'Accept': 'audio/wav',
+        'Accept': 'audio/mpeg',
       });
       request.body = '{"text": "${_escapeJson(text)}"}';
 
@@ -129,7 +129,7 @@ class AIService {
   Future<String> saveAudioToFile(Uint8List audioData) async {
     try {
       final directory = await getTemporaryDirectory();
-      final file = File('${directory.path}/test_audio.wav');
+      final file = File('${directory.path}/test_audio.mp3');
       await file.writeAsBytes(audioData);
       return file.path;
     } catch (e) {

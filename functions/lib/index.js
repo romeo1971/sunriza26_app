@@ -41,16 +41,19 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
+exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
 require("dotenv/config");
 const functions = __importStar(require("firebase-functions"));
-const admin = __importStar(require("firebase-admin"));
+// admin ist bereits oben initialisiert
 const cors_1 = __importDefault(require("cors"));
 const textToSpeech_1 = require("./textToSpeech");
 const vertexAI_1 = require("./vertexAI");
 const config_1 = require("./config");
 const rag_service_1 = require("./rag_service");
 // Entfernt: Unbenutzte Importe aus pinecone_service
+const node_fetch_1 = __importDefault(require("node-fetch"));
+const openai_1 = __importDefault(require("openai"));
+const admin = __importStar(require("firebase-admin"));
 // Firebase Admin initialisieren: lokal mit expliziten Credentials, in Cloud mit Default
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIREBASE_CLIENT_EMAIL) {
     // Lokale Entwicklung: nutze Service-Account aus .env oder Datei
@@ -299,6 +302,214 @@ exports.testTTS = functions
 });
 // Produktiver Alias: gleicher Handler wie testTTS, aber unter dem Namen "tts"
 exports.tts = exports.testTTS;
+/**
+ * LLM Router: OpenAI primär (gpt-4o-mini), Gemini Fallback
+ * Body: { messages: [{role:'system'|'user'|'assistant', content:string}], maxTokens?, temperature? }
+ */
+exports.llm = functions
+    .region('us-central1')
+    .runWith({ secrets: ['OPENAI_API_KEY', 'GEMINI_API_KEY'] })
+    .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+        try {
+            if (req.method !== 'POST') {
+                res.status(405).json({ error: 'Nur POST Requests erlaubt' });
+                return;
+            }
+            const { messages, maxTokens, temperature } = req.body || {};
+            if (!Array.isArray(messages) || messages.length === 0) {
+                res.status(400).json({ error: 'messages[] ist erforderlich' });
+                return;
+            }
+            // OpenAI primär
+            const openaiKey = process.env.OPENAI_API_KEY;
+            const geminiKey = process.env.GEMINI_API_KEY;
+            const joined = messages
+                .map((m) => `${m.role || 'user'}: ${m.content || ''}`)
+                .join('\n');
+            const tryOpenAI = async () => {
+                var _a, _b, _c;
+                if (!openaiKey)
+                    throw new Error('OPENAI_API_KEY fehlt');
+                const client = new openai_1.default({ apiKey: openaiKey });
+                const resp = await client.chat.completions.create({
+                    model: 'gpt-4o-mini',
+                    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+                    max_tokens: maxTokens || 300,
+                    temperature: temperature !== null && temperature !== void 0 ? temperature : 0.6,
+                });
+                const text = ((_c = (_b = (_a = resp.choices) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.message) === null || _c === void 0 ? void 0 : _c.content) || '';
+                return text.trim();
+            };
+            const tryGemini = async () => {
+                var _a, _b, _c, _d, _e;
+                if (!geminiKey)
+                    throw new Error('GEMINI_API_KEY fehlt');
+                const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
+                const body = {
+                    contents: [
+                        {
+                            parts: [{ text: joined }],
+                        },
+                    ],
+                    generationConfig: {
+                        temperature: temperature !== null && temperature !== void 0 ? temperature : 0.6,
+                        maxOutputTokens: maxTokens || 300,
+                    },
+                };
+                const r = await node_fetch_1.default(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                if (!r.ok)
+                    throw new Error(`Gemini HTTP ${r.status}`);
+                const j = await r.json();
+                const text = ((_e = (_d = (_c = (_b = (_a = j === null || j === void 0 ? void 0 : j.candidates) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.content) === null || _c === void 0 ? void 0 : _c.parts) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.text) || '';
+                return text.trim();
+            };
+            let answer = '';
+            try {
+                answer = await tryOpenAI();
+            }
+            catch (e) {
+                console.warn('OpenAI Fehler, fallback auf Gemini:', e);
+                answer = await tryGemini();
+            }
+            res.status(200).json({ answer });
+        }
+        catch (error) {
+            console.error('LLM Router Fehler:', error);
+            res.status(500).json({
+                error: 'LLM Fehler',
+                details: error instanceof Error ? error.message : 'Unbekannter Fehler',
+            });
+        }
+    });
+});
+/**
+ * Talking-Head: Jobs anlegen / Status / Callback (für SadTalker2 o.ä.)
+ * Firestore: collection 'renderJobs/{jobId}'
+ */
+exports.createTalkingHeadJob = functions
+    .region('us-central1')
+    .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+        try {
+            if (req.method !== 'POST') {
+                res.status(405).json({ error: 'Nur POST Requests erlaubt' });
+                return;
+            }
+            const { imageUrl, audioUrl, preset, userId, avatarId } = req.body || {};
+            if (!imageUrl || !audioUrl) {
+                res.status(400).json({ error: 'imageUrl und audioUrl sind erforderlich' });
+                return;
+            }
+            const db = admin.firestore();
+            const doc = db.collection('renderJobs').doc();
+            const jobId = doc.id;
+            const job = {
+                jobId,
+                userId: userId || null,
+                avatarId: avatarId || null,
+                type: 'talking_head',
+                status: 'queued',
+                progress: 0,
+                input: { imageUrl, audioUrl, preset: preset || '1080p30' },
+                outputUrl: null,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            };
+            await doc.set(job);
+            // Optional: direkt an Worker weiterleiten, wenn SADTALKER_BASE_URL vorhanden
+            const base = process.env.SADTALKER_BASE_URL;
+            if (base) {
+                try {
+                    const cbUrl = `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/talkingHeadCallback`;
+                    const r = await node_fetch_1.default(`${base.replace(/\/$/, '')}/jobs`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(process.env.SADTALKER_TOKEN ? { Authorization: `Bearer ${process.env.SADTALKER_TOKEN}` } : {}),
+                        },
+                        body: JSON.stringify({ jobId, imageUrl, audioUrl, preset: preset || '1080p30', callbackUrl: cbUrl }),
+                    });
+                    if (!r.ok) {
+                        console.warn('SadTalker dispatch HTTP', r.status);
+                    }
+                    else {
+                        await doc.update({ status: 'running', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+                    }
+                }
+                catch (e) {
+                    console.warn('SadTalker dispatch Fehler:', e);
+                }
+            }
+            res.status(200).json({ jobId });
+        }
+        catch (error) {
+            console.error('createTalkingHeadJob Fehler:', error);
+            res.status(500).json({ error: 'Job-Erstellung fehlgeschlagen' });
+        }
+    });
+});
+exports.talkingHeadStatus = functions
+    .region('us-central1')
+    .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+        try {
+            const jobId = req.query.jobId || (req.body && req.body.jobId);
+            if (!jobId) {
+                res.status(400).json({ error: 'jobId fehlt' });
+                return;
+            }
+            const db = admin.firestore();
+            const snap = await db.collection('renderJobs').doc(jobId).get();
+            if (!snap.exists) {
+                res.status(404).json({ error: 'Job nicht gefunden' });
+                return;
+            }
+            res.status(200).json(snap.data());
+        }
+        catch (e) {
+            res.status(500).json({ error: 'Status-Fehler' });
+        }
+    });
+});
+exports.talkingHeadCallback = functions
+    .region('us-central1')
+    .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+        try {
+            if (req.method !== 'POST') {
+                res.status(405).json({ error: 'Nur POST' });
+                return;
+            }
+            const { jobId, status, progress, outputUrl, error } = req.body || {};
+            if (!jobId) {
+                res.status(400).json({ error: 'jobId fehlt' });
+                return;
+            }
+            const db = admin.firestore();
+            const ref = db.collection('renderJobs').doc(jobId);
+            const update = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+            if (status)
+                update.status = status;
+            if (typeof progress === 'number')
+                update.progress = progress;
+            if (outputUrl)
+                update.outputUrl = outputUrl;
+            if (error)
+                update.error = error;
+            await ref.set(update, { merge: true });
+            res.status(200).json({ ok: true });
+        }
+        catch (e) {
+            console.error('Callback Fehler:', e);
+            res.status(500).json({ error: 'Callback-Fehler' });
+        }
+    });
+});
 /**
  * RAG-System: Verarbeitet hochgeladene Dokumente
  */
