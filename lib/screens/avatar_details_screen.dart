@@ -990,8 +990,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Future<void> _onAddImages() async {
-    final source = await _chooseSource('Bildquelle wählen');
-    if (source == null) return;
+    ImageSource? source;
+    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+      source = ImageSource.gallery; // Kamera nicht unterstützen auf Desktop
+    } else {
+      source = await _chooseSource('Bildquelle wählen');
+      if (source == null) return;
+    }
     if (source == ImageSource.gallery) {
       final files = await _picker.pickMultiImage(
         maxWidth: 2048,
@@ -1024,8 +1029,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Future<void> _onAddVideos() async {
-    final source = await _chooseSource('Videoquelle wählen');
-    if (source == null) return;
+    ImageSource? source;
+    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+      source = ImageSource.gallery;
+    } else {
+      source = await _chooseSource('Videoquelle wählen');
+      if (source == null) return;
+    }
     if (source == ImageSource.gallery) {
       final x = await _picker.pickVideo(
         source: ImageSource.gallery,
