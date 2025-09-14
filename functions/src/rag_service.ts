@@ -55,15 +55,54 @@ export class RAGService {
     try {
       console.log(`Generating avatar response for user ${request.userId}`);
 
-      // Kontext aus ähnlichen Dokumenten generieren
-      const context = await this.pineconeService.generateAvatarContext(
+      // Kontext aus ähnlichen Dokumenten generieren (global + user-spezifisch)
+      const maxCtx = 2000;
+      const globalDocs = await this.pineconeService.searchSimilarDocuments(
+        request.query,
+        'global',
+        6
+      );
+      const userDocs = await this.pineconeService.searchSimilarDocuments(
         request.query,
         request.userId,
-        2000
+        6
       );
+      const assembleContext = (docs: any[]) => {
+        let ctx = '';
+        let len = 0;
+        for (const doc of docs) {
+          const docContent = (doc.metadata?.description as string) ||
+            (doc.metadata?.originalFileName as string) || 'Eintrag';
+          const line = `[${(doc.metadata?.type || 'text').toString().toUpperCase()}] ${docContent}\n\n`;
+          if (len + line.length <= maxCtx) {
+            ctx += line;
+            len += line.length;
+          } else {
+            break;
+          }
+        }
+        return ctx;
+      };
+      const context = (assembleContext(globalDocs) + assembleContext(userDocs)).trim() || 'Keine relevanten Informationen gefunden.';
+
+      // Wenn kaum/kein Kontext vorhanden ist, Live-Wissens-Snippet aus dem Web laden (Wikipedia)
+      let liveSnippet = '';
+      if (!context || context.includes('Keine relevanten Informationen') || context.length < 80) {
+        try {
+          const [wiki, cse] = await Promise.all([
+            this.fetchLiveSnippet(request.query),
+            this.fetchGoogleCSESnippet(request.query),
+          ]);
+          // beide Quellen kombinieren
+          liveSnippet = [wiki, cse].filter(Boolean).join('\n\n');
+        } catch (e) {
+          console.warn('Live-Snippet fehlgeschlagen:', e);
+        }
+      }
 
       // KI-Prompt mit Kontext erstellen
-      const systemPrompt = this.createSystemPrompt(context);
+      const mergedContext = [context, liveSnippet].filter(Boolean).join('\n\n');
+      const systemPrompt = this.createSystemPrompt(mergedContext);
       const userPrompt = this.createUserPrompt(request.query, request.context);
 
       // OpenAI API aufrufen
@@ -80,16 +119,16 @@ export class RAGService {
       const response = completion.choices[0]?.message?.content || 'Entschuldigung, ich konnte keine Antwort generieren.';
 
       // Quellen aus Kontext extrahieren
-      const sources = this.extractSources(context);
+      const sources = this.extractSources(mergedContext);
 
       // Confidence basierend auf Kontext-Länge berechnen
-      const confidence = this.calculateConfidence(context, sources.length);
+      const confidence = this.calculateConfidence(mergedContext, sources.length);
 
       return {
         response,
         sources,
         confidence,
-        context,
+        context: mergedContext,
       };
     } catch (error) {
       console.error('Error generating avatar response:', error);
@@ -99,15 +138,17 @@ export class RAGService {
 
   /// Erstellt System-Prompt für KI-Avatar
   private createSystemPrompt(context: string): string {
+    const today = new Date().toISOString().split('T')[0];
     return `Du bist der Avatar und sprichst strikt in der Ich-Form; den Nutzer sprichst du mit "du" an.
 
 REGELN:
 1) Erkenne und korrigiere Tippfehler automatisch, ohne die Bedeutung zu ändern.
 2) Verwende vorrangig den bereitgestellten Kontext (Pinecone/Avatar-Wissen), wenn er relevant ist.
-3) Falls der Kontext keine ausreichende Antwort liefert, nutze dein allgemeines Modellwissen und antworte korrekt.
+3) Falls der Kontext keine ausreichende Antwort liefert, nutze zusätzlich das bereitgestellte Live-Wissens-Snippet (z. B. Wikipedia-Auszug).
 4) Sage nicht, ob die Antwort aus Kontext oder Modellwissen kommt – antworte direkt und natürlich.
 5) Gib klare, verständliche Antworten, auch bei unpräzisen Eingaben.
 6) Antworte in der Sprache der Nutzerfrage; wenn unklar, auf Deutsch, kurz (max. 1–2 Sätze).
+7) Heutiges Datum: ${today}. Wenn die Frage zeitkritisch ist ("dieses Jahr", "aktuell"), orientiere dich am neuesten Kontext/Live-Snippet.
 
 KONTEXT (falls vorhanden):
 ${context}`;
@@ -137,6 +178,11 @@ ${context}`;
           sources.push(source.trim());
         }
       }
+      // Live-Snippet-Markierung
+      if (line.startsWith('[LIVE]')) {
+        const src = line.replace(/^\[LIVE\]\s*/, '');
+        if (src.trim()) sources.push(src.trim());
+      }
     }
 
     return sources;
@@ -149,9 +195,76 @@ ${context}`;
     
     // Bonus für mehr Quellen
     confidence += Math.min(sourceCount * 0.1, 0.3);
+    // Bonus, wenn Live-Snippet enthalten ist
+    if (context.includes('[LIVE]')) confidence += 0.1;
     
     // Mindest-Confidence
     return Math.max(confidence, 0.1);
+  }
+
+  // Holt ein kurzes Live-Snippet (Wikipedia-Lead) ohne Abhängigkeit von externen Paketen
+  private async fetchLiveSnippet(query: string): Promise<string> {
+    try {
+      const q = encodeURIComponent(query.replace(/\?+$/, ''));
+      const url = `https://de.wikipedia.org/api/rest_v1/page/summary/${q}`;
+      const r = await (globalThis as any).fetch(url as any);
+      if (!(r as any).ok) return '';
+      const j = await (r as any).json();
+      const title = (j.title || '').toString();
+      const extract = (j.extract || '').toString();
+      if (!extract) return '';
+      const snippet = `[LIVE] ${title}: ${extract.substring(0, 600)}...`;
+      return snippet;
+    } catch {
+      return '';
+    }
+  }
+
+  // Google Custom Search Snippet
+  private async fetchGoogleCSESnippet(query: string): Promise<string> {
+    try {
+      const keys = await this.getCSEKeys();
+      if (!keys) return '';
+      const { apiKey, cx } = keys;
+      const q = encodeURIComponent(query);
+      const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${q}&num=3&hl=de&gl=de`;
+      const r = await (globalThis as any).fetch(url as any);
+      if (!(r as any).ok) return '';
+      const j = await (r as any).json();
+      if (!j.items || !Array.isArray(j.items) || j.items.length === 0) return '';
+      const top = j.items.slice(0, 2).map((it: any) => {
+        const title = (it.title || '').toString();
+        const snippet = (it.snippet || '').toString();
+        const link = (it.link || '').toString();
+        return `[LIVE] ${title}: ${snippet}${link ? ` (Quelle: ${link})` : ''}`;
+      });
+      return top.join('\n');
+    } catch {
+      return '';
+    }
+  }
+
+  // Keys aus Secret Manager oder Env holen (best effort)
+  private async getCSEKeys(): Promise<{ apiKey: string; cx: string } | null> {
+    const envKey = process.env.GOOGLE_CSE_API_KEY;
+    const envCx = process.env.GOOGLE_CSE_CX;
+    if (envKey && envCx) return { apiKey: envKey, cx: envCx };
+    try {
+      const { SecretManagerServiceClient } = await import('@google-cloud/secret-manager');
+      const client = new SecretManagerServiceClient();
+      const [keyV] = await client.accessSecretVersion({
+        name: `projects/sunriza26/secrets/GOOGLE_CSE_API_KEY/versions/latest`,
+      });
+      const [cxV] = await client.accessSecretVersion({
+        name: `projects/sunriza26/secrets/GOOGLE_CSE_CX/versions/latest`,
+      });
+      const apiKey = keyV.payload?.data?.toString();
+      const cx = cxV.payload?.data?.toString();
+      if (apiKey && cx) return { apiKey, cx };
+      return null;
+    } catch {
+      return null;
+    }
   }
 
   /// Sucht ähnliche Inhalte

@@ -427,6 +427,10 @@ def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
     msg = re.sub(r"\bdiesel jahr\b", "dieses Jahr", msg, flags=re.IGNORECASE)
     msg = re.sub(r"\bdieses jahr\b", "dieses Jahr", msg, flags=re.IGNORECASE)
     msg = re.sub(r"fussball", "Fußball", msg, flags=re.IGNORECASE)
+    # häufige Tippfehler
+    msg = re.sub(r"\bwet\s+ice\b", "wer ich", msg, flags=re.IGNORECASE)
+    msg = re.sub(r"\bweisst\b", "weißt", msg, flags=re.IGNORECASE)
+    msg = re.sub(r"\bweiss\b", "weiß", msg, flags=re.IGNORECASE)
     payload.message = msg
     # 1) RAG: relevante Schnipsel holen
     qres = memory_query(QueryRequest(

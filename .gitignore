@@ -45,3 +45,8 @@ app.*.map.json
 /android/app/release
 .env
 service-account-key.json
+# Ignore env and local outputs
+.env
+.env.*
+tts_apiKeys/
+*.mp3

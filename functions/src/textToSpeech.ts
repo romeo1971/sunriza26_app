@@ -32,25 +32,35 @@ export async function generateSpeech(request: TTSRequest): Promise<TTSResponse> 
     console.log(`Generiere Speech für Text: "${request.text.substring(0, 50)}..."`);
     console.log(`Verwende Custom Voice: ${config.customVoiceName}`);
 
-    const ttsRequest = {
-      input: {
-        text: request.text,
-      },
-      voice: {
-        languageCode: request.languageCode || 'de-DE',
-        name: config.customVoiceName,
-        ssmlGender: request.ssmlGender || 'NEUTRAL',
-      },
+    const buildReq = (useCustom: boolean) => ({
+      input: { text: request.text },
+      voice: useCustom
+        ? {
+            languageCode: request.languageCode || 'de-DE',
+            name: config.customVoiceName,
+            ssmlGender: request.ssmlGender || ('NEUTRAL' as const),
+          }
+        : {
+            languageCode: request.languageCode || 'de-DE',
+            ssmlGender: request.ssmlGender || ('NEUTRAL' as const),
+          },
       audioConfig: {
-        audioEncoding: 'LINEAR16' as const, // Optimal für Vertex AI Video-Generierung
-        sampleRateHertz: 24000, // Hohe Qualität für bessere Lippen-Synchronisation
+        audioEncoding: 'MP3' as const,
+        sampleRateHertz: 24000,
         speakingRate: 1.0,
         pitch: 0.0,
         volumeGainDb: 0.0,
       },
-    };
+    });
 
-    const [response] = await client.synthesizeSpeech(ttsRequest);
+    const tryCustom = !!config.customVoiceName && !config.customVoiceName.includes('default-voice');
+    let response;
+    try {
+      [response] = await client.synthesizeSpeech(buildReq(tryCustom));
+    } catch (e) {
+      console.warn('Custom Voice fehlgeschlagen, fallback auf Standard-Voice:', e);
+      [response] = await client.synthesizeSpeech(buildReq(false));
+    }
     
     if (!response.audioContent) {
       throw new Error('Kein Audio-Content von Text-to-Speech API erhalten');
@@ -63,7 +73,7 @@ export async function generateSpeech(request: TTSRequest): Promise<TTSResponse> 
     return {
       audioContent: audioBuffer,
       audioConfig: {
-        audioEncoding: 'LINEAR16',
+        audioEncoding: 'MP3',
         sampleRateHertz: 24000,
       },
     };

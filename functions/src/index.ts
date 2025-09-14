@@ -206,6 +206,7 @@ export const healthCheck = functions
  */
 export const testTTS = functions
   .region('us-central1')
+  .runWith({ secrets: ['ELEVEN_API_KEY','ELEVEN_VOICE_ID','ELEVEN_TTS_MODEL'] })
   .https
   .onRequest(async (req, res) => {
     return corsHandler(req, res, async () => {
@@ -222,12 +223,51 @@ export const testTTS = functions
           return;
         }
 
-        const ttsResponse = await generateSpeech({
-          text: text,
-          languageCode: 'de-DE',
-        });
+        // 1) ElevenLabs bevorzugen, falls Key vorhanden
+        const elevenKey = process.env.ELEVEN_API_KEY;
+        if (elevenKey) {
+          try {
+            const voiceId = process.env.ELEVEN_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
+            const modelId = process.env.ELEVEN_TTS_MODEL || 'eleven_multilingual_v2';
+            const stability = parseFloat(process.env.ELEVEN_STABILITY || '0.5');
+            const similarity = parseFloat(process.env.ELEVEN_SIMILARITY || '0.75');
+            const r: any = await (globalThis as any).fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}` as any, {
+              method: 'POST',
+              headers: {
+                'xi-api-key': elevenKey,
+                'Content-Type': 'application/json',
+                'Accept': 'audio/mpeg',
+              } as any,
+              body: JSON.stringify({
+                text,
+                model_id: modelId,
+                voice_settings: { stability, similarity_boost: similarity },
+              }),
+            } as any);
+            if ((r as any).ok) {
+              const ab = await (r as any).arrayBuffer();
+              const buf = Buffer.from(ab);
+              res.setHeader('Content-Type', 'audio/mpeg');
+              res.setHeader('Content-Length', buf.length.toString());
+              res.send(buf);
+              return;
+            } else {
+              // Fehlerdetails ausgeben, damit wir wissen, warum ElevenLabs nicht liefert
+              let errText = '';
+              try {
+                errText = await (r as any).text();
+              } catch {}
+              console.warn(`ElevenLabs antwortete mit Status ${r.status}: ${r.statusText} | ${errText?.slice(0,400)}`);
+              throw new Error(`ElevenLabs HTTP ${r.status}`);
+            }
+          } catch (e) {
+            console.warn('ElevenLabs TTS fehlgeschlagen, fallback auf Google TTS:', e);
+          }
+        }
 
-        res.setHeader('Content-Type', 'audio/wav');
+        // 2) Fallback: Google TTS
+        const ttsResponse = await generateSpeech({ text, languageCode: 'de-DE' });
+        res.setHeader('Content-Type', 'audio/mpeg');
         res.setHeader('Content-Length', ttsResponse.audioContent.length.toString());
         res.send(ttsResponse.audioContent);
 
@@ -241,6 +281,9 @@ export const testTTS = functions
     });
   });
 
+// Produktiver Alias: gleicher Handler wie testTTS, aber unter dem Namen "tts"
+export const tts = testTTS;
+
 /**
  * RAG-System: Verarbeitet hochgeladene Dokumente
  */
@@ -249,6 +292,7 @@ export const processDocument = functions
   .runWith({
     timeoutSeconds: 300,
     memory: '1GB',
+    secrets: ['PINECONE_API_KEY','OPENAI_API_KEY'],
   })
   .https
   .onRequest(async (req, res) => {
@@ -293,6 +337,7 @@ export const generateAvatarResponse = functions
   .runWith({
     timeoutSeconds: 300,
     memory: '1GB',
+    secrets: ['PINECONE_API_KEY','OPENAI_API_KEY','GOOGLE_CSE_API_KEY','GOOGLE_CSE_CX'],
   })
   .https
   .onRequest(async (req, res) => {
@@ -339,6 +384,7 @@ export const validateRAGSystem = functions
   .runWith({
     timeoutSeconds: 60,
     memory: '512MB',
+    secrets: ['PINECONE_API_KEY','OPENAI_API_KEY'],
   })
   .https
   .onRequest(async (req, res) => {

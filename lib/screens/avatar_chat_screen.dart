@@ -7,6 +7,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/avatar_data.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AvatarChatScreen extends StatefulWidget {
   const AvatarChatScreen({super.key});
@@ -21,6 +22,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   final List<ChatMessage> _messages = [];
   final bool _isRecording = false;
   bool _isTyping = false;
+  String? _partnerName;
+  // entfernt – nicht mehr benötigt
+  // Pending-Bestätigung bei unsicherem Kurz-Namen
+  String? _pendingFullName;
+  String? _pendingLooseName;
+  bool _awaitingNameConfirm = false;
+  bool _pendingIsKnownPartner = false;
+  String? _partnerPetName;
+  // Paging
+  static const int _pageSize = 30;
+  DocumentSnapshot<Map<String, dynamic>>? _oldestDoc;
+  bool _hasMore = true;
+  bool _isLoadingMore = false;
 
   AvatarData? _avatarData;
   // Aufnahme temporär deaktiviert
@@ -37,6 +51,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       if (args is AvatarData) {
         setState(() {
           _avatarData = args;
+        });
+        _loadPartnerName().then((_) {
+          _loadHistory().then((_) {
+            if (_messages.isEmpty) {
+              if ((_partnerName ?? '').isNotEmpty) {
+                _botSay(_friendlyGreet(_partnerName!));
+              } else {
+                _botSay(
+                  'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?',
+                );
+              }
+            }
+          });
         });
       }
     });
@@ -223,6 +250,24 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       ),
       child: Column(
         children: [
+          if (_messages.isNotEmpty && _hasMore)
+            Padding(
+              padding: const EdgeInsets.only(top: 6.0, bottom: 2.0),
+              child: TextButton.icon(
+                onPressed: _isLoadingMore ? null : _loadMoreHistory,
+                icon: const Icon(
+                  Icons.history,
+                  color: Colors.white70,
+                  size: 18,
+                ),
+                label: Text(
+                  _isLoadingMore
+                      ? 'Lade ältere Nachrichten…'
+                      : 'Ältere Nachrichten anzeigen',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              ),
+            ),
           // Nachrichten-Liste
           Expanded(
             child: _messages.isEmpty
@@ -230,12 +275,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 : ListView.builder(
                     controller: _scrollController,
                     padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: (_messages.length >= 2) ? 2 : _messages.length,
+                    itemCount: _messages.length,
                     itemBuilder: (context, index) {
-                      final startIndex = (_messages.length >= 2)
-                          ? _messages.length - 2
-                          : 0;
-                      return _buildMessageBubble(_messages[startIndex + index]);
+                      return _buildMessageBubble(_messages[index]);
                     },
                   ),
           ),
@@ -283,20 +325,64 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           // Mini-Avatar (KI) ausgeblendet
           Flexible(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * 0.78,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: isUser ? Colors.deepPurple : Colors.grey.shade800,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: GestureDetector(
-                onTap: () {
-                  if (message.text.startsWith('🎤')) {
-                    _playLastRecording();
+                onTap: () async {
+                  if (!isUser) {
+                    if (message.audioPath != null) {
+                      await _playAudioAtPath(message.audioPath!);
+                    } else {
+                      final p = await _ensureTtsForText(message.text);
+                      if (p != null) {
+                        // persist audioPath into this message
+                        final idx = _messages.indexOf(message);
+                        if (idx >= 0) {
+                          setState(() {
+                            _messages[idx] = ChatMessage(
+                              text: message.text,
+                              isUser: false,
+                              audioPath: p,
+                              timestamp: message.timestamp,
+                            );
+                          });
+                        }
+                        await _playAudioAtPath(p);
+                      } else {
+                        _showSystemSnack('TTS nicht verfügbar');
+                      }
+                    }
                   }
                 },
-                child: Text(
-                  message.text,
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        message.text,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                    if (!isUser)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Icon(
+                          Icons.volume_up,
+                          color: Colors.white70,
+                          size: 18,
+                        ),
+                      ),
+                  ],
                 ),
               ),
             ),
@@ -396,17 +482,153 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   void _sendMessage() {
     if (_messageController.text.trim().isNotEmpty) {
-      _addMessage(_messageController.text.trim(), true);
+      final text = _messageController.text.trim();
+      _addMessage(text, true);
       _messageController.clear();
+      // Falls wir gerade auf Bestätigung warten
+      if (_awaitingNameConfirm) {
+        final useFull = _isAffirmative(text);
+        final nameToSave = useFull
+            ? (_pendingFullName ?? _pendingLooseName)
+            : _pendingLooseName;
+        if (nameToSave != null && nameToSave.isNotEmpty) {
+          _savePartnerName(nameToSave);
+          _addMessage(_friendlyGreet(nameToSave), false);
+          _pendingFullName = null;
+          _pendingLooseName = null;
+          _awaitingNameConfirm = false;
+          return;
+        }
+      }
+
+      // Name-Erkennung: explizit -> sofort merken; sonst lose Heuristik mit optionaler Nachfrage
+      if ((_partnerName == null || _partnerName!.isEmpty)) {
+        final explicit = _extractNameExplicit(text);
+        if (explicit != null && explicit.isNotEmpty) {
+          _savePartnerName(explicit);
+          _botSay(_friendlyGreet(_partnerName ?? explicit));
+          return;
+        }
+        final loose = _extractNameLoose(text);
+        if (loose != null && loose.isNotEmpty) {
+          final authName = FirebaseAuth.instance.currentUser?.displayName;
+          if (authName != null && authName.isNotEmpty) {
+            final ln = loose.toLowerCase();
+            final an = authName.toLowerCase();
+            final starts =
+                an.startsWith(ln + " ") || an.startsWith(ln + "-") || an == ln;
+            if (starts && authName.length > loose.length) {
+              _pendingLooseName = _capitalize(loose);
+              _pendingFullName = authName;
+              _pendingIsKnownPartner = true;
+              _awaitingNameConfirm = true;
+              _botSay(_friendlyConfirmPendingName(_pendingFullName!));
+              return;
+            }
+          }
+          // kein bekannter Vollname → direkt übernehmen
+          _savePartnerName(loose);
+          _botSay(_friendlyGreet(_partnerName ?? loose));
+          return;
+        }
+        // Ultimativer Fallback: Ein-Wort-Name direkt übernehmen
+        final onlyWord = RegExp(r'^[A-Za-zÄÖÜäöüß\-]{2,24}$');
+        if (onlyWord.hasMatch(text)) {
+          final nm = _capitalize(
+            text.replaceAll(RegExp(r'[^A-Za-zÄÖÜäöüß\-]'), ''),
+          );
+          if (nm.isNotEmpty) {
+            _savePartnerName(nm);
+            _botSay(_friendlyGreet(nm));
+            return;
+          }
+        }
+      }
+
+      // Kosenamen-Erkennung: ohne Nachfrage speichern
+      final pet = _extractPetName(text);
+      if (pet != null && pet.isNotEmpty) {
+        _savePartnerPetName(pet);
+        _botSay("Alles klar – ich nenne dich ab jetzt '" + pet + "'.");
+        return;
+      }
+
       _chatWithBackend(_messages.last.text);
     }
   }
 
-  void _addMessage(String text, bool isUser) {
+  Future<void> _botSay(String text) async {
+    String? path;
+    try {
+      final uri = Uri.parse(
+        'https://us-central1-sunriza26.cloudfunctions.net/tts',
+      );
+      final res = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'text': text}),
+      );
+      if (res.statusCode >= 200 &&
+          res.statusCode < 300 &&
+          res.bodyBytes.isNotEmpty) {
+        final dir = await getTemporaryDirectory();
+        final file = File(
+          '${dir.path}/bot_local_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
+        );
+        await file.writeAsBytes(res.bodyBytes, flush: true);
+        path = file.path;
+      } else {
+        _showSystemSnack(
+          'TTS-HTTP: ${res.statusCode} ${res.body.substring(0, res.body.length > 120 ? 120 : res.body.length)}',
+        );
+      }
+    } catch (e) {
+      _showSystemSnack('TTS-Fehler: $e');
+    }
+    _addMessage(text, false, audioPath: path);
+    if (path != null) {
+      await _playAudioAtPath(path);
+    }
+  }
+
+  Future<String?> _ensureTtsForText(String text) async {
+    try {
+      final uri = Uri.parse(
+        'https://us-central1-sunriza26.cloudfunctions.net/tts',
+      );
+      final res = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'text': text}),
+      );
+      if (res.statusCode >= 200 &&
+          res.statusCode < 300 &&
+          res.bodyBytes.isNotEmpty) {
+        final dir = await getTemporaryDirectory();
+        final file = File(
+          '${dir.path}/tts_on_demand_${DateTime.now().millisecondsSinceEpoch}.mp3',
+        );
+        await file.writeAsBytes(res.bodyBytes, flush: true);
+        return file.path;
+      } else {
+        _showSystemSnack(
+          'TTS-HTTP: ${res.statusCode} ${res.body.substring(0, res.body.length > 120 ? 120 : res.body.length)}',
+        );
+      }
+    } catch (e) {
+      _showSystemSnack('TTS-Fehler: $e');
+    }
+    return null;
+  }
+
+  void _addMessage(String text, bool isUser, {String? audioPath}) {
     setState(() {
-      _messages.add(ChatMessage(text: text, isUser: isUser));
+      _messages.add(
+        ChatMessage(text: text, isUser: isUser, audioPath: audioPath),
+      );
     });
     _scrollToBottom();
+    _persistMessage(text: text, isUser: isUser);
   }
 
   Future<void> _chatWithBackend(String userText) async {
@@ -434,9 +656,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final answer = (data['answer'] as String?)?.trim();
-        if (answer != null && answer.isNotEmpty) {
-          _addMessage(answer, false);
-        }
+        String? audioPath;
         final tts = data['tts_audio_b64'] as String?;
         if (tts != null && tts.isNotEmpty) {
           final bytes = base64Decode(tts);
@@ -446,15 +666,74 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           );
           await file.writeAsBytes(bytes, flush: true);
           _lastRecordingPath = file.path;
+          audioPath = file.path;
           await _playLastRecording();
         }
+        if (answer != null && answer.isNotEmpty) {
+          _addMessage(answer, false, audioPath: audioPath);
+        }
       } else {
-        _showSystemSnack('Chat-Fehler: ${res.statusCode}');
+        // Fallback zu Cloud Function
+        await _chatViaFunctions(userText);
       }
     } catch (e) {
-      _showSystemSnack('Chat-Fehler: $e');
+      // Fallback zu Cloud Function bei Socket-/HTTP-Fehlern
+      await _chatViaFunctions(userText);
     } finally {
       if (mounted) setState(() => _isTyping = false);
+    }
+  }
+
+  Future<void> _chatViaFunctions(String userText) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final uri = Uri.parse(
+        'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse',
+      );
+      final res = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': uid,
+          'query': userText,
+          'maxTokens': 180,
+          'temperature': 0.6,
+        }),
+      );
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final answer = (data['response'] as String?)?.trim();
+        if (answer != null && answer.isNotEmpty) {
+          // TTS über Cloud Function tts
+          String? path;
+          try {
+            final ttsUri = Uri.parse(
+              'https://us-central1-sunriza26.cloudfunctions.net/tts',
+            );
+            final ttsRes = await http.post(
+              ttsUri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'text': answer}),
+            );
+            if (ttsRes.statusCode >= 200 &&
+                ttsRes.statusCode < 300 &&
+                ttsRes.bodyBytes.isNotEmpty) {
+              final dir = await getTemporaryDirectory();
+              final file = File(
+                '${dir.path}/avatar_tts_fallback_${DateTime.now().millisecondsSinceEpoch}.mp3',
+              );
+              await file.writeAsBytes(ttsRes.bodyBytes, flush: true);
+              path = file.path;
+            }
+          } catch (_) {}
+          _addMessage(answer, false, audioPath: path);
+          if (path != null) await _playAudioAtPath(path);
+        }
+      } else {
+        _showSystemSnack('Chat-Fehler: ${res.statusCode} (CF)');
+      }
+    } catch (e) {
+      _showSystemSnack('Chat-Fehler (CF): $e');
     }
   }
 
@@ -469,6 +748,354 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       await _player.play();
     } catch (e) {
       _showSystemSnack('Wiedergabefehler: $e');
+    }
+  }
+
+  Future<void> _playAudioAtPath(String path) async {
+    try {
+      await _player.setFilePath(path);
+      await _player.play();
+    } catch (e) {
+      _showSystemSnack('Wiedergabefehler: $e');
+    }
+  }
+
+  Future<void> _loadHistory() async {
+    try {
+      if (_avatarData == null) return;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final fs = FirebaseFirestore.instance;
+      final snap = await fs
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .collection('chat')
+          .orderBy('createdAt')
+          .limit(_pageSize)
+          .get();
+      final List<ChatMessage> loaded = [];
+      for (final d in snap.docs) {
+        final data = d.data();
+        final text = (data['text'] as String?) ?? '';
+        if (text.isEmpty) continue;
+        final isUser = (data['isUser'] as bool?) ?? false;
+        loaded.add(ChatMessage(text: text, isUser: isUser));
+      }
+      if (mounted && loaded.isNotEmpty) {
+        setState(() {
+          _messages
+            ..clear()
+            ..addAll(loaded);
+          _oldestDoc = snap.docs.isNotEmpty ? snap.docs.first : null;
+          _hasMore = snap.docs.length == _pageSize;
+        });
+        _scrollToBottom();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _persistMessage({
+    required String text,
+    required bool isUser,
+  }) async {
+    try {
+      if (_avatarData == null) return;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final fs = FirebaseFirestore.instance;
+      await fs
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .collection('chat')
+          .add({
+            'text': text,
+            'isUser': isUser,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+    } catch (_) {}
+  }
+
+  // Partnername laden/speichern
+  Future<void> _loadPartnerName() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || _avatarData == null) return;
+      final fs = FirebaseFirestore.instance;
+      final doc = await fs
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .get();
+      final data = doc.data();
+      if (data != null && data['partnerName'] is String) {
+        _partnerName = (data['partnerName'] as String).trim();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _savePartnerName(String name) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || _avatarData == null) return;
+      _partnerName = name.trim();
+      final fs = FirebaseFirestore.instance;
+      await fs
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .set({
+            'partnerName': _partnerName,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      // optional: als persönlicher Insight merken
+      await _saveInsight(
+        'Gesprächspartner: $_partnerName',
+        source: 'profile',
+        fileName: 'participant.txt',
+      );
+    } catch (_) {}
+  }
+
+  String? _extractNameExplicit(String input) {
+    final patterns = [
+      RegExp(
+        r'mein\s+name\s+ist\s+([A-Za-zÄÖÜäöüß\-]{2,})',
+        caseSensitive: false,
+      ),
+      RegExp(r'ich\s+bin\s+([A-Za-zÄÖÜäöüß\-]{2,})', caseSensitive: false),
+      RegExp(r'ich\s+heisse?\s+([A-Za-zÄÖÜäöüß\-]{2,})', caseSensitive: false),
+    ];
+    for (final p in patterns) {
+      final m = p.firstMatch(input);
+      if (m != null && m.groupCount >= 1) {
+        final name = m.group(1) ?? '';
+        if (name.isNotEmpty) return _capitalize(name);
+      }
+    }
+    return null;
+  }
+
+  String? _extractNameLoose(String input) {
+    final lower = input.toLowerCase();
+    if (!lower.contains(' ') && input.length >= 2 && input.length <= 24) {
+      final word = input.replaceAll(RegExp(r'[^A-Za-zÄÖÜäöüß\-]'), '');
+      if (word.isNotEmpty) return _capitalize(word);
+    }
+    return null;
+  }
+
+  String _capitalize(String s) {
+    if (s.isEmpty) return s;
+    return s[0].toUpperCase() + s.substring(1);
+  }
+
+  bool _isAffirmative(String input) {
+    final t = input.toLowerCase().trim();
+    return t == 'ja' ||
+        t == 'genau' ||
+        t == 'richtig' ||
+        t == 'yes' ||
+        t.startsWith('ja,') ||
+        t.endsWith(' ja');
+  }
+
+  String _friendlyGreet(String name) {
+    final pet = _partnerPetName;
+    final suffix = (pet != null && pet.isNotEmpty)
+        ? ', mein ' + pet + '!'
+        : '!';
+    final variants = [
+      'Hallo ' + name + ', schön dich zu sehen' + suffix,
+      'Hey ' + name + ', gut dass du da bist' + suffix,
+      'Hi ' + name + ', ich freue mich, dich zu sprechen' + suffix,
+    ];
+    return variants[DateTime.now().millisecondsSinceEpoch % variants.length];
+  }
+
+  String _friendlyConfirmPendingName(String fullName) {
+    final first = _shortFirstName(fullName);
+    final roleTail = _pendingIsKnownPartner ? ' Mein Ehemann?' : '';
+    final variants = [
+      'Ach wie nett – bist Du es, $first?$roleTail',
+      'Hey, bist Du $first?$roleTail',
+      'Klingst nach $first – bist Du’s?$roleTail',
+      'Bist Du es, $first?$roleTail',
+    ];
+    return variants[DateTime.now().millisecondsSinceEpoch % variants.length];
+  }
+
+  String _shortFirstName(String fullName) {
+    final noSurname = fullName.split(' ').first;
+    final first = noSurname.split('-').first;
+    return _capitalize(first.trim());
+  }
+
+  // Extrahiert Kosenamen aus der Eingabe
+  String? _extractPetName(String input) {
+    final patterns = [
+      RegExp(
+        r"nenn'?\s*mich\s+([A-Za-zÄÖÜäöüß\-\s]{2,24})",
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'sag\s+zu\s+mir\s+([A-Za-zÄÖÜäöüß\-\s]{2,24})',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'mein\s+(?:kosename|spitzname)\s+ist\s+([A-Za-zÄÖÜäöüß\-\s]{2,24})',
+        caseSensitive: false,
+      ),
+      RegExp(
+        r'du\s+(?:nennst|hast).*?(?:mich|mir|mein)\s+([A-Za-zÄÖÜäöüß\-\s]{2,24})',
+        caseSensitive: false,
+      ),
+    ];
+    for (final p in patterns) {
+      final m = p.firstMatch(input);
+      if (m != null && m.groupCount >= 1) {
+        final raw = (m.group(1) ?? '').trim();
+        final cleaned = raw.replaceAll(RegExp(r'[^A-Za-zÄÖÜäöüß\-\s]'), '');
+        final result = _titleCase(cleaned).trim();
+        if (result.length >= 2) return result;
+      }
+    }
+    return null;
+  }
+
+  Future<void> _savePartnerPetName(String pet) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || _avatarData == null) return;
+      _partnerPetName = pet.trim();
+      final fs = FirebaseFirestore.instance;
+      await fs
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .set({
+            'partnerPetName': _partnerPetName,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      await _saveInsight(
+        'Anrede/Kosename: ' + _partnerPetName!,
+        source: 'profile',
+        fileName: 'petname.txt',
+      );
+    } catch (_) {}
+  }
+
+  String _titleCase(String s) {
+    return s
+        .split(RegExp(r'\s+'))
+        .where((w) => w.isNotEmpty)
+        .map((w) => w[0].toUpperCase() + w.substring(1).toLowerCase())
+        .join(' ');
+  }
+
+  Future<void> _loadMoreHistory() async {
+    if (_avatarData == null || _isLoadingMore || _oldestDoc == null) return;
+    setState(() => _isLoadingMore = true);
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final fs = FirebaseFirestore.instance;
+      final q = fs
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .collection('chat')
+          .orderBy('createdAt')
+          .endBeforeDocument(_oldestDoc!)
+          .limitToLast(_pageSize);
+      final snap = await q.get();
+      if (snap.docs.isEmpty) {
+        setState(() {
+          _hasMore = false;
+        });
+        return;
+      }
+      final List<ChatMessage> older = [];
+      for (final d in snap.docs) {
+        final data = d.data();
+        final text = (data['text'] as String?) ?? '';
+        if (text.isEmpty) continue;
+        final isUser = (data['isUser'] as bool?) ?? false;
+        older.add(ChatMessage(text: text, isUser: isUser));
+      }
+      if (mounted && older.isNotEmpty) {
+        setState(() {
+          _messages.insertAll(0, older);
+          _oldestDoc = snap.docs.first;
+          _hasMore = snap.docs.length == _pageSize;
+        });
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _isLoadingMore = false);
+    }
+  }
+
+  Future<void> _saveInsight(
+    String fullText, {
+    String source = 'insight',
+    String? fileName,
+  }) async {
+    try {
+      if (_avatarData == null) return;
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final uri = Uri.parse(
+        '${dotenv.env['MEMORY_API_BASE_URL']}/avatar/memory/insert',
+      );
+      final payload = {
+        'user_id': uid,
+        'avatar_id': _avatarData!.id,
+        'full_text': fullText,
+        'source': source,
+        if (fileName != null) 'file_name': fileName,
+      };
+      await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _maybeConfirmGlobalInsight(String text) async {
+    if (!mounted) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Darf ich mir das merken?'),
+        content: const Text(
+          'Soll ich diese Information dauerhaft für den Avatar speichern (für alle künftigen Gespräche)?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Nein'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Ja, speichern'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _saveInsight(
+        text,
+        source: 'insight_global',
+        fileName: 'global_insights.txt',
+      );
     }
   }
 
@@ -491,56 +1118,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     });
   }
 
-  void _showSettings() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.grey.shade900,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.person, color: Colors.deepPurple),
-              title: const Text(
-                'Avatar bearbeiten',
-                style: TextStyle(color: Colors.white),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Navigate to avatar edit
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.history, color: Colors.deepPurple),
-              title: const Text(
-                'Chat-Verlauf',
-                style: TextStyle(color: Colors.white),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Show chat history
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.settings, color: Colors.deepPurple),
-              title: const Text(
-                'Einstellungen',
-                style: TextStyle(color: Colors.white),
-              ),
-              onTap: () {
-                Navigator.pop(context);
-                // TODO: Show settings
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // _showSettings entfernt – derzeit nicht genutzt
 
   @override
   void dispose() {
@@ -577,7 +1155,12 @@ class ChatMessage {
   final String text;
   final bool isUser;
   final DateTime timestamp;
+  final String? audioPath;
 
-  ChatMessage({required this.text, required this.isUser, DateTime? timestamp})
-    : timestamp = timestamp ?? DateTime.now();
+  ChatMessage({
+    required this.text,
+    required this.isUser,
+    this.audioPath,
+    DateTime? timestamp,
+  }) : timestamp = timestamp ?? DateTime.now();
 }
