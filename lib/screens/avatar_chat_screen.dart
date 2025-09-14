@@ -599,10 +599,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       final uri = Uri.parse(
         'https://us-central1-sunriza26.cloudfunctions.net/tts',
       );
+      final String? voiceId = (_avatarData?.training != null)
+          ? (_avatarData!.training!['voice'] != null
+                ? _avatarData!.training!['voice']['elevenVoiceId'] as String?
+                : null)
+          : null;
+      final payload = <String, dynamic>{'text': text};
+      if (voiceId != null && voiceId.isNotEmpty) {
+        payload['voiceId'] = voiceId;
+      }
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'text': text}),
+        body: jsonEncode(payload),
       );
       if (res.statusCode >= 200 &&
           res.statusCode < 300 &&
@@ -632,10 +641,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       final uri = Uri.parse(
         'https://us-central1-sunriza26.cloudfunctions.net/tts',
       );
+      final String? voiceId = (_avatarData?.training != null)
+          ? (_avatarData!.training!['voice'] != null
+                ? _avatarData!.training!['voice']['elevenVoiceId'] as String?
+                : null)
+          : null;
+      final payload = <String, dynamic>{'text': text};
+      if (voiceId != null && voiceId.isNotEmpty) {
+        payload['voiceId'] = voiceId;
+      }
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'text': text}),
+        body: jsonEncode(payload),
       );
       if (res.statusCode >= 200 &&
           res.statusCode < 300 &&

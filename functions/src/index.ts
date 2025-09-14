@@ -75,7 +75,7 @@ export const generateLiveVideo = functions
           return;
         }
 
-        const { text } = req.body;
+        const { text } = req.body || {};
         
         if (!text || typeof text !== 'string') {
           res.status(400).json({ error: 'Text ist erforderlich' });
@@ -219,7 +219,7 @@ export const testTTS = functions
           return;
         }
 
-        const { text } = req.body;
+        const { text, voiceId, modelId, stability, similarity } = req.body || {};
         
         if (!text) {
           res.status(400).json({ error: 'Text ist erforderlich' });
@@ -230,11 +230,19 @@ export const testTTS = functions
         const elevenKey = process.env.ELEVEN_API_KEY;
         if (elevenKey) {
           try {
-            const voiceId = process.env.ELEVEN_VOICE_ID || '21m00Tcm4TlvDq8ikWAM';
-            const modelId = process.env.ELEVEN_TTS_MODEL || 'eleven_multilingual_v2';
-            const stability = parseFloat(process.env.ELEVEN_STABILITY || '0.5');
-            const similarity = parseFloat(process.env.ELEVEN_SIMILARITY || '0.75');
-            const r: any = await (globalThis as any).fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}` as any, {
+            const effectiveVoiceId = (typeof voiceId === 'string' && voiceId.trim().length > 0)
+              ? voiceId.trim()
+              : (process.env.ELEVEN_VOICE_ID || '21m00Tcm4TlvDq8ikWAM');
+            const effectiveModelId = (typeof modelId === 'string' && modelId.trim().length > 0)
+              ? modelId.trim()
+              : (process.env.ELEVEN_TTS_MODEL || 'eleven_multilingual_v2');
+            const effStability = Number.isFinite(parseFloat(stability))
+              ? parseFloat(stability)
+              : parseFloat(process.env.ELEVEN_STABILITY || '0.5');
+            const effSimilarity = Number.isFinite(parseFloat(similarity))
+              ? parseFloat(similarity)
+              : parseFloat(process.env.ELEVEN_SIMILARITY || '0.75');
+            const r: any = await (globalThis as any).fetch(`https://api.elevenlabs.io/v1/text-to-speech/${effectiveVoiceId}` as any, {
               method: 'POST',
               headers: {
                 'xi-api-key': elevenKey,
@@ -243,8 +251,8 @@ export const testTTS = functions
               } as any,
               body: JSON.stringify({
                 text,
-                model_id: modelId,
-                voice_settings: { stability, similarity_boost: similarity },
+                model_id: effectiveModelId,
+                voice_settings: { stability: effStability, similarity_boost: effSimilarity },
               }),
             } as any);
             if ((r as any).ok) {
