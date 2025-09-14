@@ -29,6 +29,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   String? _pendingLooseName;
   bool _awaitingNameConfirm = false;
   bool _pendingIsKnownPartner = false;
+  bool _isKnownPartner = false;
   String? _partnerPetName;
   // Paging
   static const int _pageSize = 30;
@@ -287,29 +288,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.chat_bubble_outline, size: 64, color: Colors.white70),
-          const SizedBox(height: 16),
-          Text(
-            'Starte eine Unterhaltung',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.white,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Schreibe eine Nachricht oder nutze das Mikrofon',
-            style: TextStyle(fontSize: 14, color: Colors.white70),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
+    // Kein Platzhalter – der Avatar begrüßt automatisch
+    return const SizedBox.shrink();
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
@@ -480,9 +460,25 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   // void _stopRecording() {}
 
-  void _sendMessage() {
+  void _sendMessage() async {
     if (_messageController.text.trim().isNotEmpty) {
       final text = _messageController.text.trim();
+      // Direkte Beantwortung: "Weißt du, wer ich bin?"
+      final whoAmI = RegExp(
+        r'(wei[ßs]t\s+du\s+wer\s+ich\s+bin\??|wer\s+bin\s+ich\??|kennst\s+du\s+mich\??)',
+        caseSensitive: false,
+      );
+      if (whoAmI.hasMatch(text) &&
+          (_partnerName != null && _partnerName!.isNotEmpty)) {
+        final first = _shortFirstName(_partnerName!);
+        final suffix = _affectionateSuffix();
+        await _botSay(
+          'Klar – du bist ' + first + suffix.replaceFirst(',', '') + '',
+        );
+        _addMessage(text, true);
+        _messageController.clear();
+        return;
+      }
       _addMessage(text, true);
       _messageController.clear();
       // Falls wir gerade auf Bestätigung warten
@@ -492,8 +488,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             ? (_pendingFullName ?? _pendingLooseName)
             : _pendingLooseName;
         if (nameToSave != null && nameToSave.isNotEmpty) {
+          _isKnownPartner = _pendingIsKnownPartner;
           _savePartnerName(nameToSave);
-          _addMessage(_friendlyGreet(nameToSave), false);
+          if (_isKnownPartner) {
+            await _savePartnerRole('ehemann');
+          }
+          await _botSay(_friendlyGreet(_shortFirstName(nameToSave)));
           _pendingFullName = null;
           _pendingLooseName = null;
           _awaitingNameConfirm = false;
@@ -505,8 +505,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       if ((_partnerName == null || _partnerName!.isEmpty)) {
         final explicit = _extractNameExplicit(text);
         if (explicit != null && explicit.isNotEmpty) {
+          _isKnownPartner = true;
           _savePartnerName(explicit);
-          _botSay(_friendlyGreet(_partnerName ?? explicit));
+          _botSay(_friendlyGreet(_shortFirstName(_partnerName ?? explicit)));
           return;
         }
         final loose = _extractNameLoose(text);
@@ -527,8 +528,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             }
           }
           // kein bekannter Vollname → direkt übernehmen
+          _isKnownPartner = true;
           _savePartnerName(loose);
-          _botSay(_friendlyGreet(_partnerName ?? loose));
+          _botSay(_friendlyGreet(_shortFirstName(_partnerName ?? loose)));
+          return;
+        }
+        // Sonderfall: mögliche Namenseingabe mit Leerzeichen/Typo (z. B. "Ha ja")
+        final splitName = _extractNameFromSplitTypos(text);
+        if (splitName != null && splitName.isNotEmpty) {
+          _pendingLooseName = splitName;
+          _pendingFullName = null;
+          _pendingIsKnownPartner = true;
+          _awaitingNameConfirm = true;
+          await _botSay(
+            'Ach, das ist interessant – heißt du "' + splitName + '"?',
+          );
           return;
         }
         // Ultimativer Fallback: Ein-Wort-Name direkt übernehmen
@@ -538,8 +552,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             text.replaceAll(RegExp(r'[^A-Za-zÄÖÜäöüß\-]'), ''),
           );
           if (nm.isNotEmpty) {
+            _isKnownPartner = true;
             _savePartnerName(nm);
-            _botSay(_friendlyGreet(nm));
+            _botSay(_friendlyGreet(_shortFirstName(nm)));
             return;
           }
         }
@@ -835,6 +850,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       if (data != null && data['partnerName'] is String) {
         _partnerName = (data['partnerName'] as String).trim();
       }
+      if (data != null && data['partnerPetName'] is String) {
+        _partnerPetName = (data['partnerPetName'] as String).trim();
+      }
+      if (data != null && data['partnerRole'] is String) {
+        final role = (data['partnerRole'] as String).toLowerCase().trim();
+        _isKnownPartner = role.contains('ehemann') || role.contains('partner');
+      }
     } catch (_) {}
   }
 
@@ -890,6 +912,22 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     return null;
   }
 
+  // z. B. "Ha ja" -> "Haja" oder "Ha-Ja" wird als Kandidat erkannt
+  String? _extractNameFromSplitTypos(String input) {
+    final cleaned = input.trim();
+    if (!cleaned.contains(' ')) return null;
+    final parts = cleaned.split(RegExp(r'\s+'));
+    if (parts.length == 2 &&
+        parts[0].length <= 3 &&
+        parts[1].length <= 3 &&
+        RegExp(r'^[A-Za-zÄÖÜäöüß-]+$').hasMatch(parts[0]) &&
+        RegExp(r'^[A-Za-zÄÖÜäöüß-]+$').hasMatch(parts[1])) {
+      final guess = _capitalize((parts[0] + parts[1]).replaceAll('-', ''));
+      if (guess.length >= 2 && guess.length <= 24) return guess;
+    }
+    return null;
+  }
+
   String _capitalize(String s) {
     if (s.isEmpty) return s;
     return s[0].toUpperCase() + s.substring(1);
@@ -901,21 +939,36 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         t == 'genau' ||
         t == 'richtig' ||
         t == 'yes' ||
+        t == 'jap' ||
+        t == 'jo' ||
+        t == 'klar' ||
+        t == 'okay' ||
+        t == 'ok' ||
+        t == 'yep' ||
         t.startsWith('ja,') ||
         t.endsWith(' ja');
   }
 
   String _friendlyGreet(String name) {
-    final pet = _partnerPetName;
-    final suffix = (pet != null && pet.isNotEmpty)
-        ? ', mein ' + pet + '!'
-        : '!';
+    final suffix = _affectionateSuffix();
+    final first = _shortFirstName(name);
     final variants = [
-      'Hallo ' + name + ', schön dich zu sehen' + suffix,
-      'Hey ' + name + ', gut dass du da bist' + suffix,
-      'Hi ' + name + ', ich freue mich, dich zu sprechen' + suffix,
+      'Hallo ' + first + ', schön dich zu sehen' + suffix,
+      'Hey ' + first + ', gut dass du da bist' + suffix,
+      'Hi ' + first + ', ich freue mich, dich zu sprechen' + suffix,
     ];
     return variants[DateTime.now().millisecondsSinceEpoch % variants.length];
+  }
+
+  String _affectionateSuffix() {
+    if (_partnerPetName != null && _partnerPetName!.isNotEmpty) {
+      return ', mein ' + _partnerPetName! + '!';
+    }
+    if (_isKnownPartner) {
+      const options = [', mein Schatz!', ', mein Lieber!', ', mein Herz!'];
+      return options[DateTime.now().millisecondsSinceEpoch % options.length];
+    }
+    return '!';
   }
 
   String _friendlyConfirmPendingName(String fullName) {
@@ -987,6 +1040,28 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         'Anrede/Kosename: ' + _partnerPetName!,
         source: 'profile',
         fileName: 'petname.txt',
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _savePartnerRole(String role) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || _avatarData == null) return;
+      final fs = FirebaseFirestore.instance;
+      await fs
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .set({
+            'partnerRole': role,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      await _saveInsight(
+        'Beziehungsrolle: ' + role,
+        source: 'profile',
+        fileName: 'relationship.txt',
       );
     } catch (_) {}
   }
