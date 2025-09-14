@@ -501,6 +501,31 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         }
       }
 
+      // Korrektur: Wenn bereits ein Name existiert, aber der User sich jetzt explizit (oder per Einwort) anders nennt → überschreiben
+      if ((_partnerName != null && _partnerName!.isNotEmpty)) {
+        final exp = _extractNameExplicit(text);
+        String? single;
+        final onlyWord = RegExp(r'^[A-Za-zÄÖÜäöüß\-]{2,24}$');
+        if (exp == null && onlyWord.hasMatch(text)) {
+          single = _capitalize(
+            text.replaceAll(RegExp(r'[^A-Za-zÄÖÜäöüß\-]'), ''),
+          );
+        }
+        final candidate = exp ?? single;
+        if (candidate != null &&
+            candidate.isNotEmpty &&
+            candidate.toLowerCase() != _partnerName!.toLowerCase()) {
+          _isKnownPartner = true;
+          _savePartnerName(candidate);
+          final first = _shortFirstName(candidate);
+          final tail = (_partnerPetName != null && _partnerPetName!.isNotEmpty)
+              ? ', mein ' + _partnerPetName! + '!'
+              : '!';
+          await _botSay('Alles klar – du bist ' + first + tail);
+          return;
+        }
+      }
+
       // Name-Erkennung: explizit -> sofort merken; sonst lose Heuristik mit optionaler Nachfrage
       if ((_partnerName == null || _partnerName!.isEmpty)) {
         final explicit = _extractNameExplicit(text);
@@ -857,6 +882,34 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         final role = (data['partnerRole'] as String).toLowerCase().trim();
         _isKnownPartner = role.contains('ehemann') || role.contains('partner');
       }
+
+      // Fallback: globales Profil, falls avatar-spezifische Felder fehlen
+      if ((_partnerName == null || _partnerName!.isEmpty) ||
+          (_partnerPetName == null || _partnerPetName!.isEmpty) ||
+          !_isKnownPartner) {
+        final profile = await fs
+            .collection('users')
+            .doc(uid)
+            .collection('profile')
+            .doc('global')
+            .get();
+        final pd = profile.data();
+        if (pd != null) {
+          if ((_partnerName == null || _partnerName!.isEmpty) &&
+              pd['partnerName'] is String) {
+            _partnerName = (pd['partnerName'] as String).trim();
+          }
+          if ((_partnerPetName == null || _partnerPetName!.isEmpty) &&
+              pd['partnerPetName'] is String) {
+            _partnerPetName = (pd['partnerPetName'] as String).trim();
+          }
+          if (!_isKnownPartner && pd['partnerRole'] is String) {
+            final role = (pd['partnerRole'] as String).toLowerCase().trim();
+            _isKnownPartner =
+                role.contains('ehemann') || role.contains('partner');
+          }
+        }
+      }
     } catch (_) {}
   }
 
@@ -871,6 +924,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           .doc(uid)
           .collection('avatars')
           .doc(_avatarData!.id)
+          .set({
+            'partnerName': _partnerName,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      await fs
+          .collection('users')
+          .doc(uid)
+          .collection('profile')
+          .doc('global')
           .set({
             'partnerName': _partnerName,
             'updatedAt': FieldValue.serverTimestamp(),
@@ -1036,6 +1098,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             'partnerPetName': _partnerPetName,
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
+      await fs
+          .collection('users')
+          .doc(uid)
+          .collection('profile')
+          .doc('global')
+          .set({
+            'partnerPetName': _partnerPetName,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
       await _saveInsight(
         'Anrede/Kosename: ' + _partnerPetName!,
         source: 'profile',
@@ -1054,6 +1125,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           .doc(uid)
           .collection('avatars')
           .doc(_avatarData!.id)
+          .set({
+            'partnerRole': role,
+            'updatedAt': FieldValue.serverTimestamp(),
+          }, SetOptions(merge: true));
+      await fs
+          .collection('users')
+          .doc(uid)
+          .collection('profile')
+          .doc('global')
           .set({
             'partnerRole': role,
             'updatedAt': FieldValue.serverTimestamp(),
