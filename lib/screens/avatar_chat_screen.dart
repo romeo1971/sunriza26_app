@@ -3,10 +3,13 @@ import 'package:just_audio/just_audio.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:video_player/video_player.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/avatar_data.dart';
+import '../services/video_stream_service.dart';
+import '../services/ai_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AvatarChatScreen extends StatefulWidget {
@@ -31,6 +34,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   bool _pendingIsKnownPartner = false;
   bool _isKnownPartner = false;
   String? _partnerPetName;
+  String? _partnerRole;
   // Paging
   static const int _pageSize = 30;
   DocumentSnapshot<Map<String, dynamic>>? _oldestDoc;
@@ -42,6 +46,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   // final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
   String? _lastRecordingPath;
+  final VideoStreamService _videoService = VideoStreamService();
+  final AIService _ai = AIService();
 
   @override
   void initState() {
@@ -82,10 +88,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 image: DecorationImage(
                   image: NetworkImage(backgroundImage),
                   fit: BoxFit.cover,
-                  colorFilter: ColorFilter.mode(
-                    Colors.black.withValues(alpha: 0.7),
-                    BlendMode.darken,
-                  ),
+                ),
+              )
+            : null,
+        foregroundDecoration: backgroundImage != null
+            ? const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [
+                    Color(0x66000000), // unten stärker abdunkeln (~#00000066)
+                    Color(0x00000000), // oben vollständig transparent
+                  ],
+                  stops: [0.0, 0.7], // Abdunklung weiter nach oben ziehen
                 ),
               )
             : null,
@@ -168,6 +183,28 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             ),
       child: Stack(
         children: [
+          // Video-Overlay (Lipsync), wenn verfügbar
+          StreamBuilder<VideoStreamState>(
+            stream: _videoService.stateStream,
+            builder: (context, snapshot) {
+              final ready = _videoService.isReady;
+              if (!ready) return const SizedBox.shrink();
+              final controller = _videoService.controller;
+              if (controller == null) return const SizedBox.shrink();
+              final size = controller.value.size;
+              return Positioned.fill(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    width: size.width == 0 ? 1920 : size.width,
+                    height: size.height == 0 ? 1080 : size.height,
+                    child: VideoPlayer(controller),
+                  ),
+                ),
+              );
+            },
+          ),
           // Avatar-Bild nur anzeigen wenn kein Background-Bild
           if (!hasImage)
             Center(
@@ -235,6 +272,29 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 ),
               ),
             ),
+
+          // Video ganz oben über dem Bild rendern
+          StreamBuilder<VideoStreamState>(
+            stream: _videoService.stateStream,
+            builder: (context, snapshot) {
+              final controller = _videoService.controller;
+              if (controller == null || !_videoService.isReady) {
+                return const SizedBox.shrink();
+              }
+              final size = controller.value.size;
+              return Positioned.fill(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    width: size.width == 0 ? 1920 : size.width,
+                    height: size.height == 0 ? 1080 : size.height,
+                    child: VideoPlayer(controller),
+                  ),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );
@@ -488,9 +548,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         if (nameToSave != null && nameToSave.isNotEmpty) {
           _isKnownPartner = _pendingIsKnownPartner;
           _savePartnerName(nameToSave);
-          if (_isKnownPartner) {
-            await _savePartnerRole('ehemann');
-          }
           await _botSay(_friendlyGreet(_shortFirstName(nameToSave)));
           _pendingFullName = null;
           _pendingLooseName = null;
@@ -596,6 +653,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   Future<void> _botSay(String text) async {
     String? path;
     try {
+      // Versuche Live-Lipsync-Video zu starten; bei Fehlern weiterhin TTS nutzen.
+      _startLipsync(text);
       final uri = Uri.parse(
         'https://us-central1-sunriza26.cloudfunctions.net/tts',
       );
@@ -605,9 +664,22 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 : null)
           : null;
       final payload = <String, dynamic>{'text': text};
-      if (voiceId != null && voiceId.isNotEmpty) {
-        payload['voiceId'] = voiceId;
-      }
+      if (voiceId != null && voiceId.isNotEmpty) payload['voiceId'] = voiceId;
+      // Voice-Parameter aus training.voice übernehmen
+      final double? stability = (_avatarData?.training != null)
+          ? (_avatarData!.training!['voice'] != null
+                ? (_avatarData!.training!['voice']['stability'] as num?)
+                      ?.toDouble()
+                : null)
+          : null;
+      final double? similarity = (_avatarData?.training != null)
+          ? (_avatarData!.training!['voice'] != null
+                ? (_avatarData!.training!['voice']['similarity'] as num?)
+                      ?.toDouble()
+                : null)
+          : null;
+      if (stability != null) payload['stability'] = stability;
+      if (similarity != null) payload['similarity'] = similarity;
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
@@ -647,9 +719,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 : null)
           : null;
       final payload = <String, dynamic>{'text': text};
-      if (voiceId != null && voiceId.isNotEmpty) {
-        payload['voiceId'] = voiceId;
-      }
+      if (voiceId != null && voiceId.isNotEmpty) payload['voiceId'] = voiceId;
+      final double? stability = (_avatarData?.training != null)
+          ? (_avatarData!.training!['voice'] != null
+                ? (_avatarData!.training!['voice']['stability'] as num?)
+                      ?.toDouble()
+                : null)
+          : null;
+      final double? similarity = (_avatarData?.training != null)
+          ? (_avatarData!.training!['voice'] != null
+                ? (_avatarData!.training!['voice']['similarity'] as num?)
+                      ?.toDouble()
+                : null)
+          : null;
+      if (stability != null) payload['stability'] = stability;
+      if (similarity != null) payload['similarity'] = similarity;
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
@@ -673,6 +757,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       _showSystemSnack('TTS-Fehler: $e');
     }
     return null;
+  }
+
+  Future<void> _startLipsync(String text) async {
+    try {
+      final stream = await _ai.generateLiveVideo(
+        text: text,
+        onProgress: (m) {},
+        onError: (e) {},
+      );
+      await _videoService.startStreaming(stream);
+    } catch (_) {
+      // Ignorieren – TTS läuft als Fallback weiter
+    }
   }
 
   void _addMessage(String text, bool isUser, {String? audioPath}) {
@@ -894,6 +991,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       }
       if (data != null && data['partnerRole'] is String) {
         final role = (data['partnerRole'] as String).toLowerCase().trim();
+        _partnerRole = role;
         _isKnownPartner = role.contains('ehemann') || role.contains('partner');
       }
 
@@ -919,6 +1017,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           }
           if (!_isKnownPartner && pd['partnerRole'] is String) {
             final role = (pd['partnerRole'] as String).toLowerCase().trim();
+            _partnerRole = role;
             _isKnownPartner =
                 role.contains('ehemann') || role.contains('partner');
           }
@@ -1040,9 +1139,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     if (_partnerPetName != null && _partnerPetName!.isNotEmpty) {
       return ', mein ${_partnerPetName!}!';
     }
-    if (_isKnownPartner) {
+    final role = (_partnerRole ?? '').toLowerCase();
+    if (role.contains('ehe') || role.contains('partner')) {
       const options = [', mein Schatz!', ', mein Lieber!', ', mein Herz!'];
       return options[DateTime.now().millisecondsSinceEpoch % options.length];
+    }
+    if (role.contains('schwager') || role.contains('schwäger')) {
+      final pick = DateTime.now().millisecondsSinceEpoch % 5; // 1 von 5
+      return pick == 0 ? ', Schwagerlein!' : '!';
     }
     return '!';
   }

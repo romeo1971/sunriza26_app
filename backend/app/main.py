@@ -376,6 +376,7 @@ class CreateVoiceFromAudioRequest(BaseModel):
     avatar_id: str
     audio_urls: List[str]
     name: str | None = None
+    voice_id: str | None = None  # Wenn gesetzt: bestehende Stimme updaten statt neu anlegen
 
 class CreateVoiceFromAudioResponse(BaseModel):
     voice_id: str
@@ -387,7 +388,7 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
     if not key:
         raise HTTPException(status_code=400, detail="ELEVEN_API_KEY fehlt")
 
-    # Lade die Audios (max 3) herunter und sende an ElevenLabs Voice Create
+    # Lade die Audios (max 3) herunter und sende an ElevenLabs API
     files = []
     try:
         for i, url in enumerate(payload.audio_urls[:3]):
@@ -397,21 +398,39 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
 
         voice_name = payload.name or f"avatar_{payload.avatar_id}"
         headers = {"xi-api-key": key}
-        data = {"name": voice_name}
-        r = requests.post(
-            "https://api.elevenlabs.io/v1/voices/add",
-            headers=headers,
-            data=data,
-            files=files,
-            timeout=120,
-        )
-        r.raise_for_status()
-        res = r.json()
-        voice_id = res.get("voice_id") or res.get("id")
-        name = res.get("name") or voice_name
-        if not voice_id:
-            raise HTTPException(status_code=500, detail="ElevenLabs: voice_id fehlt in Antwort")
-        return CreateVoiceFromAudioResponse(voice_id=voice_id, name=name)
+
+        if payload.voice_id and payload.voice_id.strip():
+            # Bestehende Stimme bearbeiten (ersetzen)
+            target_id = payload.voice_id.strip()
+            data = {"name": voice_name}
+            r = requests.post(
+                f"https://api.elevenlabs.io/v1/voices/{target_id}/edit",
+                headers=headers,
+                data=data,
+                files=files,
+                timeout=120,
+            )
+            r.raise_for_status()
+            res = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+            name = res.get("name") or voice_name
+            return CreateVoiceFromAudioResponse(voice_id=target_id, name=name)
+        else:
+            # Neue Stimme anlegen
+            data = {"name": voice_name}
+            r = requests.post(
+                "https://api.elevenlabs.io/v1/voices/add",
+                headers=headers,
+                data=data,
+                files=files,
+                timeout=120,
+            )
+            r.raise_for_status()
+            res = r.json()
+            voice_id = res.get("voice_id") or res.get("id")
+            name = res.get("name") or voice_name
+            if not voice_id:
+                raise HTTPException(status_code=500, detail="ElevenLabs: voice_id fehlt in Antwort")
+            return CreateVoiceFromAudioResponse(voice_id=voice_id, name=name)
     except requests.HTTPError as e:
         logger.exception("ElevenLabs Voice Create HTTPError")
         raise HTTPException(status_code=e.response.status_code, detail=f"ElevenLabs: {e.response.text}")

@@ -49,6 +49,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final Set<String> _selectedRemoteImages = {};
   final Set<String> _selectedLocalImages = {};
   bool _isDirty = false;
+  // ElevenLabs Voice-Parameter (per Avatar speicherbar)
+  double _voiceStability = 0.25;
+  double _voiceSimilarity = 0.9;
 
   void _updateDirty() {
     final current = _avatarData;
@@ -85,7 +88,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // Neue lokale Dateien oder Freitext
     if (_newImageFiles.isNotEmpty ||
         _newVideoFiles.isNotEmpty ||
-        _newTextFiles.isNotEmpty) {
+        _newTextFiles.isNotEmpty ||
+        _newAudioFiles.isNotEmpty) {
       dirty = true;
     }
     if (_textAreaController.text.trim().isNotEmpty) dirty = true;
@@ -153,6 +157,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       _activeAudioUrl = (voice is Map && voice['activeUrl'] is String)
           ? voice['activeUrl'] as String
           : (data.audioUrls.isNotEmpty ? data.audioUrls.first : null);
+      if (voice is Map) {
+        final st = voice['stability'];
+        final si = voice['similarity'];
+        if (st is num) _voiceStability = st.toDouble();
+        if (st is String) {
+          final v = double.tryParse(st);
+          if (v != null) _voiceStability = v;
+        }
+        if (si is num) _voiceSimilarity = si.toDouble();
+        if (si is String) {
+          final v = double.tryParse(si);
+          if (v != null) _voiceSimilarity = v;
+        }
+      }
       _isDirty = false;
     });
   }
@@ -376,6 +394,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if ((_avatarData?.audioUrls.isNotEmpty == true) ||
             _newAudioFiles.isNotEmpty)
           _buildAudioList(),
+        const SizedBox(height: 16),
+        _buildVoiceParams(),
       ],
     );
   }
@@ -544,9 +564,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ListTile(
           dense: true,
           contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.audiotrack_outlined, color: Colors.white54),
+          leading: const Icon(Icons.upload_file, color: Colors.amber),
           title: Text(
-            pathFromLocalFile(f.path),
+            '${pathFromLocalFile(f.path)} (neu)',
             style: const TextStyle(color: Colors.white70),
             overflow: TextOverflow.ellipsis,
           ),
@@ -556,6 +576,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             onPressed: () {
               setState(() {
                 _newAudioFiles.remove(f);
+                _updateDirty();
               });
             },
           ),
@@ -587,6 +608,92 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
       ],
     );
+  }
+
+  Widget _buildVoiceParams() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Stimmeinstellungen',
+          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const SizedBox(
+              width: 90,
+              child: Text('Stability', style: TextStyle(color: Colors.white70)),
+            ),
+            Expanded(
+              child: Slider(
+                value: _voiceStability.clamp(0.0, 1.0),
+                min: 0.0,
+                max: 1.0,
+                divisions: 20,
+                label: _voiceStability.toStringAsFixed(2),
+                onChanged: (v) => setState(() => _voiceStability = v),
+                onChangeEnd: (_) => _saveVoiceParams(),
+              ),
+            ),
+            SizedBox(
+              width: 48,
+              child: Text(
+                _voiceStability.toStringAsFixed(2),
+                style: const TextStyle(color: Colors.white70),
+              ),
+            ),
+          ],
+        ),
+        Row(
+          children: [
+            const SizedBox(
+              width: 90,
+              child: Text(
+                'Similarity',
+                style: TextStyle(color: Colors.white70),
+              ),
+            ),
+            Expanded(
+              child: Slider(
+                value: _voiceSimilarity.clamp(0.0, 1.0),
+                min: 0.0,
+                max: 1.0,
+                divisions: 20,
+                label: _voiceSimilarity.toStringAsFixed(2),
+                onChanged: (v) => setState(() => _voiceSimilarity = v),
+                onChangeEnd: (_) => _saveVoiceParams(),
+              ),
+            ),
+            SizedBox(
+              width: 48,
+              child: Text(
+                _voiceSimilarity.toStringAsFixed(2),
+                style: const TextStyle(color: Colors.white70),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Future<void> _saveVoiceParams() async {
+    if (_avatarData == null) return;
+    final existing = Map<String, dynamic>.from(_avatarData!.training ?? {});
+    final voice = Map<String, dynamic>.from(existing['voice'] ?? {});
+    voice['stability'] = double.parse(_voiceStability.toStringAsFixed(2));
+    voice['similarity'] = double.parse(_voiceSimilarity.toStringAsFixed(2));
+    existing['voice'] = voice;
+    final updated = _avatarData!.copyWith(
+      training: existing,
+      updatedAt: DateTime.now(),
+    );
+    final ok = await _avatarService.updateAvatar(updated);
+    if (ok && mounted) {
+      _applyAvatar(updated);
+      _showSystemSnack('Stimmeinstellungen gespeichert');
+    }
   }
 
   Future<void> _onCloneVoice() async {
@@ -630,6 +737,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           'avatar_id': _avatarData!.id,
           'audio_urls': selected,
           'name': _avatarData!.displayName,
+          // Wenn bereits eine Klon-ID existiert → update statt neu anlegen
+          if ((_avatarData!.training?['voice']?['elevenVoiceId'] ?? '')
+              .toString()
+              .isNotEmpty)
+            'voice_id': _avatarData!.training!['voice']['elevenVoiceId'],
         }),
       );
       if (res.statusCode >= 200 && res.statusCode < 300) {
