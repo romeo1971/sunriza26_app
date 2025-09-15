@@ -51,7 +51,7 @@ class VideoStreamService {
       // Stream-Daten sammeln und in Datei schreiben
       int bytesWritten = 0;
       const int initThresholdBytes =
-          300 * 1024; // ~300KB, damit MP4-Header sicher vorhanden
+          64 * 1024; // ~64KB, früher initialisieren für schnellere Anzeige
       _streamSubscription = videoStream.listen(
         (chunk) async {
           _videoBuffer.add(chunk);
@@ -100,6 +100,7 @@ class VideoStreamService {
 
       // Auto-Play starten
       await _controller!.play();
+      _stateController.add(VideoStreamState.streaming);
     } catch (e) {
       _stateController.add(VideoStreamState.error);
       throw Exception('Fehler bei Video-Controller Initialisierung: $e');

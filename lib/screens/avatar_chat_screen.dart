@@ -1405,6 +1405,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   @override
   void dispose() {
+    _videoService.dispose();
     _playerStateSub?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
