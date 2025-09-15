@@ -49,13 +49,17 @@ class VideoStreamService {
       final tempFile = File(_tempVideoPath!);
 
       // Stream-Daten sammeln und in Datei schreiben
+      int bytesWritten = 0;
+      const int initThresholdBytes =
+          300 * 1024; // ~300KB, damit MP4-Header sicher vorhanden
       _streamSubscription = videoStream.listen(
         (chunk) async {
           _videoBuffer.add(chunk);
           await tempFile.writeAsBytes(chunk, mode: FileMode.append);
+          bytesWritten += chunk.length;
 
-          // Video-Controller initialisieren, sobald erste Daten verfügbar sind
-          if (_videoBuffer.length == 1 && _controller == null) {
+          // Controller erst initialisieren, wenn genügend Daten vorhanden sind
+          if (_controller == null && bytesWritten >= initThresholdBytes) {
             await _initializeVideoController(tempFile.path);
           }
         },
@@ -63,7 +67,13 @@ class VideoStreamService {
           onError?.call('Stream-Fehler: $error');
           _stateController.add(VideoStreamState.error);
         },
-        onDone: () {
+        onDone: () async {
+          // Falls noch nicht initialisiert, final versuchen
+          try {
+            if (_controller == null) {
+              await _initializeVideoController(tempFile.path);
+            }
+          } catch (_) {}
           onProgress?.call('Video-Stream abgeschlossen');
           _stateController.add(VideoStreamState.completed);
         },

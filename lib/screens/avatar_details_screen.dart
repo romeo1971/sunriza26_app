@@ -48,6 +48,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   bool _isSaving = false;
   final Set<String> _selectedRemoteImages = {};
   final Set<String> _selectedLocalImages = {};
+  bool _isDeleteMode = false;
   bool _isDirty = false;
   // ElevenLabs Voice-Parameter (per Avatar speicherbar)
   double _voiceStability = 0.25;
@@ -326,34 +327,50 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               },
             ),
           ),
-        if (_selectedRemoteImages.isNotEmpty || _selectedLocalImages.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.only(top: 8.0),
-            child: Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Möchtest du die ausgewählten Bilder wirklich löschen?',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                ),
+        Padding(
+          padding: const EdgeInsets.only(top: 8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (!_isDeleteMode)
                 TextButton(
                   onPressed: () {
                     setState(() {
+                      _isDeleteMode = true;
+                      _selectedRemoteImages.clear();
+                      _selectedLocalImages.clear();
+                    });
+                  },
+                  child: const Text(
+                    'Bilder löschen',
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
+                )
+              else ...[
+                TextButton(
+                  onPressed: () async {
+                    await _confirmDeleteSelectedImages();
+                  },
+                  child: const Text(
+                    'Bilder endgültig löschen',
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _isDeleteMode = false;
                       _selectedRemoteImages.clear();
                       _selectedLocalImages.clear();
                     });
                   },
                   child: const Text('Abbrechen'),
                 ),
-                ElevatedButton(
-                  onPressed: _confirmDeleteSelectedImages,
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-                  child: const Text('Löschen'),
-                ),
               ],
-            ),
+            ],
           ),
+        ),
 
         const SizedBox(height: 16),
 
@@ -999,49 +1016,78 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Widget _imageThumbNetwork(String url, bool isCrown) {
     final selected = _selectedRemoteImages.contains(url);
-    return GestureDetector(
-      onTap: () => setState(() {
-        _profileImageUrl = url;
-        _updateDirty();
-      }),
-      onLongPress: () => setState(() {
-        if (selected) {
-          _selectedRemoteImages.remove(url);
-        } else {
-          _selectedRemoteImages.add(url);
-        }
-      }),
-      child: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.network(url, width: 96, height: 96, fit: BoxFit.cover),
-          ),
-          if (isCrown)
-            const Positioned(
-              top: 4,
-              left: 4,
-              child: Icon(Icons.emoji_events, color: Colors.amber, size: 18),
-            ),
-          Positioned(
-            top: 4,
-            right: 4,
-            child: GestureDetector(
-              onTap: () => setState(() {
-                if (selected) {
-                  _selectedRemoteImages.remove(url);
-                } else {
-                  _selectedRemoteImages.add(url);
-                }
-              }),
-              child: Icon(
-                selected ? Icons.check_circle : Icons.check_circle_outline,
-                color: selected ? Colors.greenAccent : Colors.white70,
-                size: 18,
+    return SizedBox(
+      width: 96,
+      child: GestureDetector(
+        onTap: () => setState(() {
+          if (_isDeleteMode) {
+            if (selected) {
+              _selectedRemoteImages.remove(url);
+            } else {
+              _selectedRemoteImages.add(url);
+            }
+          } else {
+            _profileImageUrl = url;
+            _updateDirty();
+          }
+        }),
+        onLongPress: () => setState(() {
+          if (!_isDeleteMode) {
+            if (selected) {
+              _selectedRemoteImages.remove(url);
+            } else {
+              _selectedRemoteImages.add(url);
+            }
+          }
+        }),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.network(
+                url,
+                width: 96,
+                height: 96,
+                fit: BoxFit.cover,
               ),
             ),
-          ),
-        ],
+            if (isCrown)
+              const Positioned(
+                top: 4,
+                left: 4,
+                child: Icon(Icons.emoji_events, color: Colors.amber, size: 18),
+              ),
+            if (!_isDeleteMode)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: GestureDetector(
+                  onTap: () => setState(() {
+                    if (selected) {
+                      _selectedRemoteImages.remove(url);
+                    } else {
+                      _selectedRemoteImages.add(url);
+                    }
+                  }),
+                  child: Icon(
+                    selected ? Icons.check_circle : Icons.check_circle_outline,
+                    color: selected ? Colors.greenAccent : Colors.white70,
+                    size: 18,
+                  ),
+                ),
+              ),
+            if (_isDeleteMode)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Icon(
+                  selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: selected ? Colors.redAccent : Colors.white70,
+                  size: 18,
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -1049,51 +1095,145 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Widget _imageThumbFile(File file) {
     final key = file.path;
     final selected = _selectedLocalImages.contains(key);
-    return GestureDetector(
-      onTap: () => setState(() {
-        _profileLocalPath = key;
-        _updateDirty();
-      }),
-      onLongPress: () => setState(() {
-        if (selected) {
-          _selectedLocalImages.remove(key);
-        } else {
-          _selectedLocalImages.add(key);
-        }
-      }),
-      child: Stack(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.file(file, width: 96, height: 96, fit: BoxFit.cover),
-          ),
-          if (_profileLocalPath == key)
-            const Positioned(
-              top: 4,
-              left: 4,
-              child: Icon(Icons.emoji_events, color: Colors.amber, size: 18),
+    return SizedBox(
+      width: 96,
+      child: GestureDetector(
+        onTap: () => setState(() {
+          if (_isDeleteMode) {
+            if (selected) {
+              _selectedLocalImages.remove(key);
+            } else {
+              _selectedLocalImages.add(key);
+            }
+          } else {
+            _profileLocalPath = key;
+            _updateDirty();
+          }
+        }),
+        onLongPress: () => setState(() {
+          if (!_isDeleteMode) {
+            if (selected) {
+              _selectedLocalImages.remove(key);
+            } else {
+              _selectedLocalImages.add(key);
+            }
+          }
+        }),
+        child: Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: Image.file(file, width: 96, height: 96, fit: BoxFit.cover),
             ),
-          Positioned(
-            top: 4,
-            right: 4,
-            child: GestureDetector(
-              onTap: () => setState(() {
-                if (selected) {
-                  _selectedLocalImages.remove(key);
-                } else {
-                  _selectedLocalImages.add(key);
-                }
-              }),
-              child: Icon(
-                selected ? Icons.check_circle : Icons.check_circle_outline,
-                color: selected ? Colors.greenAccent : Colors.white70,
-                size: 18,
+            if (_profileLocalPath == key)
+              const Positioned(
+                top: 4,
+                left: 4,
+                child: Icon(Icons.emoji_events, color: Colors.amber, size: 18),
               ),
-            ),
+            if (!_isDeleteMode)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: GestureDetector(
+                  onTap: () => setState(() {
+                    if (selected) {
+                      _selectedLocalImages.remove(key);
+                    } else {
+                      _selectedLocalImages.add(key);
+                    }
+                  }),
+                  child: Icon(
+                    selected ? Icons.check_circle : Icons.check_circle_outline,
+                    color: selected ? Colors.greenAccent : Colors.white70,
+                    size: 18,
+                  ),
+                ),
+              ),
+            if (_isDeleteMode)
+              Positioned(
+                top: 4,
+                right: 4,
+                child: Icon(
+                  selected ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: selected ? Colors.redAccent : Colors.white70,
+                  size: 18,
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmDeleteRemoteImage(String url) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Bild löschen?'),
+        content: Text('${_fileNameFromUrl(url)} endgültig löschen?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen'),
           ),
         ],
       ),
     );
+    if (ok == true) {
+      try {
+        await FirebaseStorageService.deleteFile(url);
+        try {
+          final uid = FirebaseAuth.instance.currentUser!.uid;
+          final avatarId = _avatarData!.id;
+          await _triggerMemoryDelete(
+            userId: uid,
+            avatarId: avatarId,
+            fileUrl: url,
+            fileName: _fileNameFromUrl(url),
+            filePath: _storagePathFromUrl(url),
+          );
+        } catch (_) {}
+        _imageUrls.remove(url);
+        if (_profileImageUrl == url) {
+          _profileImageUrl = _imageUrls.isNotEmpty ? _imageUrls.first : null;
+        }
+        await _persistTextFileUrls();
+        if (mounted) setState(() {});
+      } catch (_) {}
+    }
+  }
+
+  Future<void> _confirmDeleteLocalImage(File file) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Bild entfernen?'),
+        content: Text('${pathFromLocalFile(file.path)} wirklich entfernen?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true && mounted) {
+      setState(() {
+        _newImageFiles.remove(file);
+        if (_profileLocalPath == file.path) {
+          _profileLocalPath = null;
+        }
+      });
+    }
   }
 
   Widget _bigMediaButton(IconData icon, String label, VoidCallback onTap) {
@@ -1867,6 +2007,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _newImageFiles.removeWhere((f) => _selectedLocalImages.contains(f.path));
     _selectedRemoteImages.clear();
     _selectedLocalImages.clear();
+    _isDeleteMode = false;
     if (mounted) setState(() {});
   }
 

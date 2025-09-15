@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
@@ -25,6 +26,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   final List<ChatMessage> _messages = [];
   final bool _isRecording = false;
   bool _isTyping = false;
+  bool _isSpeaking = false;
+  StreamSubscription<PlayerState>? _playerStateSub;
   String? _partnerName;
   // entfernt – nicht mehr benötigt
   // Pending-Bestätigung bei unsicherem Kurz-Namen
@@ -52,6 +55,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   @override
   void initState() {
     super.initState();
+    // Hör auf Audio-Player-Status, um Sprech-Indikator zu steuern
+    _playerStateSub = _player.playerStateStream.listen((state) {
+      final speaking =
+          state.playing &&
+          state.processingState != ProcessingState.completed &&
+          state.processingState != ProcessingState.idle;
+      if (_isSpeaking != speaking && mounted) {
+        setState(() => _isSpeaking = speaking);
+      }
+    });
     // Empfange AvatarData von der vorherigen Seite
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments;
@@ -83,24 +96,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Container(
-        decoration: backgroundImage != null
+        decoration:
+            (backgroundImage != null && !(_videoService.isReady && _isSpeaking))
             ? BoxDecoration(
                 image: DecorationImage(
                   image: NetworkImage(backgroundImage),
                   fit: BoxFit.cover,
-                ),
-              )
-            : null,
-        foregroundDecoration: backgroundImage != null
-            ? const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.bottomCenter,
-                  end: Alignment.topCenter,
-                  colors: [
-                    Color(0x66000000), // unten stärker abdunkeln (~#00000066)
-                    Color(0x00000000), // oben vollständig transparent
-                  ],
-                  stops: [0.0, 0.7], // Abdunklung weiter nach oben ziehen
                 ),
               )
             : null,
@@ -183,28 +184,33 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             ),
       child: Stack(
         children: [
-          // Video-Overlay (Lipsync), wenn verfügbar
-          StreamBuilder<VideoStreamState>(
-            stream: _videoService.stateStream,
-            builder: (context, snapshot) {
-              final ready = _videoService.isReady;
-              if (!ready) return const SizedBox.shrink();
-              final controller = _videoService.controller;
-              if (controller == null) return const SizedBox.shrink();
-              final size = controller.value.size;
-              return Positioned.fill(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
-                  child: SizedBox(
-                    width: size.width == 0 ? 1920 : size.width,
-                    height: size.height == 0 ? 1080 : size.height,
-                    child: VideoPlayer(controller),
+          // Video-Overlay (nur wenn Audio spielt und Video bereit ist)
+          if (_isSpeaking)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: _videoService.isReady ? 1.0 : 0.0,
+                  duration: const Duration(milliseconds: 120),
+                  child: StreamBuilder<VideoStreamState>(
+                    stream: _videoService.stateStream,
+                    builder: (context, snapshot) {
+                      final controller = _videoService.controller;
+                      if (controller == null) return const SizedBox.shrink();
+                      final size = controller.value.size;
+                      return FittedBox(
+                        fit: BoxFit.cover,
+                        alignment: Alignment.center,
+                        child: SizedBox(
+                          width: size.width == 0 ? 1920 : size.width,
+                          height: size.height == 0 ? 1080 : size.height,
+                          child: VideoPlayer(controller),
+                        ),
+                      );
+                    },
                   ),
                 ),
-              );
-            },
-          ),
+              ),
+            ),
           // Avatar-Bild nur anzeigen wenn kein Background-Bild
           if (!hasImage)
             Center(
@@ -273,27 +279,31 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               ),
             ),
 
-          // Video ganz oben über dem Bild rendern
-          StreamBuilder<VideoStreamState>(
-            stream: _videoService.stateStream,
-            builder: (context, snapshot) {
-              final controller = _videoService.controller;
-              if (controller == null || !_videoService.isReady) {
-                return const SizedBox.shrink();
-              }
-              final size = controller.value.size;
-              return Positioned.fill(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  alignment: Alignment.center,
-                  child: SizedBox(
-                    width: size.width == 0 ? 1920 : size.width,
-                    height: size.height == 0 ? 1080 : size.height,
-                    child: VideoPlayer(controller),
-                  ),
+          // Video-Overlay (Lipsync) — einmalig und ganz oben
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _videoService.isReady ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: StreamBuilder<VideoStreamState>(
+                  stream: _videoService.stateStream,
+                  builder: (context, snapshot) {
+                    final controller = _videoService.controller;
+                    if (controller == null) return const SizedBox.shrink();
+                    final size = controller.value.size;
+                    return FittedBox(
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: size.width == 0 ? 1920 : size.width,
+                        height: size.height == 0 ? 1080 : size.height,
+                        child: VideoPlayer(controller),
+                      ),
+                    );
+                  },
                 ),
-              );
-            },
+              ),
+            ),
           ),
         ],
       ),
@@ -1395,6 +1405,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   @override
   void dispose() {
+    _playerStateSub?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();

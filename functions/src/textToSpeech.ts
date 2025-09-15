@@ -45,7 +45,8 @@ export async function generateSpeech(request: TTSRequest): Promise<TTSResponse> 
             ssmlGender: request.ssmlGender || ('NEUTRAL' as const),
           },
       audioConfig: {
-        audioEncoding: 'MP3' as const,
+        // Für Lipsync/Vertex: LINEAR16 (PCM, 24 kHz)
+        audioEncoding: 'LINEAR16' as const,
         sampleRateHertz: 24000,
         speakingRate: 1.0,
         pitch: 0.0,
@@ -73,7 +74,7 @@ export async function generateSpeech(request: TTSRequest): Promise<TTSResponse> 
     return {
       audioContent: audioBuffer,
       audioConfig: {
-        audioEncoding: 'MP3',
+        audioEncoding: 'LINEAR16',
         sampleRateHertz: 24000,
       },
     };

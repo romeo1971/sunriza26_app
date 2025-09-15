@@ -6,6 +6,7 @@
 import { VertexAI } from '@google-cloud/vertexai';
 import { getConfig } from './config';
 // import { TTSResponse } from './textToSpeech';
+import { Buffer } from 'buffer';
 
 export interface VideoGenerationRequest {
   audioBuffer: Buffer;
@@ -53,8 +54,14 @@ export async function generateLipsyncVideo(request: VideoGenerationRequest): Pro
     console.log(`Verwende Modell: ${config.vertexAiModelId}`);
     console.log(`Referenzvideo: ${request.referenceVideoUrl}`);
 
-    // Audio in Base64 für Vertex AI konvertieren
-    const audioBase64 = request.audioBuffer.toString('base64');
+    // PCM (LINEAR16) in WAV verpacken (24kHz, Mono), damit Vertex 'audio/wav' korrekt versteht
+    const wavBuffer = pcmToWav(
+      request.audioBuffer,
+      request.audioConfig.sampleRateHertz || 24000,
+      1,
+      16,
+    );
+    const audioBase64 = wavBuffer.toString('base64');
     
     // Prompt für Video-Generierung erstellen
     const prompt = createVideoGenerationPrompt(request.text, request.referenceVideoUrl);
@@ -168,6 +175,27 @@ function estimateVideoDuration(audioBufferLength: number, sampleRate: number): n
   const channels = 1; // Mono
   const durationSeconds = audioBufferLength / (sampleRate * bytesPerSample * channels);
   return Math.ceil(durationSeconds);
+}
+
+// Hilfsfunktion: PCM (LINEAR16) → WAV mit Header
+function pcmToWav(pcm: Buffer, sampleRate: number, channels: number, bitDepth: number): Buffer {
+  const byteRate = (sampleRate * channels * bitDepth) / 8;
+  const blockAlign = (channels * bitDepth) / 8;
+  const wavHeader = Buffer.alloc(44);
+  wavHeader.write('RIFF', 0); // ChunkID
+  wavHeader.writeUInt32LE(36 + pcm.length, 4); // ChunkSize
+  wavHeader.write('WAVE', 8); // Format
+  wavHeader.write('fmt ', 12); // Subchunk1ID
+  wavHeader.writeUInt32LE(16, 16); // Subchunk1Size (PCM)
+  wavHeader.writeUInt16LE(1, 20); // AudioFormat (PCM=1)
+  wavHeader.writeUInt16LE(channels, 22); // NumChannels
+  wavHeader.writeUInt32LE(sampleRate, 24); // SampleRate
+  wavHeader.writeUInt32LE(byteRate, 28); // ByteRate
+  wavHeader.writeUInt16LE(blockAlign, 32); // BlockAlign
+  wavHeader.writeUInt16LE(bitDepth, 34); // BitsPerSample
+  wavHeader.write('data', 36); // Subchunk2ID
+  wavHeader.writeUInt32LE(pcm.length, 40); // Subchunk2Size
+  return Buffer.concat([wavHeader, pcm]);
 }
 
 /**

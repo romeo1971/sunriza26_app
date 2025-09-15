@@ -32,7 +32,8 @@ async function generateSpeech(request) {
                     ssmlGender: request.ssmlGender || 'NEUTRAL',
                 },
             audioConfig: {
-                audioEncoding: 'MP3',
+                // Für Lipsync/Vertex: LINEAR16 (PCM, 24 kHz)
+                audioEncoding: 'LINEAR16',
                 sampleRateHertz: 24000,
                 speakingRate: 1.0,
                 pitch: 0.0,
@@ -56,7 +57,7 @@ async function generateSpeech(request) {
         return {
             audioContent: audioBuffer,
             audioConfig: {
-                audioEncoding: 'MP3',
+                audioEncoding: 'LINEAR16',
                 sampleRateHertz: 24000,
             },
         };

@@ -394,7 +394,9 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
         for i, url in enumerate(payload.audio_urls[:3]):
             r = requests.get(url, timeout=60)
             r.raise_for_status()
-            files.append((f"files", (f"sample_{i}.mp3", r.content, "audio/mpeg")))
+            ctype = r.headers.get('content-type', 'application/octet-stream')
+            ext = '.wav' if 'wav' in ctype else ('.m4a' if ('mp4' in ctype or 'm4a' in ctype) else '.mp3')
+            files.append((f"files", (f"sample_{i}{ext}", r.content, ctype)))
 
         voice_name = payload.name or f"avatar_{payload.avatar_id}"
         headers = {"xi-api-key": key}
