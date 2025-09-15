@@ -1032,7 +1032,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
         }),
         onLongPress: () => setState(() {
-          if (!_isDeleteMode) {
+          // Long-Press nur im Löschmodus relevant
+          if (_isDeleteMode) {
             if (selected) {
               _selectedRemoteImages.remove(url);
             } else {
@@ -1057,25 +1058,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 left: 4,
                 child: Icon(Icons.emoji_events, color: Colors.amber, size: 18),
               ),
-            if (!_isDeleteMode)
-              Positioned(
-                top: 4,
-                right: 4,
-                child: GestureDetector(
-                  onTap: () => setState(() {
-                    if (selected) {
-                      _selectedRemoteImages.remove(url);
-                    } else {
-                      _selectedRemoteImages.add(url);
-                    }
-                  }),
-                  child: Icon(
-                    selected ? Icons.check_circle : Icons.check_circle_outline,
-                    color: selected ? Colors.greenAccent : Colors.white70,
-                    size: 18,
-                  ),
-                ),
-              ),
+            // keine Häkchen im Normalmodus
             if (_isDeleteMode)
               Positioned(
                 top: 4,
@@ -1111,7 +1094,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
         }),
         onLongPress: () => setState(() {
-          if (!_isDeleteMode) {
+          // Long-Press nur im Löschmodus relevant
+          if (_isDeleteMode) {
             if (selected) {
               _selectedLocalImages.remove(key);
             } else {
@@ -1131,25 +1115,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 left: 4,
                 child: Icon(Icons.emoji_events, color: Colors.amber, size: 18),
               ),
-            if (!_isDeleteMode)
-              Positioned(
-                top: 4,
-                right: 4,
-                child: GestureDetector(
-                  onTap: () => setState(() {
-                    if (selected) {
-                      _selectedLocalImages.remove(key);
-                    } else {
-                      _selectedLocalImages.add(key);
-                    }
-                  }),
-                  child: Icon(
-                    selected ? Icons.check_circle : Icons.check_circle_outline,
-                    color: selected ? Colors.greenAccent : Colors.white70,
-                    size: 18,
-                  ),
-                ),
-              ),
+            // keine Häkchen im Normalmodus
             if (_isDeleteMode)
               Positioned(
                 top: 4,
