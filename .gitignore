@@ -50,3 +50,4 @@ service-account-key.json
 .env.*
 tts_apiKeys/
 *.mp3
+comfyui_env/
