@@ -12,6 +12,7 @@ import '../models/avatar_data.dart';
 import '../services/video_stream_service.dart';
 import '../services/ai_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class AvatarChatScreen extends StatefulWidget {
   const AvatarChatScreen({super.key});
@@ -718,6 +719,22 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     }
   }
 
+  Future<String?> _uploadAudioToFirebase(String audioPath) async {
+    try {
+      final file = File(audioPath);
+      final bytes = await file.readAsBytes();
+      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final ref = FirebaseStorage.instance.ref().child(
+        'avatars/$uid/audio/lipsync_${DateTime.now().millisecondsSinceEpoch}.mp3',
+      );
+      await ref.putData(bytes);
+      return await ref.getDownloadURL();
+    } catch (e) {
+      _showSystemSnack('Audio Upload Fehler: $e');
+      return null;
+    }
+  }
+
   Future<String?> _ensureTtsForText(String text) async {
     try {
       final uri = Uri.parse(
@@ -771,8 +788,22 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   Future<void> _startLipsync(String text) async {
     try {
+      // Generiere TTS Audio zuerst
+      final audioPath = await _ensureTtsForText(text);
+      if (audioPath == null) return;
+
+      // Upload Audio zu Firebase Storage
+      final audioUrl = await _uploadAudioToFirebase(audioPath);
+      if (audioUrl == null) return;
+
+      // Hole Crown Image URL (avatarImageUrl ist das Crown-Bild)
+      final imageUrl = _avatarData?.avatarImageUrl;
+      if (imageUrl == null) return;
+
       final stream = await _ai.generateLiveVideo(
         text: text,
+        imageUrl: imageUrl,
+        audioUrl: audioUrl,
         onProgress: (m) {},
         onError: (e) {},
       );
