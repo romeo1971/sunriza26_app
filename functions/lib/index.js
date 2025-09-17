@@ -90,26 +90,6 @@ else {
 }
 // CORS für Cross-Origin Requests
 const corsHandler = (0, cors_1.default)({ origin: true });
-// Kleine Hilfsfunktion: PCM (LINEAR16) → WAV packen
-function pcmToWavLocal(pcm, sampleRate, channels, bitDepth) {
-    const byteRate = (sampleRate * channels * bitDepth) / 8;
-    const blockAlign = (channels * bitDepth) / 8;
-    const wavHeader = Buffer.alloc(44);
-    wavHeader.write('RIFF', 0);
-    wavHeader.writeUInt32LE(36 + pcm.length, 4);
-    wavHeader.write('WAVE', 8);
-    wavHeader.write('fmt ', 12);
-    wavHeader.writeUInt32LE(16, 16);
-    wavHeader.writeUInt16LE(1, 20);
-    wavHeader.writeUInt16LE(channels, 22);
-    wavHeader.writeUInt32LE(sampleRate, 24);
-    wavHeader.writeUInt32LE(byteRate, 28);
-    wavHeader.writeUInt16LE(blockAlign, 32);
-    wavHeader.writeUInt16LE(bitDepth, 34);
-    wavHeader.write('data', 36);
-    wavHeader.writeUInt32LE(pcm.length, 40);
-    return Buffer.concat([wavHeader, pcm]);
-}
 /**
  * Haupt-Cloud Function für Live-Video-Generierung
  * HTTP-Trigger für optimale Streaming-Kontrolle
@@ -119,12 +99,11 @@ exports.generateLiveVideo = functions
     .runWith({
     timeoutSeconds: 540, // 9 Minuten für komplexe Video-Generierung
     memory: '2GB', // Mehr RAM für Vertex AI
-    secrets: ['SADTALKER_BASE_URL', 'SADTALKER_TOKEN'],
+    secrets: [],
 })
     .https
     .onRequest(async (req, res) => {
     return corsHandler(req, res, async () => {
-        var _a, _b;
         try {
             console.log('=== Live Video Generation Request ===');
             console.log('Method:', req.method);
@@ -155,131 +134,8 @@ exports.generateLiveVideo = functions
                 ssmlGender: 'NEUTRAL',
             });
             console.log(`Audio generiert: ${ttsResponse.audioContent.length} Bytes`);
-            // PRIMÄR: SadTalker verwenden, falls konfiguriert; Fallback: Vertex
-            const sadTalkerBase = process.env.SADTALKER_BASE_URL;
-            if (sadTalkerBase) {
-                console.log('SadTalker erkannt – verwende SadTalker als Primärpfad');
-                // 2a) Audio als WAV in GCS speichern und signierte URL erzeugen
-                const bucket = admin.storage().bucket();
-                const audioPath = `tmp/lipsync_audio_${Date.now()}.wav`;
-                const wav = pcmToWavLocal(ttsResponse.audioContent, ttsResponse.audioConfig.sampleRateHertz || 24000, 1, 16);
-                await bucket.file(audioPath).save(wav, {
-                    contentType: 'audio/wav',
-                    resumable: false,
-                });
-                const [audioSignedUrl] = await bucket
-                    .file(audioPath)
-                    .getSignedUrl({ action: 'read', expires: Date.now() + 60 * 60 * 1000 });
-                console.log('Audio URL:', audioSignedUrl);
-                // 2b) Bild-URL bestimmen (Body > Secret > Fallback)
-                const imageUrl = (req.body && req.body.imageUrl) || process.env.SADTALKER_IMAGE_URL || '';
-                if (!imageUrl) {
-                    console.warn('SADTALKER_IMAGE_URL fehlt – SadTalker kann evtl. nicht rendern');
-                }
-                // 2c) Firestore Job anlegen (identisch zu createTalkingHeadJob) + Zielpfad & Signed URLs
-                const db = admin.firestore();
-                const doc = db.collection('renderJobs').doc();
-                const jobId = doc.id;
-                const outPath = `renders/${jobId}.mp4`;
-                const [uploadUrl] = await bucket
-                    .file(outPath)
-                    .getSignedUrl({ action: 'write', expires: Date.now() + 60 * 60 * 1000, contentType: 'video/mp4' });
-                const [publicUrl] = await bucket
-                    .file(outPath)
-                    .getSignedUrl({ action: 'read', expires: Date.now() + 7 * 24 * 3600 * 1000 });
-                await doc.set({
-                    jobId,
-                    userId: null,
-                    avatarId: null,
-                    type: 'talking_head',
-                    status: 'queued',
-                    progress: 0,
-                    input: { imageUrl, audioUrl: audioSignedUrl, preset: '1080p30', uploadUrl, publicUrl, outPath },
-                    outputUrl: null,
-                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-                });
-                // 2d) Job an Worker dispatchen
-                const cbUrl = `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/talkingHeadCallback`;
-                const dispatchResp = await node_fetch_1.default(`${sadTalkerBase.replace(/\/$/, '')}/jobs`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(process.env.SADTALKER_TOKEN ? { Authorization: `Bearer ${process.env.SADTALKER_TOKEN}` } : {}),
-                    },
-                    body: JSON.stringify({ jobId, imageUrl, audioUrl: audioSignedUrl, preset: '1080p30', callbackUrl: cbUrl, uploadUrl, publicUrl }),
-                });
-                if (!dispatchResp.ok) {
-                    const txt = await dispatchResp.text().catch(() => '');
-                    console.warn('SadTalker dispatch fehlgeschlagen:', dispatchResp.status, txt === null || txt === void 0 ? void 0 : txt.slice(0, 400));
-                    // Fallback auf Vertex
-                }
-                else {
-                    await doc.update({ status: 'running', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-                    // 2e) Auf Ergebnis warten (Polling), dann Video streamen
-                    const deadline = Date.now() + 120 * 1000; // max 120s
-                    while (Date.now() < deadline) {
-                        const snap = await doc.get();
-                        const data = snap.data();
-                        if (data && data.outputUrl && typeof data.outputUrl === 'string') {
-                            break;
-                        }
-                        if (data && data.status === 'failed') {
-                            throw new Error(data.error || 'SadTalker Job fehlgeschlagen');
-                        }
-                        await new Promise((r) => setTimeout(r, 1000));
-                    }
-                    // Streame robust direkt aus GCS aus dem bekannten outPath
-                    const outFilePath = (_b = (_a = (await doc.get()).data()) === null || _a === void 0 ? void 0 : _a.input) === null || _b === void 0 ? void 0 : _b.outPath;
-                    if (!outFilePath)
-                        throw new Error('outPath fehlt');
-                    // HTTP Headers setzen
-                    res.setHeader('Content-Type', 'video/mp4');
-                    res.setHeader('Cache-Control', 'no-cache');
-                    res.setHeader('Connection', 'keep-alive');
-                    res.setHeader('Transfer-Encoding', 'chunked');
-                    res.status(200);
-                    const debugPath = `debug/lipsync_${Date.now()}.mp4`;
-                    const pass = new stream_1.PassThrough();
-                    const gcsWrite = bucket.file(debugPath).createWriteStream({ contentType: 'video/mp4' });
-                    pass.pipe(gcsWrite);
-                    gcsWrite.on('finish', async () => {
-                        try {
-                            const [url] = await bucket.file(debugPath).getSignedUrl({ action: 'read', expires: Date.now() + 7 * 24 * 3600 * 1000 });
-                            try {
-                                res.setHeader('X-Video-URL', url);
-                            }
-                            catch (_a) { }
-                            console.log('Lipsync saved to:', url);
-                        }
-                        catch (e) {
-                            console.warn('Signed URL error:', e);
-                        }
-                    });
-                    const readStream = bucket.file(outFilePath).createReadStream();
-                    await new Promise((resolve, reject) => {
-                        readStream.on('data', (chunk) => {
-                            try {
-                                res.write(chunk);
-                                pass.write(chunk);
-                            }
-                            catch (e) {
-                                reject(e);
-                            }
-                        });
-                        readStream.on('end', () => { try {
-                            pass.end();
-                            res.end();
-                        }
-                        catch (_a) { } ; resolve(); });
-                        readStream.on('error', (err) => reject(err));
-                    });
-                    return;
-                    console.warn('Kein verwertbarer OutputUrl, wechsle zu Vertex-Fallback');
-                }
-            }
-            // Fallback: Vertex AI Pfad
-            console.log('Vertex Fallback aktiv...');
+            // Vertex AI Pfad für Video-Generierung
+            console.log('Starte Vertex AI Video-Generierung...');
             // Schritt 2: Video-Lippensynchronisation mit Vertex AI
             console.log('Schritt 2: Starte Video-Lippensynchronisation...');
             const videoRequest = {
@@ -569,7 +425,7 @@ exports.llm = functions
     });
 });
 /**
- * Talking-Head: Jobs anlegen / Status / Callback (für SadTalker2 o.ä.)
+ * Talking-Head: Jobs anlegen / Status / Callback
  * Firestore: collection 'renderJobs/{jobId}'
  */
 exports.createTalkingHeadJob = functions
@@ -602,30 +458,7 @@ exports.createTalkingHeadJob = functions
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             };
             await doc.set(job);
-            // Optional: direkt an Worker weiterleiten, wenn SADTALKER_BASE_URL vorhanden
-            const base = process.env.SADTALKER_BASE_URL;
-            if (base) {
-                try {
-                    const cbUrl = `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/talkingHeadCallback`;
-                    const r = await node_fetch_1.default(`${base.replace(/\/$/, '')}/jobs`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            ...(process.env.SADTALKER_TOKEN ? { Authorization: `Bearer ${process.env.SADTALKER_TOKEN}` } : {}),
-                        },
-                        body: JSON.stringify({ jobId, imageUrl, audioUrl, preset: preset || '1080p30', callbackUrl: cbUrl }),
-                    });
-                    if (!r.ok) {
-                        console.warn('SadTalker dispatch HTTP', r.status);
-                    }
-                    else {
-                        await doc.update({ status: 'running', updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-                    }
-                }
-                catch (e) {
-                    console.warn('SadTalker dispatch Fehler:', e);
-                }
-            }
+            // Job wird direkt in Firestore gespeichert
             res.status(200).json({ jobId });
         }
         catch (error) {
