@@ -173,7 +173,7 @@ class AIService {
       final videoResponse = await http.get(
         Uri.parse('http://localhost:8188/history/$promptId'),
       );
-      final videoData = await videoResponse.bodyBytes;
+      final videoData = videoResponse.bodyBytes;
 
       onProgress?.call('Video erfolgreich generiert!');
 

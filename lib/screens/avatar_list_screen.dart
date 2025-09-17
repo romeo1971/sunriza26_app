@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import '../models/avatar_data.dart' as model;
 import '../widgets/app_drawer.dart';
 import '../services/avatar_service.dart';
+import 'avatar_editor_screen.dart';
 
 class AvatarListScreen extends StatefulWidget {
   const AvatarListScreen({super.key});
@@ -66,6 +67,16 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const AvatarEditorScreen(),
+              ),
+            ),
+            icon: const Icon(Icons.edit),
+            tooltip: 'Avatar Editor',
+          ),
           IconButton(
             onPressed: _loadAvatars,
             icon: const Icon(Icons.refresh),

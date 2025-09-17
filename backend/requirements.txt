@@ -1,10 +1,23 @@
-fastapi>=0.111.0
-uvicorn[standard]>=0.30.0
-openai>=1.30.0
-tiktoken>=0.7.0
-pinecone==5.0.0
-python-dotenv>=1.0.1
-pydantic>=2.7.0
-# ElevenLabs nutzt REST; keine Extra‑Lib nötig. Google TTS bleibt optional installiert.
-google-cloud-texttospeech>=2.16.5
+# FastAPI Backend Dependencies
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+pydantic==2.10.0
 
+# HTTP Requests
+requests==2.31.0
+httpx==0.25.2
+
+# BitHuman SDK - korrekte Version
+bithuman==0.5.24
+
+# Audio Processing
+pyaudio==0.2.11
+
+# Environment Variables
+python-dotenv==1.0.0
+
+# CORS
+fastapi-cors==0.0.6
+
+# Additional Utilities

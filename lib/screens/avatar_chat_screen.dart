@@ -10,10 +10,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/avatar_data.dart';
 import '../services/video_stream_service.dart';
-import '../services/ai_service.dart';
 import '../services/bithuman_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
 class AvatarChatScreen extends StatefulWidget {
   const AvatarChatScreen({super.key});
@@ -60,18 +58,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       await dotenv.load();
       final apiKey = dotenv.env['BITHUMAN_API_KEY'] ?? 'demo_key';
 
-      if (apiKey != 'demo_key' && apiKey.isNotEmpty) {
-        BitHumanService.initialize(apiKey);
-        print('✅ BitHuman SDK initialisiert');
-      } else {
-        // Demo-Modus für Entwicklung
-        BitHumanService.initialize('demo_key');
-        print('⚠️ BitHuman im Demo-Modus - API Key in .env setzen');
-      }
+      await BitHumanService.initialize();
+      print('✅ BitHuman SDK initialisiert');
     } catch (e) {
       print('❌ BitHuman Initialisierung fehlgeschlagen: $e');
-      // Fallback auf Demo-Modus
-      BitHumanService.initialize('demo_key');
     }
   }
 

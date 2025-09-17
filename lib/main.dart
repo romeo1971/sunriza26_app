@@ -16,6 +16,7 @@ import 'screens/avatar_list_screen.dart';
 import 'screens/legal_page_screen.dart';
 import 'screens/firebase_test_screen.dart';
 import 'screens/avatar_creation_screen.dart';
+import 'screens/avatar_editor_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +69,7 @@ class SunrizaApp extends StatelessWidget {
           '/legal-privacy': (context) => const LegalPageScreen(type: 'privacy'),
           '/firebase-test': (context) => const FirebaseTestScreen(),
           '/avatar-creation': (context) => const AvatarCreationScreen(),
+          '/avatar-editor': (context) => const AvatarEditorScreen(),
         },
       ),
     );

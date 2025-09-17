@@ -1,0 +1,23 @@
+port: 17880
+rtc:
+  udp_port: 50700
+  use_external_ip: false
+  stun_servers:
+    - stun:stun.l.google.com:19302
+  ice_candidate_pool_size: 2
+  ice_servers:
+    - urls:
+        - stun:stun.l.google.com:19302
+        - stun:stun1.l.google.com:19302
+  ice_servers:
+    - urls:
+        - stun:stun.l.google.com:19302
+        - stun:stun1.l.google.com:19302
+
+redis:
+  address: redis:6379
+
+keys:
+  devkey: UPivas8PQvWiYhubkqxqfkY8kfB9TgGj
+
+log_level: info
