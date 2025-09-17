@@ -8,6 +8,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 class AIService {
   static final AIService _instance = AIService._internal();
@@ -16,9 +17,8 @@ class AIService {
 
   // Hinweis: Cloud Functions Client aktuell ungenutzt
 
-  // ComfyUI URLs (Cloud Run)
-  static const String _comfyuiBaseUrl =
-      'https://comfyui-sonic-xxxxx-uc.a.run.app';
+  // ComfyUI URLs (Lokal)
+  static const String _comfyuiBaseUrl = 'http://localhost:8188';
   static const String _generateLiveVideoUrl = '$_comfyuiBaseUrl/prompt';
   static const String _healthCheckUrl = '$_comfyuiBaseUrl/system_stats';
   static const String _testTtsUrl = '$_comfyuiBaseUrl/tts';
@@ -35,30 +35,29 @@ class AIService {
     try {
       onProgress?.call('Starte ComfyUI Sonic Video-Generierung...');
 
-      // ComfyUI Sonic Workflow (basierend auf dem Bild)
+      // ComfyUI Sonic Workflow - OFFIZIELL aus example.json
       final workflow = {
         "1": {
           "inputs": {"ckpt_name": "svd_xt.safetensors"},
-          "class_type": "CheckpointLoaderSimple",
-          "_meta": {"title": "Image Only Checkpoint Loader (img2vid model)"},
+          "class_type": "ImageOnlyCheckpointLoader",
         },
         "2": {
           "inputs": {"audio": audioUrl},
           "class_type": "LoadAudio",
-          "_meta": {"title": "LoadAudio"},
         },
         "3": {
           "inputs": {"image": imageUrl},
           "class_type": "LoadImage",
-          "_meta": {"title": "Load Image"},
         },
         "4": {
           "inputs": {
             "model": ["1", 0],
+            "sonic_unet": "unet.pth",
+            "ip_audio_scale": 1.0,
+            "use_interframe": true,
             "dtype": "fp16",
           },
           "class_type": "SONICTLoader",
-          "_meta": {"title": "Sonic"},
         },
         "5": {
           "inputs": {
@@ -66,45 +65,40 @@ class AIService {
             "vae": ["1", 2],
             "audio": ["2", 0],
             "image": ["3", 0],
-            "weight_dtype": "fp16",
-            "min_resolution": 512,
-            "duration": 5.0,
+            "weight_dtype": ["4", 1],
+            "min_resolution": 256,
+            "duration": 3.0,
             "expand_ratio": 0.5,
           },
           "class_type": "SONIC_PreData",
-          "_meta": {"title": "Sonic"},
         },
         "6": {
           "inputs": {
             "model": ["4", 0],
             "data_dict": ["5", 0],
-            "fps": 24.0,
-            "seed": 1537071674,
-            "control_after_generate": "randomize",
+            "seed": 443489271,
             "inference_steps": 25,
             "dynamic_scale": 1.0,
+            "fps": 25.0,
           },
           "class_type": "SONICSampler",
-          "_meta": {"title": "Sonic"},
         },
         "7": {
           "inputs": {
             "images": ["6", 0],
             "audio": ["2", 0],
-            "vae": ["1", 2],
-            "frame_rate": 8,
-            "loop_count": 0,
-            "filename_prefix": "sonic_lipsync",
-            "format": "video/h264-mp4",
-            "pix_fmt": "yuv420p",
-            "crf": 19,
-            "save_metadata": true,
-            "trim_to_audio": true,
-            "pingpong": false,
-            "save_output": true,
+            "fps": ["6", 1],
           },
-          "class_type": "VideoCombine",
-          "_meta": {"title": "Video Combine"},
+          "class_type": "CreateVideo",
+        },
+        "8": {
+          "inputs": {
+            "video": ["7", 0],
+            "filename_prefix": "sonic_lipsync",
+            "format": "mp4",
+            "codec": "h264",
+          },
+          "class_type": "SaveVideo",
         },
       };
 
@@ -116,8 +110,47 @@ class AIService {
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       });
-      request.body = jsonEncode({"prompt": workflow});
+      request.body = jsonEncode({
+        "prompt": workflow,
+        "client_id": "flutter_app",
+      });
 
+      onProgress?.call('Lade Dateien herunter...');
+
+      // Verwende absoluten Pfad zum ComfyUI Ordner
+      final comfyuiDir = Directory(
+        '/Users/hhsw/Desktop/sunriza26/ComfyUI/input',
+      );
+      await comfyuiDir.create(recursive: true);
+
+      final imageFile = File(
+        '/Users/hhsw/Desktop/sunriza26/ComfyUI/input/crown_image.jpg',
+      );
+      final audioFile = File(
+        '/Users/hhsw/Desktop/sunriza26/ComfyUI/input/elevenlabs_audio.mp3',
+      );
+
+      // Lade Bild herunter
+      final imageResponse = await http.get(Uri.parse(imageUrl));
+      await imageFile.writeAsBytes(imageResponse.bodyBytes);
+
+      // Lade Audio herunter
+      final audioResponse = await http.get(Uri.parse(audioUrl));
+      await audioFile.writeAsBytes(audioResponse.bodyBytes);
+
+      onProgress?.call('Dateien heruntergeladen');
+
+      // JETZT mit ComfyUI Dateien
+      final localWorkflow = Map<String, dynamic>.from(workflow);
+      localWorkflow['2']['inputs']['audio'] = 'elevenlabs_audio.mp3';
+      localWorkflow['3']['inputs']['image'] = 'crown_image.jpg';
+
+      request.body = jsonEncode({
+        "prompt": localWorkflow,
+        "client_id": "flutter_app",
+      });
+
+      onProgress?.call('Sende an ComfyUI...');
       final response = await request.send();
       final responseBody = await response.stream.bytesToString();
 
@@ -129,15 +162,32 @@ class AIService {
 
       onProgress?.call('ComfyUI verarbeitet Video...');
 
-      // Warte auf Video-Generierung und hole das Ergebnis
-      final result = await _waitForComfyUIResult(responseBody);
+      // Hole das echte Video von ComfyUI
+      final promptId = jsonDecode(responseBody)['prompt_id'];
+      onProgress?.call('Warte auf Video-Generierung...');
 
-      if (result != null) {
-        onProgress?.call('Video erfolgreich generiert!');
-        return Stream.value(result);
-      } else {
-        throw Exception('Video-Generierung fehlgeschlagen');
+      // Warte 10 Sekunden
+      await Future.delayed(Duration(seconds: 10));
+
+      // Hole das generierte Video
+      final videoResponse = await http.get(
+        Uri.parse('http://localhost:8188/history/$promptId'),
+      );
+      final videoData = await videoResponse.bodyBytes;
+
+      onProgress?.call('Video erfolgreich generiert!');
+
+      // ZEIGE das Video sofort an
+      print('🎥 VIDEO GENERIERT: ${videoData.length} bytes');
+
+      // Prüfe ob es echte Video-Daten sind
+      if (videoData.length < 1000) {
+        print('❌ KEIN ECHTES VIDEO - nur ${videoData.length} bytes');
+        throw Exception('ComfyUI hat kein Video generiert');
       }
+
+      print('✅ ECHTES VIDEO - ${videoData.length} bytes');
+      return Stream.value(videoData);
     } catch (e) {
       onError?.call('Fehler bei ComfyUI Video-Generierung: $e');
       rethrow;

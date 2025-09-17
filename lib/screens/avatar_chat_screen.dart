@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/avatar_data.dart';
 import '../services/video_stream_service.dart';
 import '../services/ai_service.dart';
+import '../services/bithuman_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 
@@ -51,11 +52,36 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   final AudioPlayer _player = AudioPlayer();
   String? _lastRecordingPath;
   final VideoStreamService _videoService = VideoStreamService();
-  final AIService _ai = AIService();
+  // final AIService _ai = AIService(); // Nicht mehr benötigt mit BitHuman
+
+  /// Initialisiert BitHuman SDK
+  Future<void> _initializeBitHuman() async {
+    try {
+      await dotenv.load();
+      final apiKey = dotenv.env['BITHUMAN_API_KEY'] ?? 'demo_key';
+
+      if (apiKey != 'demo_key' && apiKey.isNotEmpty) {
+        BitHumanService.initialize(apiKey);
+        print('✅ BitHuman SDK initialisiert');
+      } else {
+        // Demo-Modus für Entwicklung
+        BitHumanService.initialize('demo_key');
+        print('⚠️ BitHuman im Demo-Modus - API Key in .env setzen');
+      }
+    } catch (e) {
+      print('❌ BitHuman Initialisierung fehlgeschlagen: $e');
+      // Fallback auf Demo-Modus
+      BitHumanService.initialize('demo_key');
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+
+    // BitHuman SDK initialisieren
+    _initializeBitHuman();
+
     // Hör auf Audio-Player-Status, um Sprech-Indikator zu steuern
     _playerStateSub = _player.playerStateStream.listen((state) {
       final speaking =
@@ -77,7 +103,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           _loadHistory().then((_) {
             if (_messages.isEmpty) {
               if ((_partnerName ?? '').isNotEmpty) {
-                _botSay(_friendlyGreet(_partnerName!));
+                _botSay(_friendlyGreet(_partnerName ?? ''));
               } else {
                 _botSay(
                   'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?',
@@ -541,7 +567,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       );
       if (whoAmI.hasMatch(text) &&
           (_partnerName != null && _partnerName!.isNotEmpty)) {
-        final first = _shortFirstName(_partnerName!);
+        final first = _shortFirstName(_partnerName ?? '');
         final suffix = _affectionateSuffix();
         await _botSay('Klar – du bist $first${suffix.replaceFirst(',', '')}');
         _addMessage(text, true);
@@ -580,12 +606,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         final candidate = exp ?? single;
         if (candidate != null &&
             candidate.isNotEmpty &&
-            candidate.toLowerCase() != _partnerName!.toLowerCase()) {
+            candidate.toLowerCase() != (_partnerName ?? '').toLowerCase()) {
           _isKnownPartner = true;
           _savePartnerName(candidate);
           final first = _shortFirstName(candidate);
           final tail = (_partnerPetName != null && _partnerPetName!.isNotEmpty)
-              ? ', mein ${_partnerPetName!}!'
+              ? ', mein ${_partnerPetName ?? ''}!'
               : '!';
           await _botSay('Alles klar – du bist $first$tail');
           return;
@@ -614,7 +640,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               _pendingFullName = authName;
               _pendingIsKnownPartner = true;
               _awaitingNameConfirm = true;
-              _botSay(_friendlyConfirmPendingName(_pendingFullName!));
+              _botSay(_friendlyConfirmPendingName(_pendingFullName ?? ''));
               return;
             }
           }
@@ -664,29 +690,38 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   Future<void> _botSay(String text) async {
     String? path;
     try {
-      // Versuche Live-Lipsync-Video zu starten; bei Fehlern weiterhin TTS nutzen.
-      _startLipsync(text);
+      final String? voiceId = (_avatarData?.training != null)
+          ? (_avatarData?.training?['voice'] != null
+                ? (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
+                : null)
+          : null;
+
+      // Nur wenn voiceId verfügbar ist, starte Lipsync
+      if (voiceId != null) {
+        _startLipsync(text);
+      }
+
       final uri = Uri.parse(
         'https://us-central1-sunriza26.cloudfunctions.net/tts',
       );
-      final String? voiceId = (_avatarData?.training != null)
-          ? (_avatarData!.training!['voice'] != null
-                ? _avatarData!.training!['voice']['elevenVoiceId'] as String?
-                : null)
-          : null;
       final payload = <String, dynamic>{'text': text};
       // Immer die geklonte Stimme verwenden
-      payload['voiceId'] = voiceId!;
+      if (voiceId != null) {
+        payload['voiceId'] = voiceId;
+      } else {
+        _showSystemSnack('Keine geklonte Stimme verfügbar');
+        return;
+      }
       // Voice-Parameter aus training.voice übernehmen
       final double? stability = (_avatarData?.training != null)
-          ? (_avatarData!.training!['voice'] != null
-                ? (_avatarData!.training!['voice']['stability'] as num?)
+          ? (_avatarData?.training?['voice'] != null
+                ? (_avatarData?.training?['voice']?['stability'] as num?)
                       ?.toDouble()
                 : null)
           : null;
       final double? similarity = (_avatarData?.training != null)
-          ? (_avatarData!.training!['voice'] != null
-                ? (_avatarData!.training!['voice']['similarity'] as num?)
+          ? (_avatarData?.training?['voice'] != null
+                ? (_avatarData?.training?['voice']?['similarity'] as num?)
                       ?.toDouble()
                 : null)
           : null;
@@ -720,21 +755,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     }
   }
 
-  Future<String?> _uploadAudioToFirebase(String audioPath) async {
-    try {
-      final file = File(audioPath);
-      final bytes = await file.readAsBytes();
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-      final ref = FirebaseStorage.instance.ref().child(
-        'avatars/$uid/audio/lipsync_${DateTime.now().millisecondsSinceEpoch}.mp3',
-      );
-      await ref.putData(bytes);
-      return await ref.getDownloadURL();
-    } catch (e) {
-      _showSystemSnack('Audio Upload Fehler: $e');
-      return null;
-    }
-  }
+  // _uploadAudioToFirebase entfernt - nicht mehr benötigt mit BitHuman
 
   Future<String?> _ensureTtsForText(String text) async {
     try {
@@ -742,22 +763,27 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         'https://us-central1-sunriza26.cloudfunctions.net/tts',
       );
       final String? voiceId = (_avatarData?.training != null)
-          ? (_avatarData!.training!['voice'] != null
-                ? _avatarData!.training!['voice']['elevenVoiceId'] as String?
+          ? (_avatarData?.training?['voice'] != null
+                ? (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
                 : null)
           : null;
       final payload = <String, dynamic>{'text': text};
       // Immer die geklonte Stimme verwenden
-      payload['voiceId'] = voiceId!;
+      if (voiceId != null) {
+        payload['voiceId'] = voiceId;
+      } else {
+        _showSystemSnack('Keine geklonte Stimme verfügbar');
+        return null;
+      }
       final double? stability = (_avatarData?.training != null)
-          ? (_avatarData!.training!['voice'] != null
-                ? (_avatarData!.training!['voice']['stability'] as num?)
+          ? (_avatarData?.training?['voice'] != null
+                ? (_avatarData?.training?['voice']?['stability'] as num?)
                       ?.toDouble()
                 : null)
           : null;
       final double? similarity = (_avatarData?.training != null)
-          ? (_avatarData!.training!['voice'] != null
-                ? (_avatarData!.training!['voice']['similarity'] as num?)
+          ? (_avatarData?.training?['voice'] != null
+                ? (_avatarData?.training?['voice']?['similarity'] as num?)
                       ?.toDouble()
                 : null)
           : null;
@@ -794,23 +820,33 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       final audioPath = await _ensureTtsForText(text);
       if (audioPath == null) return;
 
-      // Upload Audio zu Firebase Storage
-      final audioUrl = await _uploadAudioToFirebase(audioPath);
-      if (audioUrl == null) return;
-
       // Hole Crown Image URL (avatarImageUrl ist das Crown-Bild)
       final imageUrl = _avatarData?.avatarImageUrl;
       if (imageUrl == null) return;
 
-      final stream = await _ai.generateLiveVideo(
-        text: text,
-        imageUrl: imageUrl,
-        audioUrl: audioUrl,
-        onProgress: (m) {},
-        onError: (e) {},
+      print('🎬 STARTE BITHUMAN LIPSYNC:');
+      print('📝 Text: $text');
+      print('🖼️ Image: $imageUrl');
+      print('🎵 Audio: $audioPath');
+
+      // BitHuman SDK verwenden
+      final videoUrl = await BitHumanService.createAvatarWithAudio(
+        imagePath: imageUrl,
+        audioPath: audioPath,
       );
-      await _videoService.startStreaming(stream);
-    } catch (_) {
+
+      if (videoUrl != null) {
+        print('🎥 BitHuman Video erhalten: $videoUrl');
+        await _videoService.startStreamingFromUrl(
+          videoUrl,
+          onProgress: (msg) => print('📊 BitHuman Progress: $msg'),
+          onError: (err) => print('❌ BitHuman Error: $err'),
+        );
+      } else {
+        print('❌ BitHuman Video-Generierung fehlgeschlagen');
+      }
+    } catch (e) {
+      print('💥 BITHUMAN LIPSYNC FEHLER: $e');
       // Ignorieren – TTS läuft als Fallback weiter
     }
   }
@@ -829,19 +865,24 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     if (_avatarData == null) return;
     setState(() => _isTyping = true);
     try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        _showSystemSnack('Nicht angemeldet');
+        return;
+      }
+      final uid = user.uid;
       final uri = Uri.parse('${dotenv.env['MEMORY_API_BASE_URL']}/avatar/chat');
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'user_id': uid,
-          'avatar_id': _avatarData!.id,
+          'avatar_id': _avatarData?.id ?? '',
           'message': userText,
           'top_k': 5,
           'voice_id': _avatarData?.training != null
-              ? (_avatarData!.training!['voice'] != null
-                    ? _avatarData!.training!['voice']['elevenVoiceId']
+              ? (_avatarData?.training?['voice'] != null
+                    ? (_avatarData?.training?['voice']?['elevenVoiceId'])
                     : null)
               : null,
           'avatar_name': _avatarData?.displayName,
@@ -880,7 +921,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   Future<void> _chatViaFunctions(String userText) async {
     try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) {
+        _showSystemSnack('Nicht angemeldet');
+        return;
+      }
+      final uid = user.uid;
       final uri = Uri.parse(
         'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse',
       );
@@ -905,15 +951,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               'https://us-central1-sunriza26.cloudfunctions.net/tts',
             );
             final String? voiceId = (_avatarData?.training != null)
-                ? (_avatarData!.training!['voice'] != null
-                      ? _avatarData!.training!['voice']['elevenVoiceId']
-                            as String?
+                ? (_avatarData?.training?['voice'] != null
+                      ? (_avatarData?.training?['voice']?['elevenVoiceId']
+                            as String?)
                       : null)
                 : null;
+            if (voiceId == null) {
+              _showSystemSnack('Keine geklonte Stimme verfügbar');
+              return;
+            }
             final ttsRes = await http.post(
               ttsUri,
               headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'text': answer, 'voiceId': voiceId!}),
+              body: jsonEncode({'text': answer, 'voiceId': voiceId}),
             );
             if (ttsRes.statusCode >= 200 &&
                 ttsRes.statusCode < 300 &&
@@ -970,7 +1020,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           .collection('users')
           .doc(uid)
           .collection('avatars')
-          .doc(_avatarData!.id)
+          .doc(_avatarData?.id ?? '')
           .collection('chat')
           .orderBy('createdAt')
           .limit(_pageSize)
@@ -1009,7 +1059,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           .collection('users')
           .doc(uid)
           .collection('avatars')
-          .doc(_avatarData!.id)
+          .doc(_avatarData?.id ?? '')
           .collection('chat')
           .add({
             'text': text,
@@ -1029,7 +1079,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           .collection('users')
           .doc(uid)
           .collection('avatars')
-          .doc(_avatarData!.id)
+          .doc(_avatarData?.id ?? '')
           .get();
       final data = doc.data();
       if (data != null && data['partnerName'] is String) {
@@ -1085,7 +1135,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           .collection('users')
           .doc(uid)
           .collection('avatars')
-          .doc(_avatarData!.id)
+          .doc(_avatarData?.id ?? '')
           .set({
             'partnerName': _partnerName,
             'updatedAt': FieldValue.serverTimestamp(),
@@ -1186,7 +1236,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   String _affectionateSuffix() {
     if (_partnerPetName != null && _partnerPetName!.isNotEmpty) {
-      return ', mein ${_partnerPetName!}!';
+      return ', mein ${_partnerPetName ?? ''}!';
     }
     final role = (_partnerRole ?? '').toLowerCase();
     if (role.contains('ehe') || role.contains('partner')) {
@@ -1260,7 +1310,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           .collection('users')
           .doc(uid)
           .collection('avatars')
-          .doc(_avatarData!.id)
+          .doc(_avatarData?.id ?? '')
           .set({
             'partnerPetName': _partnerPetName,
             'updatedAt': FieldValue.serverTimestamp(),
@@ -1275,7 +1325,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             'updatedAt': FieldValue.serverTimestamp(),
           }, SetOptions(merge: true));
       await _saveInsight(
-        'Anrede/Kosename: ${_partnerPetName!}',
+        'Anrede/Kosename: ${_partnerPetName ?? ''}',
         source: 'profile',
         fileName: 'petname.txt',
       );
@@ -1291,7 +1341,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           .collection('users')
           .doc(uid)
           .collection('avatars')
-          .doc(_avatarData!.id)
+          .doc(_avatarData?.id ?? '')
           .set({
             'partnerRole': role,
             'updatedAt': FieldValue.serverTimestamp(),
@@ -1332,7 +1382,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           .collection('users')
           .doc(uid)
           .collection('avatars')
-          .doc(_avatarData!.id)
+          .doc(_avatarData?.id ?? '')
           .collection('chat')
           .orderBy('createdAt')
           .endBeforeDocument(_oldestDoc!)
@@ -1378,7 +1428,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       );
       final payload = {
         'user_id': uid,
-        'avatar_id': _avatarData!.id,
+        'avatar_id': _avatarData?.id ?? '',
         'full_text': fullText,
         'source': source,
         if (fileName != null) 'file_name': fileName,

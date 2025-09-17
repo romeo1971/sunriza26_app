@@ -25,6 +25,32 @@ class VideoStreamService {
 
   Stream<VideoStreamState> get stateStream => _stateController.stream;
 
+  /// Startet Video-Streaming von URL
+  Future<void> startStreamingFromUrl(
+    String videoUrl, {
+    Function(String)? onProgress,
+    Function(String)? onError,
+  }) async {
+    try {
+      if (_isStreaming) {
+        await stopStreaming();
+      }
+
+      _isStreaming = true;
+      onProgress?.call('Lade Video von URL...');
+      _stateController.add(VideoStreamState.initializing);
+
+      // Video-Controller direkt mit URL initialisieren
+      await _initializeVideoController(videoUrl);
+
+      onProgress?.call('Video geladen');
+      _stateController.add(VideoStreamState.streaming);
+    } catch (e) {
+      onError?.call('URL-Stream-Fehler: $e');
+      _stateController.add(VideoStreamState.error);
+    }
+  }
+
   /// Startet Live-Video-Streaming
   Future<void> startStreaming(
     Stream<Uint8List> videoStream, {
