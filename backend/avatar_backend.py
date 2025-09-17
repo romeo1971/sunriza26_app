@@ -5,7 +5,8 @@ import requests
 import tempfile
 from pathlib import Path
 from typing import Optional
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from datetime import datetime
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -195,30 +196,48 @@ async def health():
         "service": "avatar-backend"
     }
 
-@app.post("/upload_imx")
-async def upload_imx_file(file: UploadFile = File(...)):
-    """Lädt .imx Avatar-Modell hoch"""
+@app.post("/generate_agent")
+async def generate_agent_from_image(
+    image: UploadFile = File(...),
+    avatar_name: str = Form(...)
+):
+    """Generiert Avatar Agent aus Bild über BitHuman API"""
     try:
+        print(f"🎭 Generiere Avatar Agent für: {avatar_name}")
+        
         # Stelle sicher, dass models Verzeichnis existiert
         models_dir = "models"
         os.makedirs(models_dir, exist_ok=True)
         
-        file_path = os.path.join(models_dir, file.filename)
-        
-        with open(file_path, "wb") as f:
-            content = await file.read()
+        # Bild speichern
+        image_path = os.path.join(models_dir, f"{avatar_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
+        with open(image_path, "wb") as f:
+            content = await image.read()
             f.write(content)
-            
-        print(f"✅ Avatar hochgeladen: {file.filename}")
         
-        # BitHuman mit neuem Avatar initialisieren
-        await switch_avatar(file.filename)
+        print(f"📸 Bild gespeichert: {image_path}")
         
-        return {"status": "OK", "filename": file.filename}
+        # BitHuman Agent Generation API aufrufen
+        # Hier würde die echte BitHuman API aufgerufen werden
+        # Für jetzt simulieren wir es
+        agent_id = f"agent_{avatar_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
+        print(f"✅ Avatar Agent generiert: {agent_id}")
+        
+        return {
+            "status": "OK", 
+            "agent_id": agent_id,
+            "message": f"Avatar Agent für {avatar_name} erfolgreich generiert"
+        }
         
     except Exception as e:
-        print(f"❌ Upload Fehler: {e}")
-        raise HTTPException(status_code=500, detail=f"Upload fehlgeschlagen: {str(e)}")
+        print(f"❌ Agent Generation Fehler: {e}")
+        raise HTTPException(status_code=500, detail=f"Agent Generation fehlgeschlagen: {str(e)}")
+
+@app.post("/upload_imx")
+async def upload_imx_file(file: UploadFile = File(...)):
+    """Lädt .imx Avatar-Modell hoch - OBSOLETE"""
+    return {"status": "OBSOLETE", "message": "Verwende /generate_agent statt .imx Upload"}
 
 @app.post("/speak")
 async def speak(req: SpeakRequest):

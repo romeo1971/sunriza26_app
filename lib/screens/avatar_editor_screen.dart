@@ -1,22 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import '../services/elevenlabs_service.dart';
-import '../services/bithuman_service.dart';
+import 'package:sunriza26/services/bithuman_service.dart';
+import 'package:image_picker/image_picker.dart';
+import 'dart:io';
+import 'package:http/http.dart' as http;
 
 class AvatarEditorScreen extends StatefulWidget {
-  const AvatarEditorScreen({Key? key}) : super(key: key);
+  final String avatarId;
+  final String avatarName;
+  final String? avatarImageUrl;
+
+  const AvatarEditorScreen({
+    super.key,
+    required this.avatarId,
+    required this.avatarName,
+    this.avatarImageUrl,
+  });
 
   @override
   State<AvatarEditorScreen> createState() => _AvatarEditorScreenState();
 }
 
 class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
-  String? _uploadedImxFileName;
-  String _inputText = "";
-  bool _isUploading = false;
-  bool _isSpeaking = false;
+  String? _generatedAgentId;
+  File? _selectedImage;
+  bool _isGenerating = false;
   bool _isInitialized = false;
+  final ImagePicker _picker = ImagePicker();
 
   @override
   void initState() {
@@ -24,131 +33,113 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
     _initializeServices();
   }
 
-  /// Initialisiert alle Services
   Future<void> _initializeServices() async {
     try {
-      await dotenv.load();
-      await ElevenLabsService.initialize();
       await BitHumanService.initialize();
 
       setState(() {
         _isInitialized = true;
       });
 
-      print('✅ Alle Services initialisiert');
+      print('✅ BitHuman Service initialisiert');
     } catch (e) {
-      print('❌ Service-Initialisierung fehlgeschlagen: $e');
-      _showErrorSnackBar('Service-Initialisierung fehlgeschlagen');
+      _showErrorSnackBar('Fehler bei der Initialisierung: $e');
     }
   }
 
-  /// Lädt .imx Avatar-Modell hoch
-  Future<void> _uploadImxFile() async {
-    if (!_isInitialized) {
-      _showErrorSnackBar('Services noch nicht initialisiert');
-      return;
-    }
-
-    setState(() {
-      _isUploading = true;
-    });
-
+  Future<void> _selectImage() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['imx'],
-        allowMultiple: false,
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1024,
+        maxHeight: 1024,
+        imageQuality: 85,
       );
 
-      if (result != null && result.files.isNotEmpty) {
-        final file = result.files.first;
-        final filePath = file.path;
-
-        if (filePath != null) {
-          final fileName = await BitHumanService.uploadImxFile(filePath);
-
-          if (fileName != null) {
-            setState(() {
-              _uploadedImxFileName = fileName;
-            });
-            _showSuccessSnackBar('Avatar erfolgreich hochgeladen: $fileName');
-          } else {
-            _showErrorSnackBar('Upload fehlgeschlagen');
-          }
-        }
+      if (image != null) {
+        setState(() {
+          _selectedImage = File(image.path);
+        });
       }
     } catch (e) {
-      print('❌ Upload Fehler: $e');
-      _showErrorSnackBar('Upload Fehler: $e');
-    } finally {
-      setState(() {
-        _isUploading = false;
-      });
+      _showErrorSnackBar('Fehler beim Auswählen des Bildes: $e');
     }
   }
 
-  /// Startet Avatar-Sprechen
-  Future<void> _speak() async {
+  Future<File> _downloadAvatarImageToTemp(String url) async {
+    final uri = Uri.parse(url);
+    final resp = await http.get(uri);
+    if (resp.statusCode >= 200 && resp.statusCode < 300) {
+      final tmpPath =
+          '${Directory.systemTemp.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final f = File(tmpPath);
+      await f.writeAsBytes(resp.bodyBytes);
+      return f;
+    }
+    throw Exception('Bild-Download fehlgeschlagen (${resp.statusCode})');
+  }
+
+  Future<void> _generateAgent() async {
     if (!_isInitialized) {
-      _showErrorSnackBar('Services noch nicht initialisiert');
+      _showErrorSnackBar('Service ist noch nicht initialisiert.');
       return;
     }
 
-    if (_inputText.isEmpty) {
-      _showErrorSnackBar('Bitte Text eingeben');
-      return;
+    // Wenn kein lokales Bild existiert, versuche das Krone-Bild zu laden
+    if (_selectedImage == null &&
+        (widget.avatarImageUrl?.isNotEmpty ?? false)) {
+      try {
+        final file = await _downloadAvatarImageToTemp(widget.avatarImageUrl!);
+        setState(() => _selectedImage = file);
+      } catch (e) {
+        _showErrorSnackBar('Konnte Krone-Bild nicht laden: $e');
+        return;
+      }
     }
 
-    if (_uploadedImxFileName == null) {
-      _showErrorSnackBar('Bitte Avatar hochladen');
+    if (_selectedImage == null) {
+      _showErrorSnackBar('Kein Bild vorhanden.');
       return;
     }
 
     setState(() {
-      _isSpeaking = true;
+      _isGenerating = true;
     });
 
     try {
-      // Direkt über Backend sprechen lassen
-      final success = await BitHumanService.speakText(
-        _inputText,
-        _uploadedImxFileName!,
+      final agentId = await BitHumanService.generateAgentFromImage(
+        _selectedImage!,
+        widget.avatarName,
       );
 
-      if (success) {
-        _showSuccessSnackBar('Avatar spricht jetzt!');
+      if (agentId != null) {
+        setState(() {
+          _generatedAgentId = agentId;
+        });
+        _showSuccessSnackBar(
+          '🎭 Avatar Agent für "${widget.avatarName}" erfolgreich generiert!\n\nAgent ID: $agentId',
+        );
       } else {
-        _showErrorSnackBar('Avatar-Sprechen fehlgeschlagen');
+        _showErrorSnackBar('Agent-Generierung fehlgeschlagen.');
       }
     } catch (e) {
-      print('❌ Speak Fehler: $e');
-      _showErrorSnackBar('Speak Fehler: $e');
+      _showErrorSnackBar('Fehler bei der Agent-Generierung: $e');
     } finally {
       setState(() {
-        _isSpeaking = false;
+        _isGenerating = false;
       });
     }
   }
 
-  /// Zeigt Erfolgs-SnackBar
   void _showSuccessSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 3),
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.green),
     );
   }
 
-  /// Zeigt Fehler-SnackBar
   void _showErrorSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: Colors.red,
-        duration: const Duration(seconds: 3),
-      ),
+      SnackBar(content: Text(message), backgroundColor: Colors.red),
     );
   }
 
@@ -156,183 +147,174 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Avatar Editor'),
-        backgroundColor: Colors.purple,
+        title: Text('Avatar Editor - ${widget.avatarName}'),
+        backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
       ),
-      body: _isInitialized
-          ? _buildMainContent()
-          : const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Initialisiere Services...'),
-                ],
-              ),
-            ),
-    );
-  }
-
-  Widget _buildMainContent() {
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Upload Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Avatar Upload',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('Lade ein .imx Avatar-Modell hoch'),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: _isUploading ? null : _uploadImxFile,
-                    icon: _isUploading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.upload_file),
-                    label: Text(
-                      _isUploading ? 'Lädt hoch...' : 'Avatar (.imx) hochladen',
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.purple,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 12,
-                      ),
-                    ),
-                  ),
-                  if (_uploadedImxFileName != null) ...[
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.green.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.check_circle,
-                            color: Colors.green.shade600,
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Avatar Generation Section
+              Card(
+                elevation: 4,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    children: [
+                      // KRONE-BILD (füllt den Bereich)
+                      GestureDetector(
+                        onTap: _selectImage,
+                        child: Container(
+                          height: 300,
+                          width: 200,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(12),
+                            color: Colors.grey.shade100,
                           ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Avatar: $_uploadedImxFileName',
-                              style: TextStyle(color: Colors.green.shade800),
-                            ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: _selectedImage != null
+                                ? Image.file(_selectedImage!, fit: BoxFit.cover)
+                                : (widget.avatarImageUrl != null &&
+                                      widget.avatarImageUrl!.isNotEmpty)
+                                ? Image.network(
+                                    widget.avatarImageUrl!,
+                                    fit: BoxFit.cover,
+                                  )
+                                : const Icon(
+                                    Icons.person,
+                                    size: 80,
+                                    color: Colors.grey,
+                                  ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          ),
+                      const SizedBox(height: 24),
 
-          const SizedBox(height: 24),
+                      // Generate Button (CI-Farbe)
+                      ElevatedButton(
+                        onPressed: _isGenerating ? null : _generateAgent,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF6B46C1), // CI-Farbe
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 32,
+                            vertical: 16,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          _isGenerating
+                              ? 'Generiere Avatar...'
+                              : 'Avatar aus Bild generieren',
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                      ),
 
-          // Text Input Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Text zum Sprechen',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('Gib den Text ein, den der Avatar sprechen soll'),
-                  const SizedBox(height: 16),
-                  TextField(
-                    onChanged: (value) => setState(() => _inputText = value),
-                    decoration: const InputDecoration(
-                      labelText: 'Text eingeben...',
-                      border: OutlineInputBorder(),
-                      hintText: 'Hallo! Ich bin dein Avatar.',
-                    ),
-                    maxLines: 3,
-                    minLines: 1,
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 24),
-
-          // Speak Button
-          ElevatedButton.icon(
-            onPressed:
-                (_isSpeaking ||
-                    _inputText.isEmpty ||
-                    _uploadedImxFileName == null)
-                ? null
-                : _speak,
-            icon: _isSpeaking
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.record_voice_over),
-            label: Text(
-              _isSpeaking ? 'Avatar spricht...' : 'Avatar sprechen lassen',
-            ),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.green,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              textStyle: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 16),
-
-          // Status Info
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.blue.shade200),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.info, color: Colors.blue.shade600),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Stelle sicher, dass das Backend läuft (localhost:8000)',
-                    style: TextStyle(color: Colors.blue.shade800),
+                      if (_generatedAgentId != null) ...[
+                        const SizedBox(height: 24),
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: Colors.green.shade50,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.green.shade200),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.check_circle,
+                                color: Colors.green.shade600,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Avatar Agent generiert!',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.green.shade700,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Agent ID: $_generatedAgentId',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.green.shade600,
+                                        fontFamily: 'monospace',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
-              ],
-            ),
+              ),
+
+              const SizedBox(height: 24),
+
+              // Info Card
+              Card(
+                elevation: 2,
+                color: Colors.blue.shade50,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blue.shade600),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'BitHuman generiert automatisch einen lebensechten Avatar aus deinem Bild. Der Avatar spricht mit ElevenLabs TTS und dem definierten Begrüßungstext.',
+                          style: TextStyle(
+                            color: Colors.blue.shade800,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Status Info
+              if (!_isInitialized)
+                const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(width: 16),
+                      Text('Initialisiere BitHuman Service...'),
+                    ],
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }

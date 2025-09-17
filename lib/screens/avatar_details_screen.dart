@@ -11,6 +11,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
+import 'avatar_editor_screen.dart';
 
 class AvatarDetailsScreen extends StatefulWidget {
   const AvatarDetailsScreen({super.key});
@@ -174,69 +175,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
       _isDirty = false;
     });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final backgroundImage = _profileImageUrl ?? _avatarData?.avatarImageUrl;
-
-    return Scaffold(
-      appBar: AppBar(
-        title: InkWell(
-          onTap: () => Navigator.pop(context),
-          child: const Text('Datenwelt schließen'),
-        ),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-        actions: [
-          if (_isDirty)
-            IconButton(
-              tooltip: 'Speichern',
-              icon: const Icon(Icons.save),
-              onPressed: _saveAvatarDetails,
-            ),
-        ],
-      ),
-      body: Container(
-        decoration: backgroundImage != null
-            ? BoxDecoration(
-                image: DecorationImage(
-                  image: NetworkImage(backgroundImage),
-                  fit: BoxFit.cover,
-                  colorFilter: ColorFilter.mode(
-                    Colors.black.withValues(alpha: 0.7),
-                    BlendMode.darken,
-                  ),
-                ),
-              )
-            : null,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Avatar-Bild oben
-                _buildAvatarImage(),
-                const SizedBox(height: 12),
-                _buildMediaSection(),
-
-                const SizedBox(height: 24),
-
-                // Eingabefelder
-                _buildInputFields(),
-
-                const SizedBox(height: 32),
-
-                // Speichern-Button
-                _buildSaveButton(),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildAvatarImage() {
@@ -1132,76 +1070,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
   }
 
-  Future<void> _confirmDeleteRemoteImage(String url) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Bild löschen?'),
-        content: Text('${_fileNameFromUrl(url)} endgültig löschen?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true) {
-      try {
-        await FirebaseStorageService.deleteFile(url);
-        try {
-          final uid = FirebaseAuth.instance.currentUser!.uid;
-          final avatarId = _avatarData!.id;
-          await _triggerMemoryDelete(
-            userId: uid,
-            avatarId: avatarId,
-            fileUrl: url,
-            fileName: _fileNameFromUrl(url),
-            filePath: _storagePathFromUrl(url),
-          );
-        } catch (_) {}
-        _imageUrls.remove(url);
-        if (_profileImageUrl == url) {
-          _profileImageUrl = _imageUrls.isNotEmpty ? _imageUrls.first : null;
-        }
-        await _persistTextFileUrls();
-        if (mounted) setState(() {});
-      } catch (_) {}
-    }
-  }
-
-  Future<void> _confirmDeleteLocalImage(File file) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Bild entfernen?'),
-        content: Text('${pathFromLocalFile(file.path)} wirklich entfernen?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen'),
-          ),
-        ],
-      ),
-    );
-    if (ok == true && mounted) {
-      setState(() {
-        _newImageFiles.remove(file);
-        if (_profileLocalPath == file.path) {
-          _profileLocalPath = null;
-        }
-      });
-    }
-  }
-
   Widget _bigMediaButton(IconData icon, String label, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -1717,16 +1585,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         // Upload Audio Files einzeln (nur speichern, nicht in Pinecone)
         final List<String> allAudios = [...(_avatarData?.audioUrls ?? [])];
         for (int i = 0; i < _newAudioFiles.length; i++) {
-          final baseName = p.basename(_newAudioFiles[i].path);
-          final ts = DateTime.now().millisecondsSinceEpoch;
-          final safeName = baseName.endsWith('.mp3')
-              ? baseName
-              : '${baseName}_$ts.mp3';
-          final url = await FirebaseStorageService.uploadAudio(
-            _newAudioFiles[i],
-            customPath:
-                'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/audio/$safeName',
-          );
+          // Audio Upload entfernt - wird jetzt direkt von ElevenLabs generiert
+          final url = null; // Audio wird nicht mehr gespeichert
           if (url != null) allAudios.add(url);
         }
 
@@ -1975,6 +1835,90 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _selectedLocalImages.clear();
     _isDeleteMode = false;
     if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final backgroundImage = _profileImageUrl ?? _avatarData?.avatarImageUrl;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: InkWell(
+          onTap: () => Navigator.pop(context),
+          child: const Text('Datenwelt schließen'),
+        ),
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
+        actions: [
+          if (_isDirty)
+            IconButton(
+              tooltip: 'Speichern',
+              icon: const Icon(Icons.save),
+              onPressed: _saveAvatarDetails,
+            ),
+          IconButton(
+            onPressed: () {
+              if (_avatarData != null) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => AvatarEditorScreen(
+                      avatarId: _avatarData!.id,
+                      avatarName: _avatarData!.firstName,
+                      avatarImageUrl:
+                          (_profileImageUrl ??
+                          _avatarData!.avatarImageUrl ??
+                          (_imageUrls.isNotEmpty ? _imageUrls.first : null)),
+                    ),
+                  ),
+                );
+              }
+            },
+            icon: const Icon(Icons.upload_file),
+            tooltip: 'Avatar .imx hochladen',
+          ),
+        ],
+      ),
+      body: Container(
+        decoration: backgroundImage != null
+            ? BoxDecoration(
+                image: DecorationImage(
+                  image: NetworkImage(backgroundImage),
+                  fit: BoxFit.cover,
+                  colorFilter: ColorFilter.mode(
+                    Colors.black.withValues(alpha: 0.7),
+                    BlendMode.darken,
+                  ),
+                ),
+              )
+            : null,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Avatar-Bild oben
+                _buildAvatarImage(),
+                const SizedBox(height: 12),
+                _buildMediaSection(),
+
+                const SizedBox(height: 24),
+
+                // Eingabefelder
+                _buildInputFields(),
+
+                const SizedBox(height: 32),
+
+                // Speichern-Button
+                _buildSaveButton(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override

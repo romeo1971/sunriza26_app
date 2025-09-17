@@ -42,5 +42,15 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '10.15'
     end
+
+    # Unterdrücke Xcode-Warnung: "Create Symlinks to Header Folders will be run during every build"
+    target.build_phases.each do |phase|
+      if phase.is_a?(Xcodeproj::Project::Object::PBXShellScriptBuildPhase) &&
+         phase.name == 'Create Symlinks to Header Folders'
+        if phase.output_paths.nil? || phase.output_paths.empty?
+          phase.output_paths << "$(DERIVED_FILE_DIR)/PodsHeadersSymlinks-#{target.name}"
+        end
+      end
+    end
   end
 end

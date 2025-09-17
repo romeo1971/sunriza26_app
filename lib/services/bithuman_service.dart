@@ -86,17 +86,64 @@ class BitHumanService {
     }
   }
 
+  /// Generiert Avatar Agent aus Bild über BitHuman API
+  static Future<String?> generateAgentFromImage(
+    File imageFile,
+    String avatarName,
+  ) async {
+    try {
+      print('🎭 BitHuman: Generiere Avatar Agent aus Bild');
+      print('📸 Bild: ${imageFile.path}');
+      print('👤 Avatar: $avatarName');
+
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_baseUrl/generate_agent'),
+      );
+
+      // Bild anhängen
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          'image',
+          imageFile.path,
+          filename:
+              '${avatarName}_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+      );
+
+      // Avatar Name als Parameter
+      request.fields['avatar_name'] = avatarName;
+
+      final response = await request.send();
+      final responseBody = await response.stream.bytesToString();
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(responseBody);
+        final agentId = data['agent_id'];
+        print('✅ Avatar Agent generiert: $agentId');
+        return agentId;
+      } else {
+        print('❌ Agent Generation Fehler: ${response.statusCode}');
+        print('❌ Response: $responseBody');
+        return null;
+      }
+    } catch (e) {
+      print('❌ Agent Generation Error: $e');
+      return null;
+    }
+  }
+
   /// Startet Avatar-Sprechen mit Text
-  static Future<bool> speakText(String text, String imxFileName) async {
+  static Future<bool> speakText(String text, String agentId) async {
     try {
       print('🗣️ BitHuman: Starte Avatar-Sprechen');
       print('📝 Text: $text');
-      print('🎭 Avatar: $imxFileName');
+      print('🎭 Agent: $agentId');
 
       final response = await http.post(
         Uri.parse('$_baseUrl/speak'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'text': text, 'imx': imxFileName}),
+        body: jsonEncode({'text': text, 'agent_id': agentId}),
       );
 
       if (response.statusCode == 200) {

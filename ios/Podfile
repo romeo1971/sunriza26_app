@@ -39,5 +39,15 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    # Unterdrücke Xcode-Warnung: "Create Symlinks to Header Folders will be run during every build"
+    # durch Setzen eines Dummy-Outputs für die Script-Phase.
+    target.build_phases.each do |phase|
+      if phase.is_a?(Xcodeproj::Project::Object::PBXShellScriptBuildPhase) &&
+         phase.name == 'Create Symlinks to Header Folders'
+        if phase.output_paths.nil? || phase.output_paths.empty?
+          phase.output_paths << "$(DERIVED_FILE_DIR)/PodsHeadersSymlinks-#{target.name}"
+        end
+      end
+    end
   end
 end

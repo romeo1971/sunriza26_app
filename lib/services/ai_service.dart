@@ -8,7 +8,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
 class AIService {
   static final AIService _instance = AIService._internal();
