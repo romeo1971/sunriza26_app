@@ -675,7 +675,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 : null)
           : null;
       final payload = <String, dynamic>{'text': text};
-      if (voiceId != null && voiceId.isNotEmpty) payload['voiceId'] = voiceId;
+      // Immer die geklonte Stimme verwenden
+      payload['voiceId'] = voiceId!;
       // Voice-Parameter aus training.voice übernehmen
       final double? stability = (_avatarData?.training != null)
           ? (_avatarData!.training!['voice'] != null
@@ -746,7 +747,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 : null)
           : null;
       final payload = <String, dynamic>{'text': text};
-      if (voiceId != null && voiceId.isNotEmpty) payload['voiceId'] = voiceId;
+      // Immer die geklonte Stimme verwenden
+      payload['voiceId'] = voiceId!;
       final double? stability = (_avatarData?.training != null)
           ? (_avatarData!.training!['voice'] != null
                 ? (_avatarData!.training!['voice']['stability'] as num?)
@@ -902,10 +904,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             final ttsUri = Uri.parse(
               'https://us-central1-sunriza26.cloudfunctions.net/tts',
             );
+            final String? voiceId = (_avatarData?.training != null)
+                ? (_avatarData!.training!['voice'] != null
+                      ? _avatarData!.training!['voice']['elevenVoiceId']
+                            as String?
+                      : null)
+                : null;
             final ttsRes = await http.post(
               ttsUri,
               headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'text': answer}),
+              body: jsonEncode({'text': answer, 'voiceId': voiceId!}),
             );
             if (ttsRes.statusCode >= 200 &&
                 ttsRes.statusCode < 300 &&
