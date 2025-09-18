@@ -11,11 +11,13 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'avatar_editor_screen.dart';
 import 'package:video_player/video_player.dart';
 import '../widgets/video_player_widget.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'dart:typed_data';
+import '../services/elevenlabs_service.dart';
 
 class AvatarDetailsScreen extends StatefulWidget {
   const AvatarDetailsScreen({super.key});
@@ -63,6 +65,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   // ElevenLabs Voice-Parameter (per Avatar speicherbar)
   double _voiceStability = 0.25;
   double _voiceSimilarity = 0.9;
+  // ElevenLabs Voices
+  List<Map<String, dynamic>> _elevenVoices = [];
+  String? _selectedVoiceId;
+  bool _voicesLoading = false;
 
   void _updateDirty() {
     final current = _avatarData;
@@ -123,6 +129,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         // Frische Daten aus Firestore nachladen, um veraltete Argumente zu ersetzen
         _fetchLatest(args.id);
       }
+      _loadElevenVoices();
     });
   }
 
@@ -171,6 +178,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (voice is Map) {
         final st = voice['stability'];
         final si = voice['similarity'];
+        final vid = voice['elevenVoiceId'];
         if (st is num) _voiceStability = st.toDouble();
         if (st is String) {
           final v = double.tryParse(st);
@@ -180,6 +188,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (si is String) {
           final v = double.tryParse(si);
           if (v != null) _voiceSimilarity = v;
+        }
+        if (vid is String && vid.isNotEmpty) {
+          _selectedVoiceId = vid;
         }
       }
       _isDirty = false;
@@ -360,13 +371,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
               const SizedBox(height: 8),
 
-              // Audio (Stimmproben) inkl. Stimmeinstellungen
+              // Audio (Stimmauswahl) inkl. Stimmeinstellungen
               ExpansionTile(
                 initiallyExpanded: false,
                 collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
                 backgroundColor: Colors.white.withValues(alpha: 0.06),
                 title: const Text(
-                  'Audio (Stimmproben)',
+                  'Stimmauswahl',
                   style: TextStyle(color: Colors.white),
                 ),
                 children: [
@@ -376,6 +387,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const SizedBox(height: 8),
+                        // ElevenLabs Voice Auswahl
+                        _buildVoiceSelect(),
+                        const SizedBox(height: 12),
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
@@ -439,6 +453,85 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
       ],
     );
+  }
+
+  Widget _buildVoiceSelect() {
+    if (_voicesLoading) {
+      return const LinearProgressIndicator(minHeight: 3);
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Stimme wählen (ElevenLabs)',
+          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 6),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white24),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              isExpanded: true,
+              dropdownColor: Colors.black87,
+              value: _selectedVoiceId,
+              hint: const Text(
+                'Standard-Stimme verwenden',
+                style: TextStyle(color: Colors.white70),
+              ),
+              items: _elevenVoices
+                  .map(
+                    (v) => DropdownMenuItem<String>(
+                      value: (v['voice_id'] ?? v['voiceId'] ?? '') as String,
+                      child: Text(
+                        (v['name'] ?? 'Voice') as String,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (val) => _onSelectVoice(val),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _onSelectVoice(String? voiceId) async {
+    setState(() => _selectedVoiceId = voiceId);
+    if (_avatarData == null) return;
+    final existing = Map<String, dynamic>.from(_avatarData!.training ?? {});
+    final voice = Map<String, dynamic>.from(existing['voice'] ?? {});
+    if (voiceId == null || voiceId.isEmpty) {
+      voice.remove('elevenVoiceId');
+    } else {
+      voice['elevenVoiceId'] = voiceId;
+    }
+    existing['voice'] = voice;
+    final updated = _avatarData!.copyWith(
+      training: existing,
+      updatedAt: DateTime.now(),
+    );
+    final ok = await _avatarService.updateAvatar(updated);
+    if (ok) _applyAvatar(updated);
+  }
+
+  Future<void> _loadElevenVoices() async {
+    try {
+      setState(() => _voicesLoading = true);
+      await ElevenLabsService.initialize();
+      final voices = await ElevenLabsService.getVoices();
+      if (voices != null && mounted) {
+        setState(() => _elevenVoices = voices);
+      }
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _voicesLoading = false);
+    }
   }
 
   Widget _buildImagesRowLayout() {
@@ -914,10 +1007,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Audio (Stimmproben)',
-          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
-        ),
+        // const Text(
+        //   '',
+        //   style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        // ),
         const SizedBox(height: 6),
         ...tiles,
         const SizedBox(height: 8),
@@ -1530,6 +1623,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await controller.initialize();
       setState(() => _inlineVideoController = controller);
     } catch (e) {
+      // Versuch: Download-URL auffrischen (z.B. abgelaufener Token)
+      try {
+        final fresh = await _refreshDownloadUrl(url);
+        if (fresh != null) {
+          final controller = VideoPlayerController.networkUrl(Uri.parse(fresh));
+          await controller.initialize();
+          setState(() => _inlineVideoController = controller);
+          // gespeicherte URL ersetzen und persistieren
+          final idx = _videoUrls.indexOf(url);
+          if (idx >= 0) {
+            _videoUrls[idx] = fresh;
+            await _persistTextFileUrls();
+          }
+          return;
+        }
+      } catch (_) {}
       _showSystemSnack('Video kann nicht geladen werden');
     }
   }
@@ -1549,8 +1658,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Future<Uint8List?> _thumbnailForRemote(String url) async {
     try {
       if (_videoThumbCache.containsKey(url)) return _videoThumbCache[url];
-      final res = await http.get(Uri.parse(url));
-      if (res.statusCode != 200) return null;
+      var effectiveUrl = url;
+      var res = await http.get(Uri.parse(effectiveUrl));
+      if (res.statusCode != 200) {
+        final fresh = await _refreshDownloadUrl(url);
+        if (fresh != null) {
+          effectiveUrl = fresh;
+          res = await http.get(Uri.parse(effectiveUrl));
+          if (res.statusCode != 200) return null;
+          // Cache frische URL direkt ablegen, damit Thumbs stabil sind
+          final idx = _videoUrls.indexOf(url);
+          if (idx >= 0) _videoUrls[idx] = fresh;
+          // kein persist hier, damit UI flott bleibt; persist passiert beim Speichern
+        } else {
+          return null;
+        }
+      }
       final tmp = await File(
         '${Directory.systemTemp.path}/thumb_${DateTime.now().microsecondsSinceEpoch}.mp4',
       ).create();
@@ -1567,6 +1690,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         await tmp.delete();
       } catch (_) {}
       return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _refreshDownloadUrl(String maybeExpiredUrl) async {
+    try {
+      final path = _storagePathFromUrl(maybeExpiredUrl);
+      if (path.isEmpty) return null;
+      final ref = FirebaseStorage.instance.ref().child(path);
+      final fresh = await ref.getDownloadURL();
+      return fresh;
     } catch (_) {
       return null;
     }
@@ -1898,20 +2033,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.green.shade50,
+        color: const Color(0x80FFFFFF),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green.shade200),
+        border: Border.all(
+          color: const Color(0xFF6B46C1).withValues(alpha: 0.35),
+        ),
       ),
       child: Row(
         children: [
-          Icon(Icons.cake, color: Colors.green.shade600),
+          const Icon(Icons.cake, color: Color(0xFF6B46C1)),
           const SizedBox(width: 12),
           Text(
             'Berechnetes Alter: $_calculatedAge Jahre',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: Colors.green.shade700,
+              color: const Color(0xFF6B46C1),
             ),
           ),
         ],
@@ -2103,11 +2240,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
         }
 
-        // Upload Audio Files einzeln (nur speichern, nicht in Pinecone)
+        // Upload Audio Files einzeln (wird gespeichert und im Avatar geführt)
         final List<String> allAudios = [...(_avatarData?.audioUrls ?? [])];
         for (int i = 0; i < _newAudioFiles.length; i++) {
-          // Audio Upload entfernt - wird jetzt direkt von ElevenLabs generiert
-          final url = null; // Audio wird nicht mehr gespeichert
+          final String base = p.basename(_newAudioFiles[i].path);
+          final String audioPath =
+              'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/audio/${DateTime.now().millisecondsSinceEpoch}_$i$base';
+          final url = await FirebaseStorageService.uploadAudio(
+            _newAudioFiles[i],
+            customPath: audioPath,
+          );
           if (url != null) allAudios.add(url);
         }
 

@@ -72,19 +72,43 @@ class FirebaseStorageService {
     }
   }
 
-  /// Upload eine Audiodatei zu Firebase Storage - OBSOLETE
-  /// Audio wird jetzt direkt von ElevenLabs generiert und nicht mehr gespeichert
-  @Deprecated(
-    'Audio wird jetzt direkt von ElevenLabs generiert - nicht mehr nötig',
-  )
+  /// Upload eine Audiodatei zu Firebase Storage
   static Future<String?> uploadAudio(
     File audioFile, {
     String? customPath,
   }) async {
-    debugPrint(
-      '⚠️ uploadAudio ist obsolete - Audio wird direkt von ElevenLabs generiert',
-    );
-    return null;
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('Benutzer nicht angemeldet');
+
+      final fileName = path.basename(audioFile.path);
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final filePath =
+          customPath ?? 'avatars/${user.uid}/audio/${timestamp}_$fileName';
+
+      // Content-Type anhand der Dateiendung setzen
+      final ext = path.extension(audioFile.path).toLowerCase();
+      String contentType = 'audio/mpeg';
+      if (ext == '.m4a') contentType = 'audio/mp4';
+      if (ext == '.wav') contentType = 'audio/wav';
+      if (ext == '.aac') contentType = 'audio/aac';
+      if (ext == '.ogg') contentType = 'audio/ogg';
+
+      final ref = _storage.ref().child(filePath);
+      final uploadTask = ref.putFile(
+        audioFile,
+        SettableMetadata(contentType: contentType),
+      );
+
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      debugPrint('uploadAudio OK → $downloadUrl');
+      return downloadUrl;
+    } catch (e) {
+      debugPrint('Fehler beim Upload der Audiodatei: $e');
+      return null;
+    }
   }
 
   /// Upload eine Textdatei zu Firebase Storage

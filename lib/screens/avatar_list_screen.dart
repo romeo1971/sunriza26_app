@@ -253,12 +253,14 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                   IconButton(
                     tooltip: 'Avatar bearbeiten',
                     icon: const Icon(Icons.edit, size: 18, color: Colors.white),
-                    onPressed: () {
-                      Navigator.pushNamed(
+                    onPressed: () async {
+                      await Navigator.pushNamed(
                         context,
                         '/avatar-details',
                         arguments: avatar,
                       );
+                      if (!mounted) return;
+                      await _loadAvatars();
                     },
                   ),
                   const SizedBox(width: 4),
