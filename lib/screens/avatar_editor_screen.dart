@@ -201,7 +201,7 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
                       ElevatedButton(
                         onPressed: _isGenerating ? null : _generateAgent,
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF6B46C1), // CI-Farbe
+                          backgroundColor: Colors.black,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(
                             horizontal: 32,
@@ -214,7 +214,7 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
                         child: Text(
                           _isGenerating
                               ? 'Generiere Avatar...'
-                              : 'Avatar aus Bild generieren',
+                              : 'Avatar generieren',
                           style: const TextStyle(fontSize: 16),
                         ),
                       ),
@@ -271,29 +271,24 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
               const SizedBox(height: 24),
 
               // Info Card
-              Card(
-                elevation: 2,
-                color: Colors.blue.shade50,
-                shape: RoundedRectangleBorder(
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.black,
                   borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white24),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.blue.shade600),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'BitHuman generiert automatisch einen lebensechten Avatar aus deinem Bild. Der Avatar spricht mit ElevenLabs TTS und dem definierten Begrüßungstext.',
-                          style: TextStyle(
-                            color: Colors.blue.shade800,
-                            fontSize: 14,
-                          ),
-                        ),
+                padding: const EdgeInsets.all(16.0),
+                child: const Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.white70),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'BitHuman generiert automatisch einen lebensechten Avatar aus deinem Bild. Der Avatar spricht mit ElevenLabs TTS und dem definierten Begrüßungstext.',
+                        style: TextStyle(color: Colors.white70, fontSize: 14),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
 

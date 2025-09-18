@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../models/avatar_data.dart' as model;
 import '../widgets/app_drawer.dart';
@@ -63,7 +64,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
       drawer: const AppDrawer(),
       appBar: AppBar(
         title: const Text('Meine Avatare'),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
           // Avatar Editor wird jetzt über Avatar Details aufgerufen
@@ -108,14 +109,17 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
               width: 120,
               height: 120,
               decoration: BoxDecoration(
-                color: Colors.deepPurple.shade100,
+                color: const Color(0x1400DFA8),
                 shape: BoxShape.circle,
-                border: Border.all(color: Colors.deepPurple.shade300, width: 2),
+                border: Border.all(
+                  color: AppColors.accentGreenDark.withValues(alpha: 0.5),
+                  width: 2,
+                ),
               ),
               child: Icon(
                 Icons.person_add,
                 size: 60,
-                color: Colors.deepPurple.shade300,
+                color: AppColors.accentGreenDark,
               ),
             ),
             const SizedBox(height: 24),
@@ -139,7 +143,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
               icon: const Icon(Icons.add),
               label: const Text('Ersten Avatar erstellen'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
+                backgroundColor: AppColors.accentGreenDark,
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 24,
@@ -185,9 +189,9 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                 height: 60,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.deepPurple.shade100,
+                  color: const Color(0x1400DFA8),
                   border: Border.all(
-                    color: Colors.deepPurple.shade300,
+                    color: AppColors.accentGreenDark,
                     width: 2,
                   ),
                 ),
@@ -279,7 +283,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
   }
 
   Widget _buildDefaultAvatar() {
-    return Icon(Icons.person, size: 30, color: Colors.deepPurple.shade300);
+    return const Icon(Icons.person, size: 30, color: AppColors.accentGreenDark);
   }
 
   // Entfernt: Zeitstempelanzeige wird aktuell nicht verwendet

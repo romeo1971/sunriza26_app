@@ -96,6 +96,11 @@ def on_startup() -> None:
     )
 
 
+@app.get("/health")
+def health() -> Dict[str, Any]:
+    return {"status": "healthy", "service": "memory-backend"}
+
+
 @app.post("/avatar/memory/insert", response_model=InsertResponse)
 def insert_avatar_memory(payload: InsertRequest) -> InsertResponse:
     namespace = f"{payload.user_id}_{payload.avatar_id}"

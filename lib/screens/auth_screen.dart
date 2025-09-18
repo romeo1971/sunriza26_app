@@ -261,7 +261,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Erwecke Erinnerungen zum Leben',
+                  'Erwecke mit Sunriza Erinnerungen zum Leben',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                     color: const Color(0xFFCCCCCC),

@@ -147,7 +147,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.deepPurple,
+        color: Colors.black,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.3),
@@ -186,19 +186,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
     return Container(
       width: double.infinity,
-      decoration: hasImage
-          ? null
-          : BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.deepPurple.shade800,
-                  Colors.deepPurple.shade900,
-                  Colors.black,
-                ],
-              ),
-            ),
+      decoration: hasImage ? null : const BoxDecoration(color: Colors.black),
       child: Stack(
         children: [
           // Video-Overlay (nur wenn Audio spielt und Video bereit ist)
@@ -397,7 +385,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               ),
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
-                color: isUser ? Colors.deepPurple : Colors.grey.shade800,
+                color: isUser ? Colors.black : Colors.grey.shade800,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: GestureDetector(
@@ -481,11 +469,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: _isRecording ? Colors.red : Colors.deepPurple,
+                color: _isRecording ? Colors.red : Colors.black,
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: (_isRecording ? Colors.red : Colors.deepPurple)
+                    color: (_isRecording ? Colors.red : Colors.black)
                         .withValues(alpha: 0.3),
                     blurRadius: 10,
                     spreadRadius: 2,
@@ -523,11 +511,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: Colors.deepPurple,
+                color: Colors.black,
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.deepPurple.withValues(alpha: 0.3),
+                    color: Colors.black54,
                     blurRadius: 10,
                     spreadRadius: 2,
                   ),
@@ -924,7 +912,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 ? (_avatarData?.training?['voice']?['elevenVoiceId'])
                 : null)
           : null;
-      if (voiceId == null || (voiceId is String && voiceId.isEmpty)) {
+      if (voiceId == null || (voiceId.isEmpty)) {
         voiceId = await _reloadVoiceIdFromFirestore();
       }
       final res = await http.post(

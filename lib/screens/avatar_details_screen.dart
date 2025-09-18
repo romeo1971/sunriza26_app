@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
+import '../theme/app_theme.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
@@ -62,6 +63,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final Set<String> _selectedLocalVideos = {};
   bool _isDeleteMode = false;
   bool _isDirty = false;
+  // Medien-Tab: 'images' oder 'videos'
+  String _mediaTab = 'images';
   // ElevenLabs Voice-Parameter (per Avatar speicherbar)
   double _voiceStability = 0.25;
   double _voiceSimilarity = 0.9;
@@ -69,6 +72,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   List<Map<String, dynamic>> _elevenVoices = [];
   String? _selectedVoiceId;
   bool _voicesLoading = false;
+
+  double _mediaWidth(BuildContext context) {
+    final double available =
+        MediaQuery.of(context).size.width -
+        32; // 16px Seitenabstand links/rechts
+    double w = (available - 16) / 2; // Abstand zwischen den Spalten
+    if (w < 220) w = 220;
+    if (w > 360) w = 360;
+    return w;
+  }
 
   void _updateDirty() {
     final current = _avatarData;
@@ -202,15 +215,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // Opener-Text oberhalb des Medienbereichs
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Text(
+            'Diese Bilder, Videos und Texte dienen dazu, den Avatar möglichst genau zu trainieren – keine Urlaubsgalerie.',
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.85)),
+          ),
+        ),
+
         const SizedBox(height: 12),
 
-        // Bilder: Krone links groß, daneben max. 5 Bilder, rechts Upload
-        _buildImagesRowLayout(),
+        // Navigation-Chips entfernt – lokale Buttons über dem großen Medienbereich vorhanden
 
-        const SizedBox(height: 16),
-
-        // Videos: Preview/Player links groß, daneben max. 5 Videos, rechts Upload
-        _buildVideosRowLayout(),
+        // Medienbereich (gelber Rahmen-Bereich) – show/hide
+        if (_mediaTab == 'images')
+          _buildImagesRowLayout(_mediaWidth(context))
+        else
+          _buildVideosRowLayout(_mediaWidth(context)),
         Padding(
           padding: const EdgeInsets.only(top: 8.0),
           child: Row(
@@ -292,7 +314,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                             onPressed: _onAddTexts,
                             style: ElevatedButton.styleFrom(
                               alignment: Alignment.centerLeft,
-                              backgroundColor: const Color(0xFF6B46C1),
+                              backgroundColor: AppColors.accentGreenDark,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -351,7 +373,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: const BorderSide(
-                                color: Colors.deepPurple,
+                                color: AppColors.accentGreenDark,
                               ),
                             ),
                           ),
@@ -395,7 +417,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                             onPressed: _onAddAudio,
                             style: ElevatedButton.styleFrom(
                               alignment: Alignment.centerLeft,
-                              backgroundColor: const Color(0xFF6B46C1),
+                              backgroundColor: AppColors.accentGreenDark,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
@@ -547,7 +569,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   }
                 : null,
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6B46C1),
+              backgroundColor: AppColors.accentGreenDark,
               foregroundColor: Colors.white,
             ),
             child: const Text('Probehören'),
@@ -624,288 +646,495 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
-  Widget _buildImagesRowLayout() {
+  Widget _buildImagesRowLayout([double? mediaW]) {
     final List<String> remoteFive = _imageUrls.take(5).toList();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Krone links GROSS (200x300)
-          Column(
+      child: LayoutBuilder(
+        builder: (ctx, cons) {
+          const double spacing =
+              16.0; // Abstand zwischen großem Bild und Galerie
+          const double minThumbWidth = 120.0;
+          const double gridSpacing = 12.0; // zwischen den Thumbs
+          // Rechts mindestens 2 Thumbs: 2 * min + Zwischenabstand
+          final double minRightWidth = (2 * minThumbWidth) + gridSpacing;
+          double leftW = cons.maxWidth - spacing - minRightWidth;
+          // Begrenze links sinnvoll
+          if (leftW > 240) leftW = 240;
+          if (leftW < 160) leftW = 160;
+          final double leftH = leftW * 1.5; // etwa 2:3 Verhältnis
+
+          return Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                width: 200,
-                height: 300,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: _profileLocalPath != null
-                      ? Image.file(File(_profileLocalPath!), fit: BoxFit.cover)
-                      : (_profileImageUrl != null
-                            ? Image.network(
-                                _profileImageUrl!,
-                                fit: BoxFit.cover,
-                              )
-                            : Container(
-                                color: Colors.white12,
-                                child: const Icon(
-                                  Icons.person,
-                                  color: Colors.white54,
-                                  size: 64,
-                                ),
-                              )),
-                ),
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: 200,
-                child: ElevatedButton(
-                  onPressed: () async {
-                    if (_avatarData == null) return;
-                    final ok = await showDialog<bool>(
-                      context: context,
-                      builder: (ctx) => AlertDialog(
-                        title: const Text('Avatar generieren?'),
-                        content: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: const [
-                            Text(
-                              'Wir generieren automatisch einen lebensechten Avatar aus deinem Bild. Der Avatar spricht mit der ausgewählten Stimme oder Deiner eigenen.',
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'WICHTIG: Dieser Vorgang kostet pro Vorgang 50 credits! Bitte überlege Dir also genau, welches Bild Du nutzen möchtest.',
-                              style: TextStyle(
-                                color: Color(0xFF6B46C1),
-                                fontWeight: FontWeight.w700,
+              // Krone links GROSS (responsive)
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Lokale Navigation direkt über dem großen Bild (hälftig, 16px Abstand)
+                  SizedBox(
+                    width: leftW,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () =>
+                                setState(() => _mediaTab = 'images'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _mediaTab == 'images'
+                                  ? AppColors.accentGreenDark
+                                  : Colors.transparent,
+                              foregroundColor: _mediaTab == 'images'
+                                  ? Colors.white
+                                  : Colors.white70,
+                              side: BorderSide(
+                                color: _mediaTab == 'images'
+                                    ? AppColors.accentGreenDark
+                                    : Colors.white24,
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                          ],
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx, false),
-                            child: const Text('Abbrechen'),
+                            child: const Text('Bilder'),
                           ),
-                          ElevatedButton(
-                            onPressed: () => Navigator.pop(ctx, true),
-                            child: const Text('Generieren'),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () =>
+                                setState(() => _mediaTab = 'videos'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _mediaTab == 'videos'
+                                  ? AppColors.accentGreenDark
+                                  : Colors.transparent,
+                              foregroundColor: _mediaTab == 'videos'
+                                  ? Colors.white
+                                  : Colors.white70,
+                              side: BorderSide(
+                                color: _mediaTab == 'videos'
+                                    ? AppColors.accentGreenDark
+                                    : Colors.white24,
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Text('Videos'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: leftW,
+                    height: leftH,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(12),
+                        color: Colors.black.withValues(alpha: 0.05),
+                      ),
+                      clipBehavior: Clip.hardEdge,
+                      child: Stack(
+                        clipBehavior: Clip.hardEdge,
+                        children: [
+                          Positioned.fill(
+                            child: _profileLocalPath != null
+                                ? Image.file(
+                                    File(_profileLocalPath!),
+                                    fit: BoxFit.cover,
+                                  )
+                                : (_profileImageUrl != null
+                                      ? Image.network(
+                                          _profileImageUrl!,
+                                          fit: BoxFit.cover,
+                                        )
+                                      : Container(
+                                          color: Colors.white12,
+                                          child: const Icon(
+                                            Icons.person,
+                                            color: Colors.white54,
+                                            size: 64,
+                                          ),
+                                        )),
+                          ),
+                          Positioned(
+                            left: 12,
+                            right: 12,
+                            bottom: 12,
+                            child: ElevatedButton(
+                              onPressed: () async {
+                                if (_avatarData == null) return;
+                                final ok = await showDialog<bool>(
+                                  context: context,
+                                  builder: (ctx) => AlertDialog(
+                                    title: const Text('Avatar generieren?'),
+                                    content: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: const [
+                                        Text(
+                                          'Wir generieren automatisch einen lebensechten Avatar aus deinem Bild. Der Avatar spricht mit der ausgewählten Stimme oder Deiner eigenen.',
+                                        ),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          'WICHTIG: Dieser Vorgang kostet pro Vorgang 50 credits! Bitte überlege Dir also genau, welches Bild Du nutzen möchtest.',
+                                          style: TextStyle(
+                                            color: AppColors.accentGreenDark,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, false),
+                                        child: const Text('Abbrechen'),
+                                      ),
+                                      ElevatedButton(
+                                        onPressed: () =>
+                                            Navigator.pop(ctx, true),
+                                        child: const Text('Generieren'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                if (ok != true) return;
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => AvatarEditorScreen(
+                                      avatarId: _avatarData!.id,
+                                      avatarName: _avatarData!.firstName,
+                                      avatarImageUrl:
+                                          _profileImageUrl ??
+                                          _avatarData!.avatarImageUrl ??
+                                          (_imageUrls.isNotEmpty
+                                              ? _imageUrls.first
+                                              : null),
+                                    ),
+                                  ),
+                                );
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.black,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 12,
+                                ),
+                                minimumSize: const Size.fromHeight(0),
+                                elevation: 0,
+                                shadowColor: Colors.transparent,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: const Text(
+                                'Avatar generieren',
+                                style: TextStyle(fontSize: 13),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                    );
-                    if (ok != true) return;
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => AvatarEditorScreen(
-                          avatarId: _avatarData!.id,
-                          avatarName: _avatarData!.firstName,
-                          avatarImageUrl:
-                              _profileImageUrl ??
-                              _avatarData!.avatarImageUrl ??
-                              (_imageUrls.isNotEmpty ? _imageUrls.first : null),
-                        ),
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF6B46C1),
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  child: const Text('Avatar aus Bild generieren'),
+                  const SizedBox(height: 8),
+                  // Button ist jetzt im Bild platziert
+                  const SizedBox.shrink(),
+                ],
+              ),
+              const SizedBox(width: spacing),
+              // Galerie (max. 5) + Hinweistext darunter + Upload-Button (lila)
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Upload zuerst, Galerie darunter
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _onAddImages,
+                        style: ElevatedButton.styleFrom(
+                          alignment: Alignment.centerLeft,
+                          backgroundColor: AppColors.accentGreenDark,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: RichText(
+                          text: TextSpan(
+                            style: TextStyle(color: Colors.white),
+                            children: [
+                              TextSpan(
+                                text: 'Bild-Upload  ',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              TextSpan(
+                                text: 'Avatarbild auswählen',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w400,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    LayoutBuilder(
+                      builder: (ctx, cons) {
+                        final double targetItemWidth = (cons.maxWidth / 3)
+                            .clamp(minThumbWidth, 200.0);
+                        final int cols = (cons.maxWidth / targetItemWidth)
+                            .floor()
+                            .clamp(2, 3); // mindestens 2 Spalten
+                        return GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: cols,
+                                mainAxisSpacing: gridSpacing,
+                                crossAxisSpacing: gridSpacing,
+                                childAspectRatio: 1,
+                              ),
+                          itemCount: remoteFive.length.clamp(0, 5),
+                          itemBuilder: (context, index) {
+                            final url = remoteFive[index];
+                            final isCrown =
+                                _profileImageUrl == url ||
+                                (_profileImageUrl == null && index == 0);
+                            return _imageThumbNetwork(url, isCrown);
+                          },
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
             ],
-          ),
-          const SizedBox(width: 16),
-          // Galerie (max. 5) + Hinweistext darunter + Upload-Button (lila)
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  height: 96,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: remoteFive.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (context, index) {
-                      final url = remoteFive[index];
-                      final isCrown =
-                          _profileImageUrl == url ||
-                          (_profileImageUrl == null && index == 0);
-                      return _imageThumbNetwork(url, isCrown);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Diese Bilder, Videos und Texte dienen dazu, den Avatar möglichst genau zu trainieren – keine Urlaubsgalerie.',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.7),
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _onAddImages,
-                    style: ElevatedButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      backgroundColor: const Color(0xFF6B46C1),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: RichText(
-                      text: TextSpan(
-                        style: TextStyle(color: Colors.white),
-                        children: [
-                          TextSpan(
-                            text: 'Bild hochladen',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                            ),
-                          ),
-                          TextSpan(
-                            text: ' – füge weitere Trainingsbilder hinzu',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w400,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildVideosRowLayout() {
+  Widget _buildVideosRowLayout([double? mediaW]) {
     final List<String> remoteFive = _videoUrls.take(5).toList();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Video-Preview/Inline-Player links GROSS (200x300, 9:16)
-          SizedBox(
-            width: 200,
-            height: 300,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: _inlineVideoController != null
-                  ? AspectRatio(
-                      aspectRatio: 9 / 16,
-                      child: VideoPlayerWidget(
-                        controller: _inlineVideoController!,
-                      ),
-                    )
-                  : Container(
-                      color: Colors.black26,
-                      child: const Icon(
-                        Icons.play_arrow,
-                        color: Colors.white54,
-                        size: 48,
-                      ),
-                    ),
-            ),
-          ),
-          const SizedBox(width: 16),
-          // Galerie (max. 5) – Remote + lokale Platzhalter
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  height: 96,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount:
-                        remoteFive.length +
-                        (_newVideoFiles
-                            .take((5 - remoteFive.length).clamp(0, 5))
-                            .length),
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
-                    itemBuilder: (context, index) {
-                      final int localRoom = (5 - remoteFive.length).clamp(0, 5);
-                      final List<File> localShown = _newVideoFiles
-                          .take(localRoom)
-                          .toList();
-                      if (index < remoteFive.length) {
-                        final url = remoteFive[index];
-                        return _videoThumbNetwork(url);
-                      } else {
-                        final file = localShown[index - remoteFive.length];
-                        return _videoThumbLocal(file);
-                      }
-                    },
-                  ),
-                ),
-                const SizedBox(height: 8),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _onAddVideos,
-                    style: ElevatedButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      backgroundColor: const Color(0xFF6B46C1),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: RichText(
-                      text: TextSpan(
-                        style: TextStyle(color: Colors.white),
-                        children: [
-                          TextSpan(
-                            text: 'Video hochladen',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
+      child: LayoutBuilder(
+        builder: (ctx, cons) {
+          const double spacing = 16.0;
+          const double minThumbWidth = 120.0;
+          const double gridSpacing = 12.0;
+          final double minRightWidth = (2 * minThumbWidth) + gridSpacing;
+          double leftW = cons.maxWidth - spacing - minRightWidth;
+          if (leftW > 240) leftW = 240;
+          if (leftW < 160) leftW = 160;
+          final double leftH = leftW * 1.5;
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Video-Preview/Inline-Player links GROSS (responsive) + lokale Navigation oben
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    width: leftW,
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              if (_mediaTab != 'images') {
+                                setState(() => _mediaTab = 'images');
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _mediaTab == 'images'
+                                  ? AppColors.accentGreenDark
+                                  : Colors.white24,
+                              foregroundColor: Colors.white,
+                              side: BorderSide(
+                                color: _mediaTab == 'images'
+                                    ? AppColors.accentGreenDark
+                                    : Colors.white24,
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: const Text('Bilder'),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {
+                              if (_mediaTab != 'videos') {
+                                setState(() => _mediaTab = 'videos');
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: _mediaTab == 'videos'
+                                  ? AppColors.accentGreenDark
+                                  : Colors.white24,
+                              foregroundColor: Colors.white,
+                              side: BorderSide(
+                                color: _mediaTab == 'videos'
+                                    ? AppColors.accentGreenDark
+                                    : Colors.white24,
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 10),
+                              elevation: 0,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: Text(
+                              'Videos',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
                             ),
                           ),
-                          TextSpan(
-                            text: ' – füge weitere Trainingsvideos hinzu',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w400,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: leftW,
+                    height: leftH,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: _inlineVideoController != null
+                          ? AspectRatio(
+                              aspectRatio: 9 / 16,
+                              child: VideoPlayerWidget(
+                                controller: _inlineVideoController!,
+                              ),
+                            )
+                          : Container(
+                              color: Colors.black26,
+                              child: const Icon(
+                                Icons.play_arrow,
+                                color: Colors.white54,
+                                size: 48,
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: spacing),
+              // Galerie (max. 5) – Upload-Button über den Thumbs
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _onAddVideos,
+                        style: ElevatedButton.styleFrom(
+                          alignment: Alignment.centerLeft,
+                          backgroundColor: AppColors.accentGreenDark,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: RichText(
+                          text: TextSpan(
+                            style: TextStyle(color: Colors.white),
+                            children: [
+                              TextSpan(
+                                text: 'Video-Upload',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              TextSpan(
+                                text: ' Trainingsvideos',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w400,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    LayoutBuilder(
+                      builder: (ctx, cons) {
+                        final double targetItemWidth = (cons.maxWidth / 3)
+                            .clamp(minThumbWidth, 200.0);
+                        final int cols = (cons.maxWidth / targetItemWidth)
+                            .floor()
+                            .clamp(2, 3);
+                        final totalCount =
+                            (remoteFive.length +
+                            (5 - remoteFive.length)
+                                .clamp(0, 5)
+                                .clamp(0, _newVideoFiles.length));
+                        return GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: cols,
+                                mainAxisSpacing: gridSpacing,
+                                crossAxisSpacing: gridSpacing,
+                                childAspectRatio: 1,
+                              ),
+                          itemCount: totalCount,
+                          itemBuilder: (context, index) {
+                            if (index < remoteFive.length) {
+                              return _videoThumbNetwork(remoteFive[index]);
+                            }
+                            final localIndex = index - remoteFive.length;
+                            return _videoThumbLocal(_newVideoFiles[localIndex]);
+                          },
+                        );
+                      },
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-        ],
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -1111,7 +1340,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             icon: const Icon(Icons.auto_fix_high),
             label: const Text('Stimme klonen'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
+              backgroundColor: AppColors.accentGreenDark,
               foregroundColor: Colors.white,
             ),
           ),
@@ -1522,8 +1751,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Widget _imageThumbNetwork(String url, bool isCrown) {
     final selected = _selectedRemoteImages.contains(url);
-    return SizedBox(
-      width: 96,
+    return AspectRatio(
+      aspectRatio: 1,
       child: GestureDetector(
         onTap: () => setState(() {
           if (_isDeleteMode) {
@@ -1551,12 +1780,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                url,
-                width: 96,
-                height: 96,
-                fit: BoxFit.cover,
-              ),
+              child: Image.network(url, fit: BoxFit.cover),
             ),
             if (isCrown)
               const Positioned(
@@ -1585,8 +1809,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Widget _videoThumbNetwork(String url) {
     final selected = _selectedRemoteVideos.contains(url);
-    return SizedBox(
-      width: 54,
+    return AspectRatio(
+      aspectRatio: 1,
       child: GestureDetector(
         onTap: () {
           if (_isDeleteMode) {
@@ -1602,8 +1826,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
         },
         child: Container(
-          width: 54,
-          height: 96,
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.4),
             border: Border.all(color: Colors.white24),
@@ -1653,8 +1875,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Widget _videoThumbLocal(File file) {
     final key = file.path;
     final selected = _selectedLocalVideos.contains(key);
-    return SizedBox(
-      width: 54,
+    return AspectRatio(
+      aspectRatio: 1,
       child: GestureDetector(
         onTap: () {
           if (_isDeleteMode) {
@@ -1670,8 +1892,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
         },
         child: Container(
-          width: 54,
-          height: 96,
           decoration: BoxDecoration(
             color: Colors.black.withValues(alpha: 0.3),
             border: Border.all(color: Colors.white24),
@@ -2057,7 +2277,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           style: const TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
-            color: Colors.deepPurple,
+            color: AppColors.accentGreenDark,
           ),
         ),
         const SizedBox(height: 8),
@@ -2072,7 +2292,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.deepPurple, width: 2),
+              borderSide: const BorderSide(
+                color: AppColors.accentGreenDark,
+                width: 2,
+              ),
             ),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 16,
@@ -2139,19 +2362,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         color: const Color(0x80FFFFFF),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFF6B46C1).withValues(alpha: 0.35),
+          color: AppColors.accentGreenDark.withValues(alpha: 0.35),
         ),
       ),
       child: Row(
         children: [
-          const Icon(Icons.cake, color: Color(0xFF6B46C1)),
+          const Icon(Icons.cake, color: AppColors.accentGreenDark),
           const SizedBox(width: 12),
           Text(
             'Berechnetes Alter: $_calculatedAge Jahre',
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF6B46C1),
+              color: AppColors.accentGreenDark,
             ),
           ),
         ],
@@ -2636,7 +2859,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           onTap: () => Navigator.pop(context),
           child: const Text('Datenwelt schließen'),
         ),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
           if (_isDirty)

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import '../theme/app_theme.dart';
 import '../screens/user_profile_screen.dart';
 
 class AppDrawer extends StatelessWidget {
@@ -18,11 +19,11 @@ class AppDrawer extends StatelessWidget {
         children: [
           // Header mit Benutzerinfo
           DrawerHeader(
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Colors.deepPurple, Colors.deepPurple.shade800],
+                colors: [AppColors.accentGreenDark, AppColors.greenBlue],
               ),
             ),
             child: Column(
@@ -38,7 +39,7 @@ class AppDrawer extends StatelessWidget {
                       ? const Icon(
                           Icons.person,
                           size: 30,
-                          color: Colors.deepPurple,
+                          color: AppColors.accentGreenDark,
                         )
                       : null,
                 ),
@@ -192,7 +193,7 @@ class AppDrawer extends StatelessWidget {
         style: TextStyle(color: textColor ?? Colors.white, fontSize: 16),
       ),
       onTap: onTap,
-      hoverColor: Colors.deepPurple.withValues(alpha: 0.1),
+      hoverColor: AppColors.accentGreenDark.withValues(alpha: 0.1),
     );
   }
 }

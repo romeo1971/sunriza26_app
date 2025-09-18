@@ -39,7 +39,7 @@ Erstelle eine Flutter-App mit Firebase-Authentifizierung, Storage und Firestore,
 - ✅ **Moderne Startseite** - Firebase/Apple Stil
 - ✅ **Dunkles Design** - Schwarzer Hintergrund (#000000)
 - ✅ **Grüne Akzente** - Sunriza-Farben (#00FF94)
-- ✅ **Emotionale Botschaft** - "Erwecke Erinnerungen zum Leben"
+- ✅ **Emotionale Botschaft** - "Erwecke mit Sunriza Erinnerungen zum Leben"
 - ✅ **Responsive Layout** - Mobile-first Design
 - ✅ **Material Design 3** - Moderne UI-Komponenten
 

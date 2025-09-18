@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_theme.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
@@ -39,7 +40,7 @@ class _AvatarUploadMemoriesScreenState
     return Scaffold(
       appBar: AppBar(
         title: const Text('Avatar erstellen'),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: AppColors.accentGreenDark,
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
@@ -52,16 +53,16 @@ class _AvatarUploadMemoriesScreenState
               width: double.infinity,
               padding: const EdgeInsets.all(20.0),
               decoration: BoxDecoration(
-                color: Colors.deepPurple.shade50,
+                color: const Color(0x1400DFA8),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.deepPurple.shade200),
+                border: Border.all(color: AppColors.accentGreenDark.withValues(alpha: 0.3)),
               ),
               child: const Text(
                 'Bitte lade Bilder, Videos oder Texte hoch – oder verfasse etwas Persönliches.',
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w500,
-                  color: Colors.deepPurple,
+                  color: AppColors.accentGreenDark,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -208,7 +209,7 @@ class _AvatarUploadMemoriesScreenState
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
                       color: isSelected
-                          ? Colors.deepPurple
+                          ? AppColors.accentGreenDark
                           : Colors.grey.shade300,
                       width: isSelected ? 3 : 1,
                     ),
@@ -427,7 +428,7 @@ class _AvatarUploadMemoriesScreenState
                 }
               },
         style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.deepPurple,
+          backgroundColor: AppColors.accentGreenDark,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(

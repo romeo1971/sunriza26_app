@@ -5,7 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class BitHumanService {
-  static const String _baseUrl = 'http://localhost:8000'; // Lokales Backend
+  static String _baseUrl = 'http://127.0.0.1:4202'; // Default: Integration-Port
   static String? _apiKey;
 
   /// Initialisiert den Service mit API-Key aus .env
@@ -13,6 +13,10 @@ class BitHumanService {
     try {
       await dotenv.load();
       _apiKey = dotenv.env['BITHUMAN_API_KEY'];
+      final envBase = dotenv.env['BITHUMAN_BASE_URL'];
+      if (envBase != null && envBase.isNotEmpty) {
+        _baseUrl = envBase;
+      }
 
       if (_apiKey == null || _apiKey!.isEmpty) {
         print('⚠️ BitHuman API Key nicht in .env gefunden - Demo-Modus');
@@ -20,6 +24,7 @@ class BitHumanService {
       } else {
         print('✅ BitHuman Service initialisiert');
       }
+      print('🔗 BitHuman Base URL: $_baseUrl');
     } catch (e) {
       print('❌ BitHuman Initialisierung fehlgeschlagen: $e');
       _apiKey = 'demo_key';
