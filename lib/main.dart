@@ -21,6 +21,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // .env laden (für Firebase Web API Key etc.)
+
   await dotenv.load(fileName: '.env');
 
   // Firebase initialisieren

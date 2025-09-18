@@ -12,6 +12,10 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
 import 'avatar_editor_screen.dart';
+import 'package:video_player/video_player.dart';
+import '../widgets/video_player_widget.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'dart:typed_data';
 
 class AvatarDetailsScreen extends StatefulWidget {
   const AvatarDetailsScreen({super.key});
@@ -47,8 +51,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   String? _profileImageUrl; // Krone
   String? _profileLocalPath; // Krone (lokal, noch nicht hochgeladen)
   bool _isSaving = false;
+  VideoPlayerController? _inlineVideoController; // Inline-Player für Videos
+  // Inline-Vorschaubild nicht nötig, Thumbnails entstehen in den Tiles per FutureBuilder
+  final Map<String, Uint8List> _videoThumbCache = {};
   final Set<String> _selectedRemoteImages = {};
   final Set<String> _selectedLocalImages = {};
+  final Set<String> _selectedRemoteVideos = {};
+  final Set<String> _selectedLocalVideos = {};
   bool _isDeleteMode = false;
   bool _isDirty = false;
   // ElevenLabs Voice-Parameter (per Avatar speicherbar)
@@ -177,94 +186,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     });
   }
 
-  Widget _buildAvatarImage() {
-    return Center(
-      child: Container(
-        width: 150,
-        height: 150,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 3),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
-              blurRadius: 10,
-              offset: const Offset(0, 5),
-            ),
-          ],
-        ),
-        child: (_profileImageUrl ?? _avatarData?.avatarImageUrl) != null
-            ? ClipOval(
-                child: Image.network(
-                  (_profileImageUrl ?? _avatarData!.avatarImageUrl!),
-                  width: 150,
-                  height: 150,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => CircleAvatar(
-                    backgroundColor: Colors.deepPurple.shade100,
-                    child: const Icon(
-                      Icons.person,
-                      size: 80,
-                      color: Colors.deepPurple,
-                    ),
-                  ),
-                ),
-              )
-            : CircleAvatar(
-                backgroundColor: Colors.deepPurple.shade100,
-                child: const Icon(
-                  Icons.person,
-                  size: 80,
-                  color: Colors.deepPurple,
-                ),
-              ),
-      ),
-    );
-  }
+  // Obsolet: Rundes Avatarbild oben wurde entfernt (Hintergrundbild reicht aus)
 
   Widget _buildMediaSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 12),
-        // Große Media-Buttons in einer Reihe
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _bigMediaButton(Icons.photo_library, 'Bilder', _onAddImages),
-            _bigMediaButton(Icons.videocam, 'Videos', _onAddVideos),
-            _bigMediaButton(Icons.text_snippet, 'Texte', _onAddTexts),
-            _bigMediaButton(Icons.graphic_eq, 'Audio', _onAddAudio),
-          ],
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Diese Bilder, Videos und Texte dienen dazu, den Avatar möglichst genau zu trainieren – keine Urlaubsgalerie.',
-          style: TextStyle(color: Colors.white60, fontSize: 12),
-        ),
+
+        // Bilder: Krone links groß, daneben max. 5 Bilder, rechts Upload
+        _buildImagesRowLayout(),
+
         const SizedBox(height: 16),
-        if ((_imageUrls.length + _newImageFiles.length) > 0)
-          SizedBox(
-            height: 96,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _imageUrls.length + _newImageFiles.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
-                final remoteCount = _imageUrls.length;
-                if (index < remoteCount) {
-                  final url = _imageUrls[index];
-                  final isCrown =
-                      _profileImageUrl == url ||
-                      (_profileImageUrl == null && index == 0);
-                  return _imageThumbNetwork(url, isCrown);
-                } else {
-                  final file = _newImageFiles[index - remoteCount];
-                  return _imageThumbFile(file);
-                }
-              },
-            ),
-          ),
+
+        // Videos: Preview/Player links groß, daneben max. 5 Videos, rechts Upload
+        _buildVideosRowLayout(),
         Padding(
           padding: const EdgeInsets.only(top: 8.0),
           child: Row(
@@ -277,10 +213,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                       _isDeleteMode = true;
                       _selectedRemoteImages.clear();
                       _selectedLocalImages.clear();
+                      _selectedRemoteVideos.clear();
+                      _selectedLocalVideos.clear();
                     });
                   },
                   child: const Text(
-                    'Bilder löschen',
+                    'Löschen',
                     style: TextStyle(color: Colors.redAccent),
                   ),
                 )
@@ -290,7 +228,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     await _confirmDeleteSelectedImages();
                   },
                   child: const Text(
-                    'Bilder endgültig löschen',
+                    'Ausgewählte endgültig löschen',
                     style: TextStyle(color: Colors.redAccent),
                   ),
                 ),
@@ -301,6 +239,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                       _isDeleteMode = false;
                       _selectedRemoteImages.clear();
                       _selectedLocalImages.clear();
+                      _selectedRemoteVideos.clear();
+                      _selectedLocalVideos.clear();
                     });
                   },
                   child: const Text('Abbrechen'),
@@ -312,46 +252,478 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
         const SizedBox(height: 16),
 
-        // Unterhalb keine zusätzlichen Buttons – oben sind die großen Icons
-        const SizedBox(height: 16),
-        // Textarea -> Hinweis .txt
-        const Text(
-          'Freitext (wird als .txt gespeichert)',
-          style: TextStyle(color: Colors.white70),
-        ),
-        const SizedBox(height: 8),
-        TextField(
-          controller: _textAreaController,
-          maxLines: 4,
-          decoration: InputDecoration(
-            hintText: 'Schreibe Gedanken/Erinnerungen…',
-            hintStyle: const TextStyle(color: Colors.white54),
-            filled: true,
-            fillColor: Colors.white.withValues(alpha: 0.06),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: Colors.white.withValues(alpha: 0.3),
+        // Aufklappbare Sektionen (Texte, Audio, Stimmeinstellungen)
+        Theme(
+          data: Theme.of(context).copyWith(
+            dividerColor: Colors.white24,
+            listTileTheme: const ListTileThemeData(iconColor: Colors.white70),
+          ),
+          child: Column(
+            children: [
+              // Texte & Freitext
+              ExpansionTile(
+                initiallyExpanded: false,
+                collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
+                backgroundColor: Colors.white.withValues(alpha: 0.06),
+                title: const Text(
+                  'Texte',
+                  style: TextStyle(color: Colors.white),
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _onAddTexts,
+                            style: ElevatedButton.styleFrom(
+                              alignment: Alignment.centerLeft,
+                              backgroundColor: const Color(0xFF6B46C1),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Textdateien hochladen',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  '(.txt, .md, .rtf) – Wissen/Erinnerungen hinzufügen',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w300,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Freitext (wird als .txt gespeichert)',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        TextField(
+                          controller: _textAreaController,
+                          maxLines: 4,
+                          decoration: InputDecoration(
+                            hintText: 'Schreibe Gedanken/Erinnerungen…',
+                            hintStyle: const TextStyle(color: Colors.white54),
+                            filled: true,
+                            fillColor: Colors.white.withValues(alpha: 0.06),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(
+                                color: Colors.deepPurple,
+                              ),
+                            ),
+                          ),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        const SizedBox(height: 12),
+                        if (_textFileUrls.isNotEmpty ||
+                            _newTextFiles.isNotEmpty)
+                          _buildTextFilesList(),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Colors.deepPurple),
+
+              const SizedBox(height: 8),
+
+              // Audio (Stimmproben) inkl. Stimmeinstellungen
+              ExpansionTile(
+                initiallyExpanded: false,
+                collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
+                backgroundColor: Colors.white.withValues(alpha: 0.06),
+                title: const Text(
+                  'Audio (Stimmproben)',
+                  style: TextStyle(color: Colors.white),
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: _onAddAudio,
+                            style: ElevatedButton.styleFrom(
+                              alignment: Alignment.centerLeft,
+                              backgroundColor: const Color(0xFF6B46C1),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'Audio hochladen',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                SizedBox(height: 2),
+                                Text(
+                                  '(.mp3, .m4a, .wav, .aac) – Stimmprobe hinzufügen',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w300,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        if ((_avatarData?.audioUrls.isNotEmpty == true) ||
+                            _newAudioFiles.isNotEmpty)
+                          _buildAudioList()
+                        else
+                          Text(
+                            'Keine Stimmproben vorhanden',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        _buildVoiceParams(),
+                        const SizedBox(height: 8),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildImagesRowLayout() {
+    final List<String> remoteFive = _imageUrls.take(5).toList();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Krone links GROSS (200x300)
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SizedBox(
+                width: 200,
+                height: 300,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: _profileLocalPath != null
+                      ? Image.file(File(_profileLocalPath!), fit: BoxFit.cover)
+                      : (_profileImageUrl != null
+                            ? Image.network(
+                                _profileImageUrl!,
+                                fit: BoxFit.cover,
+                              )
+                            : Container(
+                                color: Colors.white12,
+                                child: const Icon(
+                                  Icons.person,
+                                  color: Colors.white54,
+                                  size: 64,
+                                ),
+                              )),
+                ),
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: 200,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    if (_avatarData == null) return;
+                    final ok = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Text('Avatar generieren?'),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: const [
+                            Text(
+                              'Wir generieren automatisch einen lebensechten Avatar aus deinem Bild. Der Avatar spricht mit der ausgewählten Stimme oder Deiner eigenen.',
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'WICHTIG: Dieser Vorgang kostet pro Vorgang 50 credits! Bitte überlege Dir also genau, welches Bild Du nutzen möchtest.',
+                              style: TextStyle(
+                                color: Color(0xFF6B46C1),
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx, false),
+                            child: const Text('Abbrechen'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () => Navigator.pop(ctx, true),
+                            child: const Text('Generieren'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (ok != true) return;
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => AvatarEditorScreen(
+                          avatarId: _avatarData!.id,
+                          avatarName: _avatarData!.firstName,
+                          avatarImageUrl:
+                              _profileImageUrl ??
+                              _avatarData!.avatarImageUrl ??
+                              (_imageUrls.isNotEmpty ? _imageUrls.first : null),
+                        ),
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF6B46C1),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: const Text('Avatar aus Bild generieren'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 16),
+          // Galerie (max. 5) + Hinweistext darunter + Upload-Button (lila)
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: 96,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: remoteFive.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final url = remoteFive[index];
+                      final isCrown =
+                          _profileImageUrl == url ||
+                          (_profileImageUrl == null && index == 0);
+                      return _imageThumbNetwork(url, isCrown);
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Diese Bilder, Videos und Texte dienen dazu, den Avatar möglichst genau zu trainieren – keine Urlaubsgalerie.',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _onAddImages,
+                    style: ElevatedButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                      backgroundColor: const Color(0xFF6B46C1),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: RichText(
+                      text: TextSpan(
+                        style: TextStyle(color: Colors.white),
+                        children: [
+                          TextSpan(
+                            text: 'Bild hochladen',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                          TextSpan(
+                            text: ' – füge weitere Trainingsbilder hinzu',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w400,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          style: const TextStyle(color: Colors.white),
-        ),
-        const SizedBox(height: 12),
-        if (_textFileUrls.isNotEmpty || _newTextFiles.isNotEmpty)
-          _buildTextFilesList(),
+        ],
+      ),
+    );
+  }
 
-        const SizedBox(height: 12),
-        if ((_avatarData?.audioUrls.isNotEmpty == true) ||
-            _newAudioFiles.isNotEmpty)
-          _buildAudioList(),
-        const SizedBox(height: 16),
-        _buildVoiceParams(),
-      ],
+  Widget _buildVideosRowLayout() {
+    final List<String> remoteFive = _videoUrls.take(5).toList();
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Video-Preview/Inline-Player links GROSS (200x300, 9:16)
+          SizedBox(
+            width: 200,
+            height: 300,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: _inlineVideoController != null
+                  ? AspectRatio(
+                      aspectRatio: 9 / 16,
+                      child: VideoPlayerWidget(
+                        controller: _inlineVideoController!,
+                      ),
+                    )
+                  : Container(
+                      color: Colors.black26,
+                      child: const Icon(
+                        Icons.play_arrow,
+                        color: Colors.white54,
+                        size: 48,
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(width: 16),
+          // Galerie (max. 5) – Remote + lokale Platzhalter
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  height: 96,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount:
+                        remoteFive.length +
+                        (_newVideoFiles
+                            .take((5 - remoteFive.length).clamp(0, 5))
+                            .length),
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (context, index) {
+                      final int localRoom = (5 - remoteFive.length).clamp(0, 5);
+                      final List<File> localShown = _newVideoFiles
+                          .take(localRoom)
+                          .toList();
+                      if (index < remoteFive.length) {
+                        final url = remoteFive[index];
+                        return _videoThumbNetwork(url);
+                      } else {
+                        final file = localShown[index - remoteFive.length];
+                        return _videoThumbLocal(file);
+                      }
+                    },
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _onAddVideos,
+                    style: ElevatedButton.styleFrom(
+                      alignment: Alignment.centerLeft,
+                      backgroundColor: const Color(0xFF6B46C1),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: RichText(
+                      text: TextSpan(
+                        style: TextStyle(color: Colors.white),
+                        children: [
+                          TextSpan(
+                            text: 'Video hochladen',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                            ),
+                          ),
+                          TextSpan(
+                            text: ' – füge weitere Trainingsvideos hinzu',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w400,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1013,87 +1385,210 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
   }
 
-  Widget _imageThumbFile(File file) {
-    final key = file.path;
-    final selected = _selectedLocalImages.contains(key);
+  // _imageThumbFile wurde im neuen Layout nicht mehr benötigt
+
+  Widget _videoThumbNetwork(String url) {
+    final selected = _selectedRemoteVideos.contains(url);
     return SizedBox(
-      width: 96,
+      width: 54,
       child: GestureDetector(
-        onTap: () => setState(() {
+        onTap: () {
           if (_isDeleteMode) {
-            if (selected) {
-              _selectedLocalImages.remove(key);
-            } else {
-              _selectedLocalImages.add(key);
-            }
+            setState(() {
+              if (selected) {
+                _selectedRemoteVideos.remove(url);
+              } else {
+                _selectedRemoteVideos.add(url);
+              }
+            });
           } else {
-            _profileLocalPath = key;
-            _updateDirty();
+            _playNetworkInline(url);
           }
-        }),
-        onLongPress: () => setState(() {
-          // Long-Press nur im Löschmodus relevant
-          if (_isDeleteMode) {
-            if (selected) {
-              _selectedLocalImages.remove(key);
-            } else {
-              _selectedLocalImages.add(key);
-            }
-          }
-        }),
-        child: Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.file(file, width: 96, height: 96, fit: BoxFit.cover),
-            ),
-            if (_profileLocalPath == key)
-              const Positioned(
-                top: 4,
-                left: 4,
-                child: Icon(Icons.emoji_events, color: Colors.amber, size: 18),
+        },
+        child: Container(
+          width: 54,
+          height: 96,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.4),
+            border: Border.all(color: Colors.white24),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          clipBehavior: Clip.hardEdge,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              FutureBuilder<Uint8List?>(
+                future: _thumbnailForRemote(url),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData && snapshot.data != null) {
+                    return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                  }
+                  return Container(color: Colors.black26);
+                },
               ),
-            // keine Häkchen im Normalmodus
-            if (_isDeleteMode)
-              Positioned(
-                top: 4,
-                right: 4,
-                child: Icon(
-                  selected ? Icons.check_circle : Icons.radio_button_unchecked,
-                  color: selected ? Colors.redAccent : Colors.white70,
-                  size: 18,
+              if (_isDeleteMode)
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Icon(
+                    selected
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    color: selected ? Colors.redAccent : Colors.white70,
+                    size: 18,
+                  ),
                 ),
-              ),
-          ],
+              if (!_isDeleteMode)
+                const Align(
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.play_circle_fill,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _bigMediaButton(IconData icon, String label, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.white24),
-            ),
-            child: Icon(icon, color: Colors.white, size: 34),
+  Widget _videoThumbLocal(File file) {
+    final key = file.path;
+    final selected = _selectedLocalVideos.contains(key);
+    return SizedBox(
+      width: 54,
+      child: GestureDetector(
+        onTap: () {
+          if (_isDeleteMode) {
+            setState(() {
+              if (selected) {
+                _selectedLocalVideos.remove(key);
+              } else {
+                _selectedLocalVideos.add(key);
+              }
+            });
+          } else {
+            _playLocalInline(file);
+          }
+        },
+        child: Container(
+          width: 54,
+          height: 96,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.3),
+            border: Border.all(color: Colors.white24),
+            borderRadius: BorderRadius.circular(12),
           ),
-          const SizedBox(height: 6),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
+          clipBehavior: Clip.hardEdge,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              FutureBuilder<Uint8List?>(
+                future: _thumbnailForLocal(file.path),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData && snapshot.data != null) {
+                    return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                  }
+                  return Container(color: Colors.black26);
+                },
+              ),
+              if (_isDeleteMode)
+                Positioned(
+                  top: 4,
+                  right: 4,
+                  child: Icon(
+                    selected
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    color: selected ? Colors.redAccent : Colors.white70,
+                    size: 18,
+                  ),
+                ),
+              if (!_isDeleteMode)
+                const Align(
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.play_circle_fill,
+                    color: Colors.white,
+                    size: 24,
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
+
+  Future<void> _playNetworkInline(String url) async {
+    try {
+      // Vorherigen Controller freigeben
+      await _inlineVideoController?.dispose();
+      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+      await controller.initialize();
+      setState(() => _inlineVideoController = controller);
+    } catch (e) {
+      _showSystemSnack('Video kann nicht geladen werden');
+    }
+  }
+
+  // Lokales Video im großen Player abspielen
+  Future<void> _playLocalInline(File file) async {
+    try {
+      await _inlineVideoController?.dispose();
+      final controller = VideoPlayerController.file(file);
+      await controller.initialize();
+      setState(() => _inlineVideoController = controller);
+    } catch (e) {
+      _showSystemSnack('Lokales Video kann nicht geladen werden');
+    }
+  }
+
+  Future<Uint8List?> _thumbnailForRemote(String url) async {
+    try {
+      if (_videoThumbCache.containsKey(url)) return _videoThumbCache[url];
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode != 200) return null;
+      final tmp = await File(
+        '${Directory.systemTemp.path}/thumb_${DateTime.now().microsecondsSinceEpoch}.mp4',
+      ).create();
+      await tmp.writeAsBytes(res.bodyBytes);
+      final data = await VideoThumbnail.thumbnailData(
+        video: tmp.path,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 360,
+        quality: 60,
+      );
+      if (data != null) _videoThumbCache[url] = data;
+      try {
+        // optional: Tempdatei löschen
+        await tmp.delete();
+      } catch (_) {}
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Uint8List?> _thumbnailForLocal(String path) async {
+    try {
+      if (_videoThumbCache.containsKey(path)) return _videoThumbCache[path]!;
+      final data = await VideoThumbnail.thumbnailData(
+        video: path,
+        imageFormat: ImageFormat.JPEG,
+        maxWidth: 360,
+        quality: 60,
+      );
+      if (data != null) _videoThumbCache[path] = data;
+      return data;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // _bigMediaButton entfällt im neuen Layout
 
   Future<void> _onAddImages() async {
     ImageSource? source;
@@ -1281,6 +1776,32 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         // Berechnetes Alter anzeigen
         if (_calculatedAge != null) _buildAgeDisplay(),
       ],
+    );
+  }
+
+  Widget _buildPersonDataTile() {
+    return Theme(
+      data: Theme.of(context).copyWith(
+        dividerColor: Colors.white24,
+        listTileTheme: const ListTileThemeData(iconColor: Colors.white70),
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
+        backgroundColor: Colors.white.withValues(alpha: 0.06),
+        title: const Text(
+          'Personendaten',
+          style: TextStyle(color: Colors.white),
+        ),
+        children: [
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            child: _buildInputFields(),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
     );
   }
 
@@ -1800,7 +2321,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Future<void> _confirmDeleteSelectedImages() async {
-    final total = _selectedRemoteImages.length + _selectedLocalImages.length;
+    final total =
+        _selectedRemoteImages.length +
+        _selectedLocalImages.length +
+        _selectedRemoteVideos.length +
+        _selectedLocalVideos.length;
     if (total == 0) return;
     final ok = await showDialog<bool>(
       context: context,
@@ -1821,7 +2346,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
     if (ok != true) return;
 
-    // Remote löschen
+    // Remote löschen (Bilder)
     for (final url in _selectedRemoteImages) {
       await FirebaseStorageService.deleteFile(url);
       _imageUrls.remove(url);
@@ -1829,10 +2354,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         _profileImageUrl = _imageUrls.isNotEmpty ? _imageUrls.first : null;
       }
     }
-    // Local entfernen
+    // Remote löschen (Videos)
+    for (final url in _selectedRemoteVideos) {
+      await FirebaseStorageService.deleteFile(url);
+      _videoUrls.remove(url);
+    }
+    // Local entfernen (Bilder)
     _newImageFiles.removeWhere((f) => _selectedLocalImages.contains(f.path));
+    // Local entfernen (Videos)
+    _newVideoFiles.removeWhere((f) => _selectedLocalVideos.contains(f.path));
     _selectedRemoteImages.clear();
     _selectedLocalImages.clear();
+    _selectedRemoteVideos.clear();
+    _selectedLocalVideos.clear();
     _isDeleteMode = false;
     if (mounted) setState(() {});
   }
@@ -1856,27 +2390,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               icon: const Icon(Icons.save),
               onPressed: _saveAvatarDetails,
             ),
-          IconButton(
-            onPressed: () {
-              if (_avatarData != null) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => AvatarEditorScreen(
-                      avatarId: _avatarData!.id,
-                      avatarName: _avatarData!.firstName,
-                      avatarImageUrl:
-                          (_profileImageUrl ??
-                          _avatarData!.avatarImageUrl ??
-                          (_imageUrls.isNotEmpty ? _imageUrls.first : null)),
-                    ),
-                  ),
-                );
-              }
-            },
-            icon: const Icon(Icons.upload_file),
-            tooltip: 'Avatar .imx hochladen',
-          ),
         ],
       ),
       body: Container(
@@ -1899,15 +2412,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Avatar-Bild oben
-                _buildAvatarImage(),
+                // Rundes Avatar-Bild entfernt (vollflächiger Hintergrund aktiv)
                 const SizedBox(height: 12),
                 _buildMediaSection(),
 
                 const SizedBox(height: 24),
 
-                // Eingabefelder
-                _buildInputFields(),
+                // Eingabefelder (aufklappbar)
+                _buildPersonDataTile(),
 
                 const SizedBox(height: 32),
 
@@ -1928,6 +2440,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _lastNameController.dispose();
     _birthDateController.dispose();
     _deathDateController.dispose();
+    _inlineVideoController?.dispose();
     super.dispose();
   }
 }

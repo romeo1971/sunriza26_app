@@ -51,7 +51,15 @@ class FirebaseStorageService {
           customPath ?? 'avatars/${user.uid}/videos/${timestamp}_$fileName';
 
       final ref = _storage.ref().child(filePath);
-      final uploadTask = ref.putFile(videoFile);
+      // Content-Type setzen, wichtig für mp4-Abspielbarkeit
+      final String ext = path.extension(videoFile.path).toLowerCase();
+      String contentType = 'video/mp4';
+      if (ext == '.mov') contentType = 'video/quicktime';
+      if (ext == '.m4v') contentType = 'video/x-m4v';
+      final uploadTask = ref.putFile(
+        videoFile,
+        SettableMetadata(contentType: contentType),
+      );
 
       final snapshot = await uploadTask;
       final downloadUrl = await snapshot.ref.getDownloadURL();

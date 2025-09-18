@@ -21,7 +21,6 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   @override
   void initState() {
     super.initState();
-    _initializeChewie();
   }
 
   @override
@@ -31,6 +30,9 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   }
 
   void _initializeChewie() {
+    _chewieController?.dispose();
+    // Verwende Theme erst hier (nicht in initState)
+    final primary = Theme.of(context).colorScheme.primary;
     _chewieController = ChewieController(
       videoPlayerController: widget.controller,
       autoPlay: true,
@@ -39,8 +41,8 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       allowMuting: true,
       showOptions: true,
       materialProgressColors: ChewieProgressColors(
-        playedColor: Theme.of(context).colorScheme.primary,
-        handleColor: Theme.of(context).colorScheme.primary,
+        playedColor: primary,
+        handleColor: primary,
         backgroundColor: Colors.grey[300]!,
         bufferedColor: Colors.grey[200]!,
       ),
@@ -52,6 +54,20 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       ),
       autoInitialize: true,
     );
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _initializeChewie();
+  }
+
+  @override
+  void didUpdateWidget(covariant VideoPlayerWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) {
+      _initializeChewie();
+    }
   }
 
   @override
