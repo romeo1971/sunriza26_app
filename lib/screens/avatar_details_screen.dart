@@ -178,7 +178,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (voice is Map) {
         final st = voice['stability'];
         final si = voice['similarity'];
-        final vid = voice['elevenVoiceId'];
+        // final vid = voice['elevenVoiceId']; // keine Vorauswahl setzen
         if (st is num) _voiceStability = st.toDouble();
         if (st is String) {
           final v = double.tryParse(st);
@@ -189,9 +189,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           final v = double.tryParse(si);
           if (v != null) _voiceSimilarity = v;
         }
-        if (vid is String && vid.isNotEmpty) {
-          _selectedVoiceId = vid;
-        }
+        // WICHTIG: keine Vorauswahl im Dropdown – Nutzer entscheidet aktiv
+        _selectedVoiceId = null;
       }
       _isDirty = false;
     });
@@ -479,22 +478,79 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               dropdownColor: Colors.black87,
               value: _selectedVoiceId,
               hint: const Text(
-                'Standard-Stimme verwenden',
+                'Stimme wählen',
                 style: TextStyle(color: Colors.white70),
               ),
-              items: _elevenVoices
-                  .map(
-                    (v) => DropdownMenuItem<String>(
-                      value: (v['voice_id'] ?? v['voiceId'] ?? '') as String,
+              items: () {
+                final String? cloneId =
+                    (_avatarData?.training?['voice']?['elevenVoiceId']
+                            as String?)
+                        ?.trim();
+                final List<DropdownMenuItem<String>> items = [];
+                // Erste Option: MEIN VOICE KLON (nur als explizite Auswahl)
+                items.add(
+                  DropdownMenuItem<String>(
+                    value: '__CLONE__',
+                    child: const Text(
+                      'MEIN VOICE KLON',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                );
+                // Danach Standardstimmen, ohne Duplikat zur Clone-ID
+                for (final v in _elevenVoices) {
+                  final id = (v['voice_id'] ?? v['voiceId'] ?? '') as String;
+                  if (cloneId != null && cloneId.isNotEmpty && id == cloneId) {
+                    continue; // Duplikat vermeiden
+                  }
+                  items.add(
+                    DropdownMenuItem<String>(
+                      value: id,
                       child: Text(
                         (v['name'] ?? 'Voice') as String,
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
-                  )
-                  .toList(),
-              onChanged: (val) => _onSelectVoice(val),
+                  );
+                }
+                return items;
+              }(),
+              onChanged: (val) {
+                if (val == '__CLONE__') {
+                  // Nur Auswahl markieren – tatsächliche ID bleibt die gespeicherte Clone-ID
+                  _onSelectVoice('__CLONE__');
+                } else {
+                  _onSelectVoice(val); // setzt _isDirty = true
+                }
+              },
             ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: ElevatedButton(
+            onPressed:
+                (_selectedVoiceId != null &&
+                    _voicePreviewUrlFor(_selectedVoiceId!) != null)
+                ? () async {
+                    final url = _voicePreviewUrlFor(_selectedVoiceId!);
+                    if (url != null) {
+                      final uri = Uri.parse(url);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                        );
+                      }
+                    }
+                  }
+                : null,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF6B46C1),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Probehören'),
           ),
         ),
       ],
@@ -502,22 +558,43 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Future<void> _onSelectVoice(String? voiceId) async {
-    setState(() => _selectedVoiceId = voiceId);
-    if (_avatarData == null) return;
-    final existing = Map<String, dynamic>.from(_avatarData!.training ?? {});
-    final voice = Map<String, dynamic>.from(existing['voice'] ?? {});
-    if (voiceId == null || voiceId.isEmpty) {
-      voice.remove('elevenVoiceId');
-    } else {
-      voice['elevenVoiceId'] = voiceId;
-    }
-    existing['voice'] = voice;
-    final updated = _avatarData!.copyWith(
-      training: existing,
-      updatedAt: DateTime.now(),
+    setState(() {
+      _selectedVoiceId = voiceId;
+      _isDirty = true; // Diskette sichtbar
+    });
+    // Speichern erfolgt über Diskette, nicht sofort
+  }
+
+  Future<T?> _showBlockingProgress<T>({
+    required String title,
+    required String message,
+    Future<T> Function()? task,
+  }) async {
+    if (!mounted) return null;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: Text(title),
+        content: Row(
+          children: [
+            const SizedBox(
+              width: 24,
+              height: 24,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+      ),
     );
-    final ok = await _avatarService.updateAvatar(updated);
-    if (ok) _applyAvatar(updated);
+    try {
+      final r = await (task != null ? task() : Future.value(null));
+      return r;
+    } finally {
+      if (mounted) Navigator.of(context, rootNavigator: true).pop();
+    }
   }
 
   Future<void> _loadElevenVoices() async {
@@ -531,6 +608,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     } catch (_) {
     } finally {
       if (mounted) setState(() => _voicesLoading = false);
+    }
+  }
+
+  String? _voicePreviewUrlFor(String id) {
+    try {
+      final v = _elevenVoices.firstWhere(
+        (e) => (e['voice_id'] ?? e['voiceId'] ?? '') == id,
+        orElse: () => {},
+      );
+      final url = v['preview_url'] as String?;
+      return (url != null && url.isNotEmpty) ? url : null;
+    } catch (_) {
+      return null;
     }
   }
 
@@ -1127,17 +1217,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       _showSystemSnack('Keine Audio-Stimmprobe vorhanden.');
       return;
     }
-    // Sicherstellen, dass die markierte Probe zuerst verwendet wird
+    // EXPLIZIT NUR die markierte Probe verwenden (keine implizite Reihenfolge)
     List<String> selected = [];
     if (_activeAudioUrl != null &&
         _activeAudioUrl!.isNotEmpty &&
         audios.contains(_activeAudioUrl)) {
-      selected.add(_activeAudioUrl!);
-    }
-    for (final u in audios) {
-      if (selected.length >= 3) break;
-      if (u == _activeAudioUrl) continue;
-      selected.add(u);
+      selected = [_activeAudioUrl!];
+    } else if (audios.isNotEmpty) {
+      // Fallback: erste vorhandene (explizit)
+      selected = [audios.first];
     }
     if (selected.isEmpty) {
       _showSystemSnack('Bitte markiere eine Audio-Datei mit dem Stern.');
@@ -1145,57 +1233,72 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
     setState(() => _isSaving = true);
     try {
-      final uid = FirebaseAuth.instance.currentUser!.uid;
-      final uri = Uri.parse(
-        '${dotenv.env['MEMORY_API_BASE_URL']}/avatar/voice/create',
-      );
-      final res = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_id': uid,
-          'avatar_id': _avatarData!.id,
-          'audio_urls': selected,
-          'name': _avatarData!.displayName,
-          // Wenn bereits eine Klon-ID existiert → update statt neu anlegen
-          if ((_avatarData!.training?['voice']?['elevenVoiceId'] ?? '')
-              .toString()
-              .isNotEmpty)
-            'voice_id': _avatarData!.training!['voice']['elevenVoiceId'],
-        }),
-      );
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final voiceId = data['voice_id'] as String?;
-        if (voiceId != null && voiceId.isNotEmpty) {
-          // training.voice.elevenVoiceId speichern
-          final existingVoice = (_avatarData!.training != null)
-              ? Map<String, dynamic>.from(_avatarData!.training!['voice'] ?? {})
-              : <String, dynamic>{};
-          existingVoice['elevenVoiceId'] = voiceId;
-          existingVoice['activeUrl'] = _activeAudioUrl;
-          existingVoice['candidates'] = _avatarData!.audioUrls;
+      await _showBlockingProgress(
+        title: 'Stimme wird geklont…',
+        message: 'Das dauert einen Moment. Bitte gedulde dich.',
+        task: () async {
+          final uid = FirebaseAuth.instance.currentUser!.uid;
+          final base =
+              dotenv.env['MEMORY_API_BASE_URL'] ?? 'http://127.0.0.1:8000';
+          final uri = Uri.parse('$base/avatar/voice/create');
+          final Map<String, dynamic> payload = {
+            'user_id': uid,
+            'avatar_id': _avatarData!.id,
+            'audio_urls': selected,
+            'name': _avatarData!.displayName,
+          };
+          final raw = _avatarData!.training?['voice']?['elevenVoiceId'];
+          final String? normalized =
+              (raw is String &&
+                  raw.trim().isNotEmpty &&
+                  raw.trim() != '__CLONE__')
+              ? raw.trim()
+              : null;
+          if (normalized != null) payload['voice_id'] = normalized;
 
-          final updated = _avatarData!.copyWith(
-            training: {
-              ...(_avatarData!.training ?? {}),
-              'voice': existingVoice,
-            },
-            updatedAt: DateTime.now(),
+          final res = await http.post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
           );
-          final ok = await _avatarService.updateAvatar(updated);
-          if (ok) {
-            _applyAvatar(updated);
-            _showSystemSnack('Stimme geklont. Voice-ID gespeichert.');
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            final data = jsonDecode(res.body) as Map<String, dynamic>;
+            final voiceId = data['voice_id'] as String?;
+            if (voiceId != null && voiceId.isNotEmpty) {
+              // training.voice.elevenVoiceId speichern
+              final existingVoice = (_avatarData!.training != null)
+                  ? Map<String, dynamic>.from(
+                      _avatarData!.training!['voice'] ?? {},
+                    )
+                  : <String, dynamic>{};
+              existingVoice['elevenVoiceId'] = voiceId;
+              existingVoice['cloneVoiceId'] = voiceId;
+              existingVoice['activeUrl'] = _activeAudioUrl;
+              existingVoice['candidates'] = _avatarData!.audioUrls;
+
+              final updated = _avatarData!.copyWith(
+                training: {
+                  ...(_avatarData!.training ?? {}),
+                  'voice': existingVoice,
+                },
+                updatedAt: DateTime.now(),
+              );
+              final ok = await _avatarService.updateAvatar(updated);
+              if (ok) {
+                _applyAvatar(updated);
+                _showSystemSnack('Stimme geklont. Voice-ID gespeichert.');
+              } else {
+                _showSystemSnack('Speichern der Voice-ID fehlgeschlagen.');
+              }
+            } else {
+              _showSystemSnack('ElevenLabs: keine voice_id erhalten.');
+            }
           } else {
-            _showSystemSnack('Speichern der Voice-ID fehlgeschlagen.');
+            final detail = (res.body.isNotEmpty) ? ' ${res.body}' : '';
+            _showSystemSnack('Klonen fehlgeschlagen: ${res.statusCode}$detail');
           }
-        } else {
-          _showSystemSnack('ElevenLabs: keine voice_id erhalten.');
-        }
-      } else {
-        _showSystemSnack('Klonen fehlgeschlagen: ${res.statusCode}');
-      }
+        },
+      );
     } catch (e) {
       _showSystemSnack('Klon-Fehler: $e');
     } finally {
@@ -2045,10 +2148,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           const SizedBox(width: 12),
           Text(
             'Berechnetes Alter: $_calculatedAge Jahre',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: const Color(0xFF6B46C1),
+              color: Color(0xFF6B46C1),
             ),
           ),
         ],
@@ -2056,26 +2159,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
   }
 
-  Widget _buildSaveButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton(
-        onPressed: _saveAvatarDetails,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.deepPurple,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: const Text(
-          'Speichern',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-      ),
-    );
-  }
+  // Speichern-Button entfernt – Save via Diskette in der AppBar
 
   Future<void> _selectBirthDate() async {
     final DateTime? picked = await showDatePicker(
@@ -2260,11 +2344,35 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         }
 
         // 3b) Training-Counts aktualisieren
+        // Voice-Map aufbauen: bestehenden elevenVoiceId erhalten oder Auswahl verwenden
+        String? existingVoiceId;
+        try {
+          existingVoiceId =
+              (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
+                  ?.trim();
+        } catch (_) {}
+
         final totalDocuments =
             allImages.length +
             allVideos.length +
             allTexts.length +
             (_avatarData!.writtenTexts.length);
+        // ElevenLabs Voice-ID bestimmen
+        final Map<String, dynamic> prevVoice = Map<String, dynamic>.from(
+          _avatarData?.training?['voice'] ?? {},
+        );
+        final String? cloneVoiceId = (prevVoice['cloneVoiceId'] as String?)
+            ?.trim();
+        String? chosenVoiceId;
+        if (_selectedVoiceId == '__CLONE__') {
+          // explizit Klon nutzen
+          chosenVoiceId = cloneVoiceId ?? existingVoiceId;
+        } else if ((_selectedVoiceId ?? '').isNotEmpty) {
+          chosenVoiceId = _selectedVoiceId;
+        } else {
+          chosenVoiceId = existingVoiceId;
+        }
+
         final training = {
           'status': 'pending',
           'startedAt': null,
@@ -2285,7 +2393,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           'lastError': null,
           'jobId': null,
           'needsRetrain': true,
-          'voice': {'activeUrl': _activeAudioUrl, 'candidates': allAudios},
+          'voice': {
+            'activeUrl': _activeAudioUrl,
+            'candidates': allAudios,
+            if ((chosenVoiceId)?.isNotEmpty == true)
+              'elevenVoiceId': chosenVoiceId,
+          },
         };
 
         // 4) Avatar updaten
@@ -2529,8 +2642,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           if (_isDirty)
             IconButton(
               tooltip: 'Speichern',
-              icon: const Icon(Icons.save),
               onPressed: _saveAvatarDetails,
+              icon: const Icon(
+                Icons.save_outlined,
+                color: Colors.white,
+                size: 28,
+              ),
             ),
         ],
       ),
@@ -2565,8 +2682,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
                 const SizedBox(height: 32),
 
-                // Speichern-Button
-                _buildSaveButton(),
+                // Speichern-Button entfernt – Diskette in AppBar
               ],
             ),
           ),

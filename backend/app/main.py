@@ -384,9 +384,9 @@ class CreateVoiceFromAudioResponse(BaseModel):
 
 @app.post("/avatar/voice/create", response_model=CreateVoiceFromAudioResponse)
 def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFromAudioResponse:
-    key = os.getenv("ELEVEN_API_KEY")
+    key = os.getenv("ELEVENLABS_API_KEY")
     if not key:
-        raise HTTPException(status_code=400, detail="ELEVEN_API_KEY fehlt")
+        raise HTTPException(status_code=400, detail="ELEVENLABS_API_KEY fehlt")
 
     # Lade die Audios (max 3) herunter und sende an ElevenLabs API
     files = []
@@ -401,38 +401,22 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
         voice_name = payload.name or f"avatar_{payload.avatar_id}"
         headers = {"xi-api-key": key}
 
-        if payload.voice_id and payload.voice_id.strip():
-            # Bestehende Stimme bearbeiten (ersetzen)
-            target_id = payload.voice_id.strip()
-            data = {"name": voice_name}
-            r = requests.post(
-                f"https://api.elevenlabs.io/v1/voices/{target_id}/edit",
-                headers=headers,
-                data=data,
-                files=files,
-                timeout=120,
-            )
-            r.raise_for_status()
-            res = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
-            name = res.get("name") or voice_name
-            return CreateVoiceFromAudioResponse(voice_id=target_id, name=name)
-        else:
-            # Neue Stimme anlegen
-            data = {"name": voice_name}
-            r = requests.post(
-                "https://api.elevenlabs.io/v1/voices/add",
-                headers=headers,
-                data=data,
-                files=files,
-                timeout=120,
-            )
-            r.raise_for_status()
-            res = r.json()
-            voice_id = res.get("voice_id") or res.get("id")
-            name = res.get("name") or voice_name
-            if not voice_id:
-                raise HTTPException(status_code=500, detail="ElevenLabs: voice_id fehlt in Antwort")
-            return CreateVoiceFromAudioResponse(voice_id=voice_id, name=name)
+        # Immer NEUE Stimme anlegen (keine Edit-Konflikte mit gelöschten/alten Stimmen)
+        data = {"name": voice_name}
+        r = requests.post(
+            "https://api.elevenlabs.io/v1/voices/add",
+            headers={**headers, "Accept": "application/json"},
+            data=data,
+            files=files,
+            timeout=120,
+        )
+        r.raise_for_status()
+        res = r.json()
+        voice_id = res.get("voice_id") or res.get("id")
+        name = res.get("name") or voice_name
+        if not voice_id:
+            raise HTTPException(status_code=500, detail="ElevenLabs: voice_id fehlt in Antwort")
+        return CreateVoiceFromAudioResponse(voice_id=voice_id, name=name)
     except requests.HTTPError as e:
         logger.exception("ElevenLabs Voice Create HTTPError")
         raise HTTPException(status_code=e.response.status_code, detail=f"ElevenLabs: {e.response.text}")
@@ -440,6 +424,47 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
         logger.exception("ElevenLabs Voice Create Fehler")
         raise HTTPException(status_code=500, detail=f"ElevenLabs Voice Create Fehler: {e}")
 
+
+class TTSRequest(BaseModel):
+    text: str
+    voice_id: str | None = None
+    model_id: str | None = None
+    stability: float | None = None
+    similarity: float | None = None
+
+
+@app.post("/avatar/tts")
+def tts_endpoint(req: TTSRequest):
+    key = os.getenv("ELEVENLABS_API_KEY")
+    if not key:
+        raise HTTPException(status_code=400, detail="ELEVENLABS_API_KEY fehlt")
+    try:
+        vid = (req.voice_id or os.getenv("ELEVEN_VOICE_ID") or "21m00Tcm4TlvDq8ikWAM").strip()
+        model = (req.model_id or os.getenv("ELEVEN_TTS_MODEL") or "eleven_multilingual_v2").strip()
+        stability = float(req.stability) if req.stability is not None else float(os.getenv("ELEVEN_STABILITY", "0.5"))
+        similarity = float(req.similarity) if req.similarity is not None else float(os.getenv("ELEVEN_SIMILARITY", "0.75"))
+        r = requests.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{vid}",
+            headers={
+                "xi-api-key": key,
+                "Content-Type": "application/json",
+                "Accept": "audio/mpeg",
+            },
+            json={
+                "text": req.text,
+                "model_id": model,
+                "voice_settings": {"stability": stability, "similarity_boost": similarity},
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        # MP3-Bytes direkt zurückgeben
+        import base64 as _b64
+        return {"audio_b64": _b64.b64encode(r.content).decode("utf-8")}
+    except requests.HTTPError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS Fehler: {e}")
 
 @app.post("/avatar/chat", response_model=ChatResponse)
 def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
@@ -513,7 +538,7 @@ def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
 
         # TTS: bevorzugt ElevenLabs, sonst Google TTS
         tts_b64 = None
-        eleven_key = os.getenv("ELEVEN_API_KEY")
+        eleven_key = os.getenv("ELEVENLABS_API_KEY")
         eleven_voice_id = payload.voice_id or os.getenv("ELEVEN_VOICE_ID")  # optional
         if eleven_key:
             try:

@@ -680,24 +680,27 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   Future<void> _botSay(String text) async {
     String? path;
     try {
-      final String? voiceId = (_avatarData?.training != null)
+      String? voiceId = (_avatarData?.training != null)
           ? (_avatarData?.training?['voice'] != null
                 ? (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
                 : null)
           : null;
+
+      // Fallback: neu aus Firestore laden, falls noch nicht vorhanden
+      if (voiceId == null || voiceId.isEmpty) {
+        voiceId = await _reloadVoiceIdFromFirestore();
+      }
 
       // Nur wenn voiceId verfügbar ist, starte Lipsync
       if (voiceId != null) {
         _startLipsync(text);
       }
 
-      final uri = Uri.parse(
-        'https://us-central1-sunriza26.cloudfunctions.net/tts',
-      );
+      final uri = Uri.parse('${dotenv.env['MEMORY_API_BASE_URL']}/avatar/tts');
       final payload = <String, dynamic>{'text': text};
       // Immer die geklonte Stimme verwenden
       if (voiceId != null) {
-        payload['voiceId'] = voiceId;
+        payload['voice_id'] = voiceId;
       } else {
         _showSystemSnack('Keine geklonte Stimme verfügbar');
         return;
@@ -722,15 +725,22 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
       );
-      if (res.statusCode >= 200 &&
-          res.statusCode < 300 &&
-          res.bodyBytes.isNotEmpty) {
-        final dir = await getTemporaryDirectory();
-        final file = File(
-          '${dir.path}/bot_local_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
-        );
-        await file.writeAsBytes(res.bodyBytes, flush: true);
-        path = file.path;
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        // Erwartet JSON { audio_b64: "..." }
+        final Map<String, dynamic> j =
+            jsonDecode(res.body) as Map<String, dynamic>;
+        final String? b64 = j['audio_b64'] as String?;
+        if (b64 != null && b64.isNotEmpty) {
+          final bytes = base64Decode(b64);
+          final dir = await getTemporaryDirectory();
+          final file = File(
+            '${dir.path}/bot_local_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
+          );
+          await file.writeAsBytes(bytes, flush: true);
+          path = file.path;
+        } else {
+          _showSystemSnack('TTS-Fehler: leere Antwort');
+        }
       } else {
         _showSystemSnack(
           'TTS-HTTP: ${res.statusCode} ${res.body.substring(0, res.body.length > 120 ? 120 : res.body.length)}',
@@ -749,18 +759,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   Future<String?> _ensureTtsForText(String text) async {
     try {
-      final uri = Uri.parse(
-        'https://us-central1-sunriza26.cloudfunctions.net/tts',
-      );
-      final String? voiceId = (_avatarData?.training != null)
+      final uri = Uri.parse('${dotenv.env['MEMORY_API_BASE_URL']}/avatar/tts');
+      String? voiceId = (_avatarData?.training != null)
           ? (_avatarData?.training?['voice'] != null
                 ? (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
                 : null)
           : null;
+      if (voiceId == null || voiceId.isEmpty) {
+        voiceId = await _reloadVoiceIdFromFirestore();
+      }
       final payload = <String, dynamic>{'text': text};
       // Immer die geklonte Stimme verwenden
       if (voiceId != null) {
-        payload['voiceId'] = voiceId;
+        payload['voice_id'] = voiceId;
       } else {
         _showSystemSnack('Keine geklonte Stimme verfügbar');
         return null;
@@ -784,15 +795,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
       );
-      if (res.statusCode >= 200 &&
-          res.statusCode < 300 &&
-          res.bodyBytes.isNotEmpty) {
-        final dir = await getTemporaryDirectory();
-        final file = File(
-          '${dir.path}/tts_on_demand_${DateTime.now().millisecondsSinceEpoch}.mp3',
-        );
-        await file.writeAsBytes(res.bodyBytes, flush: true);
-        return file.path;
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final Map<String, dynamic> j =
+            jsonDecode(res.body) as Map<String, dynamic>;
+        final String? b64 = j['audio_b64'] as String?;
+        if (b64 != null && b64.isNotEmpty) {
+          final bytes = base64Decode(b64);
+          final dir = await getTemporaryDirectory();
+          final file = File(
+            '${dir.path}/tts_on_demand_${DateTime.now().millisecondsSinceEpoch}.mp3',
+          );
+          await file.writeAsBytes(bytes, flush: true);
+          return file.path;
+        }
       } else {
         _showSystemSnack(
           'TTS-HTTP: ${res.statusCode} ${res.body.substring(0, res.body.length > 120 ? 120 : res.body.length)}',
@@ -802,6 +817,46 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       _showSystemSnack('TTS-Fehler: $e');
     }
     return null;
+  }
+
+  Future<String?> _reloadVoiceIdFromFirestore() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null || _avatarData == null) return null;
+      final fs = FirebaseFirestore.instance;
+      final doc = await fs
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(_avatarData?.id ?? '')
+          .get();
+      final data = doc.data();
+      if (data == null) return null;
+      final training = data['training'] as Map<String, dynamic>?;
+      final voice = training != null
+          ? training['voice'] as Map<String, dynamic>?
+          : null;
+      final String? vid = voice != null
+          ? voice['elevenVoiceId'] as String?
+          : null;
+      if (vid != null && vid.isNotEmpty) {
+        // lokal aktualisieren
+        setState(() {
+          final currentTraining = Map<String, dynamic>.from(
+            _avatarData?.training ?? {},
+          );
+          final currentVoice = Map<String, dynamic>.from(
+            (currentTraining['voice'] ?? {}) as Map,
+          );
+          currentVoice['elevenVoiceId'] = vid;
+          currentTraining['voice'] = currentVoice;
+          _avatarData = _avatarData?.copyWith(training: currentTraining);
+        });
+      }
+      return vid;
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> _startLipsync(String text) async {
@@ -862,6 +917,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       }
       final uid = user.uid;
       final uri = Uri.parse('${dotenv.env['MEMORY_API_BASE_URL']}/avatar/chat');
+
+      // Stimme robust ermitteln
+      String? voiceId = (_avatarData?.training != null)
+          ? (_avatarData?.training?['voice'] != null
+                ? (_avatarData?.training?['voice']?['elevenVoiceId'])
+                : null)
+          : null;
+      if (voiceId == null || (voiceId is String && voiceId.isEmpty)) {
+        voiceId = await _reloadVoiceIdFromFirestore();
+      }
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
@@ -870,10 +935,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           'avatar_id': _avatarData?.id ?? '',
           'message': userText,
           'top_k': 5,
-          'voice_id': _avatarData?.training != null
-              ? (_avatarData?.training?['voice'] != null
-                    ? (_avatarData?.training?['voice']?['elevenVoiceId'])
-                    : null)
+          'voice_id': (voiceId is String && voiceId.isNotEmpty)
+              ? voiceId
               : null,
           'avatar_name': _avatarData?.displayName,
         }),
@@ -938,7 +1001,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           String? path;
           try {
             final ttsUri = Uri.parse(
-              'https://us-central1-sunriza26.cloudfunctions.net/tts',
+              '${dotenv.env['MEMORY_API_BASE_URL']}/avatar/tts',
             );
             final String? voiceId = (_avatarData?.training != null)
                 ? (_avatarData?.training?['voice'] != null
@@ -953,17 +1016,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             final ttsRes = await http.post(
               ttsUri,
               headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'text': answer, 'voiceId': voiceId}),
+              body: jsonEncode({'text': answer, 'voice_id': voiceId}),
             );
-            if (ttsRes.statusCode >= 200 &&
-                ttsRes.statusCode < 300 &&
-                ttsRes.bodyBytes.isNotEmpty) {
-              final dir = await getTemporaryDirectory();
-              final file = File(
-                '${dir.path}/avatar_tts_fallback_${DateTime.now().millisecondsSinceEpoch}.mp3',
-              );
-              await file.writeAsBytes(ttsRes.bodyBytes, flush: true);
-              path = file.path;
+            if (ttsRes.statusCode >= 200 && ttsRes.statusCode < 300) {
+              final Map<String, dynamic> j =
+                  jsonDecode(ttsRes.body) as Map<String, dynamic>;
+              final String? b64 = j['audio_b64'] as String?;
+              if (b64 != null && b64.isNotEmpty) {
+                final bytes = base64Decode(b64);
+                final dir = await getTemporaryDirectory();
+                final file = File(
+                  '${dir.path}/avatar_tts_fallback_${DateTime.now().millisecondsSinceEpoch}.mp3',
+                );
+                await file.writeAsBytes(bytes, flush: true);
+                path = file.path;
+              }
             }
           } catch (_) {}
           _addMessage(answer, false, audioPath: path);

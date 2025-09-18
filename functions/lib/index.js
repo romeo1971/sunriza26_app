@@ -256,7 +256,7 @@ exports.healthCheck = functions
  */
 exports.testTTS = functions
     .region('us-central1')
-    .runWith({ secrets: ['ELEVEN_API_KEY', 'ELEVEN_VOICE_ID', 'ELEVEN_TTS_MODEL'] })
+    .runWith({ secrets: ['ELEVENLABS_API_KEY', 'ELEVEN_VOICE_ID', 'ELEVEN_TTS_MODEL'] })
     .https
     .onRequest(async (req, res) => {
     return corsHandler(req, res, async () => {
@@ -271,7 +271,7 @@ exports.testTTS = functions
                 return;
             }
             // 1) ElevenLabs bevorzugen, falls Key vorhanden
-            const elevenKey = process.env.ELEVEN_API_KEY;
+            const elevenKey = process.env.ELEVENLABS_API_KEY;
             if (elevenKey) {
                 try {
                     const effectiveVoiceId = (typeof voiceId === 'string' && voiceId.trim().length > 0)

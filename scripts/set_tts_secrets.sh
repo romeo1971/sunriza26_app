@@ -5,7 +5,7 @@ ENV_FILE="$ROOT_DIR/tts_apiKeys/eleven.env"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "eleven.env nicht gefunden: $ENV_FILE" >&2
-  echo "Beispiel:\nELEVEN_API_KEY=...\nELEVEN_VOICE_ID=21m00Tcm4TlvDq8ikWAM\nELEVEN_TTS_MODEL=eleven_multilingual_v2" >&2
+  echo "Beispiel:\nELEVENLABS_API_KEY=...\nELEVEN_VOICE_ID=21m00Tcm4TlvDq8ikWAM\nELEVEN_TTS_MODEL=eleven_multilingual_v2" >&2
   exit 1
 fi
 
@@ -15,12 +15,12 @@ set -a
 . "$ENV_FILE"
 set +a
 
-if [[ -z "${ELEVEN_API_KEY:-}" ]]; then
-  echo "ELEVEN_API_KEY fehlt in $ENV_FILE" >&2
+if [[ -z "${ELEVENLABS_API_KEY:-}" ]]; then
+  echo "ELEVENLABS_API_KEY fehlt in $ENV_FILE" >&2
   exit 1
 fi
 
-printf %s "$ELEVEN_API_KEY" | firebase functions:secrets:set ELEVEN_API_KEY --data-file=-
+printf %s "$ELEVENLABS_API_KEY" | firebase functions:secrets:set ELEVENLABS_API_KEY --data-file=-
 
 if [[ -n "${ELEVEN_VOICE_ID:-}" ]]; then
   printf %s "$ELEVEN_VOICE_ID" | firebase functions:secrets:set ELEVEN_VOICE_ID --data-file=-

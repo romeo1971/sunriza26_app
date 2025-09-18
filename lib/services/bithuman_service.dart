@@ -37,9 +37,10 @@ class BitHumanService {
       print('🖼️ Bild: $imagePath');
       print('🎵 Audio: $audioPath');
 
-      // Demo-Modus
+      // Demo-Modus: kein Bild als "Video" retournieren – stattdessen null
       if (_apiKey == 'demo_key') {
-        return _createDemoVideo(imagePath, audioPath);
+        print('⚠️ BitHuman Demo-Modus aktiv – überspringe Video-Stream');
+        return null;
       }
 
       // Offizielles Backend verwenden
@@ -200,26 +201,7 @@ class BitHumanService {
     }
   }
 
-  /// Erstellt Demo-Video für Entwicklung
-  static Future<String?> _createDemoVideo(
-    String imagePath,
-    String audioPath,
-  ) async {
-    try {
-      print('🎬 Demo-Modus: Simuliere Avatar-Animation');
-      print('🖼️ Bild: $imagePath');
-      print('🎵 Audio: $audioPath');
-
-      // Simuliere Verarbeitungszeit
-      await Future.delayed(Duration(seconds: 2));
-
-      // Für Demo: Verwende das ursprüngliche Bild als "Video"
-      return imagePath;
-    } catch (e) {
-      print('Demo Video Error: $e');
-      return null;
-    }
-  }
+  // Demo-Helper entfernt – vermeiden, dass Bilder als Video behandelt werden
 
   // Alte API-Methoden entfernt - verwende jetzt offizielles Backend
 }
