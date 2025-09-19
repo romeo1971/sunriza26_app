@@ -69,6 +69,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   // ElevenLabs Voice-Parameter (per Avatar speicherbar)
   double _voiceStability = 0.25;
   double _voiceSimilarity = 0.9;
+  double _voiceTempo = 1.0; // 0.5 .. 1.5
+  String _voiceDialect = 'de-DE';
   // ElevenLabs Voices
   List<Map<String, dynamic>> _elevenVoices = [];
   String? _selectedVoiceId;
@@ -196,6 +198,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (voice is Map) {
         final st = voice['stability'];
         final si = voice['similarity'];
+        final tp = voice['tempo'];
+        final dl = voice['dialect'];
         // final vid = voice['elevenVoiceId']; // keine Vorauswahl setzen
         if (st is num) _voiceStability = st.toDouble();
         if (st is String) {
@@ -206,6 +210,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (si is String) {
           final v = double.tryParse(si);
           if (v != null) _voiceSimilarity = v;
+        }
+        if (tp is num) _voiceTempo = tp.toDouble();
+        if (tp is String) {
+          final v = double.tryParse(tp);
+          if (v != null) _voiceTempo = v;
+        }
+        if (dl is String && dl.trim().isNotEmpty) {
+          _voiceDialect = dl.trim();
         }
         // WICHTIG: keine Vorauswahl im Dropdown – Nutzer entscheidet aktiv
         _selectedVoiceId = null;
@@ -497,6 +509,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         const SizedBox(height: 12),
                         if (_avatarData?.audioUrls.isNotEmpty == true)
                           _buildAudioFilesList(),
+
+                        const SizedBox(height: 12),
+                        // Stimmeinstellungen (nur anzeigen, wenn ein Klon/Voice-ID vorhanden ist)
+                        if (((_avatarData?.training?['voice']?['elevenVoiceId'])
+                                    as String?)
+                                ?.trim()
+                                .isNotEmpty ==
+                            true)
+                          _buildVoiceParams(),
                       ],
                     ),
                   ),
@@ -1447,6 +1468,93 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ),
           ],
         ),
+
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const SizedBox(
+              width: 90,
+              child: Text('Tempo', style: TextStyle(color: Colors.white70)),
+            ),
+            Expanded(
+              child: Slider(
+                value: _voiceTempo.clamp(0.5, 1.5),
+                min: 0.5,
+                max: 1.5,
+                divisions: 20,
+                label: _voiceTempo.toStringAsFixed(2),
+                onChanged: (v) => setState(() => _voiceTempo = v),
+                onChangeEnd: (_) => _saveVoiceParams(),
+              ),
+            ),
+            SizedBox(
+              width: 48,
+              child: Text(
+                _voiceTempo.toStringAsFixed(2),
+                style: const TextStyle(color: Colors.white70),
+              ),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            const SizedBox(
+              width: 90,
+              child: Text('Dialekt', style: TextStyle(color: Colors.white70)),
+            ),
+            Expanded(
+              child: DropdownButtonFormField<String>(
+                value: _voiceDialect,
+                dropdownColor: Colors.black,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'de-DE',
+                    child: Text(
+                      'Deutsch (DE)',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'de-AT',
+                    child: Text(
+                      'Deutsch (AT)',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'de-CH',
+                    child: Text(
+                      'Deutsch (CH)',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'en-US',
+                    child: Text(
+                      'Englisch (US)',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  DropdownMenuItem(
+                    value: 'en-GB',
+                    child: Text(
+                      'Englisch (UK)',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ],
+                onChanged: (v) {
+                  if (v == null) return;
+                  setState(() => _voiceDialect = v);
+                  _saveVoiceParams();
+                },
+                iconEnabledColor: Colors.white70,
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -1457,6 +1565,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final voice = Map<String, dynamic>.from(existing['voice'] ?? {});
     voice['stability'] = double.parse(_voiceStability.toStringAsFixed(2));
     voice['similarity'] = double.parse(_voiceSimilarity.toStringAsFixed(2));
+    voice['tempo'] = double.parse(_voiceTempo.toStringAsFixed(2));
+    voice['dialect'] = _voiceDialect;
     existing['voice'] = voice;
     final updated = _avatarData!.copyWith(
       training: existing,
@@ -1523,6 +1633,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             'audio_urls': selected,
             'name': _avatarData!.displayName,
           };
+          // Dialekt/Tempo mitsenden, wenn vorhanden
+          try {
+            final v = _avatarData?.training?['voice'] as Map<String, dynamic>?;
+            final tempo = (v?['tempo'] as num?)?.toDouble();
+            final dialect = v?['dialect'] as String?;
+            if (tempo != null) payload['tempo'] = tempo;
+            if (dialect != null && dialect.isNotEmpty)
+              payload['dialect'] = dialect;
+          } catch (_) {}
           // Wenn bereits eine Stimme existiert: voice_id mitsenden → bestehende Stimme updaten, NICHT neu anlegen
           try {
             final raw =

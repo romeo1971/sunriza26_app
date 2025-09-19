@@ -11,7 +11,7 @@ from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 from openai import OpenAI
 from google.cloud import texttospeech
-import base64, requests
+import base64, requests, json
 
 from .chunking import chunk_text
 from .pinecone_client import (
@@ -382,6 +382,8 @@ class CreateVoiceFromAudioRequest(BaseModel):
     audio_urls: List[str]
     name: str | None = None
     voice_id: str | None = None  # Wenn gesetzt: bestehende Stimme updaten statt neu anlegen
+    dialect: str | None = None   # z. B. "de-DE", "de-AT", "en-US"
+    tempo: float | None = None   # z. B. 0.8 .. 1.2 (Meta-Label)
 
 class CreateVoiceFromAudioResponse(BaseModel):
     voice_id: str
@@ -475,8 +477,20 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
         if dup_cleaned:
             logger.info(f"Zusätzliche Duplikate gelöscht: {dup_cleaned}")
 
-        # Neue Stimme anlegen
+        # Neue Stimme anlegen (Labels für Metadaten wie Dialekt/Tempo mitschicken)
+        labels: dict[str, str] = {}
+        if payload.dialect:
+            labels["dialect"] = str(payload.dialect)
+        if payload.tempo is not None:
+            try:
+                labels["tempo"] = f"{float(payload.tempo):.2f}"
+            except Exception:
+                labels["tempo"] = str(payload.tempo)
+
         data = {"name": canonical_name}
+        if labels:
+            # ElevenLabs akzeptiert labels als JSON-String im multipart Feld "labels"
+            data["labels"] = json.dumps(labels)
         r = requests.post(
             "https://api.elevenlabs.io/v1/voices/add",
             headers={**headers, "Accept": "application/json"},
