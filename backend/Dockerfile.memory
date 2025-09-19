@@ -6,9 +6,14 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Abhängigkeiten installieren
+# System-Build-Deps (für pyaudio) installieren, dann Python-Abhängigkeiten
 COPY backend/requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip && pip install -r /app/requirements.txt
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential gcc portaudio19-dev \
+    && pip install --upgrade pip \
+    && pip install -r /app/requirements.txt \
+    && apt-get purge -y --auto-remove build-essential gcc \
+    && rm -rf /var/lib/apt/lists/*
 
 # App-Code kopieren
 COPY backend/app /app/app
