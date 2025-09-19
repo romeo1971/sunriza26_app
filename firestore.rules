@@ -22,6 +22,7 @@ service cloud.firestore {
 
     // Avatar-Dokumente (Struppi-System)
     match /avatars/{avatarId} {
+      // Create mit minimalen Pflichtfeldern + optionalen Medienfeldern
       allow create: if signedIn()
         && request.resource.data.userId == request.auth.uid
         && request.resource.data.keys().hasOnly([
@@ -32,6 +33,9 @@ service cloud.firestore {
           'training'
         ])
         && validString(request.resource.data.firstName, 1, 100)
+        && validTimestamp(request.resource.data.createdAt)
+        && validTimestamp(request.resource.data.updatedAt)
+        // Optionale Felder – Typ nur prüfen, wenn vorhanden
         && (!('nickname' in request.resource.data) || validString(request.resource.data.nickname, 0, 100))
         && (!('lastName' in request.resource.data) || validString(request.resource.data.lastName, 0, 100))
         && (!('avatarImageUrl' in request.resource.data) || validString(request.resource.data.avatarImageUrl, 1, 2000))
@@ -40,13 +44,11 @@ service cloud.firestore {
         && (!('calculatedAge' in request.resource.data) || request.resource.data.calculatedAge is int)
         && (!('lastMessage' in request.resource.data) || validString(request.resource.data.lastMessage, 0, 1000))
         && (!('lastMessageTime' in request.resource.data) || request.resource.data.lastMessageTime is int)
-        && (request.resource.data.imageUrls is list)
-        && (request.resource.data.videoUrls is list)
-        && (request.resource.data.textFileUrls is list)
-        && (request.resource.data.audioUrls is list)
-        && (request.resource.data.writtenTexts is list)
-        && validTimestamp(request.resource.data.createdAt)
-        && validTimestamp(request.resource.data.updatedAt)
+        && (!('imageUrls' in request.resource.data) || request.resource.data.imageUrls is list)
+        && (!('videoUrls' in request.resource.data) || request.resource.data.videoUrls is list)
+        && (!('textFileUrls' in request.resource.data) || request.resource.data.textFileUrls is list)
+        && (!('audioUrls' in request.resource.data) || request.resource.data.audioUrls is list)
+        && (!('writtenTexts' in request.resource.data) || request.resource.data.writtenTexts is list)
         && (!('isPublic' in request.resource.data) || request.resource.data.isPublic is bool)
         && (!('training' in request.resource.data) || request.resource.data.training is map);
 
