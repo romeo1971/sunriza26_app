@@ -1,0 +1,7 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-f', 'backend/Dockerfile.memory', '-t', 'gcr.io/$PROJECT_ID/memory-backend', '.']
+images:
+  - 'gcr.io/$PROJECT_ID/memory-backend'
+
+
