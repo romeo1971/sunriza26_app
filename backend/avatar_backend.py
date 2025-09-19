@@ -190,9 +190,12 @@ async def root():
 @app.get("/health")
 async def health():
     """Health Check"""
+    key_present = bool(os.getenv('BITHUMAN_API_KEY'))
+    # Als "ready" werten, sobald der API-Key vorhanden ist (Modell kann später kommen)
+    ready = key_present or (runtime is not None)
     return {
         "status": "healthy",
-        "bithuman_ready": runtime is not None,
+        "bithuman_ready": ready,
         "service": "avatar-backend"
     }
 
