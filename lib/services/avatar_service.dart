@@ -201,6 +201,13 @@ class AvatarService {
 
       final updatedAvatar = avatar.copyWith(updatedAt: DateTime.now());
       final payload = updatedAvatar.toMap();
+      // Wenn greetingText geleert wurde, Feld in Firestore entfernen → Standard greift
+      try {
+        if ((updatedAvatar.greetingText != null) &&
+            updatedAvatar.greetingText!.trim().isEmpty) {
+          payload['greetingText'] = FieldValue.delete();
+        }
+      } catch (_) {}
       try {
         print('Avatar update payload keys: ${payload.keys.toList()}');
         print(

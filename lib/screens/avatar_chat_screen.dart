@@ -93,11 +93,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           _loadHistory().then((_) {
             if (_messages.isEmpty) {
               if ((_partnerName ?? '').isNotEmpty) {
-                _botSay(_friendlyGreet(_partnerName ?? ''));
+                final greet =
+                    (_avatarData?.greetingText?.trim().isNotEmpty == true)
+                    ? _avatarData!.greetingText!
+                    : _friendlyGreet(_partnerName ?? '');
+                _botSay(greet);
               } else {
-                _botSay(
-                  'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?',
-                );
+                final greet =
+                    (_avatarData?.greetingText?.trim().isNotEmpty == true)
+                    ? _avatarData!.greetingText!
+                    : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?';
+                _botSay(greet);
               }
             }
           });
@@ -684,7 +690,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         _startLipsync(text);
       }
 
-      final uri = Uri.parse('${dotenv.env['MEMORY_API_BASE_URL']}/avatar/tts');
+      final base = dotenv.env['MEMORY_API_BASE_URL'];
+      if (base == null || base.isEmpty) {
+        _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
+        return;
+      }
+      final uri = Uri.parse('$base/avatar/tts');
       final payload = <String, dynamic>{'text': text};
       // Immer die geklonte Stimme verwenden
       if (voiceId != null) {
@@ -747,7 +758,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   Future<String?> _ensureTtsForText(String text) async {
     try {
-      final uri = Uri.parse('${dotenv.env['MEMORY_API_BASE_URL']}/avatar/tts');
+      final base2 = dotenv.env['MEMORY_API_BASE_URL'];
+      if (base2 == null || base2.isEmpty) {
+        _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
+        return null;
+      }
+      final uri = Uri.parse('$base2/avatar/tts');
       String? voiceId = (_avatarData?.training != null)
           ? (_avatarData?.training?['voice'] != null
                 ? (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
@@ -904,7 +920,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         return;
       }
       final uid = user.uid;
-      final uri = Uri.parse('${dotenv.env['MEMORY_API_BASE_URL']}/avatar/chat');
+      final baseChat = dotenv.env['MEMORY_API_BASE_URL'];
+      if (baseChat == null || baseChat.isEmpty) {
+        _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
+        return;
+      }
+      final uri = Uri.parse('$baseChat/avatar/chat');
 
       // Stimme robust ermitteln
       String? voiceId = (_avatarData?.training != null)
@@ -988,9 +1009,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           // TTS über Cloud Function tts
           String? path;
           try {
-            final ttsUri = Uri.parse(
-              '${dotenv.env['MEMORY_API_BASE_URL']}/avatar/tts',
-            );
+            final baseTts = dotenv.env['MEMORY_API_BASE_URL'];
+            if (baseTts == null || baseTts.isEmpty) return;
+            final ttsUri = Uri.parse('$baseTts/avatar/tts');
             final String? voiceId = (_avatarData?.training != null)
                 ? (_avatarData?.training?['voice'] != null
                       ? (_avatarData?.training?['voice']?['elevenVoiceId']

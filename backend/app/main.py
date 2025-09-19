@@ -406,8 +406,77 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
         voice_name = payload.name or f"avatar_{payload.avatar_id}"
         headers = {"xi-api-key": key}
 
-        # Immer NEUE Stimme anlegen (keine Edit-Konflikte mit gelöschten/alten Stimmen)
-        data = {"name": voice_name}
+        # Hilfsfunktionen für robustes Löschen
+        def _safe_delete_voice(vid: str) -> bool:
+            try:
+                dr = requests.delete(
+                    f"https://api.elevenlabs.io/v1/voices/{vid}",
+                    headers=headers,
+                    timeout=30,
+                )
+                # ElevenLabs kann 204 No Content zurückgeben → akzeptiere jedes 2xx
+                if 200 <= dr.status_code < 300:
+                    logger.info(f"ElevenLabs Stimme gelöscht: {vid} ({dr.status_code})")
+                    return True
+                logger.warning(f"Delete fehlgeschlagen {vid}: {dr.status_code} {dr.text}")
+                return False
+            except Exception as _e:
+                logger.warning(f"Delete Exception {vid}: {_e}")
+                return False
+
+        def _cleanup_voices_by_name(vname: str, keep_id: str | None = None) -> int:
+            try:
+                gr = requests.get(
+                    "https://api.elevenlabs.io/v1/voices",
+                    headers=headers,
+                    timeout=30,
+                )
+                gr.raise_for_status()
+                data = gr.json() or {}
+                voices = data.get("voices", []) or []
+                deleted = 0
+                for v in voices:
+                    vid = (v or {}).get("voice_id")
+                    nm = (v or {}).get("name")
+                    if not vid or not nm:
+                        continue
+                    # Ziel: alle Stimmen mit gleichem Namen oder Präfix entfernen, außer optional keep_id
+                    if (nm == vname or nm.startswith(vname)) and (keep_id is None or vid != keep_id):
+                        if _safe_delete_voice(vid):
+                            deleted += 1
+                return deleted
+            except Exception as _e:
+                logger.warning(f"Cleanup by name Fehler: {_e}")
+                return 0
+
+        def _cleanup_voices_by_names(vnames: list[str], keep_id: str | None = None) -> int:
+            total = 0
+            seen: set[str] = set()
+            for n in vnames:
+                if not n or n in seen:
+                    continue
+                seen.add(n)
+                total += _cleanup_voices_by_name(n, keep_id=keep_id)
+            return total
+
+        # Namen vorbereiten (kanonisch + evtl. Displayname)
+        canonical_name = f"avatar_{payload.avatar_id}"
+        candidate_names = list({canonical_name, voice_name})
+
+        # Alte Stimme löschen, falls vorhanden
+        logger.info(f"Voice ID zum Löschen: '{payload.voice_id}'")
+        if payload.voice_id and payload.voice_id.strip() and payload.voice_id != "__CLONE__":
+            _safe_delete_voice(payload.voice_id.strip())
+        else:
+            logger.info("Keine alte Stimme zum Löschen gefunden")
+
+        # Zusätzlich: Duplikate mit (kanonischem oder Display-)Namen entfernen (Sicherheitsnetz)
+        dup_cleaned = _cleanup_voices_by_names(candidate_names, keep_id=None)
+        if dup_cleaned:
+            logger.info(f"Zusätzliche Duplikate gelöscht: {dup_cleaned}")
+
+        # Neue Stimme anlegen
+        data = {"name": canonical_name}
         r = requests.post(
             "https://api.elevenlabs.io/v1/voices/add",
             headers={**headers, "Accept": "application/json"},
@@ -418,9 +487,56 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
         r.raise_for_status()
         res = r.json()
         voice_id = res.get("voice_id") or res.get("id")
-        name = res.get("name") or voice_name
+        name = res.get("name") or canonical_name
         if not voice_id:
             raise HTTPException(status_code=500, detail="ElevenLabs: voice_id fehlt in Antwort")
+        # Post‑Cleanup: sicherstellen, dass keine weiteren Stimmen mit gleichem Namen übrig bleiben
+        try:
+            import time as _t
+
+            def _list_voice_ids_for_names(vnames: list[str]) -> list[dict]:
+                try:
+                    gr = requests.get(
+                        "https://api.elevenlabs.io/v1/voices",
+                        headers=headers,
+                        timeout=30,
+                    )
+                    gr.raise_for_status()
+                    data = gr.json() or {}
+                    voices = data.get("voices", []) or []
+                    res = []
+                    for v in voices:
+                        vid = (v or {}).get("voice_id")
+                        nm = (v or {}).get("name")
+                        if not vid or not nm:
+                            continue
+                        for n in vnames:
+                            if not n:
+                                continue
+                            if nm == n or nm.startswith(n):
+                                res.append({"voice_id": vid, "name": nm})
+                                break
+                    return res
+                except Exception:
+                    return []
+
+            # Bis zu 3 Versuche: Liste → lösche alles außer neuer ID
+            attempts = 3
+            for i in range(attempts):
+                matches = _list_voice_ids_for_names([name] + candidate_names)
+                to_delete = [m for m in matches if m.get("voice_id") != voice_id]
+                if not to_delete:
+                    break
+                removed = 0
+                for m in to_delete:
+                    if _safe_delete_voice(m["voice_id"]):
+                        removed += 1
+                logger.info(f"Nach-Cleanup Pass {i+1}: entfernt={removed}, verbleibend={len(to_delete)-removed}")
+                if removed == 0:
+                    break
+                _t.sleep(0.6)
+        except Exception as _e:
+            logger.warning(f"Nach-Cleanup Fehler: {_e}")
         return CreateVoiceFromAudioResponse(voice_id=voice_id, name=name)
     except requests.HTTPError as e:
         logger.exception("ElevenLabs Voice Create HTTPError")

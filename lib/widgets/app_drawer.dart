@@ -14,11 +14,13 @@ class AppDrawer extends StatelessWidget {
     final authService = Provider.of<AuthService>(context, listen: false);
 
     return Drawer(
-      backgroundColor: Colors.grey.shade900,
+      backgroundColor: Colors.black,
       child: Column(
         children: [
           // Header mit Benutzerinfo
-          DrawerHeader(
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
             decoration: const BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -161,17 +163,26 @@ class AppDrawer extends StatelessWidget {
           // Footer mit Logout
           Container(
             decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: Colors.grey.shade700)),
+              border: Border(top: BorderSide(color: Colors.grey.shade800)),
             ),
-            child: _buildDrawerItem(
-              context,
-              icon: Icons.logout,
-              title: 'Abmelden',
-              textColor: Colors.red,
+            child: ListTile(
+              leading: const Icon(
+                Icons.logout,
+                color: AppColors.accentGreenDark,
+              ),
+              title: const Text(
+                'Abmelden',
+                style: TextStyle(
+                  color: AppColors.accentGreenDark,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
               onTap: () async {
                 Navigator.pop(context);
                 await authService.signOut();
               },
+              hoverColor: AppColors.accentGreenDark.withValues(alpha: 0.1),
             ),
           ),
         ],

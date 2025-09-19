@@ -44,6 +44,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final List<String> _videoUrls = [];
   final List<String> _textFileUrls = [];
   final TextEditingController _textAreaController = TextEditingController();
+  final TextEditingController _greetingController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final AvatarService _avatarService = AvatarService();
   final List<File> _newImageFiles = [];
@@ -100,6 +101,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if ((_lastNameController.text.trim()) != (current.lastName ?? '')) {
       dirty = true;
     }
+    // Begrüßungstext
+    final currentGreeting = current.greetingText ?? '';
+    if (_greetingController.text.trim() != currentGreeting) dirty = true;
 
     // Dates (nur Datum vergleichen)
     bool sameDate(DateTime? a, DateTime? b) {
@@ -135,6 +139,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _nicknameController.addListener(_updateDirty);
     _lastNameController.addListener(_updateDirty);
     _textAreaController.addListener(_updateDirty);
+    _greetingController.addListener(_updateDirty);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args is AvatarData) {
@@ -207,6 +212,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
       _isDirty = false;
     });
+    // Greeting vorbelegen
+    _greetingController.text =
+        _avatarData?.greetingText?.trim().isNotEmpty == true
+        ? _avatarData!.greetingText!
+        : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?';
   }
 
   // Obsolet: Rundes Avatarbild oben wurde entfernt (Hintergrundbild reicht aus)
@@ -292,6 +302,39 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ),
           child: Column(
             children: [
+              // Begrüßungstext
+              ExpansionTile(
+                initiallyExpanded: false,
+                collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
+                backgroundColor: Colors.white.withValues(alpha: 0.06),
+                title: const Text(
+                  'Begrüßungstext',
+                  style: TextStyle(color: Colors.white),
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 12.0,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(
+                          controller: _greetingController,
+                          maxLines: 3,
+                          style: const TextStyle(color: Colors.white),
+                          decoration: const InputDecoration(
+                            hintText: 'Begrüßungstext des Avatars',
+                          ),
+                          onChanged: (_) => _updateDirty(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
               // Texte & Freitext
               ExpansionTile(
                 initiallyExpanded: false,
@@ -303,11 +346,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 ),
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
@@ -383,15 +428,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         if (_textFileUrls.isNotEmpty ||
                             _newTextFiles.isNotEmpty)
                           _buildTextFilesList(),
-                        const SizedBox(height: 8),
                       ],
                     ),
                   ),
                 ],
               ),
-
-              const SizedBox(height: 8),
-
+              const SizedBox(height: 16),
               // Audio (Stimmauswahl) inkl. Stimmeinstellungen
               ExpansionTile(
                 initiallyExpanded: false,
@@ -403,11 +445,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 ),
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 8),
                         // ElevenLabs Voice Auswahl
                         _buildVoiceSelect(),
                         const SizedBox(height: 12),
@@ -432,7 +476,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  'Audio hochladen',
+                                  'Audio-Dateien hochladen',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 16,
@@ -440,7 +484,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 ),
                                 SizedBox(height: 2),
                                 Text(
-                                  '(.mp3, .m4a, .wav, .aac) – Stimmprobe hinzufügen',
+                                  '(.mp3, .m4a, .wav, .aac, .ogg) – Stimme/Referenzen',
                                   style: TextStyle(
                                     fontWeight: FontWeight.w300,
                                     fontSize: 13,
@@ -450,25 +494,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        if ((_avatarData?.audioUrls.isNotEmpty == true) ||
-                            _newAudioFiles.isNotEmpty)
-                          _buildAudioList()
-                        else
-                          Text(
-                            'Keine Stimmproben vorhanden',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.7),
-                            ),
-                          ),
                         const SizedBox(height: 12),
-                        _buildVoiceParams(),
-                        const SizedBox(height: 8),
+                        if (_avatarData?.audioUrls.isNotEmpty == true)
+                          _buildAudioFilesList(),
                       ],
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 16),
             ],
           ),
         ),
@@ -647,7 +681,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Widget _buildImagesRowLayout([double? mediaW]) {
-    final List<String> remoteFive = _imageUrls.take(5).toList();
+    final List<String> remoteFour = _imageUrls.take(4).toList();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: LayoutBuilder(
@@ -826,9 +860,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.black,
                                 foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 12,
-                                ),
+                                padding: EdgeInsets.zero,
                                 minimumSize: const Size.fromHeight(0),
                                 elevation: 0,
                                 shadowColor: Colors.transparent,
@@ -838,7 +870,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               ),
                               child: const Text(
                                 'Avatar generieren',
-                                style: TextStyle(fontSize: 13),
+                                style: TextStyle(fontSize: 13, height: 1.2),
                                 overflow: TextOverflow.ellipsis,
                               ),
                             ),
@@ -853,7 +885,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 ],
               ),
               const SizedBox(width: spacing),
-              // Galerie (max. 5) + Hinweistext darunter + Upload-Button (lila)
+              // Galerie (max. 4) + Hinweistext darunter + Upload-Button (lila)
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -916,9 +948,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 crossAxisSpacing: gridSpacing,
                                 childAspectRatio: 1,
                               ),
-                          itemCount: remoteFive.length.clamp(0, 5),
+                          itemCount: remoteFour.length.clamp(0, 4),
                           itemBuilder: (context, index) {
-                            final url = remoteFive[index];
+                            final url = remoteFour[index];
                             final isCrown =
                                 _profileImageUrl == url ||
                                 (_profileImageUrl == null && index == 0);
@@ -938,7 +970,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Widget _buildVideosRowLayout([double? mediaW]) {
-    final List<String> remoteFive = _videoUrls.take(5).toList();
+    final List<String> remoteFour = _videoUrls.take(4).toList();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: LayoutBuilder(
@@ -1051,7 +1083,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 ],
               ),
               const SizedBox(width: spacing),
-              // Galerie (max. 5) – Upload-Button über den Thumbs
+              // Galerie (max. 4) – Upload-Button über den Thumbs
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1104,9 +1136,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                             .floor()
                             .clamp(2, 3);
                         final totalCount =
-                            (remoteFive.length +
-                            (5 - remoteFive.length)
-                                .clamp(0, 5)
+                            (remoteFour.length +
+                            (4 - remoteFour.length)
+                                .clamp(0, 4)
                                 .clamp(0, _newVideoFiles.length));
                         return GridView.builder(
                           shrinkWrap: true,
@@ -1120,10 +1152,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               ),
                           itemCount: totalCount,
                           itemBuilder: (context, index) {
-                            if (index < remoteFive.length) {
-                              return _videoThumbNetwork(remoteFive[index]);
+                            if (index < remoteFour.length) {
+                              return _videoThumbNetwork(remoteFour[index]);
                             }
-                            final localIndex = index - remoteFive.length;
+                            final localIndex = index - remoteFour.length;
                             return _videoThumbLocal(_newVideoFiles[localIndex]);
                           },
                         );
@@ -1224,7 +1256,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
   }
 
-  Widget _buildAudioList() {
+  Widget _buildAudioFilesList() {
     final List<Widget> tiles = [];
 
     // Remote Audios
@@ -1336,11 +1368,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         Align(
           alignment: Alignment.centerLeft,
           child: ElevatedButton.icon(
-            onPressed: _onCloneVoice,
+            onPressed: _isSaving ? null : _onCloneVoice,
             icon: const Icon(Icons.auto_fix_high),
-            label: const Text('Stimme klonen'),
+            label: Text(_isSaving ? 'Wird geklont...' : 'Stimme klonen'),
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accentGreenDark,
+              backgroundColor: _isSaving
+                  ? Colors.grey
+                  : AppColors.accentGreenDark,
               foregroundColor: Colors.white,
             ),
           ),
@@ -1437,12 +1471,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Future<void> _onCloneVoice() async {
     if (_avatarData == null) return;
+    if (_isSaving) {
+      _showSystemSnack('Stimme wird bereits geklont...');
+      return;
+    }
+
+    // SOFORT setState um Button zu disabled
+    setState(() => _isSaving = true);
+
     if (_newAudioFiles.isNotEmpty) {
+      setState(() => _isSaving = false);
       _showSystemSnack('Bitte zuerst speichern, dann klonen.');
       return;
     }
     final audios = List<String>.from(_avatarData!.audioUrls);
     if (audios.isEmpty) {
+      setState(() => _isSaving = false);
       _showSystemSnack('Keine Audio-Stimmprobe vorhanden.');
       return;
     }
@@ -1457,18 +1501,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       selected = [audios.first];
     }
     if (selected.isEmpty) {
+      setState(() => _isSaving = false);
       _showSystemSnack('Bitte markiere eine Audio-Datei mit dem Stern.');
       return;
     }
-    setState(() => _isSaving = true);
     try {
       await _showBlockingProgress(
         title: 'Stimme wird geklont…',
         message: 'Das dauert einen Moment. Bitte gedulde dich.',
         task: () async {
           final uid = FirebaseAuth.instance.currentUser!.uid;
-          final base =
-              dotenv.env['MEMORY_API_BASE_URL'] ?? 'http://127.0.0.1:8000';
+          final base = dotenv.env['MEMORY_API_BASE_URL'];
+          if (base == null || base.isEmpty) {
+            _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
+            return;
+          }
           final uri = Uri.parse('$base/avatar/voice/create');
           final Map<String, dynamic> payload = {
             'user_id': uid,
@@ -1476,14 +1523,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             'audio_urls': selected,
             'name': _avatarData!.displayName,
           };
-          final raw = _avatarData!.training?['voice']?['elevenVoiceId'];
-          final String? normalized =
-              (raw is String &&
-                  raw.trim().isNotEmpty &&
-                  raw.trim() != '__CLONE__')
-              ? raw.trim()
-              : null;
-          if (normalized != null) payload['voice_id'] = normalized;
+          // Wenn bereits eine Stimme existiert: voice_id mitsenden → bestehende Stimme updaten, NICHT neu anlegen
+          try {
+            final raw =
+                (_avatarData?.training?['voice']?['cloneVoiceId'] ??
+                        _avatarData?.training?['voice']?['elevenVoiceId'])
+                    as String?;
+            final id = raw?.trim();
+            if (id != null && id.isNotEmpty && id != '__CLONE__') {
+              payload['voice_id'] = id;
+            }
+          } catch (_) {}
 
           final res = await http.post(
             uri,
@@ -1516,6 +1566,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               if (ok) {
                 _applyAvatar(updated);
                 _showSystemSnack('Stimme geklont. Voice-ID gespeichert.');
+                if (mounted) setState(() => _isDirty = false);
               } else {
                 _showSystemSnack('Speichern der Voice-ID fehlgeschlagen.');
               }
@@ -2062,14 +2113,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         maxHeight: 2048,
         imageQuality: 90,
       );
-      if (files.isNotEmpty) {
-        setState(() {
-          _newImageFiles.addAll(files.map((x) => File(x.path)));
-          _updateDirty();
-          _profileImageUrl ??= (_imageUrls.isNotEmpty)
-              ? _imageUrls.first
-              : (files.isNotEmpty ? null : _profileImageUrl);
-        });
+      if (files.isNotEmpty && _avatarData != null) {
+        setState(() => _isDirty = true);
+        final String uid = FirebaseAuth.instance.currentUser!.uid;
+        final String avatarId = _avatarData!.id;
+        for (int i = 0; i < files.length; i++) {
+          final File f = File(files[i].path);
+          final String path =
+              'avatars/$uid/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+          final url = await FirebaseStorageService.uploadImage(
+            f,
+            customPath: path,
+          );
+          if (url != null) {
+            if (!mounted) return;
+            setState(() {
+              _imageUrls.add(url);
+              _profileImageUrl ??= _imageUrls.first;
+            });
+          }
+        }
       }
     } else {
       final x = await _picker.pickImage(
@@ -2078,11 +2141,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         maxHeight: 2048,
         imageQuality: 90,
       );
-      if (x != null) {
-        setState(() {
-          _newImageFiles.add(File(x.path));
-          _updateDirty();
-        });
+      if (x != null && _avatarData != null) {
+        setState(() => _isDirty = true);
+        final String uid = FirebaseAuth.instance.currentUser!.uid;
+        final String avatarId = _avatarData!.id;
+        final File f = File(x.path);
+        final String path =
+            'avatars/$uid/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_cam.jpg';
+        final url = await FirebaseStorageService.uploadImage(
+          f,
+          customPath: path,
+        );
+        if (url != null) {
+          if (!mounted) return;
+          setState(() {
+            _imageUrls.add(url);
+            _profileImageUrl ??= _imageUrls.first;
+          });
+        }
       }
     }
   }
@@ -2100,22 +2176,46 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         source: ImageSource.gallery,
         maxDuration: const Duration(minutes: 5),
       );
-      if (x != null) {
-        setState(() {
-          _newVideoFiles.add(File(x.path));
-          _updateDirty();
-        });
+      if (x != null && _avatarData != null) {
+        setState(() => _isDirty = true);
+        final String uid = FirebaseAuth.instance.currentUser!.uid;
+        final String avatarId = _avatarData!.id;
+        final File f = File(x.path);
+        final String path =
+            'avatars/$uid/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_gal.mp4';
+        final url = await FirebaseStorageService.uploadVideo(
+          f,
+          customPath: path,
+        );
+        if (url != null) {
+          if (!mounted) return;
+          setState(() {
+            _videoUrls.add(url);
+          });
+        }
       }
     } else {
       final x = await _picker.pickVideo(
         source: ImageSource.camera,
         maxDuration: const Duration(minutes: 5),
       );
-      if (x != null) {
-        setState(() {
-          _newVideoFiles.add(File(x.path));
-          _updateDirty();
-        });
+      if (x != null && _avatarData != null) {
+        setState(() => _isDirty = true);
+        final String uid = FirebaseAuth.instance.currentUser!.uid;
+        final String avatarId = _avatarData!.id;
+        final File f = File(x.path);
+        final String path =
+            'avatars/$uid/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_cam.mp4';
+        final url = await FirebaseStorageService.uploadVideo(
+          f,
+          customPath: path,
+        );
+        if (url != null) {
+          if (!mounted) return;
+          setState(() {
+            _videoUrls.add(url);
+          });
+        }
       }
     }
   }
@@ -2252,12 +2352,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           style: TextStyle(color: Colors.white),
         ),
         children: [
-          const SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 12.0,
+            ),
             child: _buildInputFields(),
           ),
-          const SizedBox(height: 8),
         ],
       ),
     );
@@ -2643,6 +2744,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           audioUrls: allAudios,
           avatarImageUrl: avatarImageUrl,
           training: training,
+          greetingText: _greetingController.text.trim(),
         );
 
         final ok = await _avatarService.updateAvatar(updated);
@@ -2742,7 +2844,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   String _memoryApiBaseUrl() {
-    return dotenv.env['MEMORY_API_BASE_URL'] ?? 'http://127.0.0.1:8000';
+    return dotenv.env['MEMORY_API_BASE_URL'] ?? '';
   }
 
   Future<void> _triggerMemoryInsert({
@@ -2754,7 +2856,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     String? filePath,
     String? source,
   }) async {
-    final uri = Uri.parse('${_memoryApiBaseUrl()}/avatar/memory/insert');
+    final base = _memoryApiBaseUrl();
+    if (base.isEmpty) {
+      // Kein Backend: überspringen
+      return;
+    }
+    final uri = Uri.parse('$base/avatar/memory/insert');
     final Map<String, dynamic> payload = {
       'user_id': userId,
       'avatar_id': avatarId,
@@ -2865,10 +2972,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           if (_isDirty)
             IconButton(
               tooltip: 'Speichern',
-              onPressed: _saveAvatarDetails,
-              icon: const Icon(
+              onPressed: _isSaving ? null : _saveAvatarDetails,
+              icon: Icon(
                 Icons.save_outlined,
-                color: Colors.white,
+                color: _isSaving ? Colors.grey : Colors.white,
                 size: 28,
               ),
             ),

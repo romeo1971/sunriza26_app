@@ -18,6 +18,7 @@ class AvatarData {
   final DateTime createdAt;
   final DateTime updatedAt;
   final Map<String, dynamic>? training;
+  final String? greetingText;
 
   AvatarData({
     required this.id,
@@ -39,6 +40,7 @@ class AvatarData {
     required this.createdAt,
     required this.updatedAt,
     this.training,
+    this.greetingText,
   });
 
   // Factory constructor für Firestore
@@ -69,6 +71,7 @@ class AvatarData {
       createdAt: DateTime.fromMillisecondsSinceEpoch(map['createdAt']),
       updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updatedAt']),
       training: map['training'],
+      greetingText: map['greetingText'],
     );
   }
 
@@ -102,6 +105,9 @@ class AvatarData {
       map['lastMessageTime'] = lastMessageTime!.millisecondsSinceEpoch;
     }
     if (training != null) map['training'] = training;
+    if (greetingText != null && greetingText!.isNotEmpty) {
+      map['greetingText'] = greetingText;
+    }
 
     return map;
   }
@@ -127,6 +133,7 @@ class AvatarData {
     DateTime? createdAt,
     DateTime? updatedAt,
     Map<String, dynamic>? training,
+    String? greetingText,
   }) {
     return AvatarData(
       id: id ?? this.id,
@@ -148,6 +155,7 @@ class AvatarData {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       training: training ?? this.training,
+      greetingText: greetingText ?? this.greetingText,
     );
   }
 

@@ -12,7 +12,7 @@ httpx==0.25.2
 bithuman==0.5.24
 
 # Audio Processing
-pyaudio==0.2.11
+
 
 # Environment Variables
 python-dotenv==1.0.0

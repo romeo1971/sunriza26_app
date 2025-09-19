@@ -5,7 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class BitHumanService {
-  static String _baseUrl = 'http://127.0.0.1:4202'; // Default: Integration-Port
+  static String _baseUrl = '';
   static String? _apiKey;
 
   /// Initialisiert den Service mit API-Key aus .env
@@ -18,13 +18,14 @@ class BitHumanService {
         _baseUrl = envBase;
       }
 
-      if (_apiKey == null || _apiKey!.isEmpty) {
-        print('⚠️ BitHuman API Key nicht in .env gefunden - Demo-Modus');
+      if (_apiKey == null || _apiKey!.isEmpty || _baseUrl.isEmpty) {
+        print('⚠️ BitHuman Demo-Modus aktiv (kein Backend konfiguriert)');
         _apiKey = 'demo_key';
+        _baseUrl = '';
       } else {
         print('✅ BitHuman Service initialisiert');
+        print('🔗 BitHuman Base URL: $_baseUrl');
       }
-      print('🔗 BitHuman Base URL: $_baseUrl');
     } catch (e) {
       print('❌ BitHuman Initialisierung fehlgeschlagen: $e');
       _apiKey = 'demo_key';
@@ -42,8 +43,8 @@ class BitHumanService {
       print('🖼️ Bild: $imagePath');
       print('🎵 Audio: $audioPath');
 
-      // Demo-Modus: kein Bild als "Video" retournieren – stattdessen null
-      if (_apiKey == 'demo_key') {
+      // Demo-Modus: kein Backend-Call
+      if (_apiKey == 'demo_key' || _baseUrl.isEmpty) {
         print('⚠️ BitHuman Demo-Modus aktiv – überspringe Video-Stream');
         return null;
       }
@@ -61,6 +62,10 @@ class BitHumanService {
   static Future<String?> uploadImxFile(String imxPath) async {
     try {
       print('📤 BitHuman: Lade .imx Avatar hoch');
+      if (_apiKey == 'demo_key' || _baseUrl.isEmpty) {
+        print('⚠️ Demo-Modus – kein Upload, gebe Dummy zurück');
+        return 'demo.imx';
+      }
 
       final file = File(imxPath);
       if (!await file.exists()) {
@@ -101,6 +106,11 @@ class BitHumanService {
       print('🎭 BitHuman: Generiere Avatar Agent aus Bild');
       print('📸 Bild: ${imageFile.path}');
       print('👤 Avatar: $avatarName');
+
+      if (_apiKey == 'demo_key' || _baseUrl.isEmpty) {
+        print('⚠️ Demo-Modus – generiere Dummy-Agent-ID');
+        return 'demo-agent';
+      }
 
       final request = http.MultipartRequest(
         'POST',
@@ -146,6 +156,11 @@ class BitHumanService {
       print('📝 Text: $text');
       print('🎭 Agent: $agentId');
 
+      if (_apiKey == 'demo_key' || _baseUrl.isEmpty) {
+        print('⚠️ Demo-Modus – kein Netzwerk, behandle als Erfolg');
+        return true;
+      }
+
       final response = await http.post(
         Uri.parse('$_baseUrl/speak'),
         headers: {'Content-Type': 'application/json'},
@@ -171,6 +186,12 @@ class BitHumanService {
     String audioPath,
   ) async {
     try {
+      // Demo: ohne Backend kein Video
+      if (_apiKey == 'demo_key' || _baseUrl.isEmpty) {
+        print('⚠️ Demo-Modus – kein Backend-Request');
+        return null;
+      }
+
       // Multipart Request an Backend
       final request = http.MultipartRequest(
         'POST',

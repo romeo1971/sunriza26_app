@@ -1,9 +1,5 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:file_picker/file_picker.dart';
 import '../services/avatar_service.dart';
-import '../widgets/primary_button.dart';
 
 class AvatarCreationScreen extends StatefulWidget {
   const AvatarCreationScreen({super.key});
@@ -19,18 +15,17 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
   final _lastNameController = TextEditingController();
   final _birthDateController = TextEditingController();
   final _deathDateController = TextEditingController();
-  final _writtenTextsController = TextEditingController();
 
   final AvatarService _avatarService = AvatarService();
-  final ImagePicker _imagePicker = ImagePicker();
-
-  File? _avatarImage;
-  final List<File> _images = [];
-  final List<File> _videos = [];
-  final List<File> _textFiles = [];
   DateTime? _birthDate;
   DateTime? _deathDate;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _firstNameController.addListener(() => setState(() {}));
+  }
 
   @override
   void dispose() {
@@ -39,7 +34,6 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
     _lastNameController.dispose();
     _birthDateController.dispose();
     _deathDateController.dispose();
-    _writtenTextsController.dispose();
     super.dispose();
   }
 
@@ -48,8 +42,16 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Avatar erstellen'),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        actions: [
+          if (_firstNameController.text.trim().isNotEmpty && !_isLoading)
+            IconButton(
+              tooltip: 'Speichern',
+              onPressed: _isLoading ? null : _createAvatar,
+              icon: const Icon(Icons.save_outlined),
+            ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -60,65 +62,13 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildAvatarImageSection(),
-                    const SizedBox(height: 24),
                     _buildBasicInfoSection(),
                     const SizedBox(height: 24),
                     _buildDateSection(),
-                    const SizedBox(height: 24),
-                    _buildMediaSection(),
-                    const SizedBox(height: 24),
-                    _buildWrittenTextsSection(),
-                    const SizedBox(height: 32),
-                    _buildCreateButton(),
                   ],
                 ),
               ),
             ),
-    );
-  }
-
-  Widget _buildAvatarImageSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Avatar-Bild',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 12),
-        Center(
-          child: GestureDetector(
-            onTap: _pickAvatarImage,
-            child: Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(color: Colors.deepPurple, width: 2),
-                color: Colors.deepPurple.shade50,
-              ),
-              child: _avatarImage != null
-                  ? ClipOval(
-                      child: Image.file(_avatarImage!, fit: BoxFit.cover),
-                    )
-                  : const Icon(
-                      Icons.person_add,
-                      size: 40,
-                      color: Colors.deepPurple,
-                    ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Center(
-          child: TextButton.icon(
-            onPressed: _pickAvatarImage,
-            icon: const Icon(Icons.camera_alt),
-            label: const Text('Bild auswählen'),
-          ),
-        ),
-      ],
     );
   }
 
@@ -199,147 +149,6 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
     );
   }
 
-  Widget _buildMediaSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Medien',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: _pickImages,
-                icon: const Icon(Icons.photo_library),
-                label: Text('Bilder (${_images.length})'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: _pickVideos,
-                icon: const Icon(Icons.video_library),
-                label: Text('Videos (${_videos.length})'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        ElevatedButton.icon(
-          onPressed: _pickTextFiles,
-          icon: const Icon(Icons.text_snippet),
-          label: Text('Textdateien (${_textFiles.length})'),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildWrittenTextsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Geschriebene Texte',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 16),
-        TextFormField(
-          controller: _writtenTextsController,
-          decoration: const InputDecoration(
-            labelText: 'Texte (ein Text pro Zeile)',
-            border: OutlineInputBorder(),
-            hintText:
-                'Erzähl mir von deiner Kindheit...\nWas war dein Lieblingsessen?...',
-          ),
-          maxLines: 5,
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton.icon(
-            onPressed: _isLoading ? null : _saveWrittenTextsAsFile,
-            icon: const Icon(Icons.save_alt),
-            label: const Text('Text sichern und hochladen'),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCreateButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: PrimaryButton(
-        text: 'Avatar erstellen',
-        onPressed: _isLoading ? null : _createAvatar,
-        isLoading: _isLoading,
-      ),
-    );
-  }
-
-  Future<void> _pickAvatarImage() async {
-    final XFile? image = await _imagePicker.pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
-    );
-    if (image != null) {
-      setState(() {
-        _avatarImage = File(image.path);
-      });
-    }
-  }
-
-  Future<void> _pickImages() async {
-    final List<XFile> images = await _imagePicker.pickMultiImage(
-      maxWidth: 1024,
-      maxHeight: 1024,
-      imageQuality: 85,
-    );
-    if (images.isNotEmpty) {
-      setState(() {
-        _images.addAll(images.map((image) => File(image.path)));
-      });
-    }
-  }
-
-  Future<void> _pickVideos() async {
-    final XFile? video = await _imagePicker.pickVideo(
-      source: ImageSource.gallery,
-      maxDuration: const Duration(minutes: 5),
-    );
-    if (video != null) {
-      setState(() {
-        _videos.add(File(video.path));
-      });
-    }
-  }
-
-  Future<void> _pickTextFiles() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['txt', 'md', 'rtf'],
-      allowMultiple: true,
-      withData: false,
-    );
-    if (result != null && result.files.isNotEmpty) {
-      setState(() {
-        for (final f in result.files) {
-          if (f.path != null) _textFiles.add(File(f.path!));
-        }
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${result.files.length} Textdatei(en) gewählt')),
-        );
-      }
-    }
-  }
-
   Future<void> _selectDate(BuildContext context, bool isBirthDate) async {
     final DateTime? picked = await showDatePicker(
       context: context,
@@ -372,11 +181,6 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
     });
 
     try {
-      final writtenTexts = _writtenTextsController.text
-          .split('\n')
-          .where((text) => text.trim().isNotEmpty)
-          .toList();
-
       final avatar = await _avatarService.createAvatar(
         firstName: _firstNameController.text.trim(),
         nickname: _nicknameController.text.trim().isEmpty
@@ -387,11 +191,6 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
             : _lastNameController.text.trim(),
         birthDate: _birthDate,
         deathDate: _deathDate,
-        avatarImage: _avatarImage,
-        images: _images.isNotEmpty ? _images : null,
-        videos: _videos.isNotEmpty ? _videos : null,
-        textFiles: _textFiles.isNotEmpty ? _textFiles : null,
-        writtenTexts: writtenTexts.isNotEmpty ? writtenTexts : null,
       );
 
       if (avatar != null) {
@@ -423,41 +222,5 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
     }
   }
 
-  Future<void> _saveWrittenTextsAsFile() async {
-    final content = _writtenTextsController.text.trim();
-    if (content.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Kein Text zum Speichern vorhanden.')),
-      );
-      return;
-    }
-
-    try {
-      setState(() => _isLoading = true);
-      final dir = await _ensureTempDir();
-      final file = File('${dir.path}/written_${DateTime.now().millisecondsSinceEpoch}.txt');
-      await file.writeAsString(content);
-      setState(() {
-        _textFiles.add(file);
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Text als Datei hinzugefügt.')),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler beim Speichern: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<Directory> _ensureTempDir() async {
-    final dir = await Directory.systemTemp.createTemp('sunriza_texts');
-    return dir;
-  }
+  // Texte/Medien Helpers entfernt – nur Personendaten bleiben
 }

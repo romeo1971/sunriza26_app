@@ -23,7 +23,7 @@ EMBEDDING_DIM=1536
 
 Endpoint:
 
-POST http://127.0.0.1:8000/avatar/memory/insert
+HINWEIS: Lokale Endpoints (127.0.0.1) sind obsolet. Die App kann im Demo-Modus ohne Backend laufen. Für echte Backends nutze die Cloud-Run-URL und ersetze 127.0.0.1 entsprechend.
 
 Body:
 
