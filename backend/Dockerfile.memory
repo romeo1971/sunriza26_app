@@ -9,14 +9,17 @@ WORKDIR /app
 # System-Build-Deps (für pyaudio) installieren, dann Python-Abhängigkeiten
 COPY backend/requirements.txt /app/requirements.txt
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential gcc portaudio19-dev \
+    && apt-get install -y --no-install-recommends build-essential gcc portaudio19-dev ffmpeg \
     && pip install --upgrade pip \
     && pip install -r /app/requirements.txt \
     && apt-get purge -y --auto-remove build-essential gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# App-Code kopieren
-COPY backend/app /app/app
+# Gesamten Backend-Code kopieren (inkl. evtl. Module außerhalb von app/)
+COPY backend /app
+
+# Optional: sicherstellen, dass Python die Module findet
+ENV PYTHONPATH=/app:$PYTHONPATH
 
 # Cloud Run übergibt PORT env
 ENV PORT=8080
