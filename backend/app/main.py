@@ -50,6 +50,7 @@ else:
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+DISABLE_PINECONE = os.getenv("DISABLE_PINECONE", "0") == "1"
 PINECONE_INDEX = os.getenv("PINECONE_INDEX", "avatars-index")
 PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws")
 PINECONE_REGION = os.getenv("PINECONE_REGION", "us-east-1")
@@ -74,18 +75,21 @@ GPT_SYSTEM_PROMPT = os.getenv(
 )
 
 if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY fehlt in .env")
-if not PINECONE_API_KEY:
-    raise RuntimeError("PINECONE_API_KEY fehlt in .env")
+    raise RuntimeError("OPENAI_API_KEY fehlt in .env oder Secrets")
+if not DISABLE_PINECONE and not PINECONE_API_KEY:
+    raise RuntimeError("PINECONE_API_KEY fehlt (und DISABLE_PINECONE!=1)")
 
 app = FastAPI(title="Avatar Memory API", version="0.1.0")
 logger = logging.getLogger("uvicorn.error")
 client = OpenAI(api_key=OPENAI_API_KEY)
-pc = get_pinecone(PINECONE_API_KEY)
+pc = None if DISABLE_PINECONE else get_pinecone(PINECONE_API_KEY)
 
 
 @app.on_event("startup")
 def on_startup() -> None:
+    if DISABLE_PINECONE:
+        logger.info("Pinecone ist deaktiviert (DISABLE_PINECONE=1). Startup fährt ohne Vektorsuche hoch.")
+        return
     ensure_index_exists(
         pc=pc,
         index_name=PINECONE_INDEX,
@@ -112,6 +116,10 @@ def insert_avatar_memory(payload: InsertRequest) -> InsertResponse:
 
     texts: List[str] = [c["text"] for c in chunks]
 
+    if DISABLE_PINECONE:
+        # Pinecone deaktiviert: nichts einfügen, nur Embedding rechnen
+        _ = client.embeddings.create(model=EMBEDDING_MODEL, input=texts)
+        return InsertResponse(namespace=namespace, inserted=0, index_name="disabled", model=EMBEDDING_MODEL)
     try:
         emb = client.embeddings.create(model=EMBEDDING_MODEL, input=texts)
     except Exception as e:
@@ -119,6 +127,9 @@ def insert_avatar_memory(payload: InsertRequest) -> InsertResponse:
         raise HTTPException(status_code=500, detail=f"Embedding-Fehler: {e}")
 
     # Wenn Freitext (kein file_url) und nur 1 Chunk: in 'latest' anhängen statt neuen Vector zu erzeugen
+    if DISABLE_PINECONE:
+        # Ohne Pinecone: keine Query → leere Trefferliste
+        return QueryResponse(namespace=namespace, results=[])
     try:
         if payload.file_url is None and len(chunks) == 1:
             latest_id = f"{payload.avatar_id}-latest-0"
