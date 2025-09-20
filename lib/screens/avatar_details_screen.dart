@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import '../theme/app_theme.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:extended_image/extended_image.dart';
+import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
 import '../services/firebase_storage_service.dart';
@@ -2431,7 +2431,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Future<File?> _cropToPortrait916(File input) async {
     try {
       final bytes = await input.readAsBytes();
-      final editorKey = GlobalKey<ExtendedImageEditorState>();
+      final cropController = cyi.CropController();
       Uint8List? result;
 
       await showDialog(
@@ -2458,23 +2458,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 child: Column(
                   children: [
                     Expanded(
-                      child: ExtendedImage.memory(
-                        bytes,
-                        fit: BoxFit.contain,
-                        width: dlgW,
-                        height: dlgH,
-                        mode: ExtendedImageMode.editor,
-                        extendedImageEditorKey: editorKey,
-                        initEditorConfigHandler: (state) {
-                          return EditorConfig(
-                            maxScale: 5,
-                            cropAspectRatio: 9 / 16,
-                            hitTestSize: 28,
-                            cornerColor: Colors.white,
-                            lineColor: Colors.white,
-                            lineHeight: 2,
-                            initCropRectType: InitCropRectType.imageRect,
-                          );
+                      child: cyi.Crop(
+                        controller: cropController,
+                        image: bytes,
+                        aspectRatio: 9 / 16,
+                        withCircleUi: false,
+                        baseColor: Colors.black,
+                        maskColor: Colors.black38,
+                        onCropped: (cropped) {
+                          result = cropped;
+                          Navigator.pop(ctx);
                         },
                       ),
                     ),
@@ -2482,42 +2475,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
-                        onPressed: () async {
-                          final st = editorKey.currentState;
-                          if (st == null) return;
-                          final cropRect = st.getCropRect();
-                          final raw = st.rawImageData;
-                          if (cropRect == null || raw == null) return;
-                          final decoded = img.decodeImage(raw);
-                          if (decoded == null) return;
-                          final int x = cropRect.left.round().clamp(
-                            0,
-                            decoded.width - 1,
-                          );
-                          final int y = cropRect.top.round().clamp(
-                            0,
-                            decoded.height - 1,
-                          );
-                          final int w = cropRect.width.round().clamp(
-                            1,
-                            decoded.width - x,
-                          );
-                          final int h = cropRect.height.round().clamp(
-                            1,
-                            decoded.height - y,
-                          );
-                          final img.Image cropped = img.copyCrop(
-                            decoded,
-                            x: x,
-                            y: y,
-                            width: w,
-                            height: h,
-                          );
-                          result = Uint8List.fromList(
-                            img.encodeJpg(cropped, quality: 95),
-                          );
-                          // ignore: use_build_context_synchronously
-                          Navigator.pop(ctx);
+                        onPressed: () {
+                          cropController.crop();
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.transparent,
@@ -2589,45 +2548,47 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           // Interaktives Cropping 9:16
           final cropped = await _cropToPortrait916(f);
           if (cropped != null) {
+            // Nutzer hat zugeschnitten → diesen Crop übernehmen, KEIN Auto‑Crop mehr
             f = cropped;
-          }
-          // Optionales Portrait-Cropping 9:16 (stabil, mobil)
-          try {
-            final bytes = await f.readAsBytes();
-            final src = img.decodeImage(bytes);
-            if (src != null) {
-              final int w = src.width;
-              final int h = src.height;
-              final double targetRatio = 9 / 16; // Portrait 9:16
-              double curRatio = w / h;
-              int cw = w;
-              int ch = h;
-              if ((curRatio - targetRatio).abs() > 0.01) {
-                if (curRatio > targetRatio) {
-                  // zu breit → links/rechts beschneiden
-                  cw = (h * targetRatio).round();
-                } else {
-                  // zu hoch → oben/unten beschneiden
-                  ch = (w / targetRatio).round();
+          } else {
+            // Nur wenn kein manueller Crop erfolgte: Fallback 9:16‑Auto‑Crop
+            try {
+              final bytes = await f.readAsBytes();
+              final src = img.decodeImage(bytes);
+              if (src != null) {
+                final int w = src.width;
+                final int h = src.height;
+                final double targetRatio = 9 / 16; // Portrait 9:16
+                double curRatio = w / h;
+                int cw = w;
+                int ch = h;
+                if ((curRatio - targetRatio).abs() > 0.01) {
+                  if (curRatio > targetRatio) {
+                    // zu breit → links/rechts beschneiden
+                    cw = (h * targetRatio).round();
+                  } else {
+                    // zu hoch → oben/unten beschneiden
+                    ch = (w / targetRatio).round();
+                  }
+                  final int x = ((w - cw) / 2).round();
+                  final int y = ((h - ch) / 2).round();
+                  final croppedAuto = img.copyCrop(
+                    src,
+                    x: x,
+                    y: y,
+                    width: cw,
+                    height: ch,
+                  );
+                  final jpg = img.encodeJpg(croppedAuto, quality: 90);
+                  final tmp = await File(
+                    '${f.path}.portrait.jpg',
+                  ).create(recursive: true);
+                  await tmp.writeAsBytes(jpg, flush: true);
+                  f = tmp;
                 }
-                final int x = ((w - cw) / 2).round();
-                final int y = ((h - ch) / 2).round();
-                final cropped = img.copyCrop(
-                  src,
-                  x: x,
-                  y: y,
-                  width: cw,
-                  height: ch,
-                );
-                final jpg = img.encodeJpg(cropped, quality: 90);
-                final tmp = await File(
-                  '${f.path}.portrait.jpg',
-                ).create(recursive: true);
-                await tmp.writeAsBytes(jpg, flush: true);
-                f = tmp;
               }
-            }
-          } catch (_) {}
+            } catch (_) {}
+          }
           final String path =
               'avatars/$uid/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
           final url = await FirebaseStorageService.uploadImage(
