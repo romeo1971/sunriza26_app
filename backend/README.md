@@ -1,3 +1,24 @@
+## SFX für TTS-Marker
+
+Unter `backend/assets/sfx/` können optionale MP3‑SFX abgelegt werden, die vom `/avatar/tts`‑Endpoint verwendet werden, wenn Marker im Text erkannt werden:
+
+- `[lachen]`, `[lachen:kurz]`, `[lachen:lang]` → Dateien werden in dieser Reihenfolge gesucht:
+  - `laugh_short.mp3` (oder `laugh.mp3`) für kurz
+  - `laugh_long.mp3` (oder `laugh.mp3`) für lang
+  - `laugh.mp3` als generischer Fallback
+
+- `[pause:700ms]` → Erzeugt Stille von 700 ms (per ffmpeg). Ohne Angabe: 500 ms.
+
+Lege die Dateien hier ab:
+
+```
+backend/assets/sfx/laugh.mp3
+backend/assets/sfx/laugh_short.mp3
+backend/assets/sfx/laugh_long.mp3
+```
+
+Hinweis: Für das Zusammenfügen von Audio wird `ffmpeg` benötigt (im PATH).
+
 Backend – Avatar Memory (FastAPI)
 
 Start lokal:

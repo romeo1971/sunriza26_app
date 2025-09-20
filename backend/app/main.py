@@ -552,6 +552,141 @@ def tts_endpoint(req: TTSRequest):
         model = (req.model_id or os.getenv("ELEVEN_TTS_MODEL") or "eleven_multilingual_v2").strip()
         stability = float(req.stability) if req.stability is not None else float(os.getenv("ELEVEN_STABILITY", "0.5"))
         similarity = float(req.similarity) if req.similarity is not None else float(os.getenv("ELEVEN_SIMILARITY", "0.75"))
+        # Marker-Support: [lachen], [lachen:kurz], [lachen:lang], [pause:700ms]
+        import re as _re
+        _marker_regex = _re.compile(r"\[(?P<tag>lachen|pause)(?::(?P<arg>[^\]]+))?\]", _re.IGNORECASE)
+
+        def _sfx_dir() -> str:
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            return os.path.normpath(os.path.join(base_dir, "..", "assets", "sfx"))
+
+        def _sfx_path(tag: str, arg: str | None) -> str | None:
+            tag = (tag or "").lower()
+            arg = (arg or "").lower() if arg else None
+            sdir = _sfx_dir()
+            candidates: list[str] = []
+            if tag == "lachen":
+                if arg in ("kurz", "short"):
+                    candidates += ["laugh_short.mp3", "laugh.mp3"]
+                elif arg in ("lang", "long"):
+                    candidates += ["laugh_long.mp3", "laugh.mp3"]
+                else:
+                    candidates += ["laugh_short.mp3", "laugh.mp3"]
+            for name in candidates:
+                p = os.path.join(sdir, name)
+                if os.path.isfile(p):
+                    return p
+            return None
+
+        def _make_silence_ms(ms: int) -> str | None:
+            try:
+                dur = max(1, int(ms)) / 1000.0
+                out_fd = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+                out_fd.close()
+                out_path = out_fd.name
+                cmd = [
+                    "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                    "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+                    "-t", f"{dur}",
+                    "-q:a", "9", "-acodec", "libmp3lame",
+                    out_path,
+                ]
+                subprocess.run(cmd, check=True)
+                return out_path
+            except Exception:
+                return None
+
+        def _tts_text_to_temp_mp3(text_segment: str) -> str:
+            rr = requests.post(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{vid}",
+                headers={
+                    "xi-api-key": key,
+                    "Content-Type": "application/json",
+                    "Accept": "audio/mpeg",
+                },
+                json={
+                    "text": text_segment,
+                    "model_id": model,
+                    "voice_settings": {"stability": stability, "similarity_boost": similarity},
+                },
+                timeout=30,
+            )
+            rr.raise_for_status()
+            fd = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+            fd.write(rr.content)
+            fd.flush()
+            fd.close()
+            return fd.name
+
+        text_input = req.text or ""
+        if _marker_regex.search(text_input):
+            segments: list[dict] = []
+            last = 0
+            for m in _marker_regex.finditer(text_input):
+                start, end = m.span()
+                if start > last:
+                    seg_text = text_input[last:start].strip()
+                    if seg_text:
+                        segments.append({"type": "text", "value": seg_text})
+                tag = m.group("tag")
+                arg = m.group("arg")
+                if tag and tag.lower() == "lachen":
+                    segments.append({"type": "sfx", "value": _sfx_path(tag, arg)})
+                elif tag and tag.lower() == "pause":
+                    ms = 500
+                    if arg:
+                        ms_str = str(arg).lower().replace("ms", "").strip()
+                        try:
+                            ms = max(1, int(float(ms_str)))
+                        except Exception:
+                            pass
+                    segments.append({"type": "silence", "ms": ms})
+                last = end
+            if last < len(text_input):
+                tail = text_input[last:].strip()
+                if tail:
+                    segments.append({"type": "text", "value": tail})
+
+            part_files: list[str] = []
+            try:
+                for seg in segments:
+                    st = seg.get("type")
+                    if st == "text":
+                        part_files.append(_tts_text_to_temp_mp3(seg["value"]))
+                    elif st == "sfx":
+                        p = seg.get("value")
+                        if isinstance(p, str) and os.path.isfile(p):
+                            part_files.append(p)
+                        else:
+                            sp = _make_silence_ms(300)
+                            if sp:
+                                part_files.append(sp)
+                    elif st == "silence":
+                        ms = int(seg.get("ms") or 500)
+                        sp = _make_silence_ms(ms)
+                        if sp:
+                            part_files.append(sp)
+
+                if part_files:
+                    out_fd = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+                    out_fd.close()
+                    out_path = out_fd.name
+                    cmd = ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error"]
+                    for p in part_files:
+                        cmd += ["-i", p]
+                    n = len(part_files)
+                    concat_filter = "".join([f"[{i}:a]" for i in range(n)]) + f"concat=n={n}:v=0:a=1"
+                    cmd += ["-filter_complex", concat_filter, out_path]
+                    subprocess.run(cmd, check=True)
+
+                    import base64 as _b64
+                    with open(out_path, "rb") as f:
+                        audio_bytes2 = f.read()
+                    return {"audio_b64": _b64.b64encode(audio_bytes2).decode("utf-8")}
+            except Exception:
+                pass
+
+        # Standardfluss
         r = requests.post(
             f"https://api.elevenlabs.io/v1/text-to-speech/{vid}",
             headers={

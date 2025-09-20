@@ -292,9 +292,28 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 initiallyExpanded: false,
                 collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
                 backgroundColor: Colors.white.withValues(alpha: 0.06),
-                title: const Text(
-                  'Begrüßungstext',
-                  style: TextStyle(color: Colors.white),
+                title: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Begrüßungstext',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    if (((_avatarData?.training?['voice']?['elevenVoiceId']
+                                as String?)
+                            ?.trim()
+                            .isNotEmpty ??
+                        false))
+                      IconButton(
+                        icon: const Icon(
+                          Icons.volume_up,
+                          color: Colors.white,
+                          size: 20,
+                        ),
+                        tooltip: 'Stimme testen',
+                        onPressed: _isTestingVoice ? null : _testVoicePlayback,
+                      ),
+                  ],
                 ),
                 children: [
                   Padding(
@@ -1322,11 +1341,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   _activeAudioUrl == url ? Icons.star : Icons.star_border,
                   color: _activeAudioUrl == url ? Colors.amber : Colors.white70,
                 ),
-                onPressed: () {
+                onPressed: () async {
                   setState(() {
                     _activeAudioUrl = url;
-                    _updateDirty();
                   });
+                  await _saveActiveAudioSelection(url);
                 },
               ),
               IconButton(
@@ -1407,21 +1426,33 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         const SizedBox(height: 6),
         ...tiles,
         const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: ElevatedButton.icon(
-            onPressed: _isSaving ? null : _onCloneVoice,
-            icon: const Icon(Icons.auto_fix_high),
-            label: Text(_isSaving ? 'Wird geklont...' : 'Stimme klonen'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _isSaving
-                  ? Colors.grey
-                  : _hasNoClonedVoice
-                  ? const Color(0xFF9C27B0) // Magenta
-                  : AppColors.accentGreenDark,
-              foregroundColor: Colors.white,
+        Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            ElevatedButton.icon(
+              onPressed: _isSaving ? null : _onCloneVoice,
+              icon: const Icon(Icons.auto_fix_high),
+              label: Text(_isSaving ? 'Wird geklont...' : 'Stimme klonen'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isSaving
+                    ? Colors.grey
+                    : _hasNoClonedVoice
+                    ? const Color(0xFF9C27B0) // Magenta
+                    : AppColors.accentGreenDark,
+                foregroundColor: Colors.white,
+              ),
             ),
-          ),
+            const SizedBox(width: 8),
+            if (((_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
+                    ?.trim()
+                    .isNotEmpty ??
+                false))
+              IconButton(
+                tooltip: 'Begrüßung vorlesen',
+                icon: const Icon(Icons.volume_up, color: Colors.white),
+                onPressed: _isTestingVoice ? null : _testVoicePlayback,
+              ),
+          ],
         ),
       ],
     );
@@ -1579,21 +1610,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ],
         ),
 
-        const SizedBox(height: 12),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: ElevatedButton.icon(
-            onPressed: _isTestingVoice ? null : _testVoicePlayback,
-            icon: const Icon(Icons.play_arrow),
-            label: Text(_isTestingVoice ? 'Teste…' : 'Stimme testen'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: _isTestingVoice
-                  ? Colors.grey
-                  : AppColors.accentGreenDark,
-              foregroundColor: Colors.white,
-            ),
-          ),
-        ),
+        const SizedBox.shrink(),
       ],
     );
   }
@@ -1636,8 +1653,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
 
       final uri = Uri.parse('$base/avatar/tts');
+      // Begrüßungstext immer verwenden
+      final greeting = (_greetingController.text.trim().isNotEmpty)
+          ? _greetingController.text.trim()
+          : (_avatarData?.greetingText?.trim().isNotEmpty == true
+                ? _avatarData!.greetingText!.trim()
+                : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
+
       final payload = <String, dynamic>{
-        'text': 'Dies ist eine kurze Stimmprobe für den Test.',
+        'text': greeting,
         'voice_id': voiceId,
         'stability': double.parse(_voiceStability.toStringAsFixed(2)),
         'similarity': double.parse(_voiceSimilarity.toStringAsFixed(2)),
@@ -1677,6 +1701,35 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
+  Future<void> _saveActiveAudioSelection(String url) async {
+    try {
+      if (_avatarData == null) return;
+      final Map<String, dynamic> training = Map<String, dynamic>.from(
+        _avatarData!.training ?? {},
+      );
+      final Map<String, dynamic> voice = Map<String, dynamic>.from(
+        training['voice'] ?? {},
+      );
+      voice['activeUrl'] = url;
+      voice['candidates'] = List<String>.from(_avatarData!.audioUrls);
+      training['voice'] = voice;
+      final updated = _avatarData!.copyWith(
+        training: training,
+        updatedAt: DateTime.now(),
+      );
+      final ok = await _avatarService.updateAvatar(updated);
+      if (ok) {
+        if (!mounted) return;
+        _applyAvatar(updated);
+        _showSystemSnack('Stimmprobe gespeichert');
+      } else {
+        _showSystemSnack('Speichern der Stimmprobe fehlgeschlagen');
+      }
+    } catch (e) {
+      _showSystemSnack('Fehler beim Speichern: $e');
+    }
+  }
+
   Future<void> _onCloneVoice() async {
     if (_avatarData == null) return;
     if (_isSaving) {
@@ -1687,6 +1740,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // SOFORT setState um Button zu disabled
     setState(() => _isSaving = true);
 
+    // Altes Verhalten: Wenn noch lokale Audios vorhanden, erst speichern lassen
     if (_newAudioFiles.isNotEmpty) {
       setState(() => _isSaving = false);
       _showSystemSnack('Bitte zuerst speichern, dann klonen.');
@@ -1728,8 +1782,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           final Map<String, dynamic> payload = {
             'user_id': uid,
             'avatar_id': _avatarData!.id,
-            'audio_urls': selected,
-            'name': _avatarData!.displayName,
+            // nur explizit ausgewählte Probe (max 1–3 erlaubt, hier 1)
+            'audio_urls': selected.take(3).toList(),
+            // kanonischer Name wie im Backend: avatar_{avatar_id}
+            'name': 'avatar_${_avatarData!.id}',
           };
           // Dialekt/Tempo/Stability/Similarity mitsenden, wenn vorhanden
           try {
@@ -1939,11 +1995,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final allImages = [..._imageUrls];
     final allVideos = [..._videoUrls];
     final allTexts = [..._textFileUrls];
+    // Altes Verhalten: Audio nicht hier mitschreiben (nur beim großen Save)
+    // final List<String> allAudios = List<String>.from(
+    //   _avatarData?.audioUrls ?? const <String>[],
+    // );
 
     final totalDocuments =
         allImages.length +
         allVideos.length +
         allTexts.length +
+        // allAudios.length +
         (_avatarData!.writtenTexts.length);
     final training = {
       'status': 'pending',
@@ -1971,6 +2032,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       textFileUrls: allTexts,
       imageUrls: allImages,
       videoUrls: allVideos,
+      // audioUrls: allAudios,
       avatarImageUrl: _profileImageUrl,
       training: training,
       updatedAt: DateTime.now(),
@@ -2902,13 +2964,59 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       allowedExtensions: ['mp3', 'm4a', 'wav', 'aac'],
       allowMultiple: true,
     );
-    if (result != null) {
-      setState(() {
-        for (final f in result.files) {
-          if (f.path != null) _newAudioFiles.add(File(f.path!));
-        }
-        _updateDirty();
-      });
+    if (result != null && _avatarData != null) {
+      final String uid = FirebaseAuth.instance.currentUser!.uid;
+      final String avatarId = _avatarData!.id;
+      final List<String> uploaded = [];
+
+      await _showBlockingProgress<void>(
+        title: 'Audio wird hochgeladen…',
+        message: result.files.length == 1
+            ? 'Datei ${result.files.first.name} wird gespeichert.'
+            : '${result.files.length} Dateien werden gespeichert.',
+        task: () async {
+          for (int i = 0; i < result.files.length; i++) {
+            final sel = result.files[i];
+            if (sel.path == null) continue;
+            final file = File(sel.path!);
+            final String base = p.basename(file.path);
+            final String audioPath =
+                'avatars/$uid/$avatarId/audio/${DateTime.now().millisecondsSinceEpoch}_$i$base';
+            final url = await FirebaseStorageService.uploadAudio(
+              file,
+              customPath: audioPath,
+            );
+            if (url != null) uploaded.add(url);
+          }
+
+          if (uploaded.isNotEmpty) {
+            if (!mounted) return;
+            // Lokalen State aktualisieren
+            setState(() {
+              final current = List<String>.from(_avatarData!.audioUrls);
+              current.addAll(uploaded);
+              _avatarData = _avatarData!.copyWith(audioUrls: current);
+              _activeAudioUrl ??= uploaded.first;
+            });
+
+            // Sofort persistent speichern (nur Audio-URLs, keine weiteren Felder anfassen)
+            final updated = _avatarData!.copyWith(
+              audioUrls: List<String>.from(_avatarData!.audioUrls),
+              updatedAt: DateTime.now(),
+            );
+            final ok = await _avatarService.updateAvatar(updated);
+            if (ok) _applyAvatar(updated);
+          }
+        },
+      );
+
+      if (uploaded.isNotEmpty) {
+        _showSystemSnack(
+          uploaded.length == 1
+              ? 'Audio hochgeladen.'
+              : '${uploaded.length} Audios hochgeladen.',
+        );
+      }
     }
   }
 
@@ -3309,7 +3417,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         }
 
         // Upload Audio Files einzeln (wird gespeichert und im Avatar geführt)
-        final List<String> allAudios = [...(_avatarData?.audioUrls ?? [])];
+        final List<String> allAudios = List<String>.from(
+          _avatarData?.audioUrls ?? const <String>[],
+        );
         for (int i = 0; i < _newAudioFiles.length; i++) {
           final String base = p.basename(_newAudioFiles[i].path);
           final String audioPath =
