@@ -11,7 +11,7 @@ from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 from openai import OpenAI
 from google.cloud import texttospeech
-import base64, requests, json
+import base64, requests, json, tempfile, subprocess, threading
 
 from .chunking import chunk_text
 from .pinecone_client import (
@@ -384,6 +384,8 @@ class CreateVoiceFromAudioRequest(BaseModel):
     voice_id: str | None = None  # Wenn gesetzt: bestehende Stimme updaten statt neu anlegen
     dialect: str | None = None   # z. B. "de-DE", "de-AT", "en-US"
     tempo: float | None = None   # z. B. 0.8 .. 1.2 (Meta-Label)
+    stability: float | None = None
+    similarity: float | None = None
 
 class CreateVoiceFromAudioResponse(BaseModel):
     voice_id: str
@@ -472,10 +474,7 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
         else:
             logger.info("Keine alte Stimme zum Löschen gefunden")
 
-        # Zusätzlich: Duplikate mit (kanonischem oder Display-)Namen entfernen (Sicherheitsnetz)
-        dup_cleaned = _cleanup_voices_by_names(candidate_names, keep_id=None)
-        if dup_cleaned:
-            logger.info(f"Zusätzliche Duplikate gelöscht: {dup_cleaned}")
+        # Hinweis: Aufwändiges Namens-Cleanup jetzt asynchron (siehe unten)
 
         # Neue Stimme anlegen (Labels für Metadaten wie Dialekt/Tempo mitschicken)
         labels: dict[str, str] = {}
@@ -486,6 +485,16 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
                 labels["tempo"] = f"{float(payload.tempo):.2f}"
             except Exception:
                 labels["tempo"] = str(payload.tempo)
+        if payload.stability is not None:
+            try:
+                labels["stability"] = f"{float(payload.stability):.2f}"
+            except Exception:
+                labels["stability"] = str(payload.stability)
+        if payload.similarity is not None:
+            try:
+                labels["similarity"] = f"{float(payload.similarity):.2f}"
+            except Exception:
+                labels["similarity"] = str(payload.similarity)
 
         data = {"name": canonical_name}
         if labels:
@@ -504,53 +513,16 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
         name = res.get("name") or canonical_name
         if not voice_id:
             raise HTTPException(status_code=500, detail="ElevenLabs: voice_id fehlt in Antwort")
-        # Post‑Cleanup: sicherstellen, dass keine weiteren Stimmen mit gleichem Namen übrig bleiben
+        # Nach-Cleanup asynchron ausführen, um Latenz zu minimieren
         try:
-            import time as _t
-
-            def _list_voice_ids_for_names(vnames: list[str]) -> list[dict]:
+            def _async_cleanup():
                 try:
-                    gr = requests.get(
-                        "https://api.elevenlabs.io/v1/voices",
-                        headers=headers,
-                        timeout=30,
-                    )
-                    gr.raise_for_status()
-                    data = gr.json() or {}
-                    voices = data.get("voices", []) or []
-                    res = []
-                    for v in voices:
-                        vid = (v or {}).get("voice_id")
-                        nm = (v or {}).get("name")
-                        if not vid or not nm:
-                            continue
-                        for n in vnames:
-                            if not n:
-                                continue
-                            if nm == n or nm.startswith(n):
-                                res.append({"voice_id": vid, "name": nm})
-                                break
-                    return res
-                except Exception:
-                    return []
-
-            # Bis zu 3 Versuche: Liste → lösche alles außer neuer ID
-            attempts = 3
-            for i in range(attempts):
-                matches = _list_voice_ids_for_names([name] + candidate_names)
-                to_delete = [m for m in matches if m.get("voice_id") != voice_id]
-                if not to_delete:
-                    break
-                removed = 0
-                for m in to_delete:
-                    if _safe_delete_voice(m["voice_id"]):
-                        removed += 1
-                logger.info(f"Nach-Cleanup Pass {i+1}: entfernt={removed}, verbleibend={len(to_delete)-removed}")
-                if removed == 0:
-                    break
-                _t.sleep(0.6)
+                    _cleanup_voices_by_names([name] + candidate_names, keep_id=voice_id)
+                except Exception as _e:
+                    logger.warning(f"Async Cleanup Fehler: {_e}")
+            threading.Thread(target=_async_cleanup, daemon=True).start()
         except Exception as _e:
-            logger.warning(f"Nach-Cleanup Fehler: {_e}")
+            logger.warning(f"Async Cleanup Start Fehler: {_e}")
         return CreateVoiceFromAudioResponse(voice_id=voice_id, name=name)
     except requests.HTTPError as e:
         logger.exception("ElevenLabs Voice Create HTTPError")
@@ -566,6 +538,8 @@ class TTSRequest(BaseModel):
     model_id: str | None = None
     stability: float | None = None
     similarity: float | None = None
+    speed: float | None = None  # 0.5 .. 1.5
+    dialect: str | None = None  # nur zur Durchreichung/Protokollierung
 
 
 @app.post("/avatar/tts")
@@ -593,9 +567,42 @@ def tts_endpoint(req: TTSRequest):
             timeout=30,
         )
         r.raise_for_status()
-        # MP3-Bytes direkt zurückgeben
+        audio_bytes = r.content
+
+        # Optional: Sprechtempo per ffmpeg ändern (client sendet speed 0.5..1.5)
+        try:
+            if req.speed is not None and abs(float(req.speed) - 1.0) > 1e-6:
+                sp = max(0.5, min(2.0, float(req.speed)))
+                with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as _in:
+                    _in.write(audio_bytes)
+                    _in.flush()
+                    in_path = _in.name
+                out_fd = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
+                out_fd.close()
+                out_path = out_fd.name
+                # ffmpeg atempo unterstützt 0.5..2.0 pro Filter. Unser UI nutzt 0.5..1.5 → ein Filter reicht.
+                cmd = [
+                    "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                    "-i", in_path,
+                    "-filter:a", f"atempo={sp:.2f}",
+                    out_path,
+                ]
+                subprocess.run(cmd, check=True)
+                with open(out_path, "rb") as f:
+                    audio_bytes = f.read()
+                try:
+                    import os as _os
+                    _os.remove(in_path)
+                    _os.remove(out_path)
+                except Exception:
+                    pass
+        except Exception:
+            # Fallback: Original-Audio wenn ffmpeg fehlt/fehlschlägt
+            pass
+
+        # MP3-Bytes zurückgeben
         import base64 as _b64
-        return {"audio_b64": _b64.b64encode(r.content).decode("utf-8")}
+        return {"audio_b64": _b64.b64encode(audio_bytes).decode("utf-8")}
     except requests.HTTPError as e:
         raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
     except Exception as e:

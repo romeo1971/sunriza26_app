@@ -63,7 +63,10 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
     return Scaffold(
       drawer: const AppDrawer(),
       appBar: AppBar(
-        title: const Text('Meine Avatare'),
+        title: const FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text('Meine Avatare'),
+        ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
@@ -183,31 +186,34 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // Avatar-Bild
-              Container(
-                width: 60,
-                height: 60,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0x1400DFA8),
-                  border: Border.all(
-                    color: AppColors.accentGreenDark,
-                    width: 2,
+              // Avatar-Bild 9:16 (ca. 2.5x höher)
+              Builder(builder: (context) {
+                const double h = 150; // ~2.5 * 60
+                const double w = h * 9 / 16;
+                return Container(
+                  width: w,
+                  height: h,
+                  decoration: BoxDecoration(
+                    color: const Color(0x1400DFA8),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: AppColors.accentGreenDark,
+                      width: 2,
+                    ),
                   ),
-                ),
-                child: avatar.avatarImageUrl != null
-                    ? ClipOval(
-                        child: Image.network(
+                  clipBehavior: Clip.hardEdge,
+                  child: avatar.avatarImageUrl != null
+                      ? Image.network(
                           avatar.avatarImageUrl!,
-                          width: 60,
-                          height: 60,
+                          width: w,
+                          height: h,
                           fit: BoxFit.cover,
                           errorBuilder: (context, error, stackTrace) =>
                               _buildDefaultAvatar(),
-                        ),
-                      )
-                    : _buildDefaultAvatar(),
-              ),
+                        )
+                      : _buildDefaultAvatar(),
+                );
+              }),
 
               const SizedBox(width: 16),
 
@@ -221,10 +227,12 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                           ? avatar.nickname!
                           : avatar.firstName,
                       style: const TextStyle(
-                        fontSize: 18,
+                        fontSize: 20,
                         fontWeight: FontWeight.w600,
                         color: Colors.white,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     if (avatar.nickname != null &&
                         avatar.nickname!.isNotEmpty &&
@@ -232,9 +240,11 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                       Text(
                         avatar.firstName,
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 16,
                           color: Colors.grey.shade600,
                         ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
                     const SizedBox(height: 4),
                     Text(
@@ -243,7 +253,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                         fontSize: 14,
                         color: Colors.grey.shade400,
                       ),
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ],

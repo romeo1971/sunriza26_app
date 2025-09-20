@@ -717,8 +717,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                       ?.toDouble()
                 : null)
           : null;
+      final double? tempo = (_avatarData?.training != null)
+          ? (_avatarData?.training?['voice'] != null
+                ? (_avatarData?.training?['voice']?['tempo'] as num?)
+                      ?.toDouble()
+                : null)
+          : null;
+      final String? dialect = (_avatarData?.training != null)
+          ? (_avatarData?.training?['voice']?['dialect'] as String?)
+          : null;
       if (stability != null) payload['stability'] = stability;
       if (similarity != null) payload['similarity'] = similarity;
+      if (tempo != null) payload['speed'] = tempo;
+      if (dialect != null && dialect.isNotEmpty) payload['dialect'] = dialect;
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},

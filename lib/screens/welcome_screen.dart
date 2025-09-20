@@ -6,6 +6,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'dart:math' as math;
 import 'package:google_fonts/google_fonts.dart';
 import '../theme/app_theme.dart';
 // import 'ai_assistant_screen.dart';
@@ -112,8 +113,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   /// Hero Section mit emotionaler Botschaft
   Widget _buildHeroSection(BuildContext context) {
+    final size = MediaQuery.of(context).size;
+    final vPad = size.height < 740 ? 24.0 : 80.0;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 80),
+      padding: EdgeInsets.symmetric(horizontal: 24, vertical: vPad),
       decoration: BoxDecoration(
         gradient:
             Theme.of(context).extension<AppGradients>()?.background
@@ -122,107 +125,110 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
       child: Center(
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1100),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              // Hauptüberschrift
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 450),
-                switchInCurve: Curves.easeOut,
-                switchOutCurve: Curves.easeIn,
-                transitionBuilder: (child, anim) =>
-                    FadeTransition(opacity: anim, child: child),
-                child: _headlineAlt
-                    ? RichText(
-                        key: const ValueKey('headline_alt'),
-                        textAlign: TextAlign.center,
-                        text: TextSpan(
-                          style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white,
-                            fontSize: _headlineSize(context),
-                            height: 1.1,
-                            letterSpacing: -0.2,
-                            fontWeight: FontWeight.w300,
-                          ),
-                          children: [
-                            WidgetSpan(
-                              alignment: PlaceholderAlignment.baseline,
-                              baseline: TextBaseline.alphabetic,
-                              child: _gradientWord(
-                                'Sunriza',
-                                GoogleFonts.plusJakartaSans(
-                                  fontSize: _headlineSize(context),
-                                  fontWeight: FontWeight.w300,
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Hauptüberschrift
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 450),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, anim) =>
+                      FadeTransition(opacity: anim, child: child),
+                  child: _headlineAlt
+                      ? RichText(
+                          key: const ValueKey('headline_alt'),
+                          textAlign: TextAlign.center,
+                          text: TextSpan(
+                            style: GoogleFonts.plusJakartaSans(
+                              color: Colors.white,
+                              fontSize: _headlineSize(context),
+                              height: 1.1,
+                              letterSpacing: -0.2,
+                              fontWeight: FontWeight.w300,
+                            ),
+                            children: [
+                              WidgetSpan(
+                                alignment: PlaceholderAlignment.baseline,
+                                baseline: TextBaseline.alphabetic,
+                                child: _gradientWord(
+                                  'Sunriza',
+                                  GoogleFonts.plusJakartaSans(
+                                    fontSize: _headlineSize(context),
+                                    fontWeight: FontWeight.w300,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const TextSpan(
-                              text:
-                                  '\nDeine Geschichten, Gedanken und Werte bleiben',
-                            ),
-                          ],
-                        ),
-                      )
-                    : RichText(
-                        key: const ValueKey('headline_default'),
-                        textAlign: TextAlign.center,
-                        text: TextSpan(
-                          style: GoogleFonts.plusJakartaSans(
-                            color: Colors.white,
-                            fontSize: _headlineSize(context),
-                            height: 1.1,
-                            letterSpacing: -0.2,
-                            fontWeight: FontWeight.w300,
+                              const TextSpan(
+                                text:
+                                    '\nDeine Geschichten, Gedanken und Werte bleiben',
+                              ),
+                            ],
                           ),
-                          children: [
-                            WidgetSpan(
-                              alignment: PlaceholderAlignment.baseline,
-                              baseline: TextBaseline.alphabetic,
-                              child: _gradientWord(
-                                'Sunriza',
-                                GoogleFonts.plusJakartaSans(
-                                  fontSize: _headlineSize(context),
-                                  fontWeight: FontWeight.w300,
+                        )
+                      : RichText(
+                          key: const ValueKey('headline_default'),
+                          textAlign: TextAlign.center,
+                          text: TextSpan(
+                            style: GoogleFonts.plusJakartaSans(
+                              color: Colors.white,
+                              fontSize: _headlineSize(context),
+                              height: 1.1,
+                              letterSpacing: -0.2,
+                              fontWeight: FontWeight.w300,
+                            ),
+                            children: [
+                              WidgetSpan(
+                                alignment: PlaceholderAlignment.baseline,
+                                baseline: TextBaseline.alphabetic,
+                                child: _gradientWord(
+                                  'Sunriza',
+                                  GoogleFonts.plusJakartaSans(
+                                    fontSize: _headlineSize(context),
+                                    fontWeight: FontWeight.w300,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const TextSpan(
-                              text:
-                                  '\nGeschichten für die Ewigkeit – erzählt von Dir',
-                            ),
-                          ],
+                              const TextSpan(
+                                text:
+                                    '\nGeschichten für die Ewigkeit – erzählt von Dir',
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-              ),
+                ),
 
-              const SizedBox(height: 24),
+                const SizedBox(height: 24),
 
-              // Subheadline 3‑Texte‑Rotation (7s)
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 450),
-                switchInCurve: Curves.easeOut,
-                switchOutCurve: Curves.easeIn,
-                transitionBuilder: (child, anim) =>
-                    FadeTransition(opacity: anim, child: child),
-                child: Text(
-                  _rotatingMessages[_messageIndex],
-                  key: ValueKey<int>(_messageIndex),
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.plusJakartaSans(
-                    color: const Color(0xFFCFE1DA),
-                    height: 1.3,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w300,
+                // Subheadline 3‑Texte‑Rotation (7s)
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 450),
+                  switchInCurve: Curves.easeOut,
+                  switchOutCurve: Curves.easeIn,
+                  transitionBuilder: (child, anim) =>
+                      FadeTransition(opacity: anim, child: child),
+                  child: Text(
+                    _rotatingMessages[_messageIndex],
+                    key: ValueKey<int>(_messageIndex),
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: const Color(0xFFCFE1DA),
+                      height: 1.3,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w300,
+                    ),
                   ),
                 ),
-              ),
 
-              const SizedBox(height: 48),
+                const SizedBox(height: 48),
 
-              // CTA Button
-              _buildStartButton(context),
-            ],
+                // CTA Button
+                _buildStartButton(context),
+              ],
+            ),
           ),
         ),
       ),
@@ -235,9 +241,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   /// Start Button
   Widget _buildStartButton(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    final h = MediaQuery.of(context).size.height;
+    final btnW = math.min(320.0, w - 48.0);
+    final btnH = h < 740 ? 60.0 : 72.0;
     return Container(
-      width: 320,
-      height: 72,
+      width: btnW,
+      height: btnH,
       decoration: BoxDecoration(
         gradient: Theme.of(context).extension<AppGradients>()?.buttonPrimary,
         borderRadius: BorderRadius.circular(28),
@@ -262,31 +272,39 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  'Jetzt kostenlos starten',
-                  textAlign: TextAlign.center,
-                  style:
-                      Theme.of(context).textTheme.titleMedium?.copyWith(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 24,
-                        letterSpacing: 0.1,
-                      ) ??
-                      const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 24,
-                      ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Jetzt kostenlos starten',
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    style:
+                        Theme.of(context).textTheme.titleMedium?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 24,
+                          letterSpacing: 0.1,
+                        ) ??
+                        const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 24,
+                        ),
+                  ),
                 ),
                 const SizedBox(height: 2),
-                const Text(
-                  'Sieht so aus wie Du, spricht und erzählt wie Du',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w300,
-                    fontSize: 12,
-                    height: 1.2,
+                const FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    'Sieht so aus wie Du, spricht und erzählt wie Du',
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w300,
+                      fontSize: 12,
+                      height: 1.2,
+                    ),
                   ),
                 ),
               ],

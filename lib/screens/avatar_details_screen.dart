@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import '../theme/app_theme.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:extended_image/extended_image.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
 import '../services/firebase_storage_service.dart';
@@ -16,9 +17,13 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'avatar_editor_screen.dart';
 import 'package:video_player/video_player.dart';
 import '../widgets/video_player_widget.dart';
-import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import 'dart:typed_data';
 import '../services/elevenlabs_service.dart';
+import 'dart:async';
+import 'package:image/image.dart' as img;
+import 'package:just_audio/just_audio.dart';
+import 'package:path_provider/path_provider.dart';
 
 class AvatarDetailsScreen extends StatefulWidget {
   const AvatarDetailsScreen({super.key});
@@ -64,6 +69,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final Set<String> _selectedLocalVideos = {};
   bool _isDeleteMode = false;
   bool _isDirty = false;
+  Rect? _cropArea; // merkt die zuletzt bekannte Crop-Area
   // Medien-Tab: 'images' oder 'videos'
   String _mediaTab = 'images';
   // ElevenLabs Voice-Parameter (per Avatar speicherbar)
@@ -75,6 +81,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   List<Map<String, dynamic>> _elevenVoices = [];
   String? _selectedVoiceId;
   bool _voicesLoading = false;
+  bool get _hasNoClonedVoice {
+    try {
+      final v = _avatarData?.training?['voice'] as Map<String, dynamic>?;
+      final a = (v?['elevenVoiceId'] as String?)?.trim() ?? '';
+      final b = (v?['cloneVoiceId'] as String?)?.trim() ?? '';
+      return a.isEmpty && b.isEmpty;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  bool _isTestingVoice = false;
+  final AudioPlayer _voiceTestPlayer = AudioPlayer();
 
   double _mediaWidth(BuildContext context) {
     final double available =
@@ -255,54 +274,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           _buildImagesRowLayout(_mediaWidth(context))
         else
           _buildVideosRowLayout(_mediaWidth(context)),
-        Padding(
-          padding: const EdgeInsets.only(top: 8.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              if (!_isDeleteMode)
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _isDeleteMode = true;
-                      _selectedRemoteImages.clear();
-                      _selectedLocalImages.clear();
-                      _selectedRemoteVideos.clear();
-                      _selectedLocalVideos.clear();
-                    });
-                  },
-                  child: const Text(
-                    'Löschen',
-                    style: TextStyle(color: Colors.redAccent),
-                  ),
-                )
-              else ...[
-                TextButton(
-                  onPressed: () async {
-                    await _confirmDeleteSelectedImages();
-                  },
-                  child: const Text(
-                    'Ausgewählte endgültig löschen',
-                    style: TextStyle(color: Colors.redAccent),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _isDeleteMode = false;
-                      _selectedRemoteImages.clear();
-                      _selectedLocalImages.clear();
-                      _selectedRemoteVideos.clear();
-                      _selectedLocalVideos.clear();
-                    });
-                  },
-                  child: const Text('Abbrechen'),
-                ),
-              ],
-            ],
-          ),
-        ),
+        const SizedBox.shrink(),
 
         const SizedBox(height: 16),
 
@@ -711,279 +683,332 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               16.0; // Abstand zwischen großem Bild und Galerie
           const double minThumbWidth = 120.0;
           const double gridSpacing = 12.0; // zwischen den Thumbs
+          const double navBtnH = 40.0; // Höhe der lokalen Navigation / Upload
           // Rechts mindestens 2 Thumbs: 2 * min + Zwischenabstand
           final double minRightWidth = (2 * minThumbWidth) + gridSpacing;
           double leftW = cons.maxWidth - spacing - minRightWidth;
           // Begrenze links sinnvoll
           if (leftW > 240) leftW = 240;
           if (leftW < 160) leftW = 160;
-          final double leftH = leftW * 1.5; // etwa 2:3 Verhältnis
+          // Kronebild im 9:16 Portrait‑Format (mobil)
+          final double leftH = leftW * (16 / 9);
+          final double totalH = navBtnH + 8 + leftH;
 
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Krone links GROSS (responsive)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Lokale Navigation direkt über dem großen Bild (hälftig, 16px Abstand)
-                  SizedBox(
-                    width: leftW,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () =>
-                                setState(() => _mediaTab = 'images'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _mediaTab == 'images'
-                                  ? AppColors.accentGreenDark
-                                  : Colors.transparent,
-                              foregroundColor: _mediaTab == 'images'
-                                  ? Colors.white
-                                  : Colors.white70,
-                              side: BorderSide(
-                                color: _mediaTab == 'images'
-                                    ? AppColors.accentGreenDark
-                                    : Colors.white24,
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            child: const Text('Bilder'),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () =>
-                                setState(() => _mediaTab = 'videos'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _mediaTab == 'videos'
-                                  ? AppColors.accentGreenDark
-                                  : Colors.transparent,
-                              foregroundColor: _mediaTab == 'videos'
-                                  ? Colors.white
-                                  : Colors.white70,
-                              side: BorderSide(
-                                color: _mediaTab == 'videos'
-                                    ? AppColors.accentGreenDark
-                                    : Colors.white24,
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            child: const Text('Videos'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: leftW,
-                    height: leftH,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        color: Colors.black.withValues(alpha: 0.05),
-                      ),
-                      clipBehavior: Clip.hardEdge,
-                      child: Stack(
-                        clipBehavior: Clip.hardEdge,
-                        children: [
-                          Positioned.fill(
-                            child: _profileLocalPath != null
-                                ? Image.file(
-                                    File(_profileLocalPath!),
-                                    fit: BoxFit.cover,
-                                  )
-                                : (_profileImageUrl != null
-                                      ? Image.network(
-                                          _profileImageUrl!,
-                                          fit: BoxFit.cover,
-                                        )
-                                      : Container(
-                                          color: Colors.white12,
-                                          child: const Icon(
-                                            Icons.person,
-                                            color: Colors.white54,
-                                            size: 64,
-                                          ),
-                                        )),
-                          ),
-                          Positioned(
-                            left: 12,
-                            right: 12,
-                            bottom: 12,
-                            child: ElevatedButton(
-                              onPressed: () async {
-                                if (_avatarData == null) return;
-                                final ok = await showDialog<bool>(
-                                  context: context,
-                                  builder: (ctx) => AlertDialog(
-                                    title: const Text('Avatar generieren?'),
-                                    content: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: const [
-                                        Text(
-                                          'Wir generieren automatisch einen lebensechten Avatar aus deinem Bild. Der Avatar spricht mit der ausgewählten Stimme oder Deiner eigenen.',
-                                        ),
-                                        SizedBox(height: 8),
-                                        Text(
-                                          'WICHTIG: Dieser Vorgang kostet pro Vorgang 50 credits! Bitte überlege Dir also genau, welches Bild Du nutzen möchtest.',
-                                          style: TextStyle(
-                                            color: AppColors.accentGreenDark,
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    actions: [
-                                      TextButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, false),
-                                        child: const Text('Abbrechen'),
-                                      ),
-                                      ElevatedButton(
-                                        onPressed: () =>
-                                            Navigator.pop(ctx, true),
-                                        child: const Text('Generieren'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                                if (ok != true) return;
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => AvatarEditorScreen(
-                                      avatarId: _avatarData!.id,
-                                      avatarName: _avatarData!.firstName,
-                                      avatarImageUrl:
-                                          _profileImageUrl ??
-                                          _avatarData!.avatarImageUrl ??
-                                          (_imageUrls.isNotEmpty
-                                              ? _imageUrls.first
-                                              : null),
-                                    ),
-                                  ),
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.black,
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.zero,
-                                minimumSize: const Size.fromHeight(0),
-                                elevation: 0,
-                                shadowColor: Colors.transparent,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: const Text(
-                                'Avatar generieren',
-                                style: TextStyle(fontSize: 13, height: 1.2),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  // Button ist jetzt im Bild platziert
-                  const SizedBox.shrink(),
-                ],
-              ),
-              const SizedBox(width: spacing),
-              // Galerie (max. 4) + Hinweistext darunter + Upload-Button (lila)
-              Expanded(
-                child: Column(
+          return SizedBox(
+            height: totalH,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Krone links GROSS (responsive)
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Upload zuerst, Galerie darunter
+                    // Navigation: Links Icons (Bild/Video), rechts Upload‑Icon
                     SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _onAddImages,
-                        style: ElevatedButton.styleFrom(
-                          alignment: Alignment.centerLeft,
-                          backgroundColor: AppColors.accentGreenDark,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: RichText(
-                          text: TextSpan(
-                            style: TextStyle(color: Colors.white),
+                      width: leftW,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
                             children: [
-                              TextSpan(
-                                text: 'Bild-Upload  ',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16,
+                              SizedBox(
+                                width: navBtnH,
+                                height: navBtnH,
+                                child: ElevatedButton(
+                                  onPressed: () =>
+                                      setState(() => _mediaTab = 'images'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _mediaTab == 'images'
+                                        ? AppColors.accentGreenDark
+                                        : Colors.transparent,
+                                    foregroundColor: Colors.white,
+                                    shadowColor: Colors.transparent,
+                                    padding: EdgeInsets.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      side: BorderSide(
+                                        color: _mediaTab == 'images'
+                                            ? AppColors.accentGreenDark
+                                            : Colors.white24,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Icon(Icons.image, size: 20),
                                 ),
                               ),
-                              TextSpan(
-                                text: 'Avatarbild auswählen',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w400,
-                                  fontSize: 12,
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: navBtnH,
+                                height: navBtnH,
+                                child: ElevatedButton(
+                                  onPressed: () =>
+                                      setState(() => _mediaTab = 'videos'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _mediaTab == 'videos'
+                                        ? AppColors.accentGreenDark
+                                        : Colors.transparent,
+                                    foregroundColor: Colors.white,
+                                    shadowColor: Colors.transparent,
+                                    padding: EdgeInsets.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      side: BorderSide(
+                                        color: _mediaTab == 'videos'
+                                            ? AppColors.accentGreenDark
+                                            : Colors.white24,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Icon(Icons.videocam, size: 20),
                                 ),
                               ),
                             ],
                           ),
-                        ),
+                          // Rechts nur Upload‑Icon für aktuellen Tab (hier: Bilder)
+                          SizedBox(
+                            width: navBtnH,
+                            height: navBtnH,
+                            child: (_mediaTab == 'images')
+                                ? ElevatedButton(
+                                    onPressed: (_imageUrls.length >= 4)
+                                        ? null
+                                        : _onAddImages,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.transparent,
+                                      shadowColor: Colors.transparent,
+                                      padding: EdgeInsets.zero,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: Ink(
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFE91E63),
+                                            AppColors.lightBlue,
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Center(
+                                        child: Icon(
+                                          Icons.file_upload,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 8),
-                    LayoutBuilder(
-                      builder: (ctx, cons) {
-                        final double targetItemWidth = (cons.maxWidth / 3)
-                            .clamp(minThumbWidth, 200.0);
-                        final int cols = (cons.maxWidth / targetItemWidth)
-                            .floor()
-                            .clamp(2, 3); // mindestens 2 Spalten
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: cols,
-                                mainAxisSpacing: gridSpacing,
-                                crossAxisSpacing: gridSpacing,
-                                childAspectRatio: 1,
+                    SizedBox(
+                      width: leftW,
+                      height: leftH,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.black.withValues(alpha: 0.05),
+                        ),
+                        clipBehavior: Clip.hardEdge,
+                        child: Stack(
+                          clipBehavior: Clip.hardEdge,
+                          children: [
+                            Positioned.fill(
+                              child: _profileLocalPath != null
+                                  ? Image.file(
+                                      File(_profileLocalPath!),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : (_profileImageUrl != null
+                                        ? Image.network(
+                                            _profileImageUrl!,
+                                            fit: BoxFit.cover,
+                                          )
+                                        : Container(
+                                            color: Colors.white12,
+                                            child: const Icon(
+                                              Icons.person,
+                                              color: Colors.white54,
+                                              size: 64,
+                                            ),
+                                          )),
+                            ),
+                            if (_profileImageUrl != null)
+                              Positioned(
+                                left: 12,
+                                right: 12,
+                                bottom: 12,
+                                child: ElevatedButton(
+                                  onPressed: () async {
+                                    if (_avatarData == null) return;
+                                    final ok = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text('Avatar generieren?'),
+                                        content: Column(
+                                          mainAxisSize: MainAxisSize.min,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: const [
+                                            Text(
+                                              'Wir generieren automatisch einen lebensechten Avatar aus deinem Bild. Der Avatar spricht mit der ausgewählten Stimme oder Deiner eigenen.',
+                                            ),
+                                            SizedBox(height: 8),
+                                            Text(
+                                              'WICHTIG: Dieser Vorgang kostet pro Vorgang 50 credits! Bitte überlege Dir also genau, welches Bild Du nutzen möchtest.',
+                                              style: TextStyle(
+                                                color:
+                                                    AppColors.accentGreenDark,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, false),
+                                            child: const Text('Abbrechen'),
+                                          ),
+                                          ElevatedButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, true),
+                                            child: const Text('Generieren'),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (ok != true) return;
+                                    Navigator.push(
+                                      context,
+                                      MaterialPageRoute(
+                                        builder: (context) =>
+                                            AvatarEditorScreen(
+                                              avatarId: _avatarData!.id,
+                                              avatarName:
+                                                  _avatarData!.firstName,
+                                              avatarImageUrl:
+                                                  _profileImageUrl ??
+                                                  _avatarData!.avatarImageUrl ??
+                                                  (_imageUrls.isNotEmpty
+                                                      ? _imageUrls.first
+                                                      : null),
+                                            ),
+                                      ),
+                                    );
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.black,
+                                    foregroundColor: Colors.white,
+                                    alignment: Alignment.center,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                    minimumSize: const Size.fromHeight(0),
+                                    elevation: 0,
+                                    shadowColor: Colors.transparent,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Avatar generieren',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      height: 1.2,
+                                      fontStyle: FontStyle.normal,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
                               ),
-                          itemCount: remoteFour.length.clamp(0, 4),
-                          itemBuilder: (context, index) {
-                            final url = remoteFour[index];
-                            final isCrown =
-                                _profileImageUrl == url ||
-                                (_profileImageUrl == null && index == 0);
-                            return _imageThumbNetwork(url, isCrown);
-                          },
-                        );
-                      },
+                          ],
+                        ),
+                      ),
                     ),
+                    // Kein zusätzlicher Abstand unten – passt exakt in totalH
+                    const SizedBox.shrink(),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(width: spacing),
+                // Galerie: exakt 4 Kacheln, horizontal scrollend, gleiche Größe wie Krone
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Upload‑Icon ist in die Kopfzeile gezogen
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: leftH,
+                        child: Stack(
+                          children: [
+                            ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: remoteFour.length.clamp(0, 4),
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: gridSpacing),
+                              itemBuilder: (context, index) {
+                                final url = remoteFour[index];
+                                final isCrown =
+                                    _profileImageUrl == url ||
+                                    (_profileImageUrl == null && index == 0);
+                                return SizedBox(
+                                  width: leftW,
+                                  height: leftH,
+                                  child: _imageThumbNetwork(url, isCrown),
+                                );
+                              },
+                            ),
+                            if (_isDeleteMode)
+                              Positioned(
+                                top: 4,
+                                right: 0,
+                                child: Row(
+                                  children: [
+                                    TextButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          _isDeleteMode = false;
+                                          _selectedRemoteImages.clear();
+                                          _selectedLocalImages.clear();
+                                        });
+                                      },
+                                      child: const Text(
+                                        'Abbrechen',
+                                        style: TextStyle(color: Colors.white70),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ElevatedButton(
+                                      onPressed: _confirmDeleteSelectedImages,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor:
+                                            AppColors.accentGreenDark,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 6,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'Löschen (${_selectedRemoteImages.length + _selectedLocalImages.length})',
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -999,193 +1024,202 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           const double spacing = 16.0;
           const double minThumbWidth = 120.0;
           const double gridSpacing = 12.0;
+          const double navBtnH = 40.0;
           final double minRightWidth = (2 * minThumbWidth) + gridSpacing;
           double leftW = cons.maxWidth - spacing - minRightWidth;
           if (leftW > 240) leftW = 240;
           if (leftW < 160) leftW = 160;
-          final double leftH = leftW * 1.5;
+          // Video-Preview ebenfalls im 9:16 Portrait‑Format wie das Kronebild
+          final double leftH = leftW * (16 / 9);
+          final double totalH = navBtnH + 8 + leftH;
 
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Video-Preview/Inline-Player links GROSS (responsive) + lokale Navigation oben
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  SizedBox(
-                    width: leftW,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              if (_mediaTab != 'images') {
-                                setState(() => _mediaTab = 'images');
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _mediaTab == 'images'
-                                  ? AppColors.accentGreenDark
-                                  : Colors.white24,
-                              foregroundColor: Colors.white,
-                              side: BorderSide(
-                                color: _mediaTab == 'images'
-                                    ? AppColors.accentGreenDark
-                                    : Colors.white24,
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            child: const Text('Bilder'),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {
-                              if (_mediaTab != 'videos') {
-                                setState(() => _mediaTab = 'videos');
-                              }
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: _mediaTab == 'videos'
-                                  ? AppColors.accentGreenDark
-                                  : Colors.white24,
-                              foregroundColor: Colors.white,
-                              side: BorderSide(
-                                color: _mediaTab == 'videos'
-                                    ? AppColors.accentGreenDark
-                                    : Colors.white24,
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 10),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            child: Text(
-                              'Videos',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: leftW,
-                    height: leftH,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: _inlineVideoController != null
-                          ? AspectRatio(
-                              aspectRatio: 9 / 16,
-                              child: VideoPlayerWidget(
-                                controller: _inlineVideoController!,
-                              ),
-                            )
-                          : Container(
-                              color: Colors.black26,
-                              child: const Icon(
-                                Icons.play_arrow,
-                                color: Colors.white54,
-                                size: 48,
-                              ),
-                            ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: spacing),
-              // Galerie (max. 4) – Upload-Button über den Thumbs
-              Expanded(
-                child: Column(
+          return SizedBox(
+            height: totalH,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Video-Preview/Inline-Player links GROSS (responsive) + lokale Navigation oben
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    // Navigation: links Icons (Bild/Video), rechts Upload‑Icon nur im aktiven Tab (Videos)
                     SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: _onAddVideos,
-                        style: ElevatedButton.styleFrom(
-                          alignment: Alignment.centerLeft,
-                          backgroundColor: AppColors.accentGreenDark,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 14,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: RichText(
-                          text: TextSpan(
-                            style: TextStyle(color: Colors.white),
+                      width: leftW,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
                             children: [
-                              TextSpan(
-                                text: 'Video-Upload',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16,
+                              SizedBox(
+                                width: navBtnH,
+                                height: navBtnH,
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    if (_mediaTab != 'images')
+                                      setState(() => _mediaTab = 'images');
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _mediaTab == 'images'
+                                        ? AppColors.accentGreenDark
+                                        : Colors.transparent,
+                                    foregroundColor: Colors.white,
+                                    shadowColor: Colors.transparent,
+                                    padding: EdgeInsets.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      side: BorderSide(
+                                        color: _mediaTab == 'images'
+                                            ? AppColors.accentGreenDark
+                                            : Colors.white24,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Icon(Icons.image, size: 20),
                                 ),
                               ),
-                              TextSpan(
-                                text: ' Trainingsvideos',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w400,
-                                  fontSize: 12,
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: navBtnH,
+                                height: navBtnH,
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    if (_mediaTab != 'videos')
+                                      setState(() => _mediaTab = 'videos');
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: _mediaTab == 'videos'
+                                        ? AppColors.accentGreenDark
+                                        : Colors.transparent,
+                                    foregroundColor: Colors.white,
+                                    shadowColor: Colors.transparent,
+                                    padding: EdgeInsets.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                      side: BorderSide(
+                                        color: _mediaTab == 'videos'
+                                            ? AppColors.accentGreenDark
+                                            : Colors.white24,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Icon(Icons.videocam, size: 20),
                                 ),
                               ),
                             ],
                           ),
-                        ),
+                          SizedBox(
+                            width: navBtnH,
+                            height: navBtnH,
+                            child: (_mediaTab == 'videos')
+                                ? ElevatedButton(
+                                    onPressed: _onAddVideos,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.transparent,
+                                      shadowColor: Colors.transparent,
+                                      padding: EdgeInsets.zero,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    child: Ink(
+                                      decoration: BoxDecoration(
+                                        gradient: const LinearGradient(
+                                          colors: [
+                                            Color(0xFFE91E63),
+                                            AppColors.lightBlue,
+                                          ],
+                                        ),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Center(
+                                        child: Icon(
+                                          Icons.videocam,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : const SizedBox.shrink(),
+                          ),
+                        ],
                       ),
                     ),
                     const SizedBox(height: 8),
-                    LayoutBuilder(
-                      builder: (ctx, cons) {
-                        final double targetItemWidth = (cons.maxWidth / 3)
-                            .clamp(minThumbWidth, 200.0);
-                        final int cols = (cons.maxWidth / targetItemWidth)
-                            .floor()
-                            .clamp(2, 3);
-                        final totalCount =
-                            (remoteFour.length +
-                            (4 - remoteFour.length)
-                                .clamp(0, 4)
-                                .clamp(0, _newVideoFiles.length));
-                        return GridView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: cols,
-                                mainAxisSpacing: gridSpacing,
-                                crossAxisSpacing: gridSpacing,
-                                childAspectRatio: 1,
+                    SizedBox(
+                      width: leftW,
+                      height: leftH,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: _inlineVideoController != null
+                            ? AspectRatio(
+                                aspectRatio: 9 / 16,
+                                child: VideoPlayerWidget(
+                                  controller: _inlineVideoController!,
+                                ),
+                              )
+                            : Container(
+                                color: Colors.black26,
+                                child: const Icon(
+                                  Icons.play_arrow,
+                                  color: Colors.white54,
+                                  size: 48,
+                                ),
                               ),
-                          itemCount: totalCount,
-                          itemBuilder: (context, index) {
-                            if (index < remoteFour.length) {
-                              return _videoThumbNetwork(remoteFour[index]);
-                            }
-                            final localIndex = index - remoteFour.length;
-                            return _videoThumbLocal(_newVideoFiles[localIndex]);
-                          },
-                        );
-                      },
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(width: spacing),
+                // Galerie (max. 4) – Upload-Button über den Thumbs
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const SizedBox.shrink(),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        height: leftH,
+                        child: LayoutBuilder(
+                          builder: (ctx, cons) {
+                            final double targetItemWidth = (cons.maxWidth / 3)
+                                .clamp(minThumbWidth, 200.0);
+                            final int cols = (cons.maxWidth / targetItemWidth)
+                                .floor()
+                                .clamp(2, 3);
+                            final totalCount =
+                                (remoteFour.length +
+                                (4 - remoteFour.length)
+                                    .clamp(0, 4)
+                                    .clamp(0, _newVideoFiles.length));
+                            return GridView.builder(
+                              shrinkWrap: true,
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: cols,
+                                    mainAxisSpacing: gridSpacing,
+                                    crossAxisSpacing: gridSpacing,
+                                    childAspectRatio: 1,
+                                  ),
+                              itemCount: totalCount,
+                              itemBuilder: (context, index) {
+                                if (index < remoteFour.length) {
+                                  return _videoThumbNetwork(remoteFour[index]);
+                                }
+                                final localIndex = index - remoteFour.length;
+                                return _videoThumbLocal(
+                                  _newVideoFiles[localIndex],
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -1395,6 +1429,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: _isSaving
                   ? Colors.grey
+                  : _hasNoClonedVoice
+                  ? const Color(0xFF9C27B0) // Magenta
                   : AppColors.accentGreenDark,
               foregroundColor: Colors.white,
             ),
@@ -1555,6 +1591,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ),
           ],
         ),
+
+        const SizedBox(height: 12),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: ElevatedButton.icon(
+            onPressed: _isTestingVoice ? null : _testVoicePlayback,
+            icon: const Icon(Icons.play_arrow),
+            label: Text(_isTestingVoice ? 'Teste…' : 'Stimme testen'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _isTestingVoice
+                  ? Colors.grey
+                  : AppColors.accentGreenDark,
+              foregroundColor: Colors.white,
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -1576,6 +1628,65 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (ok && mounted) {
       _applyAvatar(updated);
       _showSystemSnack('Stimmeinstellungen gespeichert');
+    }
+  }
+
+  Future<void> _testVoicePlayback() async {
+    try {
+      final base = dotenv.env['MEMORY_API_BASE_URL'];
+      if (base == null || base.isEmpty) {
+        _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
+        return;
+      }
+      String? voiceId;
+      try {
+        voiceId = (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
+            ?.trim();
+      } catch (_) {}
+      if (voiceId == null || voiceId.isEmpty) {
+        _showSystemSnack('Keine geklonte Stimme vorhanden');
+        return;
+      }
+
+      final uri = Uri.parse('$base/avatar/tts');
+      final payload = <String, dynamic>{
+        'text': 'Dies ist eine kurze Stimmprobe für den Test.',
+        'voice_id': voiceId,
+        'stability': double.parse(_voiceStability.toStringAsFixed(2)),
+        'similarity': double.parse(_voiceSimilarity.toStringAsFixed(2)),
+        'speed': double.parse(_voiceTempo.toStringAsFixed(2)),
+        'dialect': _voiceDialect,
+      };
+
+      setState(() => _isTestingVoice = true);
+      final res = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final b64 = data['audio_b64'] as String?;
+        if (b64 == null || b64.isEmpty) {
+          _showSystemSnack('Kein Audio erhalten');
+          return;
+        }
+        final bytes = base64Decode(b64);
+        final dir = await getTemporaryDirectory();
+        final file = File(
+          '${dir.path}/voice_test_${DateTime.now().millisecondsSinceEpoch}.mp3',
+        );
+        await file.writeAsBytes(bytes, flush: true);
+        await _voiceTestPlayer.setFilePath(file.path);
+        await _voiceTestPlayer.play();
+      } else {
+        final detail = (res.body.isNotEmpty) ? ' ${res.body}' : '';
+        _showSystemSnack('TTS fehlgeschlagen: ${res.statusCode}$detail');
+      }
+    } catch (e) {
+      _showSystemSnack('Test-Fehler: $e');
+    } finally {
+      if (mounted) setState(() => _isTestingVoice = false);
     }
   }
 
@@ -1633,14 +1744,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             'audio_urls': selected,
             'name': _avatarData!.displayName,
           };
-          // Dialekt/Tempo mitsenden, wenn vorhanden
+          // Dialekt/Tempo/Stability/Similarity mitsenden, wenn vorhanden
           try {
             final v = _avatarData?.training?['voice'] as Map<String, dynamic>?;
             final tempo = (v?['tempo'] as num?)?.toDouble();
             final dialect = v?['dialect'] as String?;
+            final stability = (v?['stability'] as num?)?.toDouble();
+            final similarity = (v?['similarity'] as num?)?.toDouble();
             if (tempo != null) payload['tempo'] = tempo;
             if (dialect != null && dialect.isNotEmpty)
               payload['dialect'] = dialect;
+            if (stability != null) payload['stability'] = stability;
+            if (similarity != null) payload['similarity'] = similarity;
           } catch (_) {}
           // Wenn bereits eine Stimme existiert: voice_id mitsenden → bestehende Stimme updaten, NICHT neu anlegen
           try {
@@ -1654,11 +1769,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             }
           } catch (_) {}
 
-          final res = await http.post(
-            uri,
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(payload),
-          );
+          http.Response res;
+          try {
+            res = await http
+                .post(
+                  uri,
+                  headers: {'Content-Type': 'application/json'},
+                  body: jsonEncode(payload),
+                )
+                .timeout(const Duration(seconds: 45));
+          } on TimeoutException {
+            _showSystemSnack('Klonen abgebrochen: Zeitüberschreitung');
+            return;
+          }
           if (res.statusCode >= 200 && res.statusCode < 300) {
             final data = jsonDecode(res.body) as Map<String, dynamic>;
             final voiceId = data['voice_id'] as String?;
@@ -1958,17 +2081,46 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 left: 4,
                 child: Icon(Icons.emoji_events, color: Colors.amber, size: 18),
               ),
-            // keine Häkchen im Normalmodus
-            if (_isDeleteMode)
-              Positioned(
-                top: 4,
-                right: 4,
-                child: Icon(
-                  selected ? Icons.check_circle : Icons.radio_button_unchecked,
-                  color: selected ? Colors.redAccent : Colors.white70,
-                  size: 18,
+            // Kein Häkchen mehr – Selektion wird am Trash‑Icon markiert
+            // Papierkorb unten rechts – immer sichtbar
+            Positioned(
+              right: 6,
+              bottom: 6,
+              child: InkWell(
+                onTap: () {
+                  setState(() {
+                    _isDeleteMode = true;
+                    if (selected) {
+                      _selectedRemoteImages.remove(url);
+                    } else {
+                      _selectedRemoteImages.add(url);
+                    }
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: selected ? null : const Color(0x30000000),
+                    gradient: selected
+                        ? const LinearGradient(
+                            colors: [AppColors.magenta, AppColors.lightBlue],
+                          )
+                        : null,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: selected
+                          ? AppColors.lightBlue.withValues(alpha: 0.7)
+                          : const Color(0x66FFFFFF),
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.white,
+                    size: 16,
+                  ),
                 ),
               ),
+            ),
           ],
         ),
       ),
@@ -2035,6 +2187,35 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     size: 24,
                   ),
                 ),
+              Positioned(
+                right: 6,
+                bottom: 6,
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _isDeleteMode = true;
+                      if (selected) {
+                        _selectedRemoteVideos.remove(url);
+                      } else {
+                        _selectedRemoteVideos.add(url);
+                      }
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0x30000000),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0x66FFFFFF)),
+                    ),
+                    child: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -2101,6 +2282,35 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     size: 24,
                   ),
                 ),
+              Positioned(
+                right: 6,
+                bottom: 6,
+                child: InkWell(
+                  onTap: () {
+                    setState(() {
+                      _isDeleteMode = true;
+                      if (selected) {
+                        _selectedLocalVideos.remove(key);
+                      } else {
+                        _selectedLocalVideos.add(key);
+                      }
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0x30000000),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0x66FFFFFF)),
+                    ),
+                    child: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.white,
+                      size: 16,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -2171,9 +2381,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         '${Directory.systemTemp.path}/thumb_${DateTime.now().microsecondsSinceEpoch}.mp4',
       ).create();
       await tmp.writeAsBytes(res.bodyBytes);
-      final data = await VideoThumbnail.thumbnailData(
+      final data = await vt.VideoThumbnail.thumbnailData(
         video: tmp.path,
-        imageFormat: ImageFormat.JPEG,
+        imageFormat: vt.ImageFormat.JPEG,
         maxWidth: 360,
         quality: 60,
       );
@@ -2203,9 +2413,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Future<Uint8List?> _thumbnailForLocal(String path) async {
     try {
       if (_videoThumbCache.containsKey(path)) return _videoThumbCache[path]!;
-      final data = await VideoThumbnail.thumbnailData(
+      final data = await vt.VideoThumbnail.thumbnailData(
         video: path,
-        imageFormat: ImageFormat.JPEG,
+        imageFormat: vt.ImageFormat.JPEG,
         maxWidth: 360,
         quality: 60,
       );
@@ -2217,6 +2427,144 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   // _bigMediaButton entfällt im neuen Layout
+
+  Future<File?> _cropToPortrait916(File input) async {
+    try {
+      final bytes = await input.readAsBytes();
+      final editorKey = GlobalKey<ExtendedImageEditorState>();
+      Uint8List? result;
+
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+          backgroundColor: Colors.black,
+          clipBehavior: Clip.hardEdge,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: LayoutBuilder(
+            builder: (dCtx, _) {
+              final sz = MediaQuery.of(dCtx).size;
+              final double dlgW = (sz.width * 0.9).clamp(320.0, 900.0);
+              final double dlgH = (sz.height * 0.9).clamp(480.0, 1200.0);
+              return SizedBox(
+                width: dlgW,
+                height: dlgH,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: ExtendedImage.memory(
+                        bytes,
+                        fit: BoxFit.contain,
+                        width: dlgW,
+                        height: dlgH,
+                        mode: ExtendedImageMode.editor,
+                        extendedImageEditorKey: editorKey,
+                        initEditorConfigHandler: (state) {
+                          return EditorConfig(
+                            maxScale: 5,
+                            cropAspectRatio: 9 / 16,
+                            hitTestSize: 28,
+                            cornerColor: Colors.white,
+                            lineColor: Colors.white,
+                            lineHeight: 2,
+                            initCropRectType: InitCropRectType.imageRect,
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          final st = editorKey.currentState;
+                          if (st == null) return;
+                          final cropRect = st.getCropRect();
+                          final raw = st.rawImageData;
+                          if (cropRect == null || raw == null) return;
+                          final decoded = img.decodeImage(raw);
+                          if (decoded == null) return;
+                          final int x = cropRect.left.round().clamp(
+                            0,
+                            decoded.width - 1,
+                          );
+                          final int y = cropRect.top.round().clamp(
+                            0,
+                            decoded.height - 1,
+                          );
+                          final int w = cropRect.width.round().clamp(
+                            1,
+                            decoded.width - x,
+                          );
+                          final int h = cropRect.height.round().clamp(
+                            1,
+                            decoded.height - y,
+                          );
+                          final img.Image cropped = img.copyCrop(
+                            decoded,
+                            x: x,
+                            y: y,
+                            width: w,
+                            height: h,
+                          );
+                          result = Uint8List.fromList(
+                            img.encodeJpg(cropped, quality: 95),
+                          );
+                          // ignore: use_build_context_synchronously
+                          Navigator.pop(ctx);
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Ink(
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xFFE91E63), AppColors.lightBlue],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 14),
+                            child: Center(
+                              child: Text(
+                                'Zuschneiden',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      if (result == null) return null;
+      final tmp = await File('${input.path}.crop.jpg').create(recursive: true);
+      await tmp.writeAsBytes(result!, flush: true);
+      return tmp;
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<void> _onAddImages() async {
     ImageSource? source;
@@ -2237,7 +2585,49 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final String uid = FirebaseAuth.instance.currentUser!.uid;
         final String avatarId = _avatarData!.id;
         for (int i = 0; i < files.length; i++) {
-          final File f = File(files[i].path);
+          File f = File(files[i].path);
+          // Interaktives Cropping 9:16
+          final cropped = await _cropToPortrait916(f);
+          if (cropped != null) {
+            f = cropped;
+          }
+          // Optionales Portrait-Cropping 9:16 (stabil, mobil)
+          try {
+            final bytes = await f.readAsBytes();
+            final src = img.decodeImage(bytes);
+            if (src != null) {
+              final int w = src.width;
+              final int h = src.height;
+              final double targetRatio = 9 / 16; // Portrait 9:16
+              double curRatio = w / h;
+              int cw = w;
+              int ch = h;
+              if ((curRatio - targetRatio).abs() > 0.01) {
+                if (curRatio > targetRatio) {
+                  // zu breit → links/rechts beschneiden
+                  cw = (h * targetRatio).round();
+                } else {
+                  // zu hoch → oben/unten beschneiden
+                  ch = (w / targetRatio).round();
+                }
+                final int x = ((w - cw) / 2).round();
+                final int y = ((h - ch) / 2).round();
+                final cropped = img.copyCrop(
+                  src,
+                  x: x,
+                  y: y,
+                  width: cw,
+                  height: ch,
+                );
+                final jpg = img.encodeJpg(cropped, quality: 90);
+                final tmp = await File(
+                  '${f.path}.portrait.jpg',
+                ).create(recursive: true);
+                await tmp.writeAsBytes(jpg, flush: true);
+                f = tmp;
+              }
+            }
+          } catch (_) {}
           final String path =
               'avatars/$uid/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
           final url = await FirebaseStorageService.uploadImage(
@@ -2264,7 +2654,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         setState(() => _isDirty = true);
         final String uid = FirebaseAuth.instance.currentUser!.uid;
         final String avatarId = _avatarData!.id;
-        final File f = File(x.path);
+        File f = File(x.path);
+        final cropped = await _cropToPortrait916(f);
+        if (cropped != null) {
+          f = cropped;
+        }
         final String path =
             'avatars/$uid/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_cam.jpg';
         final url = await FirebaseStorageService.uploadImage(
@@ -3034,8 +3428,51 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Bilder löschen?'),
-        content: Text('Möchtest du $total Bild(er) wirklich löschen?'),
+        title: Text('Ausgewählte löschen ($total)'),
+        content: SizedBox(
+          width: 360,
+          child: SingleChildScrollView(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ..._selectedRemoteImages.map(
+                  (u) => ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      u,
+                      width: 54,
+                      height: 96,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                ..._selectedRemoteVideos.map(
+                  (u) => Container(
+                    width: 54,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      color: Colors.black26,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.videocam, color: Colors.white70),
+                  ),
+                ),
+                ..._selectedLocalVideos.map(
+                  (_) => Container(
+                    width: 54,
+                    height: 96,
+                    decoration: BoxDecoration(
+                      color: Colors.black26,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.videocam, color: Colors.white70),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -3081,10 +3518,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: InkWell(
-          onTap: () => Navigator.pop(context),
-          child: const Text('Datenwelt schließen'),
-        ),
+        title: const Text('Datenwelt'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
@@ -3150,4 +3584,27 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _inlineVideoController?.dispose();
     super.dispose();
   }
+}
+
+class _CropFramePainter extends CustomPainter {
+  final Rect area; // normierte Koordinaten 0..1 relativ zur Bildfläche
+  _CropFramePainter(this.area);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Rect.fromLTWH(
+      area.left * size.width,
+      area.top * size.height,
+      area.width * size.width,
+      area.height * size.height,
+    );
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..color = Colors.white.withOpacity(0.9);
+    canvas.drawRect(rect, paint);
+  }
+
+  @override
+  bool shouldRepaint(_CropFramePainter oldDelegate) => oldDelegate.area != area;
 }
