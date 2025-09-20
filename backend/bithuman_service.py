@@ -4,6 +4,8 @@ Basierend auf der offiziellen Dokumentation: https://docs.bithuman.ai
 """
 
 import os
+from pathlib import Path
+from dotenv import load_dotenv, find_dotenv
 import asyncio
 from pathlib import Path
 from typing import Optional
@@ -13,27 +15,31 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import FileResponse
 import tempfile
 import shutil
+import requests
+import threading
+import uuid
 
 # BitHuman SDK initialisieren
 runtime = None
+API_SECRET_CACHE = None
+JOBS: dict[str, dict] = {}
 
 async def initialize_bithuman():
     """Initialisiert BitHuman SDK mit offiziellem API Secret"""
     global runtime
     
     try:
-        # Offizielles API Secret
-        api_secret = "DxGRMKb9fuMDiNHMO648VgU3MA81zP4hSZvdLFFV43nKYeMelG6x5QfrSH8UyvIRZ"
-        
-        # Model-Pfad (wird automatisch heruntergeladen)
-        model_path = "models/einstein.imx"
-        
-        # Offizielle SDK-Initialisierung nach Dokumentation
-        runtime = await AsyncBithuman.create(
-            model_path=model_path,
-            api_secret=api_secret,
-        )
-        print("✅ BitHuman SDK mit offiziellem API Secret initialisiert")
+        # API Secret aus ENV (beide Varianten akzeptieren)
+        api_secret = (
+            os.getenv("BITHUMAN_API_SECRET")
+            or os.getenv("BITHUMAN_API_KEY")
+            or ""
+        ).strip()
+        global runtime, API_SECRET_CACHE
+        API_SECRET_CACHE = api_secret if api_secret else None
+        # Keine Runtime beim Start erzwingen – per-request initialisieren
+        runtime = None
+        print("ℹ️ BitHuman: API-Key geladen, Runtime wird per-request erstellt")
         return True
         
     except Exception as e:
@@ -54,8 +60,7 @@ async def create_avatar_video(image_path: str, audio_path: str, output_path: str
     """
     try:
         if not runtime:
-            print("❌ BitHuman Runtime nicht initialisiert")
-            return False
+            print("⚠️ Globale Runtime nicht initialisiert – verwende per-request Runtime.")
             
         # Avatar-Video mit offiziellem SDK erstellen
         result = await runtime.create_avatar_video(
@@ -78,6 +83,16 @@ async def create_avatar_video(image_path: str, audio_path: str, output_path: str
 # FastAPI Endpoints
 app = FastAPI(title="BitHuman Avatar Service")
 
+# .env laden (Projekt-Root bevorzugt)
+try:
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if env_path.exists():
+        load_dotenv(str(env_path), override=True)
+    else:
+        load_dotenv(find_dotenv(), override=True)
+except Exception:
+    pass
+
 @app.on_event("startup")
 async def startup_event():
     """Initialisiert BitHuman beim Start"""
@@ -94,7 +109,9 @@ async def root():
 @app.post("/generate-avatar")
 async def generate_avatar(
     image: UploadFile = File(...),
-    audio: UploadFile = File(...)
+    audio: UploadFile = File(...),
+    figure_id: str | None = None,
+    runtime_model_hash: str | None = None,
 ):
     """
     Generiert Avatar-Video mit BitHuman SDK
@@ -126,11 +143,28 @@ async def generate_avatar(
             print(f"   🖼️ Bild: {image_path}")
             print(f"   🎵 Audio: {audio_path}")
             
-            # Avatar-Video mit BitHuman erstellen
-            success = await create_avatar_video(
-                str(image_path),
-                str(audio_path),
-                str(output_path)
+            # Wenn figure_id/hash übergeben: per-request Runtime initialisieren
+            global runtime, API_SECRET_CACHE
+            local_runtime = runtime
+            if (figure_id or runtime_model_hash) and API_SECRET_CACHE:
+                try:
+                    kw = {"api_secret": API_SECRET_CACHE}
+                    if figure_id:
+                        kw["figure_id"] = figure_id
+                    if runtime_model_hash:
+                        kw["runtime_model_hash"] = runtime_model_hash
+                    local_runtime = await AsyncBithuman.create(**kw)
+                except Exception as e:
+                    print(f"❌ Per-request Runtime Fehler: {e}")
+                    local_runtime = runtime
+
+            # Avatar-Video mit BitHuman erstellen (lokale oder globale Runtime)
+            if not local_runtime:
+                raise HTTPException(status_code=500, detail="BitHuman Runtime nicht bereit")
+            result = await local_runtime.create_avatar_video(
+                image_path=str(image_path),
+                audio_path=str(audio_path),
+                output_path=str(output_path)
             )
             
             if success and output_path.exists():
@@ -153,6 +187,79 @@ async def generate_avatar(
             detail=f"Avatar-Generierung Fehler: {str(e)}"
         )
 
+
+@app.post("/figure/create")
+async def create_figure(image: UploadFile = File(...)):
+    """Agent/ Figure aus Bild erzeugen (Agent Generation API)."""
+    try:
+        api_key = (
+            os.getenv("BITHUMAN_API_SECRET")
+            or os.getenv("BITHUMAN_API_KEY")
+            or ""
+        ).strip()
+        if not api_key:
+            raise HTTPException(status_code=400, detail="BITHUMAN_API_KEY fehlt")
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            img_path = Path(temp_dir) / image.filename
+            with open(img_path, "wb") as buf:
+                shutil.copyfileobj(image.file, buf)
+
+            # Beispiel: Upload zu BitHuman Agent Generation API (Platzhalter-Endpunkt, laut Doku anpassen)
+            # Hier demonstrativ multipart POST; ersetze 'AGENT_CREATE_URL' durch echten Doku-Endpunkt
+            AGENT_CREATE_URL = os.getenv("BITHUMAN_AGENT_CREATE_URL", "https://api.bithuman.ai/agent/create")
+            files = {"image": (image.filename, open(img_path, "rb"), "image/png")}
+            headers = {"Authorization": f"Bearer {api_key}"}
+            r = requests.post(AGENT_CREATE_URL, headers=headers, files=files, timeout=30)
+            if 200 <= r.status_code < 300:
+                data = r.json() if r.content else {}
+                figure_id = data.get("figure_id") or data.get("id")
+                model_hash = data.get("runtime_model_hash") or data.get("model_hash")
+                if not (figure_id or model_hash):
+                    raise HTTPException(status_code=500, detail="BitHuman Agent Create: figure_id fehlt")
+                return {"figure_id": figure_id, "runtime_model_hash": model_hash}
+
+            # 5xx/Timeout → asynchroner Retry-Job
+            job_id = uuid.uuid4().hex
+            JOBS[job_id] = {"status": "pending", "error": None, "figure_id": None, "runtime_model_hash": None}
+
+            def _retry_job():
+                try:
+                    backoff = [2, 4, 8, 16, 30]
+                    for sec in backoff:
+                        try:
+                            rr = requests.post(AGENT_CREATE_URL, headers=headers, files=files, timeout=30)
+                            if 200 <= rr.status_code < 300:
+                                dd = rr.json() if rr.content else {}
+                                fid = dd.get("figure_id") or dd.get("id")
+                                mh = dd.get("runtime_model_hash") or dd.get("model_hash")
+                                if fid or mh:
+                                    JOBS[job_id] = {"status": "done", "error": None, "figure_id": fid, "runtime_model_hash": mh}
+                                    return
+                            else:
+                                JOBS[job_id]["error"] = f"HTTP {rr.status_code}"
+                        except Exception as _e:
+                            JOBS[job_id]["error"] = str(_e)
+                        time.sleep(sec)
+                    JOBS[job_id]["status"] = "failed"
+                except Exception as e:
+                    JOBS[job_id] = {"status": "failed", "error": str(e), "figure_id": None, "runtime_model_hash": None}
+
+            threading.Thread(target=_retry_job, daemon=True).start()
+            return {"job_id": job_id}, 202
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/figure/job/{job_id}")
+async def figure_job_status(job_id: str):
+    job = JOBS.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+    return job
+
 @app.get("/health")
 async def health():
     """Detaillierter Health Check"""
@@ -165,4 +272,5 @@ async def health():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    port = int(os.getenv("BITHUMAN_PORT", "4202"))
+    uvicorn.run(app, host="0.0.0.0", port=port)

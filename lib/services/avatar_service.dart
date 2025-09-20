@@ -207,6 +207,11 @@ class AvatarService {
             updatedAvatar.greetingText!.trim().isEmpty) {
           payload['greetingText'] = FieldValue.delete();
         }
+        // Falls das Krone-Bild entfernt wurde, Feld löschen
+        if (updatedAvatar.avatarImageUrl == null ||
+            (updatedAvatar.avatarImageUrl?.isEmpty ?? true)) {
+          payload['avatarImageUrl'] = FieldValue.delete();
+        }
       } catch (_) {}
       try {
         print('Avatar update payload keys: ${payload.keys.toList()}');

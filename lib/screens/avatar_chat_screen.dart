@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/avatar_data.dart';
 import '../services/video_stream_service.dart';
 import '../services/bithuman_service.dart';
+import '../services/firebase_storage_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AvatarChatScreen extends StatefulWidget {
@@ -63,6 +64,86 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     } catch (e) {
       print('❌ BitHuman Initialisierung fehlgeschlagen: $e');
     }
+  }
+
+  Future<File?> _downloadToTemp(String url, {String? suffix}) async {
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode != 200) return null;
+      final dir = await getTemporaryDirectory();
+      final name = 'dl_${DateTime.now().millisecondsSinceEpoch}${suffix ?? ''}';
+      final f = File('${dir.path}/$name');
+      await f.writeAsBytes(res.bodyBytes, flush: true);
+      return f;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, String?>> _ensureFigure() async {
+    String? figureId;
+    String? modelHash;
+    try {
+      final bh = _avatarData?.training?['bithuman'] as Map<String, dynamic>?;
+      figureId = (bh?['figureId'] as String?)?.trim();
+      modelHash = (bh?['modelHash'] as String?)?.trim();
+    } catch (_) {}
+
+    if ((figureId != null && figureId.isNotEmpty) || _avatarData == null) {
+      return {'figureId': figureId, 'modelHash': modelHash};
+    }
+
+    // Krone-Bild holen
+    final imageUrl = _avatarData!.avatarImageUrl;
+    if (imageUrl == null || imageUrl.isEmpty) {
+      return {'figureId': null, 'modelHash': null};
+    }
+    final base = dotenv.env['BITHUMAN_BASE_URL']?.trim();
+    if (base == null || base.isEmpty) {
+      return {'figureId': null, 'modelHash': null};
+    }
+    final imgFile = await _downloadToTemp(imageUrl, suffix: '.png');
+    if (imgFile == null) return {'figureId': null, 'modelHash': null};
+
+    try {
+      final uri = Uri.parse('$base/figure/create');
+      final req = http.MultipartRequest('POST', uri);
+      req.files.add(await http.MultipartFile.fromPath('image', imgFile.path));
+      final res = await req.send();
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        final body = await res.stream.bytesToString();
+        final data = jsonDecode(body) as Map<String, dynamic>;
+        figureId = (data['figure_id'] as String?)?.trim();
+        modelHash = (data['runtime_model_hash'] as String?)?.trim();
+        // Persistieren in Firestore unter users/<uid>/avatars/<id>
+        try {
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          if (uid != null) {
+            final fs = FirebaseFirestore.instance;
+            final docRef = fs
+                .collection('users')
+                .doc(uid)
+                .collection('avatars')
+                .doc(_avatarData!.id);
+            final snap = await docRef.get();
+            final existing = snap.data() ?? {};
+            final training = Map<String, dynamic>.from(
+              existing['training'] ?? {},
+            );
+            final bh = Map<String, dynamic>.from(training['bithuman'] ?? {});
+            if ((figureId ?? '').isNotEmpty) bh['figureId'] = figureId;
+            if ((modelHash ?? '').isNotEmpty) bh['modelHash'] = modelHash;
+            training['bithuman'] = bh;
+            await docRef.set({
+              'training': training,
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true));
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+
+    return {'figureId': figureId, 'modelHash': modelHash};
   }
 
   @override
@@ -119,11 +200,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Container(
-        decoration:
-            (backgroundImage != null && !(_videoService.isReady && _isSpeaking))
+        decoration: !(_videoService.isReady && _isSpeaking)
             ? BoxDecoration(
                 image: DecorationImage(
-                  image: NetworkImage(backgroundImage),
+                  image: (backgroundImage != null && backgroundImage.isNotEmpty)
+                      ? NetworkImage(backgroundImage)
+                      : const AssetImage(
+                              'assets/sunriza_complete/images/sunset1.jpg',
+                            )
+                            as ImageProvider,
                   fit: BoxFit.cover,
                 ),
               )
@@ -192,7 +277,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
     return Container(
       width: double.infinity,
-      decoration: hasImage ? null : const BoxDecoration(color: Colors.black),
+      decoration: null,
       child: Stack(
         children: [
           // Video-Overlay (nur wenn Audio spielt und Video bereit ist)
@@ -884,26 +969,52 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       final imageUrl = _avatarData?.avatarImageUrl;
       if (imageUrl == null) return;
 
-      print('🎬 STARTE BITHUMAN LIPSYNC:');
-      print('📝 Text: $text');
-      print('🖼️ Image: $imageUrl');
-      print('🎵 Audio: $audioPath');
+      // Figure sicherstellen
+      final fig = await _ensureFigure();
+      final figureId = fig['figureId'];
+      final modelHash = fig['modelHash'];
 
-      // BitHuman SDK verwenden
-      final videoUrl = await BitHumanService.createAvatarWithAudio(
-        imagePath: imageUrl,
-        audioPath: audioPath,
-      );
+      final base = dotenv.env['BITHUMAN_BASE_URL']?.trim();
+      if (base == null || base.isEmpty) return;
 
-      if (videoUrl != null) {
-        print('🎥 BitHuman Video erhalten: $videoUrl');
-        await _videoService.startStreamingFromUrl(
-          videoUrl,
-          onProgress: (msg) => print('📊 BitHuman Progress: $msg'),
-          onError: (err) => print('❌ BitHuman Error: $err'),
+      final imgFile = await _downloadToTemp(imageUrl, suffix: '.png');
+      if (imgFile == null) return;
+
+      // Backend-Request: generate-avatar
+      final uri = Uri.parse('$base/generate-avatar');
+      final req = http.MultipartRequest('POST', uri);
+      req.files.add(await http.MultipartFile.fromPath('image', imgFile.path));
+      req.files.add(await http.MultipartFile.fromPath('audio', audioPath));
+      if ((figureId ?? '').isNotEmpty) req.fields['figure_id'] = figureId!;
+      if ((modelHash ?? '').isNotEmpty)
+        req.fields['runtime_model_hash'] = modelHash!;
+      final streamed = await req.send();
+      if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
+        final bytes = await streamed.stream.toBytes();
+        final dir = await getTemporaryDirectory();
+        final out = File(
+          '${dir.path}/chat_avatar_${DateTime.now().millisecondsSinceEpoch}.mp4',
         );
+        await out.writeAsBytes(bytes, flush: true);
+        // Upload zu Firebase und als Stream abspielen
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid == null || _avatarData == null) return;
+        final path =
+            'avatars/$uid/${_avatarData!.id}/videos/${DateTime.now().millisecondsSinceEpoch}_chat.mp4';
+        final url = await FirebaseStorageService.uploadVideo(
+          out,
+          customPath: path,
+        );
+        if (url != null) {
+          await _videoService.startStreamingFromUrl(
+            url,
+            onProgress: (msg) => print('📊 BitHuman Progress: $msg'),
+            onError: (err) => print('❌ BitHuman Error: $err'),
+          );
+        }
       } else {
-        print('❌ BitHuman Video-Generierung fehlgeschlagen');
+        final body = await streamed.stream.bytesToString();
+        print('❌ BitHuman generate-avatar: ${streamed.statusCode} $body');
       }
     } catch (e) {
       print('💥 BITHUMAN LIPSYNC FEHLER: $e');

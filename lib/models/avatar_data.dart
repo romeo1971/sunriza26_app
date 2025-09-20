@@ -134,6 +134,7 @@ class AvatarData {
     DateTime? updatedAt,
     Map<String, dynamic>? training,
     String? greetingText,
+    bool clearAvatarImageUrl = false,
   }) {
     return AvatarData(
       id: id ?? this.id,
@@ -144,7 +145,9 @@ class AvatarData {
       birthDate: birthDate ?? this.birthDate,
       deathDate: deathDate ?? this.deathDate,
       calculatedAge: calculatedAge ?? this.calculatedAge,
-      avatarImageUrl: avatarImageUrl ?? this.avatarImageUrl,
+      avatarImageUrl: clearAvatarImageUrl
+          ? null
+          : (avatarImageUrl ?? this.avatarImageUrl),
       imageUrls: imageUrls ?? this.imageUrls,
       videoUrls: videoUrls ?? this.videoUrls,
       textFileUrls: textFileUrls ?? this.textFileUrls,

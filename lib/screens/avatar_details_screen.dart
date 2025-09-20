@@ -94,6 +94,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   bool _isTestingVoice = false;
   final AudioPlayer _voiceTestPlayer = AudioPlayer();
+  bool _isGeneratingAvatar = false;
 
   double _mediaWidth(BuildContext context) {
     final double available =
@@ -844,7 +845,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 bottom: 12,
                                 child: ElevatedButton(
                                   onPressed: () async {
-                                    if (_avatarData == null) return;
+                                    if (_avatarData == null ||
+                                        _isGeneratingAvatar)
+                                      return;
                                     final ok = await showDialog<bool>(
                                       context: context,
                                       builder: (ctx) => AlertDialog(
@@ -883,23 +886,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                       ),
                                     );
                                     if (ok != true) return;
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            AvatarEditorScreen(
-                                              avatarId: _avatarData!.id,
-                                              avatarName:
-                                                  _avatarData!.firstName,
-                                              avatarImageUrl:
-                                                  _profileImageUrl ??
-                                                  _avatarData!.avatarImageUrl ??
-                                                  (_imageUrls.isNotEmpty
-                                                      ? _imageUrls.first
-                                                      : null),
-                                            ),
-                                      ),
-                                    );
+                                    await _handleGenerateAvatar();
                                   },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: Colors.black,
@@ -1984,6 +1971,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       textFileUrls: allTexts,
       imageUrls: allImages,
       videoUrls: allVideos,
+      avatarImageUrl: _profileImageUrl,
       training: training,
       updatedAt: DateTime.now(),
     );
@@ -2047,18 +2035,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return AspectRatio(
       aspectRatio: 1,
       child: GestureDetector(
-        onTap: () => setState(() {
+        onTap: () async {
           if (_isDeleteMode) {
-            if (selected) {
-              _selectedRemoteImages.remove(url);
-            } else {
-              _selectedRemoteImages.add(url);
-            }
+            setState(() {
+              if (selected) {
+                _selectedRemoteImages.remove(url);
+              } else {
+                _selectedRemoteImages.add(url);
+              }
+            });
           } else {
-            _profileImageUrl = url;
-            _updateDirty();
+            setState(() {
+              _profileImageUrl = url;
+              _updateDirty();
+            });
+            // Krone sofort persistent speichern
+            await _persistTextFileUrls();
           }
-        }),
+        },
         onLongPress: () => setState(() {
           // Long-Press nur im Löschmodus relevant
           if (_isDeleteMode) {
@@ -2358,6 +2352,159 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
+  Future<File?> _downloadToTemp(String url, {String? suffix}) async {
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode != 200) return null;
+      final dir = await getTemporaryDirectory();
+      final name = 'dl_${DateTime.now().millisecondsSinceEpoch}${suffix ?? ''}';
+      final f = File('${dir.path}/$name');
+      await f.writeAsBytes(res.bodyBytes, flush: true);
+      return f;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _handleGenerateAvatar() async {
+    if (_avatarData == null) return;
+    if (_isGeneratingAvatar) return;
+    setState(() => _isGeneratingAvatar = true);
+    try {
+      final base = dotenv.env['BITHUMAN_BASE_URL']?.trim();
+      if (base == null || base.isEmpty) {
+        _showSystemSnack('BITHUMAN_BASE_URL fehlt (.env)');
+        return;
+      }
+
+      // Bildquelle bestimmen (lokal bevorzugen)
+      File? imageFile;
+      if ((_profileLocalPath ?? '').isNotEmpty) {
+        final f = File(_profileLocalPath!);
+        if (await f.exists()) imageFile = f;
+      }
+      imageFile ??= await _downloadToTemp(
+        _profileImageUrl ?? _avatarData!.avatarImageUrl ?? '',
+        suffix: '.png',
+      );
+      if (imageFile == null) {
+        _showSystemSnack('Kein Bild gefunden');
+        return;
+      }
+
+      // Audioquelle bestimmen (aktive Stimmprobe)
+      String? audioUrl = _activeAudioUrl;
+      if ((audioUrl == null || audioUrl.isEmpty) &&
+          _avatarData!.audioUrls.isNotEmpty) {
+        audioUrl = _avatarData!.audioUrls.first;
+      }
+      if (audioUrl == null || audioUrl.isEmpty) {
+        _showSystemSnack('Keine Audio-Stimmprobe vorhanden');
+        return;
+      }
+      final audioFile = await _downloadToTemp(audioUrl, suffix: '.mp3');
+      if (audioFile == null) {
+        _showSystemSnack('Audio kann nicht geladen werden');
+        return;
+      }
+
+      await _showBlockingProgress<void>(
+        title: 'Avatar wird generiert…',
+        message: 'Bild und Audio werden verarbeitet.',
+        task: () async {
+          // 1) Figure sicherstellen (nur wenn noch nicht vorhanden)
+          String? figureId;
+          String? modelHash;
+          try {
+            final bh =
+                _avatarData?.training?['bithuman'] as Map<String, dynamic>?;
+            figureId = (bh?['figureId'] as String?)?.trim();
+            modelHash = (bh?['modelHash'] as String?)?.trim();
+          } catch (_) {}
+          if ((figureId == null || figureId.isEmpty) && imageFile != null) {
+            final figUri = Uri.parse('$base/figure/create');
+            final m = http.MultipartRequest('POST', figUri);
+            m.files.add(
+              await http.MultipartFile.fromPath('image', imageFile!.path),
+            );
+            final fRes = await m.send();
+            if (fRes.statusCode >= 200 && fRes.statusCode < 300) {
+              final body = await fRes.stream.bytesToString();
+              final data = jsonDecode(body) as Map<String, dynamic>;
+              figureId = (data['figure_id'] as String?)?.trim();
+              modelHash = (data['runtime_model_hash'] as String?)?.trim();
+              // in Firestore speichern
+              final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
+              final bh = Map<String, dynamic>.from(tr['bithuman'] ?? {});
+              if ((figureId ?? '').isNotEmpty) bh['figureId'] = figureId;
+              if ((modelHash ?? '').isNotEmpty) bh['modelHash'] = modelHash;
+              tr['bithuman'] = bh;
+              final updated = _avatarData!.copyWith(
+                training: tr,
+                updatedAt: DateTime.now(),
+              );
+              final ok = await _avatarService.updateAvatar(updated);
+              if (ok) _applyAvatar(updated);
+            } else {
+              final b = await fRes.stream.bytesToString();
+              throw Exception(
+                'Figure create fehlgeschlagen: ${fRes.statusCode} ${b.isNotEmpty ? b : ''}',
+              );
+            }
+          }
+
+          final uri = Uri.parse('$base/generate-avatar');
+          final req = http.MultipartRequest('POST', uri);
+          req.files.add(
+            await http.MultipartFile.fromPath('image', imageFile!.path),
+          );
+          req.files.add(
+            await http.MultipartFile.fromPath('audio', audioFile.path),
+          );
+          if ((figureId ?? '').isNotEmpty) req.fields['figure_id'] = figureId!;
+          if ((modelHash ?? '').isNotEmpty)
+            req.fields['runtime_model_hash'] = modelHash!;
+          final streamed = await req.send();
+          if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
+            final bytes = await streamed.stream.toBytes();
+            final dir = await getTemporaryDirectory();
+            final out = File(
+              '${dir.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.mp4',
+            );
+            await out.writeAsBytes(bytes, flush: true);
+            // Sofort lokal anzeigen
+            await _playLocalInline(out);
+            // Hochladen
+            final uid = FirebaseAuth.instance.currentUser!.uid;
+            final path =
+                'avatars/$uid/${_avatarData!.id}/videos/${DateTime.now().millisecondsSinceEpoch}_gen.mp4';
+            final url = await FirebaseStorageService.uploadVideo(
+              out,
+              customPath: path,
+            );
+            if (url != null) {
+              setState(() {
+                _videoUrls.insert(0, url);
+              });
+              // Sofort persistieren (Firestore aktualisieren)
+              await _persistTextFileUrls();
+            }
+            _showSystemSnack('Avatar-Video erstellt');
+          } else {
+            final body = await streamed.stream.bytesToString();
+            _showSystemSnack(
+              'Generierung fehlgeschlagen: ${streamed.statusCode} ${body.isNotEmpty ? body : ''}',
+            );
+          }
+        },
+      );
+    } catch (e) {
+      _showSystemSnack('Fehler: $e');
+    } finally {
+      if (mounted) setState(() => _isGeneratingAvatar = false);
+    }
+  }
+
   Future<Uint8List?> _thumbnailForRemote(String url) async {
     try {
       if (_videoThumbCache.containsKey(url)) return _videoThumbCache[url];
@@ -2614,9 +2761,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             if (!mounted) return;
             setState(() {
               _imageUrls.insert(0, url);
-              _profileImageUrl = url;
+              if (_profileImageUrl == null || _profileImageUrl!.isEmpty) {
+                _profileImageUrl = url;
+              }
               _profileLocalPath = null; // nach Upload auf Remote wechseln
             });
+            // Sofort persistieren (Firestore aktualisieren)
+            await _persistTextFileUrls();
           }
         }
       }
@@ -2656,9 +2807,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           if (!mounted) return;
           setState(() {
             _imageUrls.insert(0, url);
-            _profileImageUrl = url;
+            if (_profileImageUrl == null || _profileImageUrl!.isEmpty) {
+              _profileImageUrl = url;
+            }
             _profileLocalPath = null;
           });
+          // Sofort persistieren (Firestore aktualisieren)
+          await _persistTextFileUrls();
         }
       }
     }
@@ -2693,6 +2848,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           setState(() {
             _videoUrls.add(url);
           });
+          // Sofort persistieren (Firestore aktualisieren)
+          await _persistTextFileUrls();
         }
       }
     } else {
@@ -2716,6 +2873,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           setState(() {
             _videoUrls.add(url);
           });
+          // Sofort persistieren (Firestore aktualisieren)
+          await _persistTextFileUrls();
         }
       }
     }
@@ -3496,6 +3655,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _selectedLocalImages.clear();
     _selectedRemoteVideos.clear();
     _selectedLocalVideos.clear();
+    // Persistiere Änderungen sofort (Storage + Firestore)
+    // Spezialsituation: Krone wurde gelöscht und es gibt KEINE weiteren Bilder → avatarImageUrl muss auf null
+    if (_profileImageUrl == null && _imageUrls.isEmpty) {
+      // Erzwinge Clear des Kronenfeldes in Firestore
+      final updated = _avatarData!.copyWith(
+        imageUrls: [],
+        videoUrls: [..._videoUrls],
+        textFileUrls: [..._textFileUrls],
+        avatarImageUrl: null,
+        clearAvatarImageUrl: true,
+        updatedAt: DateTime.now(),
+      );
+      await _avatarService.updateAvatar(updated);
+      _applyAvatar(updated);
+    } else {
+      await _persistTextFileUrls();
+    }
     _isDeleteMode = false;
     if (mounted) setState(() {});
   }
@@ -3523,18 +3699,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ],
       ),
       body: Container(
-        decoration: backgroundImage != null
-            ? BoxDecoration(
-                image: DecorationImage(
-                  image: NetworkImage(backgroundImage),
-                  fit: BoxFit.cover,
-                  colorFilter: ColorFilter.mode(
-                    Colors.black.withValues(alpha: 0.7),
-                    BlendMode.darken,
-                  ),
-                ),
-              )
-            : null,
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: backgroundImage != null
+                ? NetworkImage(backgroundImage)
+                : const AssetImage('assets/sunriza_complete/images/sunset1.jpg')
+                      as ImageProvider,
+            fit: BoxFit.cover,
+            colorFilter: ColorFilter.mode(
+              Colors.black.withValues(alpha: 0.7),
+              BlendMode.darken,
+            ),
+          ),
+        ),
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16.0),
           child: Form(
