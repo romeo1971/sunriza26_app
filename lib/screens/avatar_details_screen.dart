@@ -2517,7 +2517,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       );
 
       if (result == null) return null;
-      final tmp = await File('${input.path}.crop.jpg').create(recursive: true);
+      final dir = await getTemporaryDirectory();
+      final tmp = await File(
+        '${dir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png',
+      ).create(recursive: true);
       await tmp.writeAsBytes(result!, flush: true);
       return tmp;
     } catch (_) {
@@ -2589,8 +2592,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               }
             } catch (_) {}
           }
+          // Vorschau sofort auf lokales, gecropptes Bild setzen
+          if (mounted) {
+            setState(() {
+              _profileLocalPath = f.path;
+            });
+          }
+          // Endung passend zur Datei wählen (png bei Cropping, sonst jpg)
+          String ext = p.extension(f.path).toLowerCase();
+          if (ext.isEmpty ||
+              (ext != '.png' && ext != '.jpg' && ext != '.jpeg')) {
+            ext = '.jpg';
+          }
           final String path =
-              'avatars/$uid/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_$i.jpg';
+              'avatars/$uid/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_$i$ext';
           final url = await FirebaseStorageService.uploadImage(
             f,
             customPath: path,
@@ -2598,8 +2613,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           if (url != null) {
             if (!mounted) return;
             setState(() {
-              _imageUrls.add(url);
-              _profileImageUrl ??= _imageUrls.first;
+              _imageUrls.insert(0, url);
+              _profileImageUrl = url;
+              _profileLocalPath = null; // nach Upload auf Remote wechseln
             });
           }
         }
@@ -2620,8 +2636,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (cropped != null) {
           f = cropped;
         }
+        // Sofort lokale Vorschau anzeigen
+        if (mounted) {
+          setState(() {
+            _profileLocalPath = f.path;
+          });
+        }
+        String ext = p.extension(f.path).toLowerCase();
+        if (ext.isEmpty || (ext != '.png' && ext != '.jpg' && ext != '.jpeg')) {
+          ext = '.jpg';
+        }
         final String path =
-            'avatars/$uid/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_cam.jpg';
+            'avatars/$uid/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_cam$ext';
         final url = await FirebaseStorageService.uploadImage(
           f,
           customPath: path,
@@ -2629,8 +2655,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (url != null) {
           if (!mounted) return;
           setState(() {
-            _imageUrls.add(url);
-            _profileImageUrl ??= _imageUrls.first;
+            _imageUrls.insert(0, url);
+            _profileImageUrl = url;
+            _profileLocalPath = null;
           });
         }
       }
