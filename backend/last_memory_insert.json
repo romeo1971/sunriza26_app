@@ -1,11 +1,12 @@
 {
-  "stage": "skip_latest_optimization",
-  "index": "sunriza-u-local-a1",
-  "namespace": "u_local_a1",
-  "user_id": "u_local",
-  "avatar_id": "a1",
-  "text_len": 43,
+  "stage": "upsert_batch",
+  "index": "avatars-index",
+  "namespace": "u_test_a2",
+  "user_id": "u_test",
+  "avatar_id": "a2",
+  "text_len": 124,
   "chunks": 1,
   "dim": 1536,
-  "ts": 1758453298506
+  "inserted": 1,
+  "ts": 1758456675755
 }

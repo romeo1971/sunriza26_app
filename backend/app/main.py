@@ -13,6 +13,35 @@ from openai import OpenAI
 from google.cloud import texttospeech
 import base64, requests, json, tempfile, subprocess, threading
 
+# Firebase Admin SDK für Chat-Storage
+try:
+    import firebase_admin
+    from firebase_admin import credentials, firestore
+    
+    # Firebase initialisieren (falls noch nicht geschehen)
+    if not firebase_admin._apps:
+        # Versuche Service Account Key zu finden
+        service_account_paths = [
+            Path(__file__).resolve().parents[1] / "service-account-key.json",
+            Path(__file__).resolve().parents[2] / "service-account-key.json",
+        ]
+        for sa_path in service_account_paths:
+            if sa_path.exists():
+                cred = credentials.Certificate(str(sa_path))
+                firebase_admin.initialize_app(cred)
+                break
+        else:
+            # Fallback: Default credentials
+            firebase_admin.initialize_app()
+    
+    db = firestore.client()
+    FIREBASE_AVAILABLE = True
+except Exception as e:
+    logger = logging.getLogger("uvicorn.error")
+    logger.warning(f"Firebase nicht verfügbar: {e}")
+    db = None
+    FIREBASE_AVAILABLE = False
+
 from .chunking import chunk_text
 from .pinecone_client import (
     get_pinecone,
@@ -94,6 +123,117 @@ def _record_last_insert(data: Dict[str, Any]) -> None:
         _LAST_INSERT_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2))
     except Exception:
         pass
+
+
+def _store_chat_message(user_id: str, avatar_id: str, sender: str, content: str) -> str:
+    """Speichert Chat-Message in Firebase und gibt message_id zurück."""
+    if not FIREBASE_AVAILABLE or not db:
+        return f"msg-{int(time.time()*1000)}"
+    
+    try:
+        chat_id = f"{user_id}_{avatar_id}"
+        message_id = f"msg-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
+        timestamp = int(time.time() * 1000)
+        
+        message_data = {
+            "message_id": message_id,
+            "sender": sender,
+            "content": content,
+            "timestamp": timestamp,
+            "avatar_id": avatar_id,
+            "user_id": user_id,
+        }
+        
+        # Speichere in Firebase: avatarUserChats/{chat_id}/messages/{message_id}
+        db.collection("avatarUserChats").document(chat_id).collection("messages").document(message_id).set(message_data)
+        
+        # Zusätzlich Chat-Metadata aktualisieren
+        chat_metadata = {
+            "user_id": user_id,
+            "avatar_id": avatar_id,
+            "last_message_timestamp": timestamp,
+            "last_message_content": content[:100],  # Kurzer Preview
+            "last_sender": sender,
+        }
+        db.collection("avatarUserChats").document(chat_id).set(chat_metadata, merge=True)
+        
+        return message_id
+    except Exception as e:
+        logger.warning(f"Firebase Chat-Storage Fehler: {e}")
+        return f"msg-{int(time.time()*1000)}"
+
+
+def _get_chat_history(user_id: str, avatar_id: str, limit: int = 50, before_timestamp: int | None = None) -> tuple[List[Dict[str, Any]], bool]:
+    """Holt Chat-Verlauf aus Firebase."""
+    if not FIREBASE_AVAILABLE or not db:
+        return [], False
+    
+    try:
+        chat_id = f"{user_id}_{avatar_id}"
+        query = db.collection("avatarUserChats").document(chat_id).collection("messages").order_by("timestamp", direction=firestore.Query.DESCENDING).limit(limit + 1)
+        
+        if before_timestamp:
+            query = query.where("timestamp", "<", before_timestamp)
+        
+        docs = query.get()
+        messages = []
+        
+        for i, doc in enumerate(docs):
+            if i >= limit:  # Extra doc für has_more Check
+                break
+            data = doc.to_dict()
+            messages.append(data)
+        
+        has_more = len(docs) > limit
+        return messages, has_more
+    except Exception as e:
+        logger.warning(f"Firebase Chat-History Fehler: {e}")
+        return [], False
+
+
+def _store_chat_in_pinecone(user_id: str, avatar_id: str, user_message: str, avatar_response: str) -> None:
+    """Speichert Chat-Konversation in Pinecone für Psychogramm und semantische Suche."""
+    try:
+        # Kombiniere User-Message und Avatar-Response für Kontext
+        conversation_text = f"User: {user_message}\nAvatar: {avatar_response}"
+        
+        # Erstelle Embedding für die Konversation
+        embeddings_list, real_dim = _create_embeddings_with_timeout([conversation_text], EMBEDDING_MODEL, timeout_sec=10)
+        
+        namespace = f"{user_id}_{avatar_id}"
+        index_name = _pinecone_index_for(user_id, avatar_id)
+        
+        # Index sicherstellen
+        ensure_index_exists(
+            pc=pc,
+            index_name=index_name,
+            dimension=real_dim,
+            metric="cosine",
+            cloud=PINECONE_CLOUD,
+            region=PINECONE_REGION,
+        )
+        
+        # Chat-Vektor erstellen
+        chat_id = f"chat-{int(time.time()*1000)}"
+        vec = {
+            "id": chat_id,
+            "values": embeddings_list[0],
+            "metadata": {
+                "user_id": user_id,
+                "avatar_id": avatar_id,
+                "type": "chat_conversation",
+                "user_message": user_message,
+                "avatar_response": avatar_response,
+                "conversation_text": conversation_text,
+                "created_at": int(time.time()*1000),
+                "source": "chat",
+            },
+        }
+        
+        upsert_vector(pc, index_name, namespace, vec)
+        logger.info(f"Chat stored in Pinecone: {chat_id}")
+    except Exception as e:
+        logger.warning(f"Pinecone Chat-Storage Fehler: {e}")
 
 
 def _create_embeddings_with_timeout(texts: List[str], model: str, timeout_sec: int = 20) -> tuple[List[List[float]], int]:
@@ -239,116 +379,117 @@ def _process_memory_insert(payload: InsertRequest) -> InsertResponse:
     vectors: List[Dict[str, Any]] = []
     doc_id = f"{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
     created_at = int(time.time()*1000)
+    
     def _extract_storage_path(url: str | None) -> str | None:
         if not url:
             return None
         try:
-                # Firebase download URLs enthalten /o/<ENCODED_PATH>?...
-                parts = urllib.parse.urlparse(url)
-                if not parts.path:
-                    return None
-                # Suche nach '/o/' und nehme den Teil danach bis zum '?'
-                path = parts.path
-                if "/o/" in path:
-                    enc = path.split("/o/", 1)[1]
-                else:
-                    enc = path.lstrip("/")
-                # Falls Query leer ist, ist enc bereits der ganze Pfad
-                enc = enc if enc else ""
-                # URL-decoden und %2F -> '/'
-                decoded = urllib.parse.unquote(enc)
-                # Sicherheitsabschneidung: alles vor '?' entfernen (falls doch enthalten)
-                decoded = decoded.split('?', 1)[0]
-                return decoded
+            # Firebase download URLs enthalten /o/<ENCODED_PATH>?...
+            parts = urllib.parse.urlparse(url)
+            if not parts.path:
+                return None
+            # Suche nach '/o/' und nehme den Teil danach bis zum '?'
+            path = parts.path
+            if "/o/" in path:
+                enc = path.split("/o/", 1)[1]
+            else:
+                enc = path.lstrip("/")
+            # Falls Query leer ist, ist enc bereits der ganze Pfad
+            enc = enc if enc else ""
+            # URL-decoden und %2F -> '/'
+            decoded = urllib.parse.unquote(enc)
+            # Sicherheitsabschneidung: alles vor '?' entfernen (falls doch enthalten)
+            decoded = decoded.split('?', 1)[0]
+            return decoded
         except Exception:
             return None
 
-        storage_path = payload.file_path or _extract_storage_path(payload.file_url)
-        def _extract_file_name(url: str | None) -> str | None:
-            if not url:
-                return None
-            try:
-                fpath = _extract_storage_path(url)
-                if not fpath:
-                    return None
-                # letzter Pfadteil
-                base = fpath.rstrip('/').split('/')[-1]
-                return base or None
-            except Exception:
-                return None
-
-        file_name = payload.file_name or _extract_file_name(payload.file_url)
-
-        # Falls ein stabiler Datei-Bezug vorhanden ist (z. B. profile.txt):
-        # Alte Chunks zu dieser Datei vor dem Insert entfernen (Update-Semantik)
-        if storage_path or file_name:
-            try:
-                ors = []
-                if storage_path:
-                    ors.append({"file_path": {"$eq": storage_path}})
-                if file_name:
-                    ors.append({"file_name": {"$eq": file_name}})
-                flt = ors[0] if len(ors) == 1 else {"$or": ors}
-                delete_by_filter(pc=pc, index_name=index_name, namespace=namespace, flt=flt)
-            except Exception:
-                pass
-
-        for i, chunk in enumerate(chunks):
-            meta = {
-                "user_id": payload.user_id,
-                "avatar_id": payload.avatar_id,
-                "chunk_index": chunk["index"],
-                "doc_id": doc_id,
-                "created_at": created_at,
-                "source": (payload.source or ("file_upload" if payload.file_url else "text")),
-                # file_url nur setzen, wenn nicht None
-                "file_url": payload.file_url,
-                # stabiler Storage-Pfad (z. B. avatars/<uid>/<avatarId>/texts/..)
-                "file_path": storage_path,
-                # Dateiname für einfaches Filtern
-                "file_name": file_name,
-                "text": chunk["text"],
-            }
-            # None-Werte aus Metadaten entfernen (Pinecone erlaubt kein null)
-            meta = {k: v for k, v in meta.items() if v is not None}
-            vec = {
-                "id": f"{payload.avatar_id}-{doc_id}-{chunk['index']}",
-                "values": embeddings_list[i],
-                "metadata": meta,
-            }
-            vectors.append(vec)
-        
+    def _extract_file_name(url: str | None) -> str | None:
+        if not url:
+            return None
         try:
-            upsert_vectors(pc, index_name, namespace, vectors)
-            logger.info(f"MEMORY_INSERT upsert batch index='{index_name}' namespace='{namespace}' inserted={len(vectors)}")
-            _record_last_insert({**ctx, "stage": "upsert_batch", "inserted": len(vectors)})
-            return InsertResponse(
-                namespace=namespace,
-                inserted=len(vectors),
-                index_name=index_name,
-                model=EMBEDDING_MODEL,
-            )
-        except Exception as e:
-            logger.exception(f"MEMORY_INSERT upsert failed for index='{index_name}', falling back to base index '{PINECONE_INDEX}'")
-            _record_last_insert({**ctx, "stage": "upsert_error", "error": str(e)})
-            # Fallback: Basisindex verwenden
-            ensure_index_exists(
-                pc=pc,
-                index_name=PINECONE_INDEX,
-                dimension=EMBEDDING_DIM,
-                metric="cosine",
-                cloud=PINECONE_CLOUD,
-                region=PINECONE_REGION,
-            )
-            upsert_vectors(pc, PINECONE_INDEX, namespace, vectors)
-            logger.info(f"MEMORY_INSERT upsert batch index='{PINECONE_INDEX}' namespace='{namespace}' inserted={len(vectors)} (fallback)")
-            _record_last_insert({**ctx, "stage": "upsert_fallback", "inserted": len(vectors)})
-            return InsertResponse(
-                namespace=namespace,
-                inserted=len(vectors),
-                index_name=PINECONE_INDEX,
-                model=EMBEDDING_MODEL,
-            )
+            fpath = _extract_storage_path(url)
+            if not fpath:
+                return None
+            # letzter Pfadteil
+            base = fpath.rstrip('/').split('/')[-1]
+            return base or None
+        except Exception:
+            return None
+
+    storage_path = payload.file_path or _extract_storage_path(payload.file_url)
+    file_name = payload.file_name or _extract_file_name(payload.file_url)
+
+    # Falls ein stabiler Datei-Bezug vorhanden ist (z. B. profile.txt):
+    # Alte Chunks zu dieser Datei vor dem Insert entfernen (Update-Semantik)
+    if storage_path or file_name:
+        try:
+            ors = []
+            if storage_path:
+                ors.append({"file_path": {"$eq": storage_path}})
+            if file_name:
+                ors.append({"file_name": {"$eq": file_name}})
+            flt = ors[0] if len(ors) == 1 else {"$or": ors}
+            delete_by_filter(pc=pc, index_name=index_name, namespace=namespace, flt=flt)
+        except Exception:
+            pass
+
+    for i, chunk in enumerate(chunks):
+        meta = {
+            "user_id": payload.user_id,
+            "avatar_id": payload.avatar_id,
+            "chunk_index": chunk["index"],
+            "doc_id": doc_id,
+            "created_at": created_at,
+            "source": (payload.source or ("file_upload" if payload.file_url else "text")),
+            # file_url nur setzen, wenn nicht None
+            "file_url": payload.file_url,
+            # stabiler Storage-Pfad (z. B. avatars/<uid>/<avatarId>/texts/..)
+            "file_path": storage_path,
+            # Dateiname für einfaches Filtern
+            "file_name": file_name,
+            "text": chunk["text"],
+        }
+        # None-Werte aus Metadaten entfernen (Pinecone erlaubt kein null)
+        meta = {k: v for k, v in meta.items() if v is not None}
+        vec = {
+            "id": f"{payload.avatar_id}-{doc_id}-{chunk['index']}",
+            "values": embeddings_list[i],
+            "metadata": meta,
+        }
+        vectors.append(vec)
+    
+    try:
+        upsert_vectors(pc, index_name, namespace, vectors)
+        logger.info(f"MEMORY_INSERT upsert batch index='{index_name}' namespace='{namespace}' inserted={len(vectors)}")
+        _record_last_insert({**ctx, "stage": "upsert_batch", "inserted": len(vectors)})
+        return InsertResponse(
+            namespace=namespace,
+            inserted=len(vectors),
+            index_name=index_name,
+            model=EMBEDDING_MODEL,
+        )
+    except Exception as e:
+        logger.exception(f"MEMORY_INSERT upsert failed for index='{index_name}', falling back to base index '{PINECONE_INDEX}'")
+        _record_last_insert({**ctx, "stage": "upsert_error", "error": str(e)})
+        # Fallback: Basisindex verwenden
+        ensure_index_exists(
+            pc=pc,
+            index_name=PINECONE_INDEX,
+            dimension=EMBEDDING_DIM,
+            metric="cosine",
+            cloud=PINECONE_CLOUD,
+            region=PINECONE_REGION,
+        )
+        upsert_vectors(pc, PINECONE_INDEX, namespace, vectors)
+        logger.info(f"MEMORY_INSERT upsert batch index='{PINECONE_INDEX}' namespace='{namespace}' inserted={len(vectors)} (fallback)")
+        _record_last_insert({**ctx, "stage": "upsert_fallback", "inserted": len(vectors)})
+        return InsertResponse(
+            namespace=namespace,
+            inserted=len(vectors),
+            index_name=PINECONE_INDEX,
+            model=EMBEDDING_MODEL,
+        )
 
 
 class DeleteByFileRequest(BaseModel):
@@ -501,6 +642,25 @@ class ChatResponse(BaseModel):
     answer: str
     used_context: List[Dict[str, Any]]
     tts_audio_b64: str | None = None
+    chat_id: str | None = None  # Für Chat-Verlauf-Tracking
+
+class ChatMessage(BaseModel):
+    message_id: str
+    sender: str  # "user" oder "avatar"
+    content: str
+    timestamp: int
+    avatar_id: str
+    user_id: str
+
+class ChatHistoryRequest(BaseModel):
+    user_id: str
+    avatar_id: str
+    limit: int = 50
+    before_timestamp: int | None = None  # Für Paginierung
+
+class ChatHistoryResponse(BaseModel):
+    messages: List[ChatMessage]
+    has_more: bool
 
 class DebugUpsertRequest(BaseModel):
     user_id: str
@@ -996,59 +1156,51 @@ def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
             except Exception:
                 tts_b64 = None
 
-        return ChatResponse(answer=answer, used_context=context_items, tts_audio_b64=tts_b64)
+        # Chat-Storage: Speichere User-Message und Avatar-Response
+        try:
+            # Speichere User-Message in Firebase
+            user_msg_id = _store_chat_message(payload.user_id, payload.avatar_id, "user", payload.message)
+            
+            # Speichere Avatar-Response in Firebase
+            avatar_msg_id = _store_chat_message(payload.user_id, payload.avatar_id, "avatar", answer)
+            
+            # Speichere Konversation in Pinecone für Psychogramm
+            _store_chat_in_pinecone(payload.user_id, payload.avatar_id, payload.message, answer)
+            
+            chat_id = f"{payload.user_id}_{payload.avatar_id}"
+        except Exception as e:
+            logger.warning(f"Chat-Storage Fehler: {e}")
+            chat_id = None
+
+        return ChatResponse(answer=answer, used_context=context_items, tts_audio_b64=tts_b64, chat_id=chat_id)
     except Exception as e:
         logger.exception("Chat-Fehler")
         raise HTTPException(status_code=500, detail=f"Chat-Fehler: {e}")
 
     
 
-    # Should never reach here
-    return InsertResponse(namespace=namespace, inserted=0, index_name=index_name, model=EMBEDDING_MODEL)
+@app.post("/avatar/chat/history", response_model=ChatHistoryResponse)
+def get_chat_history(payload: ChatHistoryRequest) -> ChatHistoryResponse:
+    """Holt Chat-Verlauf für 'Ältere Nachrichten anzeigen' Button."""
+    try:
+        message_dicts, has_more = _get_chat_history(
+            payload.user_id, 
+            payload.avatar_id, 
+            payload.limit, 
+            payload.before_timestamp
+        )
+        messages = [ChatMessage(**msg) for msg in message_dicts]
+        return ChatHistoryResponse(messages=messages, has_more=has_more)
+    except Exception as e:
+        logger.exception("Chat-History Fehler")
+        raise HTTPException(status_code=500, detail=f"Chat-History Fehler: {e}")
 
 
 @app.post("/avatar/memory/insert", response_model=InsertResponse)
 def insert_avatar_memory(payload: InsertRequest) -> InsertResponse:
-    """Synchroner Insert mit echten OpenAI-Embeddings."""
+    """Synchroner Insert mit komplexer Chunk-Logik für Avatar-BRAIN-System."""
     logger.info("MEMORY_INSERT running synchronously")
-    
-    namespace = f"{payload.user_id}_{payload.avatar_id}"
-    index_name = _pinecone_index_for(payload.user_id, payload.avatar_id)
-    
-    try:
-        # Echte OpenAI-Embeddings erstellen
-        embeddings_list, real_dim = _create_embeddings_with_timeout([payload.full_text], EMBEDDING_MODEL, timeout_sec=20)
-        
-        # Index sicherstellen
-        ensure_index_exists(
-            pc=pc,
-            index_name=index_name,
-            dimension=real_dim,
-            metric="cosine",
-            cloud=PINECONE_CLOUD,
-            region=PINECONE_REGION,
-        )
-        
-        # Vektor erstellen und upserten
-        vec = {
-            "id": f"{payload.avatar_id}-{int(time.time()*1000)}",
-            "values": embeddings_list[0],
-            "metadata": {
-                "user_id": payload.user_id,
-                "avatar_id": payload.avatar_id,
-                "source": payload.source or "text",
-                "text": payload.full_text,
-                "created_at": int(time.time()*1000),
-            },
-        }
-        
-        upsert_vector(pc, index_name, namespace, vec)
-        logger.info(f"MEMORY_INSERT success index='{index_name}' namespace='{namespace}' id='{vec['id']}'")
-        
-        return InsertResponse(namespace=namespace, inserted=1, index_name=index_name, model=EMBEDDING_MODEL)
-    except Exception as e:
-        logger.exception("Insert Fehler")
-        raise HTTPException(status_code=500, detail=f"Insert Fehler: {e}")
+    return _process_memory_insert(payload)
 
 
 @app.post("/debug/upsert", response_model=InsertResponse)
