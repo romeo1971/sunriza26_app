@@ -1,0 +1,11 @@
+{
+  "stage": "skip_latest_optimization",
+  "index": "sunriza-u-local-a1",
+  "namespace": "u_local_a1",
+  "user_id": "u_local",
+  "avatar_id": "a1",
+  "text_len": 43,
+  "chunks": 1,
+  "dim": 1536,
+  "ts": 1758453298506
+}

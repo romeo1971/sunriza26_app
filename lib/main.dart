@@ -24,11 +24,14 @@ import 'package:flutter/foundation.dart'
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // .env laden (für Firebase Web API Key etc.)
+  // .env laden (für Firebase Web API Key etc.) – fehlende Datei tolerieren
+  try {
+    await dotenv.load(fileName: '.env');
+  } catch (e) {
+    // .env optional – still starten ohne Logausgabe
+  }
 
-  await dotenv.load(fileName: '.env');
-
-  // Firebase initialisieren
+  // Firebase immer initialisieren
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   // Google Sign-In initialisieren (7.x)
@@ -36,6 +39,9 @@ void main() async {
 
   // Firebase Auth Sprache auf Gerätesprache setzen
   await FirebaseAuth.instance.setLanguageCode(null);
+
+  // Debug: Base-URL ausgeben
+  // print('BASE=${EnvService.memoryApiBaseUrl()}');
 
   runApp(const SunrizaApp());
 }

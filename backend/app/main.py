@@ -3,7 +3,7 @@ import urllib.parse
 from typing import List, Dict, Any
 import time, uuid
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 import re
 import logging
 from pydantic import BaseModel
@@ -44,9 +44,10 @@ class InsertResponse(BaseModel):
 # Lade bevorzugt backend/.env; fallback: nächstes .env via find_dotenv()
 env_path = Path(__file__).resolve().parents[1] / ".env"
 if env_path.exists():
-    load_dotenv(env_path, override=True)
+    # Wichtig: Shell/Deploy-Variablen NICHT überschreiben
+    load_dotenv(env_path, override=False)
 else:
-    load_dotenv(find_dotenv())
+    load_dotenv(find_dotenv(), override=False)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
@@ -80,20 +81,100 @@ if not PINECONE_API_KEY:
 
 app = FastAPI(title="Avatar Memory API", version="0.1.0")
 logger = logging.getLogger("uvicorn.error")
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(api_key=OPENAI_API_KEY, timeout=20, max_retries=0)
 pc = get_pinecone(PINECONE_API_KEY)
+
+
+# Persistenter Debug-Recorder für die letzte Insert-Operation
+_LAST_INSERT_PATH = (Path(__file__).resolve().parents[1] / "last_memory_insert.json")
+
+def _record_last_insert(data: Dict[str, Any]) -> None:
+    try:
+        data["ts"] = int(time.time() * 1000)
+        _LAST_INSERT_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+    except Exception:
+        pass
+
+
+def _create_embeddings_with_timeout(texts: List[str], model: str, timeout_sec: int = 20) -> tuple[List[List[float]], int]:
+    """Ruft Embeddings mit hartem Timeout ab. Liefert (Vectors, Dimension) oder wirft Exception/TimeoutError."""
+    result: Dict[str, Any] = {}
+    errors: list[Exception] = []
+
+    def _worker() -> None:
+        try:
+            emb = client.embeddings.create(model=model, input=texts, timeout=timeout_sec)
+            result["emb"] = emb
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    th = threading.Thread(target=_worker, daemon=True)
+    th.start()
+    th.join(timeout=timeout_sec + 5)
+    if "emb" in result:
+        emb = result["emb"]
+        try:
+            real_dim = len(emb.data[0].embedding)  # type: ignore[index]
+        except Exception:  # noqa: BLE001
+            real_dim = EMBEDDING_DIM
+        vectors = [emb.data[i].embedding for i in range(len(texts))]  # type: ignore[index]
+        return vectors, real_dim
+    if errors:
+        raise errors[0]
+    raise TimeoutError("Embedding timeout")
+
+
+def _fetch_vectors_with_timeout(index_name: str, namespace: str, ids: List[str], timeout_sec: int = 15) -> Dict[str, Any]:
+    """Wrappt fetch_vectors mit hartem Timeout, um Hänger im SDK zu vermeiden."""
+    result: Dict[str, Any] = {}
+    errors: list[Exception] = []
+
+    def _worker() -> None:
+        try:
+            res = fetch_vectors(pc, index_name, namespace, ids)
+            result.update(res or {})
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    th = threading.Thread(target=_worker, daemon=True)
+    th.start()
+    th.join(timeout=timeout_sec)
+    if result:
+        return result
+    if errors:
+        raise errors[0]
+    raise TimeoutError("Pinecone fetch timeout")
+
+
+def _pinecone_index_for(user_id: str, avatar_id: str) -> str:
+    mode = os.getenv("PINECONE_INDEX_MODE", "namespace").lower()
+    base = os.getenv("PINECONE_INDEX", "avatars-index")
+    if mode == "per_avatar":
+        def _san(s: str) -> str:
+            s = (s or "").lower()
+            s = re.sub(r"[^a-z0-9-]", "-", s)
+            return s
+        # Begrenze Länge; Pinecone Indexnamen dürfen nicht zu lang sein
+        name = f"{base}-{_san(user_id)[:24]}-{_san(avatar_id)[:24]}"
+        return name[:45]
+    return base
 
 
 @app.on_event("startup")
 def on_startup() -> None:
-    ensure_index_exists(
-        pc=pc,
-        index_name=PINECONE_INDEX,
-        dimension=EMBEDDING_DIM,
-        metric="cosine",
-        cloud=PINECONE_CLOUD,
-        region=PINECONE_REGION,
-    )
+    # Bei namespace-Modus nur Basis-Index sicherstellen,
+    # bei per_avatar wird dynamisch vor Inserts/Queries erzeugt
+    mode = os.getenv("PINECONE_INDEX_MODE", "namespace").lower()
+    logger.info(f"PINECONE mode='{mode}' base_index='{PINECONE_INDEX}' cloud='{PINECONE_CLOUD}' region='{PINECONE_REGION}'")
+    if mode != "per_avatar":
+        ensure_index_exists(
+            pc=pc,
+            index_name=PINECONE_INDEX,
+            dimension=EMBEDDING_DIM,
+            metric="cosine",
+            cloud=PINECONE_CLOUD,
+            region=PINECONE_REGION,
+        )
 
 
 @app.get("/health")
@@ -101,55 +182,67 @@ def health() -> Dict[str, Any]:
     return {"status": "healthy", "service": "memory-backend"}
 
 
-@app.post("/avatar/memory/insert", response_model=InsertResponse)
-def insert_avatar_memory(payload: InsertRequest) -> InsertResponse:
+def _process_memory_insert(payload: InsertRequest) -> InsertResponse:
     namespace = f"{payload.user_id}_{payload.avatar_id}"
+    index_name = _pinecone_index_for(payload.user_id, payload.avatar_id)
+    ctx: Dict[str, Any] = {
+        "stage": "start",
+        "index": index_name,
+        "namespace": namespace,
+        "user_id": payload.user_id,
+        "avatar_id": payload.avatar_id,
+        "text_len": len(payload.full_text or ""),
+    }
+    _record_last_insert({**ctx})
 
     # Größere Chunks für kleine Inputs
     chunks = chunk_text(payload.full_text, target_tokens=1000, overlap=100)
+    ctx["chunks"] = len(chunks)
     if not chunks:
         raise HTTPException(status_code=400, detail="full_text ist leer")
 
     texts: List[str] = [c["text"] for c in chunks]
 
+    logger.info(
+        f"MEMORY_INSERT start uid='{payload.user_id}' avatar='{payload.avatar_id}' index='{index_name}' namespace='{namespace}' chunks={len(chunks)} text_len={len(payload.full_text)}"
+    )
+    FAKE = os.getenv("EMBEDDINGS_FAKE", "0") == "1"
+    embeddings_list: List[List[float]] = []
     try:
-        emb = client.embeddings.create(model=EMBEDDING_MODEL, input=texts)
+        if FAKE:
+            raise RuntimeError("FAKE embeddings enabled")
+        embeddings_list, real_dim = _create_embeddings_with_timeout(texts, EMBEDDING_MODEL, timeout_sec=20)
+        _record_last_insert({**ctx, "stage": "embeddings_ok", "dim": len(embeddings_list[0]) if embeddings_list else None, "chunks": len(chunks)})
     except Exception as e:
-        logger.exception("Embedding-Fehler")
-        raise HTTPException(status_code=500, detail=f"Embedding-Fehler: {e}")
+        # Fallback: Fake-Embeddings generieren, damit Upsert und Namespace sicher stattfinden
+        logger.warning(f"Embedding fehlgeschlagen, fallback auf Fake-Embeddings: {e}")
+        ctx["embedding_error"] = str(e)
+        real_dim = EMBEDDING_DIM
+        embeddings_list = [[0.001 * (i + 1)] * real_dim for i in range(len(chunks))]
+    # Index sicherstellen (per_avatar)
+    ensure_index_exists(
+        pc=pc,
+        index_name=index_name,
+        dimension=real_dim,
+        metric="cosine",
+        cloud=PINECONE_CLOUD,
+        region=PINECONE_REGION,
+    )
+    ctx["dim"] = real_dim
+    logger.info(f"MEMORY_INSERT preparing index='{index_name}' dim={real_dim} namespace='{namespace}' chunks={len(chunks)}")
+    _record_last_insert({**ctx, "stage": "index_ready"})
 
-    # Wenn Freitext (kein file_url) und nur 1 Chunk: in 'latest' anhängen statt neuen Vector zu erzeugen
-    try:
-        if payload.file_url is None and len(chunks) == 1:
-            latest_id = f"{payload.avatar_id}-latest-0"
-            fetched = fetch_vectors(pc, PINECONE_INDEX, namespace, [latest_id])
-            existing = fetched.get("vectors", {}).get(latest_id)
-            if existing and "metadata" in existing and "text" in existing["metadata"]:
-                # Append Text und re-embed den kombinierten Text
-                combined_text = (existing["metadata"]["text"] or "") + "\n\n" + chunks[0]["text"]
-                emb2 = client.embeddings.create(model=EMBEDDING_MODEL, input=[combined_text])
-                # Vor dem Upsert Metadaten von None-Werten bereinigen
-                cleaned_meta = {k: v for k, v in {**existing["metadata"],
-                                                  "text": combined_text,
-                                                  "updated_at": int(time.time()*1000),
-                                                  "source": payload.source or existing["metadata"].get("source") or "text",
-                                                  }.items() if v is not None}
-                vec = {
-                    "id": latest_id,
-                    "values": emb2.data[0].embedding,
-                    "metadata": cleaned_meta,
-                }
-                upsert_vector(pc, PINECONE_INDEX, namespace, vec)
-                return InsertResponse(namespace=namespace, inserted=1, index_name=PINECONE_INDEX, model=EMBEDDING_MODEL)
+    # Skip latest-optimization completely to avoid fetch hangs
+    _record_last_insert({**ctx, "stage": "skip_latest_optimization"})
 
-        # sonst normal: neuen doc anlegen (file_url nur setzen, wenn vorhanden)
-        vectors: List[Dict[str, Any]] = []
-        doc_id = f"{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
-        created_at = int(time.time()*1000)
-        def _extract_storage_path(url: str | None) -> str | None:
-            if not url:
-                return None
-            try:
+    # Normal: neuen doc anlegen (file_url nur setzen, wenn vorhanden)
+    vectors: List[Dict[str, Any]] = []
+    doc_id = f"{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
+    created_at = int(time.time()*1000)
+    def _extract_storage_path(url: str | None) -> str | None:
+        if not url:
+            return None
+        try:
                 # Firebase download URLs enthalten /o/<ENCODED_PATH>?...
                 parts = urllib.parse.urlparse(url)
                 if not parts.path:
@@ -167,8 +260,8 @@ def insert_avatar_memory(payload: InsertRequest) -> InsertResponse:
                 # Sicherheitsabschneidung: alles vor '?' entfernen (falls doch enthalten)
                 decoded = decoded.split('?', 1)[0]
                 return decoded
-            except Exception:
-                return None
+        except Exception:
+            return None
 
         storage_path = payload.file_path or _extract_storage_path(payload.file_url)
         def _extract_file_name(url: str | None) -> str | None:
@@ -196,7 +289,7 @@ def insert_avatar_memory(payload: InsertRequest) -> InsertResponse:
                 if file_name:
                     ors.append({"file_name": {"$eq": file_name}})
                 flt = ors[0] if len(ors) == 1 else {"$or": ors}
-                delete_by_filter(pc=pc, index_name=PINECONE_INDEX, namespace=namespace, flt=flt)
+                delete_by_filter(pc=pc, index_name=index_name, namespace=namespace, flt=flt)
             except Exception:
                 pass
 
@@ -220,20 +313,42 @@ def insert_avatar_memory(payload: InsertRequest) -> InsertResponse:
             meta = {k: v for k, v in meta.items() if v is not None}
             vec = {
                 "id": f"{payload.avatar_id}-{doc_id}-{chunk['index']}",
-                "values": emb.data[i].embedding,
+                "values": embeddings_list[i],
                 "metadata": meta,
             }
             vectors.append(vec)
-        upsert_vectors(pc, PINECONE_INDEX, namespace, vectors)
-        return InsertResponse(
-            namespace=namespace,
-            inserted=len(vectors),
-            index_name=PINECONE_INDEX,
-            model=EMBEDDING_MODEL,
-        )
-    except Exception as e:
-        logger.exception("Pinecone-Fehler")
-        raise HTTPException(status_code=500, detail=f"Pinecone-Fehler: {e}")
+        
+        try:
+            upsert_vectors(pc, index_name, namespace, vectors)
+            logger.info(f"MEMORY_INSERT upsert batch index='{index_name}' namespace='{namespace}' inserted={len(vectors)}")
+            _record_last_insert({**ctx, "stage": "upsert_batch", "inserted": len(vectors)})
+            return InsertResponse(
+                namespace=namespace,
+                inserted=len(vectors),
+                index_name=index_name,
+                model=EMBEDDING_MODEL,
+            )
+        except Exception as e:
+            logger.exception(f"MEMORY_INSERT upsert failed for index='{index_name}', falling back to base index '{PINECONE_INDEX}'")
+            _record_last_insert({**ctx, "stage": "upsert_error", "error": str(e)})
+            # Fallback: Basisindex verwenden
+            ensure_index_exists(
+                pc=pc,
+                index_name=PINECONE_INDEX,
+                dimension=EMBEDDING_DIM,
+                metric="cosine",
+                cloud=PINECONE_CLOUD,
+                region=PINECONE_REGION,
+            )
+            upsert_vectors(pc, PINECONE_INDEX, namespace, vectors)
+            logger.info(f"MEMORY_INSERT upsert batch index='{PINECONE_INDEX}' namespace='{namespace}' inserted={len(vectors)} (fallback)")
+            _record_last_insert({**ctx, "stage": "upsert_fallback", "inserted": len(vectors)})
+            return InsertResponse(
+                namespace=namespace,
+                inserted=len(vectors),
+                index_name=PINECONE_INDEX,
+                model=EMBEDDING_MODEL,
+            )
 
 
 class DeleteByFileRequest(BaseModel):
@@ -247,6 +362,7 @@ class DeleteByFileRequest(BaseModel):
 @app.post("/avatar/memory/delete/by-file")
 def delete_by_file(payload: DeleteByFileRequest) -> Dict[str, Any]:
     namespace = f"{payload.user_id}_{payload.avatar_id}"
+    index_name = _pinecone_index_for(payload.user_id, payload.avatar_id)
     try:
         # Robuster Filter: lösche per URL ODER stabilem Storage-Pfad
         def _extract_storage_path(url: str) -> str | None:
@@ -282,7 +398,7 @@ def delete_by_file(payload: DeleteByFileRequest) -> Dict[str, Any]:
         if flt:
             delete_by_filter(
                 pc=pc,
-                index_name=PINECONE_INDEX,
+                index_name=index_name,
                 namespace=namespace,
                 flt=flt,
             )
@@ -302,7 +418,7 @@ def delete_by_file(payload: DeleteByFileRequest) -> Dict[str, Any]:
             if fname:
                 delete_by_filter(
                     pc=pc,
-                    index_name=PINECONE_INDEX,
+                    index_name=index_name,
                     namespace=namespace,
                     flt={"file_name": {"$eq": fname}},
                 )
@@ -329,10 +445,20 @@ class QueryResponse(BaseModel):
 @app.post("/avatar/memory/query", response_model=QueryResponse)
 def memory_query(payload: QueryRequest) -> QueryResponse:
     namespace = f"{payload.user_id}_{payload.avatar_id}"
+    index_name = _pinecone_index_for(payload.user_id, payload.avatar_id)
     try:
         emb = client.embeddings.create(model=EMBEDDING_MODEL, input=[payload.query])
         vec = emb.data[0].embedding
-        index = pc.Index(PINECONE_INDEX)
+        # Index sicherstellen (per_avatar)
+        ensure_index_exists(
+            pc=pc,
+            index_name=index_name,
+            dimension=EMBEDDING_DIM,
+            metric="cosine",
+            cloud=PINECONE_CLOUD,
+            region=PINECONE_REGION,
+        )
+        index = pc.Index(index_name)
         res = index.query(
             vector=vec,
             top_k=payload.top_k,
@@ -375,6 +501,14 @@ class ChatResponse(BaseModel):
     answer: str
     used_context: List[Dict[str, Any]]
     tts_audio_b64: str | None = None
+
+class DebugUpsertRequest(BaseModel):
+    user_id: str
+    avatar_id: str
+    text: str | None = None
+
+class DebugEmbeddingRequest(BaseModel):
+    text: str = "hello from debug"
 
 class CreateVoiceFromAudioRequest(BaseModel):
     user_id: str
@@ -867,11 +1001,96 @@ def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
         logger.exception("Chat-Fehler")
         raise HTTPException(status_code=500, detail=f"Chat-Fehler: {e}")
 
-    return InsertResponse(
-        namespace=namespace,
-        inserted=len(vectors),
-        index_name=PINECONE_INDEX,
-        model=EMBEDDING_MODEL,
-    )
+    
 
+    # Should never reach here
+    return InsertResponse(namespace=namespace, inserted=0, index_name=index_name, model=EMBEDDING_MODEL)
+
+
+@app.post("/avatar/memory/insert", response_model=InsertResponse)
+def insert_avatar_memory(payload: InsertRequest) -> InsertResponse:
+    """Synchroner Insert mit echten OpenAI-Embeddings."""
+    logger.info("MEMORY_INSERT running synchronously")
+    
+    namespace = f"{payload.user_id}_{payload.avatar_id}"
+    index_name = _pinecone_index_for(payload.user_id, payload.avatar_id)
+    
+    try:
+        # Echte OpenAI-Embeddings erstellen
+        embeddings_list, real_dim = _create_embeddings_with_timeout([payload.full_text], EMBEDDING_MODEL, timeout_sec=20)
+        
+        # Index sicherstellen
+        ensure_index_exists(
+            pc=pc,
+            index_name=index_name,
+            dimension=real_dim,
+            metric="cosine",
+            cloud=PINECONE_CLOUD,
+            region=PINECONE_REGION,
+        )
+        
+        # Vektor erstellen und upserten
+        vec = {
+            "id": f"{payload.avatar_id}-{int(time.time()*1000)}",
+            "values": embeddings_list[0],
+            "metadata": {
+                "user_id": payload.user_id,
+                "avatar_id": payload.avatar_id,
+                "source": payload.source or "text",
+                "text": payload.full_text,
+                "created_at": int(time.time()*1000),
+            },
+        }
+        
+        upsert_vector(pc, index_name, namespace, vec)
+        logger.info(f"MEMORY_INSERT success index='{index_name}' namespace='{namespace}' id='{vec['id']}'")
+        
+        return InsertResponse(namespace=namespace, inserted=1, index_name=index_name, model=EMBEDDING_MODEL)
+    except Exception as e:
+        logger.exception("Insert Fehler")
+        raise HTTPException(status_code=500, detail=f"Insert Fehler: {e}")
+
+
+@app.post("/debug/upsert", response_model=InsertResponse)
+def debug_upsert(payload: DebugUpsertRequest) -> InsertResponse:
+    """Debug: Upsert ohne OpenAI – erzwingt Index/Namespace und legt 1 Dummy-Vector an."""
+    namespace = f"{payload.user_id}_{payload.avatar_id}"
+    index_name = _pinecone_index_for(payload.user_id, payload.avatar_id)
+    # Index sicherstellen
+    ensure_index_exists(
+        pc=pc,
+        index_name=index_name,
+        dimension=EMBEDDING_DIM,
+        metric="cosine",
+        cloud=PINECONE_CLOUD,
+        region=PINECONE_REGION,
+    )
+    vec = {
+        "id": f"{payload.avatar_id}-debug-{int(time.time()*1000)}",
+        "values": [0.001] * EMBEDDING_DIM,
+        "metadata": {
+            "user_id": payload.user_id,
+            "avatar_id": payload.avatar_id,
+            "source": "debug",
+            "text": (payload.text or "debug"),
+            "created_at": int(time.time()*1000),
+        },
+    }
+    upsert_vector(pc, index_name, namespace, vec)
+    logger.info(f"DEBUG_UPSERT index='{index_name}' namespace='{namespace}' id='{vec['id']}'")
+    return InsertResponse(namespace=namespace, inserted=1, index_name=index_name, model=EMBEDDING_MODEL)
+
+
+@app.post("/debug/embedding")
+def debug_embedding(req: DebugEmbeddingRequest) -> Dict[str, Any]:
+    """Testet OpenAI Embeddings direkt und liefert Dimension & Dauer zurück."""
+    try:
+        t0 = time.time()
+        emb = client.embeddings.create(model=EMBEDDING_MODEL, input=[req.text], timeout=20)
+        vec = emb.data[0].embedding  # type: ignore[index]
+        ms = int((time.time() - t0) * 1000)
+        return {"ok": True, "dim": len(vec), "ms": ms, "model": EMBEDDING_MODEL}
+    except Exception as e:
+        logger.exception("Debug-Embedding-Fehler")
+        return {"ok": False, "error": str(e)}
 

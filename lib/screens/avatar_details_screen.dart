@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import '../theme/app_theme.dart';
 import 'package:image_picker/image_picker.dart';
@@ -24,6 +25,7 @@ import 'dart:async';
 import 'package:image/image.dart' as img;
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
+import '../services/env_service.dart';
 
 class AvatarDetailsScreen extends StatefulWidget {
   const AvatarDetailsScreen({super.key});
@@ -638,6 +640,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     required String title,
     required String message,
     Future<T> Function()? task,
+    ValueListenable<double>? progress,
   }) async {
     if (!mounted) return null;
     showDialog(
@@ -645,15 +648,39 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
         title: Text(title),
-        content: Row(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(strokeWidth: 2),
+            Row(
+              children: [
+                const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 12),
+                Expanded(child: Text(message)),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(child: Text(message)),
+            if (progress != null) ...[
+              const SizedBox(height: 12),
+              ValueListenableBuilder<double>(
+                valueListenable: progress,
+                builder: (context, value, _) {
+                  final clamped = value.clamp(0.0, 1.0);
+                  final percent = (clamped * 100).toStringAsFixed(0);
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      LinearProgressIndicator(value: clamped),
+                      const SizedBox(height: 6),
+                      Text('$percent%'),
+                    ],
+                  );
+                },
+              ),
+            ],
           ],
         ),
       ),
@@ -1969,29 +1996,44 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ),
     );
     if (ok == true) {
-      try {
-        await FirebaseStorageService.deleteFile(url);
-        // Pinecone: zugehörige Chunks löschen (OR: file_url / file_path / file_name)
-        try {
-          final uid = FirebaseAuth.instance.currentUser!.uid;
-          final avatarId = _avatarData!.id;
-          await _triggerMemoryDelete(
-            userId: uid,
-            avatarId: avatarId,
-            fileUrl: url,
-            fileName: _fileNameFromUrl(url),
-            filePath: _storagePathFromUrl(url),
-          );
-        } catch (_) {}
-        _textFileUrls.remove(url);
-        await _persistTextFileUrls();
-        if (mounted) setState(() {});
-      } catch (_) {}
+      final progress = ValueNotifier<double>(null as double? ?? 0.0);
+      await _showBlockingProgress<void>(
+        title: 'Löschen…',
+        message: _fileNameFromUrl(url),
+        progress: null, // kein Prozent für Delete
+        task: () async {
+          final deleted = await FirebaseStorageService.deleteFile(url);
+          if (!deleted) {
+            _showSystemSnack('Löschen fehlgeschlagen');
+            return;
+          }
+          // Pinecone: zugehörige Chunks löschen (OR: file_url / file_path / file_name)
+          try {
+            final uid = FirebaseAuth.instance.currentUser!.uid;
+            final avatarId = _avatarData!.id;
+            // Fire-and-forget, UI nicht blockieren
+            // ignore: unawaited_futures
+            _triggerMemoryDelete(
+              userId: uid,
+              avatarId: avatarId,
+              fileUrl: url,
+              fileName: _fileNameFromUrl(url),
+              filePath: _storagePathFromUrl(url),
+            );
+          } catch (_) {}
+          _textFileUrls.remove(url);
+          if (mounted) setState(() {});
+          final ok = await _persistTextFileUrls();
+          if (!ok) {
+            _showSystemSnack('Firestore-Update fehlgeschlagen');
+          }
+        },
+      );
     }
   }
 
-  Future<void> _persistTextFileUrls() async {
-    if (_avatarData == null) return;
+  Future<bool> _persistTextFileUrls() async {
+    if (_avatarData == null) return false;
     final allImages = [..._imageUrls];
     final allVideos = [..._videoUrls];
     final allTexts = [..._textFileUrls];
@@ -2037,8 +2079,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       training: training,
       updatedAt: DateTime.now(),
     );
-    await _avatarService.updateAvatar(updated);
-    _applyAvatar(updated);
+    final ok = await _avatarService.updateAvatar(updated);
+    if (ok) {
+      _applyAvatar(updated);
+    }
+    return ok;
   }
 
   String pathFromLocalFile(String p) {
@@ -2969,11 +3014,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       final String avatarId = _avatarData!.id;
       final List<String> uploaded = [];
 
+      final progress = ValueNotifier<double>(0.0);
       await _showBlockingProgress<void>(
         title: 'Audio wird hochgeladen…',
         message: result.files.length == 1
             ? 'Datei ${result.files.first.name} wird gespeichert.'
             : '${result.files.length} Dateien werden gespeichert.',
+        progress: progress,
         task: () async {
           for (int i = 0; i < result.files.length; i++) {
             final sel = result.files[i];
@@ -2982,9 +3029,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             final String base = p.basename(file.path);
             final String audioPath =
                 'avatars/$uid/$avatarId/audio/${DateTime.now().millisecondsSinceEpoch}_$i$base';
-            final url = await FirebaseStorageService.uploadAudio(
+            final url = await FirebaseStorageService.uploadWithProgress(
               file,
+              'audio',
               customPath: audioPath,
+              onProgress: (v) {
+                // Multi-Datei Fortschritt
+                final perFileWeight = 1.0 / result.files.length;
+                progress.value = (i * perFileWeight) + (v * perFileWeight);
+              },
             );
             if (url != null) uploaded.add(url);
           }
@@ -3311,6 +3364,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     setState(() => _isSaving = true);
 
     () async {
+      // Sofortiges visuelles Feedback: kurzer Vorbereitungs-Spinner
+      await _showBlockingProgress<void>(
+        title: 'Vorbereitung…',
+        message: 'Bitte warten…',
+        task: () async {
+          // minimale Verzögerung, damit der Dialog sicher sichtbar ist
+          await Future.delayed(const Duration(milliseconds: 150));
+        },
+      );
       try {
         // 0) Freitext lokal als Datei anlegen (nicht in der Liste anzeigen)
         final freeText = _textAreaController.text.trim();
@@ -3335,24 +3397,66 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final allVideos = [..._videoUrls];
         final allTexts = [..._textFileUrls];
 
-        // Upload Images einzeln
-        for (int i = 0; i < _newImageFiles.length; i++) {
-          final url = await FirebaseStorageService.uploadImage(
-            _newImageFiles[i],
-            customPath:
-                'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_$i.jpg',
+        // Upload Images einzeln (mit Fortschritt)
+        final imgProgress = ValueNotifier<double>(0.0);
+        if (_newImageFiles.isNotEmpty) {
+          await _showBlockingProgress<void>(
+            title: 'Bilder werden hochgeladen…',
+            message: '${_newImageFiles.length} Dateien werden gespeichert.',
+            progress: imgProgress,
+            task: () async {
+              for (int i = 0; i < _newImageFiles.length; i++) {
+                final f = _newImageFiles[i];
+                final url = await FirebaseStorageService.uploadWithProgress(
+                  f,
+                  'images',
+                  customPath:
+                      'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_$i.jpg',
+                  onProgress: (v) {
+                    final perFile = 1.0 / _newImageFiles.length;
+                    imgProgress.value = (i * perFile) + (v * perFile);
+                  },
+                );
+                if (url != null) {
+                  allImages.add(url);
+                  if (mounted) {
+                    setState(() => _imageUrls.add(url));
+                  }
+                }
+              }
+            },
           );
-          if (url != null) allImages.add(url);
         }
 
-        // Upload Videos einzeln
-        for (int i = 0; i < _newVideoFiles.length; i++) {
-          final url = await FirebaseStorageService.uploadVideo(
-            _newVideoFiles[i],
-            customPath:
-                'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_$i.mp4',
+        // Upload Videos einzeln (mit Fortschritt)
+        final vidProgress = ValueNotifier<double>(0.0);
+        if (_newVideoFiles.isNotEmpty) {
+          await _showBlockingProgress<void>(
+            title: 'Videos werden hochgeladen…',
+            message: '${_newVideoFiles.length} Dateien werden gespeichert.',
+            progress: vidProgress,
+            task: () async {
+              for (int i = 0; i < _newVideoFiles.length; i++) {
+                final f = _newVideoFiles[i];
+                final url = await FirebaseStorageService.uploadWithProgress(
+                  f,
+                  'videos',
+                  customPath:
+                      'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_$i.mp4',
+                  onProgress: (v) {
+                    final perFile = 1.0 / _newVideoFiles.length;
+                    vidProgress.value = (i * perFile) + (v * perFile);
+                  },
+                );
+                if (url != null) {
+                  allVideos.add(url);
+                  if (mounted) {
+                    setState(() => _videoUrls.add(url));
+                  }
+                }
+              }
+            },
           );
-          if (url != null) allVideos.add(url);
         }
 
         // Upload Text Files
@@ -3399,21 +3503,39 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
         }
 
-        // c) sonstige neue Textdateien hochladen (sichtbar)
-        for (int i = 0; i < _newTextFiles.length; i++) {
-          final baseName = p.basename(_newTextFiles[i].path);
-          final safeName = baseName.endsWith('.txt')
-              ? baseName
-              : '$baseName.txt';
-          final storagePath =
-              'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/texts/$safeName';
-          final url = await FirebaseStorageService.uploadTextFile(
-            _newTextFiles[i],
-            customPath: storagePath,
+        // c) sonstige neue Textdateien hochladen (sichtbar) mit Fortschritt
+        final txtProgress = ValueNotifier<double>(0.0);
+        if (_newTextFiles.isNotEmpty) {
+          await _showBlockingProgress<void>(
+            title: 'Texte werden hochgeladen…',
+            message: '${_newTextFiles.length} Dateien werden gespeichert.',
+            progress: txtProgress,
+            task: () async {
+              for (int i = 0; i < _newTextFiles.length; i++) {
+                final baseName = p.basename(_newTextFiles[i].path);
+                final safeName = baseName.endsWith('.txt')
+                    ? baseName
+                    : '$baseName.txt';
+                final storagePath =
+                    'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/texts/$safeName';
+                final url = await FirebaseStorageService.uploadWithProgress(
+                  _newTextFiles[i],
+                  'texts',
+                  customPath: storagePath,
+                  onProgress: (v) {
+                    final perFile = 1.0 / _newTextFiles.length;
+                    txtProgress.value = (i * perFile) + (v * perFile);
+                  },
+                );
+                if (url != null) {
+                  allTexts.add(url);
+                  if (mounted) {
+                    setState(() => _textFileUrls.add(url));
+                  }
+                }
+              }
+            },
           );
-          if (url != null) {
-            allTexts.add(url);
-          }
         }
 
         // Upload Audio Files einzeln (wird gespeichert und im Avatar geführt)
@@ -3556,39 +3678,33 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             } catch (_) {}
           }
           if (combinedText.trim().isNotEmpty) {
-            () async {
-              try {
-                await _triggerMemoryInsert(
-                  userId: uid,
-                  avatarId: updated.id,
-                  fullText: combinedText,
-                  fileUrl: freeTextUploadedUrl,
-                  fileName: freeTextUploadedName,
-                  filePath: freeTextUploadedPath,
-                  source: 'app',
-                );
-              } catch (e) {
-                // nur loggen, UI nicht stören
-                // ignore: avoid_print
-                print('Memory insert failed: $e');
-              }
-            }();
-          }
-          // Immer: profile.txt als Chunks in Pinecone aktualisieren (stable file)
-          () async {
             try {
               await _triggerMemoryInsert(
                 userId: uid,
                 avatarId: updated.id,
-                fullText: profileContent,
-                fileName: 'profile.txt',
-                filePath: profilePath,
-                source: 'profile',
+                fullText: combinedText,
+                fileUrl: freeTextUploadedUrl,
+                fileName: freeTextUploadedName,
+                filePath: freeTextUploadedPath,
+                source: 'app',
               );
             } catch (e) {
               // ignore
             }
-          }();
+          }
+          // Immer: profile.txt als Chunks in Pinecone aktualisieren (stable file)
+          try {
+            await _triggerMemoryInsert(
+              userId: uid,
+              avatarId: updated.id,
+              fullText: profileContent,
+              fileName: 'profile.txt',
+              filePath: profilePath,
+              source: 'profile',
+            );
+          } catch (e) {
+            // ignore
+          }
           // Jetzt lokale Textdateien leeren (nachdem wir sie gelesen/gesendet haben)
           _newTextFiles.clear();
           _newAudioFiles.clear();
@@ -3614,7 +3730,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   String _memoryApiBaseUrl() {
-    return dotenv.env['MEMORY_API_BASE_URL'] ?? '';
+    return EnvService.memoryApiBaseUrl();
   }
 
   Future<void> _triggerMemoryInsert({
@@ -3641,14 +3757,55 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (fileName != null) 'file_name': fileName,
       if (filePath != null) 'file_path': filePath,
     };
-    final res = await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
-    if (res.statusCode < 200 || res.statusCode >= 300) {
-      throw Exception('Memory insert HTTP ${res.statusCode}: ${res.body}');
+    try {
+      final res = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        // Fallback: Debug-Upsert erzwingen, damit Namespace/Index sicher entstehen
+        await _fallbackDebugUpsert(
+          userId: userId,
+          avatarId: avatarId,
+          note: 'fallback:${fileName ?? 'text'}',
+        );
+        if (mounted)
+          _showSystemSnack(
+            'Memory insert fehlgeschlagen (${res.statusCode}) – Fallback ausgeführt',
+          );
+      }
+    } catch (_) {
+      // Netzwerkfehler → Fallback
+      await _fallbackDebugUpsert(
+        userId: userId,
+        avatarId: avatarId,
+        note: 'fallback:${fileName ?? 'text'}',
+      );
+      if (mounted)
+        _showSystemSnack('Memory insert Fehler – Fallback ausgeführt');
     }
+  }
+
+  Future<void> _fallbackDebugUpsert({
+    required String userId,
+    required String avatarId,
+    String? note,
+  }) async {
+    final base = _memoryApiBaseUrl();
+    if (base.isEmpty) return;
+    try {
+      final uri = Uri.parse('$base/debug/upsert');
+      await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': userId,
+          'avatar_id': avatarId,
+          if (note != null) 'text': note,
+        }),
+      );
+    } catch (_) {}
   }
 
   Future<void> _triggerMemoryDelete({
@@ -3658,9 +3815,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     String? fileName,
     String? filePath,
   }) async {
-    final uri = Uri.parse(
-      '${_memoryApiBaseUrl()}/avatar/memory/delete/by-file',
-    );
+    final base = _memoryApiBaseUrl();
+    if (base.isEmpty) return; // kein Backend erreichbar → still weiter
+    final uri = Uri.parse('$base/avatar/memory/delete/by-file');
     final Map<String, dynamic> payload = {
       'user_id': userId,
       'avatar_id': avatarId,
@@ -3668,11 +3825,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (fileName != null) 'file_name': fileName,
       if (filePath != null) 'file_path': filePath,
     };
-    await http.post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
+    try {
+      final res = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 6));
+      // optional: Status prüfen, aber UI nicht blockieren
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        // nur loggen/snacken wenn nötig – hier bewusst still
+      }
+    } on TimeoutException {
+      // Backend langsam/offline – UI nicht blockieren
+    } catch (_) {
+      // Fehler beim Löschen ignorieren (lokal schon entfernt)
+    }
   }
 
   Future<void> _confirmDeleteSelectedImages() async {

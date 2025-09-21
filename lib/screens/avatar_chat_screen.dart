@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/avatar_data.dart';
 import '../services/video_stream_service.dart';
 import '../services/bithuman_service.dart';
+import '../services/env_service.dart';
 import '../services/firebase_storage_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -775,8 +776,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         _startLipsync(text);
       }
 
-      final base = dotenv.env['MEMORY_API_BASE_URL'];
-      if (base == null || base.isEmpty) {
+      final base = EnvService.memoryApiBaseUrl();
+      if (base.isEmpty) {
         _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
         return;
       }
@@ -854,8 +855,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   Future<String?> _ensureTtsForText(String text) async {
     try {
-      final base2 = dotenv.env['MEMORY_API_BASE_URL'];
-      if (base2 == null || base2.isEmpty) {
+      final base2 = EnvService.memoryApiBaseUrl();
+      if (base2.isEmpty) {
         _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
         return null;
       }
@@ -1042,8 +1043,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         return;
       }
       final uid = user.uid;
-      final baseChat = dotenv.env['MEMORY_API_BASE_URL'];
-      if (baseChat == null || baseChat.isEmpty) {
+      final baseChat = EnvService.memoryApiBaseUrl();
+      if (baseChat.isEmpty) {
         _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
         return;
       }
@@ -1131,8 +1132,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           // TTS über Cloud Function tts
           String? path;
           try {
-            final baseTts = dotenv.env['MEMORY_API_BASE_URL'];
-            if (baseTts == null || baseTts.isEmpty) return;
+            final baseTts = EnvService.memoryApiBaseUrl();
+            if (baseTts.isEmpty) return;
             final ttsUri = Uri.parse('$baseTts/avatar/tts');
             final String? voiceId = (_avatarData?.training != null)
                 ? (_avatarData?.training?['voice'] != null
@@ -1611,9 +1612,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     try {
       if (_avatarData == null) return;
       final uid = FirebaseAuth.instance.currentUser!.uid;
-      final uri = Uri.parse(
-        '${dotenv.env['MEMORY_API_BASE_URL']}/avatar/memory/insert',
-      );
+      final base = EnvService.memoryApiBaseUrl();
+      if (base.isEmpty) return;
+      final uri = Uri.parse('$base/avatar/memory/insert');
       final payload = {
         'user_id': uid,
         'avatar_id': _avatarData?.id ?? '',
@@ -1621,12 +1622,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         'source': source,
         if (fileName != null) 'file_name': fileName,
       };
-      await http.post(
+      final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
       );
-    } catch (_) {}
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        _showSystemSnack('Memory insert fehlgeschlagen: ${res.statusCode}');
+      }
+    } catch (e) {
+      _showSystemSnack('Memory insert Fehler: $e');
+    }
   }
 
   Future<void> _maybeConfirmGlobalInsight(String text) async {

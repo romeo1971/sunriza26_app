@@ -75,7 +75,7 @@ dependencies:
   url_launcher: ^6.2.5
   flutter_dotenv: ^6.0.0  # Für BitHuman API Key
   extended_image: ^8.2.0
-  extended_image_library: ^4.0.6
+  # extended_image_library: ^4.0.6
 
 dev_dependencies:
   flutter_test:

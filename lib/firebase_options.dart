@@ -45,8 +45,23 @@ class DefaultFirebaseOptions {
     }
   }
 
+  static String _apiKey() {
+    // Robust: kein Crash, wenn dotenv nicht geladen ist
+    try {
+      if (dotenv.isInitialized) {
+        final v = dotenv.env['FIREBASE_WEB_API_KEY'];
+        if (v != null && v.isNotEmpty) return v;
+      }
+    } catch (_) {}
+    const fromEnv = String.fromEnvironment(
+      'FIREBASE_WEB_API_KEY',
+      defaultValue: '',
+    );
+    return fromEnv; // kann leer sein – App startet trotzdem
+  }
+
   static FirebaseOptions get web => FirebaseOptions(
-    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
+    apiKey: _apiKey(),
     appId: '1:590744030274:web:d2dcc5434d73cb483b31db',
     messagingSenderId: '590744030274',
     projectId: 'sunriza26',
@@ -55,7 +70,7 @@ class DefaultFirebaseOptions {
   );
 
   static FirebaseOptions get android => FirebaseOptions(
-    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
+    apiKey: _apiKey(),
     appId: '1:590744030274:android:d2dcc5434d73cb483b31db',
     messagingSenderId: '590744030274',
     projectId: 'sunriza26',
@@ -63,7 +78,7 @@ class DefaultFirebaseOptions {
   );
 
   static FirebaseOptions get ios => FirebaseOptions(
-    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
+    apiKey: _apiKey(),
     appId: '1:590744030274:ios:d2dcc5434d73cb483b31db',
     messagingSenderId: '590744030274',
     projectId: 'sunriza26',
@@ -72,7 +87,7 @@ class DefaultFirebaseOptions {
   );
 
   static FirebaseOptions get macos => FirebaseOptions(
-    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
+    apiKey: _apiKey(),
     appId: '1:590744030274:ios:d2dcc5434d73cb483b31db',
     messagingSenderId: '590744030274',
     projectId: 'sunriza26',
@@ -81,7 +96,7 @@ class DefaultFirebaseOptions {
   );
 
   static FirebaseOptions get windows => FirebaseOptions(
-    apiKey: dotenv.env['FIREBASE_WEB_API_KEY']!,
+    apiKey: _apiKey(),
     appId: '1:590744030274:web:d2dcc5434d73cb483b31db',
     messagingSenderId: '590744030274',
     projectId: 'sunriza26',
