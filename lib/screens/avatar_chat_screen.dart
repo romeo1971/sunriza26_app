@@ -201,7 +201,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: Container(
-        decoration: !(_videoService.isReady && _isSpeaking)
+        decoration: !_videoService.isReady
             ? BoxDecoration(
                 image: DecorationImage(
                   image: (backgroundImage != null && backgroundImage.isNotEmpty)
@@ -281,33 +281,34 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       decoration: null,
       child: Stack(
         children: [
-          // Video-Overlay (nur wenn Audio spielt und Video bereit ist)
-          if (_isSpeaking)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: _videoService.isReady ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 120),
-                  child: StreamBuilder<VideoStreamState>(
-                    stream: _videoService.stateStream,
-                    builder: (context, snapshot) {
-                      final controller = _videoService.controller;
-                      if (controller == null) return const SizedBox.shrink();
-                      final size = controller.value.size;
-                      return FittedBox(
-                        fit: BoxFit.cover,
-                        alignment: Alignment.center,
-                        child: SizedBox(
-                          width: size.width == 0 ? 1920 : size.width,
-                          height: size.height == 0 ? 1080 : size.height,
-                          child: VideoPlayer(controller),
-                        ),
-                      );
-                    },
-                  ),
+          // Video-Overlay (zeigt sobald Player bereit ist, unabhängig vom Audio)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: AnimatedOpacity(
+                opacity: _videoService.isReady ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 120),
+                child: StreamBuilder<VideoStreamState>(
+                  stream: _videoService.stateStream,
+                  builder: (context, snapshot) {
+                    final controller = _videoService.controller;
+                    if (controller == null || !controller.value.isInitialized) {
+                      return const SizedBox.shrink();
+                    }
+                    final size = controller.value.size;
+                    return FittedBox(
+                      fit: BoxFit.cover,
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: size.width == 0 ? 1920 : size.width,
+                        height: size.height == 0 ? 1080 : size.height,
+                        child: VideoPlayer(controller),
+                      ),
+                    );
+                  },
                 ),
               ),
             ),
+          ),
           // Avatar-Bild nur anzeigen wenn kein Background-Bild
           if (!hasImage)
             Center(
@@ -342,66 +343,44 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               bottom: 50,
               left: 0,
               right: 0,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.7),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Avatar denkt nach',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Colors.white,
+              child: IgnorePointer(
+                ignoring: true,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Avatar denkt nach',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.white,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
             ),
 
-          // Video-Overlay (Lipsync) — einmalig und ganz oben
-          Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedOpacity(
-                opacity: _videoService.isReady ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 200),
-                child: StreamBuilder<VideoStreamState>(
-                  stream: _videoService.stateStream,
-                  builder: (context, snapshot) {
-                    final controller = _videoService.controller;
-                    if (controller == null) return const SizedBox.shrink();
-                    final size = controller.value.size;
-                    return FittedBox(
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                      child: SizedBox(
-                        width: size.width == 0 ? 1920 : size.width,
-                        height: size.height == 0 ? 1080 : size.height,
-                        child: VideoPlayer(controller),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
+          // Zusätzliche Ebene nicht nötig – ein Overlay reicht
         ],
       ),
     );
@@ -997,22 +976,36 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           '${dir.path}/chat_avatar_${DateTime.now().millisecondsSinceEpoch}.mp4',
         );
         await out.writeAsBytes(bytes, flush: true);
-        // Upload zu Firebase und als Stream abspielen
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        if (uid == null || _avatarData == null) return;
-        final path =
-            'avatars/$uid/${_avatarData!.id}/videos/${DateTime.now().millisecondsSinceEpoch}_chat.mp4';
-        final url = await FirebaseStorageService.uploadVideo(
-          out,
-          customPath: path,
-        );
-        if (url != null) {
+
+        // 1) Sofort lokal abspielen (ohne Upload-Wartezeit)
+        try {
           await _videoService.startStreamingFromUrl(
-            url,
-            onProgress: (msg) => print('📊 BitHuman Progress: $msg'),
-            onError: (err) => print('❌ BitHuman Error: $err'),
+            out.path,
+            onProgress: (msg) => print('📊 BitHuman Local Progress: $msg'),
+            onError: (err) => print('❌ BitHuman Local Error: $err'),
           );
+        } catch (e) {
+          print('⚠️ Lokale Videowiedergabe fehlgeschlagen: $e');
         }
+
+        // 2) Upload im Hintergrund (für Historie)
+        unawaited(() async {
+          try {
+            final uid = FirebaseAuth.instance.currentUser?.uid;
+            if (uid == null || _avatarData == null) return;
+            final upPath =
+                'avatars/$uid/${_avatarData!.id}/videos/${DateTime.now().millisecondsSinceEpoch}_chat.mp4';
+            final url = await FirebaseStorageService.uploadVideo(
+              out,
+              customPath: upPath,
+            );
+            if (url != null) {
+              print('☁️ Video hochgeladen: $url');
+            }
+          } catch (e) {
+            print('⚠️ Video-Upload fehlgeschlagen: $e');
+          }
+        }());
       } else {
         final body = await streamed.stream.bytesToString();
         print('❌ BitHuman generate-avatar: ${streamed.statusCode} $body');
@@ -1091,6 +1084,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         }
         if (answer != null && answer.isNotEmpty) {
           _addMessage(answer, false, audioPath: audioPath);
+          // Lipsync-Video auch für Chat-Antworten starten
+          try {
+            await _startLipsync(answer);
+          } catch (_) {}
         }
       } else {
         // Fallback zu Cloud Function

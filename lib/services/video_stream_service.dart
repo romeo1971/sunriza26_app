@@ -113,9 +113,20 @@ class VideoStreamService {
   /// Initialisiert Video-Controller für Wiedergabe
   Future<void> _initializeVideoController(String videoPath) async {
     try {
-      _controller = VideoPlayerController.file(File(videoPath));
+      // Quelle erkennen: Datei vs. Netzwerk-URL
+      final Uri? uri = Uri.tryParse(videoPath);
+      final bool isHttp =
+          uri != null && (uri.isScheme('http') || uri.isScheme('https'));
+
+      if (isHttp) {
+        _controller = VideoPlayerController.networkUrl(Uri.parse(videoPath));
+      } else {
+        _controller = VideoPlayerController.file(File(videoPath));
+      }
 
       await _controller!.initialize();
+      // Direkt Ready melden (Listener kann auf einigen Plattformen verzögert feuern)
+      _stateController.add(VideoStreamState.ready);
 
       // Event-Listener für Controller-Events
       _controller!.addListener(() {
@@ -125,6 +136,7 @@ class VideoStreamService {
       });
 
       // Auto-Play starten
+      await _controller!.setLooping(true);
       await _controller!.play();
       _stateController.add(VideoStreamState.streaming);
     } catch (e) {
