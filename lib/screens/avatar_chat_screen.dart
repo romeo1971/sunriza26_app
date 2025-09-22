@@ -12,7 +12,6 @@ import '../models/avatar_data.dart';
 import '../services/video_stream_service.dart';
 import '../services/bithuman_service.dart';
 import '../services/env_service.dart';
-import '../services/firebase_storage_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AvatarChatScreen extends StatefulWidget {
@@ -116,6 +115,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         final data = jsonDecode(body) as Map<String, dynamic>;
         figureId = (data['figure_id'] as String?)?.trim();
         modelHash = (data['runtime_model_hash'] as String?)?.trim();
+        // Debug-Ausgabe & UI-Hinweis
+        try {
+          print(
+            '🧩 BitHuman Figure erstellt: figureId=' +
+                (figureId ?? 'null') +
+                ', modelHash=' +
+                (modelHash ?? 'null'),
+          );
+          _showSystemSnack(
+            'BitHuman Figure: ' +
+                (figureId ?? '—') +
+                ' | Model: ' +
+                (modelHash ?? '—'),
+          );
+        } catch (_) {}
         // Persistieren in Firestore unter users/<uid>/avatars/<id>
         try {
           final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -949,7 +963,54 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       final imageUrl = _avatarData?.avatarImageUrl;
       if (imageUrl == null) return;
 
-      // Figure sicherstellen
+      // Provider-Weiche (training.videoProvider)
+      final training = _avatarData?.training ?? {};
+      final providerVal = (training['videoProvider'] as String?)
+          ?.trim()
+          .toLowerCase();
+      final useBP =
+          providerVal == 'bp' ||
+          providerVal == 'beyond_presence' ||
+          (dotenv.env['BP_PRIMARY'] == '1');
+
+      if (useBP) {
+        // Beyond Presence: Backend-Proxy verwenden
+        final base = EnvService.memoryApiBaseUrl();
+        if (base.isEmpty) return;
+        final uri = Uri.parse('$base/bp/speech-to-video');
+        final req = http.MultipartRequest('POST', uri);
+        req.files.add(await http.MultipartFile.fromPath('audio', audioPath));
+
+        // Optional: avatarId aus training.beyondPresence.avatarId verwenden
+        try {
+          final bp = Map<String, dynamic>.from(
+            training['beyondPresence'] ?? {},
+          );
+          final avatarId = (bp['avatarId'] as String?)?.trim();
+          if ((avatarId ?? '').isNotEmpty) {
+            req.fields['avatarId'] = avatarId!;
+          }
+        } catch (_) {}
+
+        // Fallback: imageUrl für Kompatibilität
+        if (imageUrl.isNotEmpty) req.fields['avatarImageUrl'] = imageUrl;
+        final streamed = await req.send();
+        if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
+          final bytes = await streamed.stream.toBytes();
+          final dir = await getTemporaryDirectory();
+          final out = File(
+            '${dir.path}/bp_${DateTime.now().millisecondsSinceEpoch}.mp4',
+          );
+          await out.writeAsBytes(bytes, flush: true);
+          await _videoService.startStreamingFromUrl(out.path);
+        } else {
+          final body = await streamed.stream.bytesToString();
+          print('❌ BP speech-to-video: ${streamed.statusCode} $body');
+        }
+        return;
+      }
+
+      // BitHuman: Figure sicherstellen
       final fig = await _ensureFigure();
       final figureId = fig['figureId'];
       final modelHash = fig['modelHash'];
@@ -966,8 +1027,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       req.files.add(await http.MultipartFile.fromPath('image', imgFile.path));
       req.files.add(await http.MultipartFile.fromPath('audio', audioPath));
       if ((figureId ?? '').isNotEmpty) req.fields['figure_id'] = figureId!;
-      if ((modelHash ?? '').isNotEmpty)
+      if ((modelHash ?? '').isNotEmpty) {
         req.fields['runtime_model_hash'] = modelHash!;
+      }
       final streamed = await req.send();
       if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
         final bytes = await streamed.stream.toBytes();
@@ -988,24 +1050,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           print('⚠️ Lokale Videowiedergabe fehlgeschlagen: $e');
         }
 
-        // 2) Upload im Hintergrund (für Historie)
-        unawaited(() async {
-          try {
-            final uid = FirebaseAuth.instance.currentUser?.uid;
-            if (uid == null || _avatarData == null) return;
-            final upPath =
-                'avatars/$uid/${_avatarData!.id}/videos/${DateTime.now().millisecondsSinceEpoch}_chat.mp4';
-            final url = await FirebaseStorageService.uploadVideo(
-              out,
-              customPath: upPath,
-            );
-            if (url != null) {
-              print('☁️ Video hochgeladen: $url');
-            }
-          } catch (e) {
-            print('⚠️ Video-Upload fehlgeschlagen: $e');
-          }
-        }());
+        // Kein Upload für Chat-Antworten – nur lokale Wiedergabe
       } else {
         final body = await streamed.stream.bytesToString();
         print('❌ BitHuman generate-avatar: ${streamed.statusCode} $body');

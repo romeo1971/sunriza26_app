@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 import bithuman
 from bithuman import AsyncBithuman
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import FileResponse
 import tempfile
 import shutil
@@ -19,6 +19,7 @@ import requests
 import time
 import threading
 import uuid
+import subprocess
 
 # BitHuman SDK initialisieren
 runtime = None
@@ -94,10 +95,49 @@ try:
 except Exception:
     pass
 
+async def _try_load_imx_into_global_runtime() -> bool:
+    """Versucht beim Start ein lokales .imx in die globale Runtime zu laden."""
+    try:
+        global runtime, API_SECRET_CACHE
+        if not API_SECRET_CACHE:
+            return False
+        # Pfad aus ENV oder aus ./avatars größtes .imx wählen
+        imx_env = os.getenv("BITHUMAN_IMX_PATH", "").strip()
+        imx_path: Optional[Path] = None
+        if imx_env:
+            p = Path(imx_env)
+            if p.exists() and p.is_file() and p.suffix.lower() == ".imx":
+                imx_path = p
+        if imx_path is None:
+            avatars_dir = Path(__file__).resolve().parents[1] / "avatars"
+            if avatars_dir.exists() and avatars_dir.is_dir():
+                imx_files = [f for f in avatars_dir.iterdir() if f.is_file() and f.suffix.lower() == ".imx"]
+                if imx_files:
+                    imx_files.sort(key=lambda f: f.stat().st_size, reverse=True)
+                    imx_path = imx_files[0]
+        if imx_path is None:
+            print("ℹ️ Startup: kein lokales .imx gefunden")
+            return False
+        # Runtime erstellen und Modell setzen
+        print(f"🧠 Startup: lade .imx in globale Runtime: {imx_path}")
+        rt = await AsyncBithuman.create(
+            api_secret=API_SECRET_CACHE,
+            model_path=str(imx_path),
+        )
+        runtime = rt
+        print("✅ Startup: .imx Modell global gesetzt")
+        return True
+    except Exception as e:
+        print(f"⚠️ Startup .imx Laden fehlgeschlagen: {e}")
+        return False
+
+
 @app.on_event("startup")
 async def startup_event():
     """Initialisiert BitHuman beim Start"""
     await initialize_bithuman()
+    # Optional: globales .imx laden
+    await _try_load_imx_into_global_runtime()
 
 @app.get("/")
 async def root():
@@ -106,6 +146,115 @@ async def root():
         "message": "BitHuman Avatar Service läuft",
         "runtime_initialized": runtime is not None
     }
+
+@app.post("/bp/speech-to-video")
+async def bp_speech_to_video(
+    request: Request,
+    audio: UploadFile | None = File(None),
+    text: str | None = Form(None),
+    avatarId: str | None = Form(None),
+    avatarImageUrl: str | None = Form(None),
+):
+    """Proxy zu Beyond Presence Speech-to-Video.
+    Unterstützt Multipart (audio, avatarId) oder JSON (text, avatarId).
+    Erwartet .env: BP_API_BASE_URL, BP_API_KEY
+    """
+    try:
+        bp_base = (os.getenv("BP_API_BASE_URL") or "https://api.bey.dev").strip()
+        bp_key = (os.getenv("BP_API_KEY") or "").strip()
+        if not bp_key:
+            raise HTTPException(status_code=500, detail="BP API Konfiguration fehlt")
+
+        target_url = f"{bp_base.rstrip('/')}/speech-to-video"
+        headers = {"Authorization": f"Bearer {bp_key}"}
+
+        # Multipart mit Audio
+        if audio is not None:
+            with tempfile.TemporaryDirectory() as td:
+                tmp_audio = Path(td) / (audio.filename or "audio.mp3")
+                with open(tmp_audio, "wb") as buf:
+                    shutil.copyfileobj(audio.file, buf)
+                files = {
+                    "audio": (tmp_audio.name, open(tmp_audio, "rb"), "audio/mpeg"),
+                }
+                data = {}
+                if avatarId:
+                    data["avatarId"] = avatarId
+                if avatarImageUrl:
+                    data["avatarImageUrl"] = avatarImageUrl
+                r = requests.post(target_url, headers=headers, files=files, data=data, timeout=120)
+                if not (200 <= r.status_code < 300):
+                    raise HTTPException(status_code=r.status_code, detail=f"BP Fehler: {r.text[:500]}")
+                # Bytes → Temp MP4
+                out_dir = Path(td)
+                out_path = out_dir / "bp_video.mp4"
+                with open(out_path, "wb") as f:
+                    f.write(r.content)
+                return FileResponse(path=str(out_path), media_type="video/mp4", filename="bp_video.mp4")
+
+        # JSON Body (Text)
+        try:
+            body = await request.json()
+        except Exception:
+            body = None
+        if not body and not text:
+            raise HTTPException(status_code=400, detail="text oder audio erforderlich")
+        payload = body or {"text": text}
+        if avatarId and not payload.get("avatarId"):
+            payload["avatarId"] = avatarId
+        if avatarImageUrl and not payload.get("avatarImageUrl"):
+            payload["avatarImageUrl"] = avatarImageUrl
+
+        r = requests.post(target_url, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=120)
+        if not (200 <= r.status_code < 300):
+            raise HTTPException(status_code=r.status_code, detail=f"BP Fehler: {r.text[:500]}")
+        with tempfile.TemporaryDirectory() as td2:
+            out_path = Path(td2) / "bp_video.mp4"
+            with open(out_path, "wb") as f:
+                f.write(r.content)
+            return FileResponse(path=str(out_path), media_type="video/mp4", filename="bp_video.mp4")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Proxy Fehler: {e}")
+
+@app.post("/bp/avatar/upload-video")
+async def bp_avatar_upload_video(video: UploadFile = File(...), avatarId: str | None = Form(None)):
+    """Proxy: Lade ein Referenz-Video zu Beyond Presence hoch (Avatar/Asset).
+    Erwartet Env: BP_AVATAR_UPLOAD_URL (falls nicht gesetzt, wird /avatars verwendet).
+    """
+    try:
+        bp_base = (os.getenv("BP_API_BASE_URL") or "https://api.bey.dev").strip()
+        bp_key = (os.getenv("BP_API_KEY") or "").strip()
+        if not bp_key:
+            raise HTTPException(status_code=500, detail="BP API Konfiguration fehlt")
+
+        override_url = (os.getenv("BP_AVATAR_UPLOAD_URL") or "").strip()
+        target_url = override_url if override_url else f"{bp_base.rstrip('/')}/avatars"
+        headers = {"Authorization": f"Bearer {bp_key}"}
+
+        with tempfile.TemporaryDirectory() as td:
+            tmp_video = Path(td) / (video.filename or "video.mp4")
+            with open(tmp_video, "wb") as buf:
+                shutil.copyfileobj(video.file, buf)
+            mime = "video/mp4"
+            files = {
+                "video": (tmp_video.name, open(tmp_video, "rb"), mime),
+            }
+            data = {}
+            if avatarId:
+                data["avatarId"] = avatarId
+            r = requests.post(target_url, headers=headers, files=files, data=data, timeout=120)
+            if not (200 <= r.status_code < 300):
+                raise HTTPException(status_code=r.status_code, detail=f"BP Avatar Upload Fehler: {r.text[:500]}")
+            try:
+                return r.json()
+            except Exception:
+                return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Proxy Fehler: {e}")
 
 @app.get("/debug/methods")
 async def debug_methods():
@@ -166,8 +315,8 @@ async def test_video_creation():
 async def generate_avatar(
     image: UploadFile = File(...),
     audio: UploadFile = File(...),
-    figure_id: str | None = None,
-    runtime_model_hash: str | None = None,
+    figure_id: str | None = Form(None),
+    runtime_model_hash: str | None = Form(None),
 ):
     """
     Generiert Avatar-Video mit BitHuman SDK
@@ -198,6 +347,11 @@ async def generate_avatar(
         print(f"📁 Dateien gespeichert:")
         print(f"   🖼️ Bild: {image_path}")
         print(f"   🎵 Audio: {audio_path}")
+        # Eingehende Parameter loggen
+        try:
+            print(f"[generate-avatar] params: figure_id={figure_id}, runtime_model_hash={runtime_model_hash}")
+        except Exception:
+            pass
 
         # FIGURE AUS BILD ERSTELLEN (für .imx Model)
         global runtime, API_SECRET_CACHE
@@ -211,8 +365,13 @@ async def generate_avatar(
             print("🎭 Verwende Standard-Runtime ohne spezifische Figure...")
             # Für jetzt: Ohne Figure-Erstellung, direkt mit API-Key
 
-        # 2. Runtime mit Figure erstellen
+        # 2. Runtime mit Figure erstellen (globale Runtime bevorzugen, wenn vorhanden)
         try:
+            # Wenn globale Runtime vorhanden, wiederverwenden (nicht stoppen)
+            if runtime is not None:
+                local_runtime = runtime
+                print("♻️ Verwende globale Runtime")
+            # Andernfalls per-request erstellen
             kw = {"api_secret": API_SECRET_CACHE}
             # Optional: Defaults aus .env verwenden, falls nichts aus der App kommt
             env_figure = os.getenv("BITHUMAN_DEFAULT_FIGURE_ID", "").strip() or None
@@ -224,10 +383,11 @@ async def generate_avatar(
             if eff_model:
                 kw["runtime_model_hash"] = eff_model
 
-            local_runtime = await AsyncBithuman.create(**kw)
-            print(f"✅ Per-request Runtime erstellt: figure_id={eff_figure}, hash={eff_model}")
+            if local_runtime is None:
+                local_runtime = await AsyncBithuman.create(**kw)
+                print(f"✅ Per-request Runtime erstellt: figure_id={eff_figure}, hash={eff_model}")
 
-            # Versuche ein lokales .imx Modell zu laden (z. B. aus ./avatars)
+            # Versuche ein lokales .imx Modell zu nutzen
             try:
                 imx_env = os.getenv("BITHUMAN_IMX_PATH", "").strip()
                 imx_path: Optional[Path] = None
@@ -240,20 +400,19 @@ async def generate_avatar(
                     if avatars_dir.exists() and avatars_dir.is_dir():
                         imx_files = [f for f in avatars_dir.iterdir() if f.is_file() and f.suffix.lower() == ".imx"]
                         if imx_files:
-                            # Größte Datei wählen (höchste Wahrscheinlichkeit eines vollständigen Modells)
                             imx_files.sort(key=lambda f: f.stat().st_size, reverse=True)
                             imx_path = imx_files[0]
-                if imx_path is not None:
-                    print(f"🧠 Lade lokales .imx Modell: {imx_path}")
-                    try:
-                        await local_runtime.set_model(str(imx_path))
-                        print("✅ .imx Modell gesetzt")
-                    except Exception as e_set:
-                        print(f"⚠️ set_model() fehlgeschlagen: {e_set}")
-                else:
+
+                if imx_path is not None and local_runtime is None:
+                    # Direkt mit model_path initialisieren statt set_model()
+                    kw_with_model = dict(kw)
+                    kw_with_model["model_path"] = str(imx_path)
+                    local_runtime = await AsyncBithuman.create(**kw_with_model)
+                    print(f"✅ Runtime mit .imx initialisiert: {imx_path}")
+                elif imx_path is None:
                     print("ℹ️ Kein lokales .imx gefunden – verwende ggf. figure_id/runtime_model_hash")
             except Exception as e_imx:
-                print(f"⚠️ Lokales .imx Handling Fehler: {e_imx}")
+                print(f"⚠️ .imx Handling Fehler: {e_imx}")
         except Exception as e:
             print(f"❌ Per-request Runtime Fehler: {e}")
             raise HTTPException(status_code=500, detail=f"BitHuman Runtime-Erstellung fehlgeschlagen: {e}")
@@ -282,113 +441,175 @@ async def generate_avatar(
             await local_runtime.start()
             print("✅ BitHuman Runtime gestartet")
 
-            # 3. Audio zur Verarbeitung senden (16kHz!)
-            await local_runtime.push_audio(audio_pcm, 16000)
+            # 3. Audio zur Verarbeitung senden (16kHz!) – Bytes verwenden
+            audio_bytes = audio_pcm.tobytes()
+            await local_runtime.push_audio(audio_bytes, 16000)
             print("✅ Audio-Daten gesendet (16kHz)")
 
-            # 4. Verarbeitung starten - RUN() METHODE!
-            try:
-                result = local_runtime.run()  # RUN statt process!
-                print(f"✅ Runtime läuft: {result}")
-            except Exception as e:
-                print(f"⚠️ run() fehlgeschlagen: {e}")
-                try:
-                    result = await local_runtime.run()  # Async versuchen
-                    print(f"✅ Runtime läuft (async): {result}")
-                except Exception as e2:
-                    print(f"⚠️ async run() fehlgeschlagen: {e2}")
-                    result = True  # Weitermachen
-
-            # 5. Video-Frames generieren - GENERATOR PROPERTY!
-            video_generator = local_runtime.generator  # PROPERTY, nicht Funktion!
-            print("✅ Video-Generator gestartet")
-
-            # 6. Frames sammeln - RICHTIGE GENERATOR-USAGE
+            # 4. Verarbeitung starten und Frames sammeln (bis zur Audiolänge)
             frames = []
-            frame_count = 0
-
-            # Versuche verschiedene Generator-Methoden
+            fps = 30
             try:
-                # Methode 1: next() verwenden
-                while frame_count < 60:
-                    frame = next(video_generator, None)
-                    if frame is None:
-                        break
-                    frames.append(frame)
-                    frame_count += 1
-
-            except Exception as e1:
-                print(f"⚠️ Generator next() fehlgeschlagen: {e1}")
-                try:
-                    # Methode 2: get_frame() oder ähnliche Methode
-                    frame = video_generator.get_frame()
-                    if frame is not None:
+                audio_duration_s = float(len(audio_pcm)) / 16000.0
+            except Exception:
+                audio_duration_s = 5.0
+            max_frames = max(1, int((audio_duration_s + 0.2) * fps))
+            try:
+                run_gen = local_runtime.run()
+                # Async-Generator
+                if hasattr(run_gen, "__aiter__"):
+                    print("✅ Runtime läuft (async generator)")
+                    async for frame in run_gen:
                         frames.append(frame)
-                        frame_count = 1
-                except Exception as e2:
-                    print(f"⚠️ get_frame() fehlgeschlagen: {e2}")
-                    try:
-                        # Methode 3: Direkt auf generator zugreifen
-                        if hasattr(video_generator, 'frames'):
-                            frames = video_generator.frames[:60]
-                            frame_count = len(frames)
-                    except Exception as e3:
-                        print(f"⚠️ Frames-Zugriff fehlgeschlagen: {e3}")
+                        if len(frames) >= max_frames:
+                            break
+                else:
+                    # Sync-Iterator fallback
+                    print("✅ Runtime läuft (sync iterator)")
+                    for frame in run_gen:
+                        frames.append(frame)
+                        if len(frames) >= max_frames:
+                            break
+            except Exception as e_run:
+                print(f"⚠️ Frame-Iteration fehlgeschlagen: {e_run}")
 
-            print(f"📹 Frames gesammelt: {frame_count}")
+            print(f"📹 Frames gesammelt: {len(frames)}")
 
             if frames and len(frames) > 0:
-                # ECHTES MP4-VIDEO ERSTELLEN!
+                # ECHTES MP4-VIDEO ERSTELLEN und AUDIO MUXEN
                 import cv2
 
-                # Video-Writer erstellen
+                # Video ohne Audio zuerst schreiben
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                fps = 30
+                height, width = frames[0].shape[:2]
+                temp_video = output_path.with_name("avatar_video_no_audio.mp4")
+                video_writer = cv2.VideoWriter(str(temp_video), fourcc, fps, (width, height))
 
-                # Frame-Größe bestimmen
-                if len(frames) > 0:
-                    height, width = frames[0].shape[:2]
-                    video_writer = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
+                for frame in frames:
+                    video_writer.write(frame)
 
-                    # Alle Frames ins Video schreiben
-                    for frame in frames:
-                        video_writer.write(frame)
+                video_writer.release()
+                print(f"🎬 Video ohne Audio erstellt: {len(frames)} frames @ {fps} fps")
 
-                    video_writer.release()
-                    print(f"🎬 ECHTES MP4-VIDEO ERSTELLT: {frame_count} frames, {fps} fps")
-                    result = True
+                # Audio in das Video muxen (ffmpeg bevorzugt)
+                ffmpeg = shutil.which("ffmpeg")
+                if ffmpeg:
+                    try:
+                        cmd = [
+                            ffmpeg, "-y",
+                            "-i", str(temp_video),
+                            "-i", str(audio_path),
+                            "-c:v", "copy",
+                            "-c:a", "aac",
+                            "-shortest",
+                            str(output_path),
+                        ]
+                        print("🔊 ffmpeg mux:", " ".join(cmd))
+                        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        result = True
+                    except subprocess.CalledProcessError as e:
+                        print(f"⚠️ ffmpeg mux fehlgeschlagen: {e}")
+                        result = False
                 else:
-                    raise Exception("Frames haben keine gültige Größe")
+                    # Fallback: MoviePy
+                    try:
+                        from moviepy.editor import VideoFileClip, AudioFileClip
+                        v = VideoFileClip(str(temp_video))
+                        a = AudioFileClip(str(audio_path))
+                        v = v.set_audio(a)
+                        v.write_videofile(
+                            str(output_path),
+                            codec="libx264",
+                            audio_codec="aac",
+                            fps=fps,
+                            verbose=False,
+                            logger=None,
+                        )
+                        result = True
+                    except Exception as e:
+                        print(f"⚠️ MoviePy mux fehlgeschlagen: {e}")
+                        result = False
+
+                # Temp-Datei aufräumen
+                try:
+                    if temp_video.exists():
+                        temp_video.unlink()
+                except Exception:
+                    pass
 
             else:
-                print("❌ Keine Frames generiert - verwende Fallback")
-                # Fallback: Bild als "Video" (1 Frame)
+                print("❌ Keine Frames generiert - Fallback statisches Video + Audio")
                 import cv2
 
-                # Lade Input-Bild
                 img = cv2.imread(str(image_path))
-                if img is not None:
-                    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                    height, width = img.shape[:2]
-                    video_writer = cv2.VideoWriter(str(output_path), fourcc, 1, (width, height))
-
-                    # Bild 30x schreiben (1 Sekunde bei 30fps)
-                    for _ in range(30):
-                        video_writer.write(img)
-
-                    video_writer.release()
-                    print("🎬 Fallback-Video aus Bild erstellt")
-                    result = True
-                else:
+                if img is None:
                     raise Exception("Konnte Input-Bild nicht laden")
+
+                height, width = img.shape[:2]
+                temp_video = output_path.with_name("fallback_no_audio.mp4")
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+                video_writer = cv2.VideoWriter(str(temp_video), fourcc, fps, (width, height))
+
+                # Frames entsprechend Audiolänge schreiben
+                total_frames = max(1, int((audio_duration_s + 0.2) * fps))
+                for _ in range(total_frames):
+                    video_writer.write(img)
+
+                video_writer.release()
+
+                # Audio muxen
+                ffmpeg = shutil.which("ffmpeg")
+                if ffmpeg:
+                    try:
+                        cmd = [
+                            ffmpeg, "-y",
+                            "-i", str(temp_video),
+                            "-i", str(audio_path),
+                            "-c:v", "copy",
+                            "-c:a", "aac",
+                            "-shortest",
+                            str(output_path),
+                        ]
+                        print("🔊 ffmpeg mux (fallback):", " ".join(cmd))
+                        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        result = True
+                    except subprocess.CalledProcessError as e:
+                        print(f"⚠️ ffmpeg mux (fallback) fehlgeschlagen: {e}")
+                        result = False
+                else:
+                    try:
+                        from moviepy.editor import VideoFileClip, AudioFileClip
+                        v = VideoFileClip(str(temp_video))
+                        a = AudioFileClip(str(audio_path))
+                        v = v.set_audio(a)
+                        v.write_videofile(
+                            str(output_path),
+                            codec="libx264",
+                            audio_codec="aac",
+                            fps=fps,
+                            verbose=False,
+                            logger=None,
+                        )
+                        result = True
+                    except Exception as e:
+                        print(f"⚠️ MoviePy mux (fallback) fehlgeschlagen: {e}")
+                        result = False
+
+                try:
+                    if temp_video.exists():
+                        temp_video.unlink()
+                except Exception:
+                    pass
 
         except Exception as e:
             print(f"❌ BitHuman streaming API Fehler: {e}")
             raise HTTPException(status_code=500, detail=f"BitHuman Verarbeitung fehlgeschlagen: {e}")
         finally:
+            # Globale Runtime nicht stoppen, per-request Runtimes schon
             try:
-                await local_runtime.stop()
-                print("✅ BitHuman Runtime gestoppt")
+                if local_runtime is not None and local_runtime is not runtime:
+                    await local_runtime.stop()
+                    print("✅ BitHuman Runtime gestoppt")
             except:
                 pass
 
@@ -402,12 +623,12 @@ async def generate_avatar(
             )
         else:
             error_msg = f"Video-Datei nicht gefunden oder leer: exists={output_path.exists()}"
-        if output_path.exists():
+            if output_path.exists():
                 error_msg += f", size={output_path.stat().st_size}"
-        print(f"❌ {error_msg}")
+            print(f"❌ {error_msg}")
 
-        # NOTFALL-FALLBACK: JSON-Response
-        return {"status": "error", "message": "Avatar-Video konnte nicht erstellt werden", "debug": error_msg}
+            # Wichtig: mit Fehlerstatus antworten, damit der Client kein JSON als MP4 behandelt
+            raise HTTPException(status_code=502, detail=error_msg)
 
     except Exception as e:
         print(f"💥 Avatar-Generierung Fehler: {e}")
@@ -421,57 +642,90 @@ async def generate_avatar(
 async def create_figure(image: UploadFile = File(...)):
     """Agent/ Figure aus Bild erzeugen (Agent Generation API)."""
     try:
-        api_key = (
-        os.getenv("BITHUMAN_API_SECRET")
-        or os.getenv("BITHUMAN_API_KEY")
-        or ""
+        # Token/Key priorisieren: API_TOKEN > API_SECRET > API_KEY
+        api_token = (
+            os.getenv("BITHUMAN_API_TOKEN")
+            or os.getenv("BITHUMAN_API_SECRET")
+            or os.getenv("BITHUMAN_API_KEY")
+            or ""
         ).strip()
-        if not api_key:
-            raise HTTPException(status_code=400, detail="BITHUMAN_API_KEY fehlt")
+        if not api_token:
+            raise HTTPException(status_code=400, detail="BitHuman API Token/Key fehlt")
 
+        # Bild lokal persistieren
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Nur den Dateinamen verwenden (kein absoluter Client-Pfad)
             safe_name = Path(image.filename).name or "upload.png"
             img_path = Path(temp_dir) / safe_name
             with open(img_path, "wb") as buf:
                 shutil.copyfileobj(image.file, buf)
+
             try:
                 size = img_path.stat().st_size
                 print(f"[figure/create] gespeichert: {img_path} ({size} bytes)")
             except Exception as e:
-                print(f"[figure/create] konnte Datei nicht prüfen: {e}")
-            if not img_path.exists():
-                print(f"[figure/create] Datei existiert nicht: {img_path} – Fallback")
-                dummy_id = uuid.uuid4().hex
-                return {"figure_id": dummy_id, "runtime_model_hash": None}
+                print(f"[figure/create] Stat-Fehler: {e}")
 
-            # Beispiel: Upload zu BitHuman Agent Generation API (Platzhalter-Endpunkt, laut Doku anpassen)
-            # Hier demonstrativ multipart POST; ersetze 'AGENT_CREATE_URL' durch echten Doku-Endpunkt
-            AGENT_CREATE_URL = os.getenv("BITHUMAN_AGENT_CREATE_URL", "")
-            headers = {"Authorization": f"Bearer {api_key}"}
-            if AGENT_CREATE_URL:
+            if not img_path.exists() or img_path.stat().st_size == 0:
+                raise HTTPException(status_code=400, detail="Upload-Bild fehlt/leer")
+
+            # Ziel-URL: env override, sonst Default aus Doku
+            agent_create_url = (
+                os.getenv("BITHUMAN_AGENT_CREATE_URL")
+                or "https://api.bithuman.ai/v1/figures"
+            ).strip()
+
+            headers = {
+                "Authorization": f"Bearer {api_token}",
+                "Accept": "application/json",
+            }
+
+            # Content-Type wird von requests bei files automatisch gesetzt
+            try:
+                mime = "image/png"
+                if safe_name.lower().endswith((".jpg", ".jpeg")):
+                    mime = "image/jpeg"
+                with open(img_path, "rb") as fp:
+                    files = {"image": (img_path.name, fp, mime)}
+                    r = requests.post(agent_create_url, headers=headers, files=files, timeout=60)
+                print(f"[figure/create] POST {agent_create_url} -> {r.status_code}")
+
+                # Fehler klar an Client zurückgeben
+                if not (200 <= r.status_code < 300):
+                    detail = r.text[:500] if r.text else f"HTTP {r.status_code}"
+                    raise HTTPException(status_code=502, detail=f"BitHuman Figure API Fehler: {detail}")
+
+                data = r.json() if r.content else {}
+
+                # Robust Felder extrahieren
+                figure_id = (
+                    data.get("figure_id")
+                    or data.get("id")
+                    or (data.get("data") or {}).get("figure_id")
+                    or (data.get("result") or {}).get("id")
+                )
+                model_hash = (
+                    data.get("runtime_model_hash")
+                    or data.get("model_hash")
+                    or data.get("hash")
+                    or (data.get("data") or {}).get("runtime_model_hash")
+                )
+
+                if not figure_id and not model_hash:
+                    # Möglich: API liefert Job/Task; gib Rohdaten mit 202 zurück?
+                    # Für jetzt: 502, damit Client nicht mit Dummy fortfährt
+                    raise HTTPException(status_code=502, detail="Figure API lieferte keine figure_id/model_hash")
+
                 try:
-                    with open(img_path, "rb") as fp:
-                        files = {"image": (img_path.name, fp, "image/png")}
-                        r = requests.post(AGENT_CREATE_URL, headers=headers, files=files, timeout=30)
-                    print(f"[figure/create] POST {AGENT_CREATE_URL} -> {r.status_code}")
-                    if 200 <= r.status_code < 300:
-                        data = r.json() if r.content else {}
-                        figure_id = data.get("figure_id") or data.get("id")
-                        model_hash = data.get("runtime_model_hash") or data.get("model_hash")
-                        if figure_id or model_hash:
-                            return {"figure_id": figure_id, "runtime_model_hash": model_hash}
-                        else:
-                            print("[figure/create] 2xx ohne figure_id/model_hash – fallback")
-                    else:
-                        print(f"[figure/create] Fehler HTTP {r.status_code}: {r.text[:300]}")
-                except Exception as e:
-                    print(f"[figure/create] Exception bei Agent Create: {e}")
+                    print(f"[figure/create] result: figure_id={figure_id}, runtime_model_hash={model_hash}")
+                except Exception:
+                    pass
 
-        # Fallback: Dummy-IDs zurückgeben, damit die App fortfahren kann
-        dummy_id = uuid.uuid4().hex
-        print(f"[figure/create] Fallback aktiv – gebe dummy figure_id {dummy_id} zurück")
-        return {"figure_id": dummy_id, "runtime_model_hash": None}
+                return {"figure_id": figure_id, "runtime_model_hash": model_hash}
+
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Figure-Erstellung fehlgeschlagen: {e}")
     except HTTPException:
         raise
     except Exception as e:

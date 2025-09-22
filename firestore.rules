@@ -14,6 +14,10 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
+    // Video-Provider prüfen
+    function allowedVideoProvider(p) {
+      return p in ['bithuman', 'bp', 'beyond_presence'];
+    }
 
     // User-Dokumente (Struppi-System)
     match /users/{uid} {
@@ -53,10 +57,24 @@ service cloud.firestore {
         && (!('training' in request.resource.data) || request.resource.data.training is map);
 
       allow get, list: if isOwner(resource.data) || (resource.data.isPublic == true);
-      allow update: if isOwner(resource.data)
-        && request.resource.data.userId == resource.data.userId
-        && request.resource.data.id == resource.data.id
-        && validTimestamp(request.resource.data.updatedAt);
+      // Allgemeines Update (bestehend)
+      allow update: if (
+          isOwner(resource.data)
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.id == resource.data.id
+          && validTimestamp(request.resource.data.updatedAt)
+        )
+        || (
+          // Minimaler Spezialfall: Nur Video-Provider (und optional updatedAt) wird geändert
+          isOwner(resource.data)
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.id == resource.data.id
+          && request.resource.data.training is map
+          && request.resource.data.training.videoProvider is string
+          && allowedVideoProvider(request.resource.data.training.videoProvider)
+          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['training','updatedAt'])
+          && (!('updatedAt' in request.resource.data) || validTimestamp(request.resource.data.updatedAt))
+        );
       allow delete: if isOwner(resource.data);
     }
 

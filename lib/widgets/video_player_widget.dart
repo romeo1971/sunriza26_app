@@ -35,7 +35,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     final primary = Theme.of(context).colorScheme.primary;
     _chewieController = ChewieController(
       videoPlayerController: widget.controller,
-      autoPlay: true,
+      autoPlay: false, // Kein automatisches Abspielen – verhindert Doppel-Start
       looping: false,
       allowFullScreen: true,
       allowMuting: true,

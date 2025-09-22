@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 import '../theme/app_theme.dart';
@@ -65,6 +66,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   VideoPlayerController? _inlineVideoController; // Inline-Player für Videos
   // Inline-Vorschaubild nicht nötig, Thumbnails entstehen in den Tiles per FutureBuilder
   final Map<String, Uint8List> _videoThumbCache = {};
+  String? _currentInlineUrl; // merkt die aktuell dargestellte Krone-Video-URL
+  bool _autoVideoCrownApplied = false;
   final Set<String> _selectedRemoteImages = {};
   final Set<String> _selectedLocalImages = {};
   final Set<String> _selectedRemoteVideos = {};
@@ -251,6 +254,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         _avatarData?.greetingText?.trim().isNotEmpty == true
         ? _avatarData!.greetingText!
         : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?';
+    // Krone-Video in Großansicht initialisieren
+    _initInlineFromCrown();
   }
 
   // Obsolet: Rundes Avatarbild oben wurde entfernt (Hintergrundbild reicht aus)
@@ -289,6 +294,101 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ),
           child: Column(
             children: [
+              // Video Provider Auswahl (BitHuman / Beyond Presence)
+              ExpansionTile(
+                initiallyExpanded: false,
+                collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
+                backgroundColor: Colors.white.withValues(alpha: 0.06),
+                title: const Text(
+                  'Video Provider',
+                  style: TextStyle(color: Colors.white),
+                ),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'Provider:',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                        const SizedBox(width: 12),
+                        Builder(
+                          builder: (context) {
+                            final training = Map<String, dynamic>.from(
+                              _avatarData?.training ?? {},
+                            );
+                            final current =
+                                (training['videoProvider'] as String?)
+                                    ?.trim()
+                                    .toLowerCase();
+                            final value =
+                                (current == 'bp' ||
+                                    current == 'beyond_presence')
+                                ? 'bp'
+                                : 'bithuman';
+                            return DropdownButton<String>(
+                              value: value,
+                              dropdownColor: const Color(0xFF121212),
+                              style: const TextStyle(color: Colors.white),
+                              items: const [
+                                DropdownMenuItem(
+                                  value: 'bithuman',
+                                  child: Text('BitHuman'),
+                                ),
+                                DropdownMenuItem(
+                                  value: 'bp',
+                                  child: Text('Beyond Presence'),
+                                ),
+                              ],
+                              onChanged: (val) async {
+                                if (val == null || _avatarData == null) return;
+                                try {
+                                  final uid = _avatarData!.userId;
+                                  final fs = FirebaseFirestore.instance;
+                                  final docRef = fs
+                                      .collection('avatars')
+                                      .doc(_avatarData!.id);
+                                  final snap = await docRef.get();
+                                  final existing = snap.data() ?? {};
+                                  final training = Map<String, dynamic>.from(
+                                    existing['training'] ?? {},
+                                  );
+                                  training['videoProvider'] = val;
+                                  await docRef.set({
+                                    'training': training,
+                                    'updatedAt':
+                                        DateTime.now().millisecondsSinceEpoch,
+                                  }, SetOptions(merge: true));
+                                  if (mounted) setState(() {});
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Video Provider gesetzt: ${val == 'bp' ? 'Beyond Presence' : 'BitHuman'}',
+                                      ),
+                                    ),
+                                  );
+                                } catch (e) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(
+                                        'Fehler beim Speichern: $e',
+                                      ),
+                                    ),
+                                  );
+                                }
+                              },
+                            );
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
               // Begrüßungstext
               ExpansionTile(
                 initiallyExpanded: false,
@@ -892,8 +992,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 child: ElevatedButton(
                                   onPressed: () async {
                                     if (_avatarData == null ||
-                                        _isGeneratingAvatar)
+                                        _isGeneratingAvatar) {
                                       return;
+                                    }
                                     final ok = await showDialog<bool>(
                                       context: context,
                                       builder: (ctx) => AlertDialog(
@@ -968,73 +1069,81 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ],
                 ),
                 const SizedBox(width: spacing),
-                // Galerie: exakt 4 Kacheln, horizontal scrollend, gleiche Größe wie Krone
+                // Galerie: bündig unten abschließend
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      // Upload‑Icon ist in die Kopfzeile gezogen
-                      const SizedBox(height: 8),
-                      SizedBox(
-                        height: leftH,
-                        child: Stack(
-                          children: [
-                            ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: remoteFour.length.clamp(0, 4),
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(width: gridSpacing),
-                              itemBuilder: (context, index) {
-                                final url = remoteFour[index];
-                                final isCrown =
-                                    _profileImageUrl == url ||
-                                    (_profileImageUrl == null && index == 0);
-                                return SizedBox(
-                                  width: leftW,
-                                  height: leftH,
-                                  child: _imageThumbNetwork(url, isCrown),
-                                );
+                      // Top-Leiste der Bilder-Galerie
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          if (_isDeleteMode &&
+                              (_selectedRemoteImages.length +
+                                      _selectedLocalImages.length) >
+                                  0)
+                            ElevatedButton(
+                              onPressed: () {
+                                setState(() {
+                                  _isDeleteMode = false;
+                                  _selectedRemoteImages.clear();
+                                  _selectedLocalImages.clear();
+                                });
                               },
-                            ),
-                            if (_isDeleteMode)
-                              Positioned(
-                                top: 4,
-                                right: 0,
-                                child: Row(
-                                  children: [
-                                    TextButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          _isDeleteMode = false;
-                                          _selectedRemoteImages.clear();
-                                          _selectedLocalImages.clear();
-                                        });
-                                      },
-                                      child: const Text(
-                                        'Abbrechen',
-                                        style: TextStyle(color: Colors.white70),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    ElevatedButton(
-                                      onPressed: _confirmDeleteSelectedImages,
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor:
-                                            AppColors.accentGreenDark,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 6,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        'Löschen (${_selectedRemoteImages.length + _selectedLocalImages.length})',
-                                      ),
-                                    ),
-                                  ],
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.grey,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
                                 ),
                               ),
-                          ],
+                              child: const Icon(Icons.close, size: 18),
+                            ),
+                          if (_isDeleteMode &&
+                              (_selectedRemoteImages.length +
+                                      _selectedLocalImages.length) >
+                                  0)
+                            const SizedBox(width: 8),
+                          if (_isDeleteMode &&
+                              (_selectedRemoteImages.length +
+                                      _selectedLocalImages.length) >
+                                  0)
+                            ElevatedButton(
+                              onPressed: _confirmDeleteSelectedImages,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                              ),
+                              child: const Icon(Icons.delete, size: 18),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      // Galerie unten bündig mit Großansicht
+                      SizedBox(
+                        height: leftH,
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: remoteFour.length.clamp(0, 4),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: gridSpacing),
+                          itemBuilder: (context, index) {
+                            final url = remoteFour[index];
+                            final isCrown =
+                                _profileImageUrl == url ||
+                                (_profileImageUrl == null && index == 0);
+                            return SizedBox(
+                              width: leftW,
+                              height: leftH,
+                              child: _imageThumbNetwork(url, isCrown),
+                            );
+                          },
                         ),
                       ),
                     ],
@@ -1088,8 +1197,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 height: navBtnH,
                                 child: ElevatedButton(
                                   onPressed: () {
-                                    if (_mediaTab != 'images')
+                                    if (_mediaTab != 'images') {
                                       setState(() => _mediaTab = 'images');
+                                    }
                                   },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: _mediaTab == 'images'
@@ -1116,8 +1226,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 height: navBtnH,
                                 child: ElevatedButton(
                                   onPressed: () {
-                                    if (_mediaTab != 'videos')
+                                    if (_mediaTab != 'videos') {
                                       setState(() => _mediaTab = 'videos');
+                                    }
                                   },
                                   style: ElevatedButton.styleFrom(
                                     backgroundColor: _mediaTab == 'videos'
@@ -1166,7 +1277,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                       ),
                                       child: const Center(
                                         child: Icon(
-                                          Icons.videocam,
+                                          Icons.file_upload,
                                           color: Colors.white,
                                         ),
                                       ),
@@ -1181,69 +1292,134 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     SizedBox(
                       width: leftW,
                       height: leftH,
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(12),
-                        child: _inlineVideoController != null
-                            ? AspectRatio(
-                                aspectRatio: 9 / 16,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Colors.black.withValues(alpha: 0.05),
+                        ),
+                        clipBehavior: Clip.hardEdge,
+                        child: Stack(
+                          clipBehavior: Clip.hardEdge,
+                          children: [
+                            if (_inlineVideoController != null)
+                              Positioned.fill(
                                 child: VideoPlayerWidget(
                                   controller: _inlineVideoController!,
                                 ),
-                              )
-                            : Container(
-                                color: Colors.black26,
-                                child: const Icon(
-                                  Icons.play_arrow,
-                                  color: Colors.white54,
-                                  size: 48,
+                              ),
+                            if (_inlineVideoController == null)
+                              Positioned.fill(
+                                child: Builder(
+                                  builder: (context) {
+                                    final crown = _getCrownVideoUrl();
+                                    if (crown == null) {
+                                      return Container(
+                                        color: Colors.black26,
+                                        child: const Icon(
+                                          Icons.play_arrow,
+                                          color: Colors.white54,
+                                          size: 48,
+                                        ),
+                                      );
+                                    }
+                                    return AspectRatio(
+                                      aspectRatio: 9 / 16,
+                                      child: FutureBuilder<Uint8List?>(
+                                        future: _thumbnailForRemote(crown),
+                                        builder: (context, snapshot) {
+                                          if (snapshot.hasData &&
+                                              snapshot.data != null) {
+                                            return Image.memory(
+                                              snapshot.data!,
+                                              fit: BoxFit.cover,
+                                            );
+                                          }
+                                          return Container(
+                                            color: Colors.black26,
+                                          );
+                                        },
+                                      ),
+                                    );
+                                  },
                                 ),
                               ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(width: spacing),
-                // Galerie (max. 4) – Upload-Button über den Thumbs
+                // Galerie (max. 4) – bündig unten abschließend
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
-                      const SizedBox.shrink(),
+                      // Top-Leiste der Video-Galerie
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          if (_isDeleteMode &&
+                              (_selectedRemoteVideos.length +
+                                      _selectedLocalVideos.length) >
+                                  0)
+                            ElevatedButton(
+                              onPressed: () {
+                                setState(() {
+                                  _isDeleteMode = false;
+                                  _selectedRemoteVideos.clear();
+                                  _selectedLocalVideos.clear();
+                                });
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.grey,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                              ),
+                              child: const Icon(Icons.close, size: 18),
+                            ),
+                          if (_isDeleteMode &&
+                              (_selectedRemoteVideos.length +
+                                      _selectedLocalVideos.length) >
+                                  0)
+                            const SizedBox(width: 8),
+                          if (_isDeleteMode &&
+                              (_selectedRemoteVideos.length +
+                                      _selectedLocalVideos.length) >
+                                  0)
+                            ElevatedButton(
+                              onPressed: _confirmDeleteSelectedImages,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 6,
+                                ),
+                              ),
+                              child: const Icon(Icons.delete, size: 18),
+                            ),
+                        ],
+                      ),
                       const SizedBox(height: 8),
+                      // Galerie unten bündig mit Großansicht
                       SizedBox(
                         height: leftH,
-                        child: LayoutBuilder(
-                          builder: (ctx, cons) {
-                            final double targetItemWidth = (cons.maxWidth / 3)
-                                .clamp(minThumbWidth, 200.0);
-                            final int cols = (cons.maxWidth / targetItemWidth)
-                                .floor()
-                                .clamp(2, 3);
-                            final totalCount =
-                                (remoteFour.length +
-                                (4 - remoteFour.length)
-                                    .clamp(0, 4)
-                                    .clamp(0, _newVideoFiles.length));
-                            return GridView.builder(
-                              shrinkWrap: true,
-                              physics: const NeverScrollableScrollPhysics(),
-                              gridDelegate:
-                                  SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: cols,
-                                    mainAxisSpacing: gridSpacing,
-                                    crossAxisSpacing: gridSpacing,
-                                    childAspectRatio: 1,
-                                  ),
-                              itemCount: totalCount,
-                              itemBuilder: (context, index) {
-                                if (index < remoteFour.length) {
-                                  return _videoThumbNetwork(remoteFour[index]);
-                                }
-                                final localIndex = index - remoteFour.length;
-                                return _videoThumbLocal(
-                                  _newVideoFiles[localIndex],
-                                );
-                              },
+                        child: ListView.separated(
+                          scrollDirection: Axis.horizontal,
+                          itemCount: remoteFour.length.clamp(0, 4),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(width: gridSpacing),
+                          itemBuilder: (context, index) {
+                            final url = remoteFour[index];
+                            return SizedBox(
+                              width: leftW,
+                              height: leftH,
+                              child: _videoTile(url, leftW, leftH),
                             );
                           },
                         ),
@@ -1587,7 +1763,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ),
             Expanded(
               child: DropdownButtonFormField<String>(
-                value: _voiceDialect,
+                initialValue: _voiceDialect,
                 dropdownColor: Colors.black,
                 items: const [
                   DropdownMenuItem(
@@ -1822,8 +1998,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             final stability = (v?['stability'] as num?)?.toDouble();
             final similarity = (v?['similarity'] as num?)?.toDouble();
             if (tempo != null) payload['tempo'] = tempo;
-            if (dialect != null && dialect.isNotEmpty)
+            if (dialect != null && dialect.isNotEmpty) {
               payload['dialect'] = dialect;
+            }
             if (stability != null) payload['stability'] = stability;
             if (similarity != null) payload['similarity'] = similarity;
           } catch (_) {}
@@ -2229,11 +2406,126 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   // _imageThumbFile wurde im neuen Layout nicht mehr benötigt
+  String? _getCrownVideoUrl() {
+    try {
+      final tr = Map<String, dynamic>.from(_avatarData?.training ?? {});
+      final bp = Map<String, dynamic>.from(tr['beyondPresence'] ?? {});
+      final v = (bp['crownVideoUrl'] as String?)?.trim();
+      if (v != null && v.isNotEmpty) return v;
+    } catch (_) {}
+    if (_videoUrls.isNotEmpty) return _videoUrls.first;
+    return null;
+  }
+
+  Future<void> _clearInlinePlayer() async {
+    try {
+      await _inlineVideoController?.pause();
+    } catch (_) {}
+    try {
+      await _inlineVideoController?.dispose();
+    } catch (_) {}
+    _inlineVideoController = null;
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _initInlineFromCrown() async {
+    final crown = _getCrownVideoUrl();
+    if (crown == null || crown.isEmpty) {
+      await _clearInlinePlayer();
+      return;
+    }
+    // Falls URL bereits aktiv, nichts tun
+    if (_currentInlineUrl == crown && _inlineVideoController != null) {
+      return;
+    }
+    // Frische Download-URL sichern (kann ablaufen)
+    final fresh = await _refreshDownloadUrl(crown) ?? crown;
+    try {
+      await _clearInlinePlayer();
+      final ctrl = VideoPlayerController.networkUrl(Uri.parse(fresh));
+      await ctrl.initialize();
+      await ctrl.setLooping(false); // kein Looping in Großansicht
+      // nicht auto-play; zeigt erstes Frame
+      _inlineVideoController = ctrl;
+      _currentInlineUrl = crown;
+      if (mounted) setState(() {});
+    } catch (_) {
+      // Bei Fehler: Controller freigeben und auf Thumbnail-Fallback lassen
+      await _clearInlinePlayer();
+    }
+  }
+
+  Future<void> _deleteRemoteVideo(String url) async {
+    if (_avatarData == null) return;
+    try {
+      setState(() {
+        _videoUrls.remove(url);
+      });
+      // Wenn es die Krone war, neue Krone setzen (erstes verbleibendes)
+      final crown = _getCrownVideoUrl();
+      if (crown == null || crown == url) {
+        final next = _videoUrls.isNotEmpty ? _videoUrls.first : null;
+        if (next != null) {
+          await _setBpCrownVideo(next);
+        }
+      }
+      // Persistiere Videos
+      final updated = _avatarData!.copyWith(
+        videoUrls: [..._videoUrls],
+        updatedAt: DateTime.now(),
+      );
+      final ok = await _avatarService.updateAvatar(updated);
+      if (ok && mounted) _applyAvatar(updated);
+    } catch (e) {
+      _showSystemSnack('Video löschen fehlgeschlagen: $e');
+    }
+  }
+
+  Widget _videoTile(String url, double w, double h) {
+    final crownUrl = _getCrownVideoUrl();
+    final isCrown = crownUrl != null && url == crownUrl;
+    return Stack(
+      children: [
+        Positioned.fill(child: _videoThumbNetwork(url)),
+        // Overlay-Leiste oben (30px)
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 30,
+          child: Container(
+            color: Colors.transparent,
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Krone-Button
+                GestureDetector(
+                  onTap: () => _setBpCrownVideo(url),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    // Kein Border – nur Icon-Farbe wechselt
+                    color: Colors.transparent,
+                    child: Icon(
+                      Icons.emoji_events,
+                      size: 16,
+                      color: isCrown ? Color(0xFFFFD700) : Colors.white,
+                    ),
+                  ),
+                ),
+                // Kein Top-Icon mehr für Löschen
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 
   Widget _videoThumbNetwork(String url) {
     final selected = _selectedRemoteVideos.contains(url);
     return AspectRatio(
-      aspectRatio: 1,
+      aspectRatio: 9 / 16,
       child: GestureDetector(
         onTap: () {
           if (_isDeleteMode) {
@@ -2245,7 +2537,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               }
             });
           } else {
-            _playNetworkInline(url);
+            // 1:1 Bild-Krone-Logik: Klick setzt Krone-Video
+            _setBpCrownVideo(url);
           }
         },
         child: Container(
@@ -2258,27 +2551,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              FutureBuilder<Uint8List?>(
-                future: _thumbnailForRemote(url),
+              FutureBuilder<VideoPlayerController?>(
+                future: _createThumbController(url),
                 builder: (context, snapshot) {
                   if (snapshot.hasData && snapshot.data != null) {
-                    return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                    return VideoPlayer(snapshot.data!);
                   }
                   return Container(color: Colors.black26);
                 },
               ),
-              if (_isDeleteMode)
-                Positioned(
-                  top: 4,
-                  right: 4,
-                  child: Icon(
-                    selected
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
-                    color: selected ? Colors.redAccent : Colors.white70,
-                    size: 18,
-                  ),
-                ),
               if (!_isDeleteMode)
                 const Align(
                   alignment: Alignment.center,
@@ -2305,9 +2586,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: const Color(0x30000000),
+                      color: selected ? null : const Color(0x30000000),
+                      gradient: selected
+                          ? const LinearGradient(
+                              colors: [AppColors.magenta, AppColors.lightBlue],
+                            )
+                          : null,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0x66FFFFFF)),
+                      border: Border.all(
+                        color: selected
+                            ? AppColors.lightBlue.withValues(alpha: 0.7)
+                            : const Color(0x66FFFFFF),
+                      ),
                     ),
                     child: const Icon(
                       Icons.delete_outline,
@@ -2328,7 +2618,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final key = file.path;
     final selected = _selectedLocalVideos.contains(key);
     return AspectRatio(
-      aspectRatio: 1,
+      aspectRatio: 9 / 16,
       child: GestureDetector(
         onTap: () {
           if (_isDeleteMode) {
@@ -2362,18 +2652,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   return Container(color: Colors.black26);
                 },
               ),
-              if (_isDeleteMode)
-                Positioned(
-                  top: 4,
-                  right: 4,
-                  child: Icon(
-                    selected
-                        ? Icons.check_circle
-                        : Icons.radio_button_unchecked,
-                    color: selected ? Colors.redAccent : Colors.white70,
-                    size: 18,
-                  ),
-                ),
               if (!_isDeleteMode)
                 const Align(
                   alignment: Alignment.center,
@@ -2400,9 +2678,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   child: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
-                      color: const Color(0x30000000),
+                      color: selected ? null : const Color(0x30000000),
+                      gradient: selected
+                          ? const LinearGradient(
+                              colors: [AppColors.magenta, AppColors.lightBlue],
+                            )
+                          : null,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: const Color(0x66FFFFFF)),
+                      border: Border.all(
+                        color: selected
+                            ? AppColors.lightBlue.withValues(alpha: 0.7)
+                            : const Color(0x66FFFFFF),
+                      ),
                     ),
                     child: const Icon(
                       Icons.delete_outline,
@@ -2425,6 +2712,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await _inlineVideoController?.dispose();
       final controller = VideoPlayerController.networkUrl(Uri.parse(url));
       await controller.initialize();
+      await controller.setLooping(true);
+      await controller.play();
       setState(() => _inlineVideoController = controller);
     } catch (e) {
       // Versuch: Download-URL auffrischen (z.B. abgelaufener Token)
@@ -2433,6 +2722,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (fresh != null) {
           final controller = VideoPlayerController.networkUrl(Uri.parse(fresh));
           await controller.initialize();
+          await controller.setLooping(true);
+          await controller.play();
           setState(() => _inlineVideoController = controller);
           // gespeicherte URL ersetzen und persistieren
           final idx = _videoUrls.indexOf(url);
@@ -2453,6 +2744,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await _inlineVideoController?.dispose();
       final controller = VideoPlayerController.file(file);
       await controller.initialize();
+      await controller.setLooping(true);
+      await controller.play();
       setState(() => _inlineVideoController = controller);
     } catch (e) {
       _showSystemSnack('Lokales Video kann nicht geladen werden');
@@ -2478,6 +2771,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (_isGeneratingAvatar) return;
     setState(() => _isGeneratingAvatar = true);
     try {
+      // Provider-Weiche
+      final providerVal =
+          (_avatarData?.training?['videoProvider'] as String?)
+              ?.trim()
+              .toLowerCase() ??
+          '';
+      final isBP = providerVal == 'bp' || providerVal == 'beyond_presence';
+
       final base = dotenv.env['BITHUMAN_BASE_URL']?.trim();
       if (base == null || base.isEmpty) {
         _showSystemSnack('BITHUMAN_BASE_URL fehlt (.env)');
@@ -2517,8 +2818,79 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       await _showBlockingProgress<void>(
         title: 'Avatar wird generiert…',
-        message: 'Bild und Audio werden verarbeitet.',
+        message: isBP
+            ? 'Video wird zu Beyond Presence gesendet…'
+            : 'Bild und Audio werden verarbeitet.',
         task: () async {
+          if (isBP) {
+            // Beyond Presence: Krone-Video ermitteln und hochladen
+            String? crownVideoUrl;
+            try {
+              final bp = Map<String, dynamic>.from(
+                _avatarData?.training?['beyondPresence'] ?? {},
+              );
+              crownVideoUrl = (bp['crownVideoUrl'] as String?)?.trim();
+            } catch (_) {}
+            crownVideoUrl ??= _videoUrls.isNotEmpty ? _videoUrls.first : null;
+            if (crownVideoUrl == null || crownVideoUrl.isEmpty) {
+              throw Exception('Kein Krone-Video vorhanden');
+            }
+
+            final vFile = await _downloadToTemp(crownVideoUrl, suffix: '.mp4');
+            if (vFile == null)
+              throw Exception('Krone-Video konnte nicht geladen werden');
+
+            final uri = Uri.parse('$base/bp/avatar/upload-video');
+            final req = http.MultipartRequest('POST', uri);
+            req.files.add(
+              await http.MultipartFile.fromPath('video', vFile.path),
+            );
+
+            // Optional vorhandene avatarId mitsenden
+            try {
+              final bp = Map<String, dynamic>.from(
+                _avatarData?.training?['beyondPresence'] ?? {},
+              );
+              final avatarId = (bp['avatarId'] as String?)?.trim();
+              if ((avatarId ?? '').isNotEmpty)
+                req.fields['avatarId'] = avatarId!;
+            } catch (_) {}
+
+            final streamed = await req.send();
+            final body = await streamed.stream.bytesToString();
+            if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
+              // avatarId aus Response speichern, wenn vorhanden
+              try {
+                final data = jsonDecode(body) as Map<String, dynamic>;
+                final newId =
+                    (data['avatarId'] as String?)?.trim() ??
+                    (data['id'] as String?)?.trim();
+                if ((newId ?? '').isNotEmpty) {
+                  final tr = Map<String, dynamic>.from(
+                    _avatarData!.training ?? {},
+                  );
+                  final bp = Map<String, dynamic>.from(
+                    tr['beyondPresence'] ?? {},
+                  );
+                  bp['avatarId'] = newId;
+                  tr['beyondPresence'] = bp;
+                  final updated = _avatarData!.copyWith(
+                    training: tr,
+                    updatedAt: DateTime.now(),
+                  );
+                  final ok = await _avatarService.updateAvatar(updated);
+                  if (ok) _applyAvatar(updated);
+                }
+              } catch (_) {}
+              _showSystemSnack('BP: Krone-Video hochgeladen');
+            } else {
+              throw Exception(
+                'BP Upload fehlgeschlagen: ${streamed.statusCode} ${body.isNotEmpty ? body : ''}',
+              );
+            }
+            return; // BP-Case abgeschlossen
+          }
+
           // 1) Figure sicherstellen (nur wenn noch nicht vorhanden)
           String? figureId;
           String? modelHash;
@@ -2532,7 +2904,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             final figUri = Uri.parse('$base/figure/create');
             final m = http.MultipartRequest('POST', figUri);
             m.files.add(
-              await http.MultipartFile.fromPath('image', imageFile!.path),
+              await http.MultipartFile.fromPath('image', imageFile.path),
             );
             final fRes = await m.send();
             if (fRes.statusCode >= 200 && fRes.statusCode < 300) {
@@ -2569,8 +2941,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             await http.MultipartFile.fromPath('audio', audioFile.path),
           );
           if ((figureId ?? '').isNotEmpty) req.fields['figure_id'] = figureId!;
-          if ((modelHash ?? '').isNotEmpty)
+          if ((modelHash ?? '').isNotEmpty) {
             req.fields['runtime_model_hash'] = modelHash!;
+          }
           final streamed = await req.send();
           if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
             final bytes = await streamed.stream.toBytes();
@@ -2612,22 +2985,78 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
+  Future<void> _setBpCrownVideo(String url) async {
+    if (_avatarData == null) return;
+    try {
+      final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
+      final bp = Map<String, dynamic>.from(tr['beyondPresence'] ?? {});
+      bp['crownVideoUrl'] = url;
+      tr['beyondPresence'] = bp;
+      final updated = _avatarData!.copyWith(
+        training: tr,
+        updatedAt: DateTime.now(),
+      );
+      final ok = await _avatarService.updateAvatar(updated);
+      if (ok) {
+        _applyAvatar(updated);
+        // Großansicht auf neue Krone updaten
+        await _initInlineFromCrown();
+      }
+      _showSystemSnack('BP: Krone-Video gesetzt');
+    } catch (e) {
+      _showSystemSnack('Fehler beim Setzen der Videokrone: $e');
+    }
+  }
+
+  Future<VideoPlayerController?> _createThumbController(String url) async {
+    try {
+      final fresh = await _refreshDownloadUrl(url) ?? url;
+      final ctrl = VideoPlayerController.networkUrl(Uri.parse(fresh));
+      await ctrl.initialize();
+      await ctrl.setLooping(false);
+      // Nicht abspielen - nur erstes Frame zeigen
+      return ctrl;
+    } catch (e) {
+      print('🎬 Thumb controller error: $e');
+      return null;
+    }
+  }
+
+  Future<VideoPlayerController?> _createLocalThumbController(
+    String filePath,
+  ) async {
+    try {
+      final ctrl = VideoPlayerController.file(File(filePath));
+      await ctrl.initialize();
+      await ctrl.setLooping(false);
+      // Nicht abspielen - nur erstes Frame zeigen
+      return ctrl;
+    } catch (e) {
+      print('🎬 Local thumb controller error: $e');
+      return null;
+    }
+  }
+
   Future<Uint8List?> _thumbnailForRemote(String url) async {
     try {
       if (_videoThumbCache.containsKey(url)) return _videoThumbCache[url];
       var effectiveUrl = url;
+      print('🎬 Thumbnail für: $effectiveUrl');
       var res = await http.get(Uri.parse(effectiveUrl));
+      print('🎬 Response: ${res.statusCode}');
       if (res.statusCode != 200) {
         final fresh = await _refreshDownloadUrl(url);
         if (fresh != null) {
           effectiveUrl = fresh;
           res = await http.get(Uri.parse(effectiveUrl));
+          print('🎬 Fresh Response: ${res.statusCode}');
           if (res.statusCode != 200) return null;
           // Cache frische URL direkt ablegen, damit Thumbs stabil sind
           final idx = _videoUrls.indexOf(url);
           if (idx >= 0) _videoUrls[idx] = fresh;
           // kein persist hier, damit UI flott bleibt; persist passiert beim Speichern
         } else {
+          print('🎬 Refresh failed');
           return null;
         }
       }
@@ -2641,13 +3070,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         maxWidth: 360,
         quality: 60,
       );
+      print('🎬 Thumbnail data: ${data?.length ?? 0} bytes');
       if (data != null) _videoThumbCache[url] = data;
       try {
         // optional: Tempdatei löschen
         await tmp.delete();
       } catch (_) {}
       return data;
-    } catch (_) {
+    } catch (e) {
+      print('🎬 Thumbnail error: $e');
       return null;
     }
   }
@@ -3770,10 +4201,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           avatarId: avatarId,
           note: 'fallback:${fileName ?? 'text'}',
         );
-        if (mounted)
+        if (mounted) {
           _showSystemSnack(
             'Memory insert fehlgeschlagen (${res.statusCode}) – Fallback ausgeführt',
           );
+        }
       }
     } catch (_) {
       // Netzwerkfehler → Fallback
@@ -3782,8 +4214,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         avatarId: avatarId,
         note: 'fallback:${fileName ?? 'text'}',
       );
-      if (mounted)
+      if (mounted) {
         _showSystemSnack('Memory insert Fehler – Fallback ausgeführt');
+      }
     }
   }
 
@@ -3874,25 +4307,51 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ),
                 ),
                 ..._selectedRemoteVideos.map(
-                  (u) => Container(
-                    width: 54,
-                    height: 96,
-                    decoration: BoxDecoration(
-                      color: Colors.black26,
-                      borderRadius: BorderRadius.circular(8),
+                  (u) => ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      width: 54,
+                      height: 96,
+                      child: FutureBuilder<VideoPlayerController?>(
+                        future: _createThumbController(u),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData && snapshot.data != null) {
+                            return VideoPlayer(snapshot.data!);
+                          }
+                          return Container(
+                            color: Colors.black26,
+                            child: const Icon(
+                              Icons.videocam,
+                              color: Colors.white70,
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                    child: const Icon(Icons.videocam, color: Colors.white70),
                   ),
                 ),
                 ..._selectedLocalVideos.map(
-                  (_) => Container(
-                    width: 54,
-                    height: 96,
-                    decoration: BoxDecoration(
-                      color: Colors.black26,
-                      borderRadius: BorderRadius.circular(8),
+                  (filePath) => ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      width: 54,
+                      height: 96,
+                      child: FutureBuilder<VideoPlayerController?>(
+                        future: _createLocalThumbController(filePath),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData && snapshot.data != null) {
+                            return VideoPlayer(snapshot.data!);
+                          }
+                          return Container(
+                            color: Colors.black26,
+                            child: const Icon(
+                              Icons.videocam,
+                              color: Colors.white70,
+                            ),
+                          );
+                        },
+                      ),
                     ),
-                    child: const Icon(Icons.videocam, color: Colors.white70),
                   ),
                 ),
               ],
@@ -3926,6 +4385,31 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await FirebaseStorageService.deleteFile(url);
       _videoUrls.remove(url);
     }
+    // Krone-Video prüfen und ggf. neu setzen
+    try {
+      final currentCrown = _getCrownVideoUrl();
+      if (currentCrown == null || !_videoUrls.contains(currentCrown)) {
+        if (_videoUrls.isNotEmpty) {
+          await _setBpCrownVideo(_videoUrls.first);
+        } else {
+          // Keine Videos mehr vorhanden: Crown in training entfernen
+          if (_avatarData != null) {
+            final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
+            final bp = Map<String, dynamic>.from(tr['beyondPresence'] ?? {});
+            if (bp.containsKey('crownVideoUrl')) {
+              bp.remove('crownVideoUrl');
+              tr['beyondPresence'] = bp;
+              final updated = _avatarData!.copyWith(
+                training: tr,
+                updatedAt: DateTime.now(),
+              );
+              final ok = await _avatarService.updateAvatar(updated);
+              if (ok) _applyAvatar(updated);
+            }
+          }
+        }
+      }
+    } catch (_) {}
     // Local entfernen (Bilder)
     _newImageFiles.removeWhere((f) => _selectedLocalImages.contains(f.path));
     // Local entfernen (Videos)
