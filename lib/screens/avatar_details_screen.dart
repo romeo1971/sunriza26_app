@@ -28,6 +28,12 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/env_service.dart';
 
+class _NamedItem {
+  final String name;
+  final Widget widget;
+  const _NamedItem({required this.name, required this.widget});
+}
+
 class AvatarDetailsScreen extends StatefulWidget {
   const AvatarDetailsScreen({super.key});
 
@@ -52,10 +58,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final List<String> _videoUrls = [];
   final List<String> _textFileUrls = [];
   final TextEditingController _textAreaController = TextEditingController();
+  final TextEditingController _textFilterController = TextEditingController();
   // Chunking-Einstellungen (UI)
   double _targetTokens = 400; // Empfehlung: 200–500 (bis 1000)
   double _overlapPercent = 15; // Empfehlung: 10–20%
   double _minChunkTokens = 100; // Empfehlung: 50–100
+  // Paging für Textdateien
+  static const int _textFilesPageSize = 7;
+  int _textFilesPage = 0;
+  bool _textFilesExpanded = true;
+  String _textFilter = '';
   final TextEditingController _greetingController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final AvatarService _avatarService = AvatarService();
@@ -268,6 +280,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _lastNameController.addListener(_updateDirty);
     _textAreaController.addListener(_updateDirty);
     _greetingController.addListener(_updateDirty);
+    _textFilterController.addListener(() {
+      final v = _textFilterController.text.trim();
+      if (v != _textFilter) {
+        setState(() {
+          _textFilter = v;
+          _textFilesPage = 0;
+        });
+      }
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final args = ModalRoute.of(context)?.settings.arguments;
       if (args is AvatarData) {
@@ -1616,34 +1637,41 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Widget _buildTextFilesList() {
     // Kombiniere Remote- und lokale Textdateien
-    final List<Widget> tiles = [];
+    final List<_NamedItem> items = [];
 
     // Remote URLs aus Firestore
     for (final url in _textFileUrls) {
-      tiles.add(
-        ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.description, color: Colors.white70),
-          title: Text(
-            _fileNameFromUrl(url),
-            style: const TextStyle(color: Colors.white),
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                tooltip: 'Öffnen',
-                icon: const Icon(Icons.open_in_new, color: Colors.white70),
-                onPressed: () => _openUrl(url),
-              ),
-              IconButton(
-                tooltip: 'Löschen',
-                icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                onPressed: () => _confirmDeleteRemoteText(url),
-              ),
-            ],
+      final name = _fileNameFromUrl(url);
+      items.add(
+        _NamedItem(
+          name: name,
+          widget: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.description, color: Colors.white70),
+            title: Text(
+              name,
+              style: const TextStyle(color: Colors.white),
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Öffnen',
+                  icon: const Icon(Icons.open_in_new, color: Colors.white70),
+                  onPressed: () => _openUrl(url),
+                ),
+                IconButton(
+                  tooltip: 'Löschen',
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.redAccent,
+                  ),
+                  onPressed: () => _confirmDeleteRemoteText(url),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -1651,50 +1679,155 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
     // Lokale (neu hinzugefügte) Textdateien – noch nicht hochgeladen
     for (final f in _newTextFiles) {
-      tiles.add(
-        ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(
-            Icons.description_outlined,
-            color: Colors.white54,
-          ),
-          title: Text(
-            pathFromLocalFile(f.path),
-            style: const TextStyle(color: Colors.white70),
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                tooltip: 'Anzeigen',
-                icon: const Icon(
-                  Icons.visibility_outlined,
-                  color: Colors.white70,
+      final name = pathFromLocalFile(f.path);
+      items.add(
+        _NamedItem(
+          name: name,
+          widget: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(
+              Icons.description_outlined,
+              color: Colors.white54,
+            ),
+            title: Text(
+              name,
+              style: const TextStyle(color: Colors.white70),
+              overflow: TextOverflow.ellipsis,
+            ),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  tooltip: 'Anzeigen',
+                  icon: const Icon(
+                    Icons.visibility_outlined,
+                    color: Colors.white70,
+                  ),
+                  onPressed: () => _openLocalFile(f),
                 ),
-                onPressed: () => _openLocalFile(f),
-              ),
-              IconButton(
-                tooltip: 'Entfernen',
-                icon: const Icon(Icons.close, color: Colors.white54),
-                onPressed: () => _confirmDeleteLocalText(f),
-              ),
-            ],
+                IconButton(
+                  tooltip: 'Entfernen',
+                  icon: const Icon(Icons.close, color: Colors.white54),
+                  onPressed: () => _confirmDeleteLocalText(f),
+                ),
+              ],
+            ),
           ),
         ),
       );
     }
+    // Filter anwenden (case-insensitiv, einfache contains auf Dateiname)
+    final String q = _textFilter.toLowerCase();
+    final List<_NamedItem> filtered = q.isEmpty
+        ? items
+        : items.where((e) => e.name.toLowerCase().contains(q)).toList();
+
+    // Paging anwenden
+    final int total = filtered.length;
+    final int pages = (total / _textFilesPageSize).ceil().clamp(1, 1000000);
+    if (_textFilesPage >= pages) _textFilesPage = pages - 1;
+    final int start = _textFilesPage * _textFilesPageSize;
+    final int end = (start + _textFilesPageSize).clamp(0, total);
+    final List<Widget> pageTiles = (total > 0)
+        ? filtered.sublist(start, end).map((e) => e.widget).toList()
+        : const <Widget>[];
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Textdateien',
-          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Textdateien',
+              style: TextStyle(
+                color: Colors.white70,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            Row(
+              children: [
+                if (total > _textFilesPageSize)
+                  IconButton(
+                    tooltip: 'Vorherige Seite',
+                    icon: const Icon(Icons.chevron_left, color: Colors.white70),
+                    onPressed: (_textFilesPage > 0)
+                        ? () => setState(() => _textFilesPage--)
+                        : null,
+                  ),
+                if (total > _textFilesPageSize)
+                  Text(
+                    total == 0 ? '0/0' : '${_textFilesPage + 1}/$pages',
+                    style: const TextStyle(color: Colors.white54),
+                  ),
+                if (total > _textFilesPageSize)
+                  IconButton(
+                    tooltip: 'Nächste Seite',
+                    icon: const Icon(
+                      Icons.chevron_right,
+                      color: Colors.white70,
+                    ),
+                    onPressed: (_textFilesPage < pages - 1)
+                        ? () => setState(() => _textFilesPage++)
+                        : null,
+                  ),
+                IconButton(
+                  tooltip: _textFilesExpanded
+                      ? 'Liste einklappen'
+                      : 'Liste ausklappen',
+                  icon: Icon(
+                    _textFilesExpanded ? Icons.expand_less : Icons.expand_more,
+                    color: Colors.white70,
+                  ),
+                  onPressed: () => setState(() {
+                    _textFilesExpanded = !_textFilesExpanded;
+                  }),
+                ),
+              ],
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _textFilterController,
+          style: const TextStyle(color: Colors.white),
+          decoration: InputDecoration(
+            isDense: true,
+            hintText: 'Keywords… (Dateinamen filtern)',
+            hintStyle: const TextStyle(color: Colors.white54),
+            filled: true,
+            fillColor: Colors.white.withValues(alpha: 0.06),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+              borderSide: BorderSide(
+                color: Colors.white.withValues(alpha: 0.2),
+              ),
+            ),
+            suffixIcon: (_textFilter.isNotEmpty)
+                ? IconButton(
+                    icon: const Icon(Icons.clear, color: Colors.white54),
+                    onPressed: () {
+                      _textFilterController.clear();
+                      FocusScope.of(context).unfocus();
+                    },
+                  )
+                : null,
+          ),
         ),
         const SizedBox(height: 6),
-        ...tiles,
+        if (_textFilesExpanded) ...pageTiles,
+        if (_textFilesExpanded && total > _textFilesPageSize)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                '${start + 1}–$end von $total',
+                style: const TextStyle(color: Colors.white38, fontSize: 12),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -2453,12 +2586,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   String _slugify(String input) {
     var text = input.trim().toLowerCase();
-    // Verwende die ersten ~6 Wörter als Schwerpunkt
+    // Verwende die ersten ~3 Schlüsselwörter (max.)
     final words = text
         .replaceAll(RegExp(r"[\n\r\t_]+"), ' ')
         .split(' ')
         .where((w) => w.isNotEmpty)
-        .take(6)
+        .take(3)
         .toList();
     var slug = words.join('-');
     // Nur a-z0-9- erlauben
@@ -2468,6 +2601,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (slug.length > 32) slug = slug.substring(0, 32);
     if (slug.isEmpty) slug = 'text';
     return slug;
+  }
+
+  String _uniqueFileName(String desired, Set<String> existing) {
+    if (!existing.contains(desired)) {
+      existing.add(desired);
+      return desired;
+    }
+    final int dot = desired.lastIndexOf('.');
+    final String base = dot > 0 ? desired.substring(0, dot) : desired;
+    final String ext = dot > 0 ? desired.substring(dot) : '';
+    int i = 2;
+    String cand = '';
+    do {
+      cand = '${base}_$i$ext';
+      i++;
+    } while (existing.contains(cand));
+    existing.add(cand);
+    return cand;
   }
 
   String _buildProfileTextContent({
@@ -4029,7 +4180,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (freeText.isNotEmpty) {
           final slug = _slugify(freeText);
           final ts = DateTime.now().millisecondsSinceEpoch;
-          final filename = 'schatzy_${slug}_$ts.txt';
+          // Dateiname: nur bis zu 3 Schlüsselwörter, kein Spitzname-Präfix
+          String filename = '${slug}_$ts.txt';
+          // Kollisionen vermeiden innerhalb der aktuellen Session-Liste
+          final existingNames = <String>{
+            ..._textFileUrls.map(_fileNameFromUrl),
+            ..._newTextFiles.map((f) => pathFromLocalFile(f.path)),
+          };
+          filename = _uniqueFileName(filename, existingNames);
           final tmp = await File(
             '${Directory.systemTemp.path}/$filename',
           ).create();
