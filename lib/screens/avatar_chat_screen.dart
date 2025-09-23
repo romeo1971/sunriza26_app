@@ -206,6 +206,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           _avatarData = args;
         });
         _loadPartnerName().then((_) async {
+          // Prewarm Chat/CF Endpunkte für schnellere erste Antwort
+          unawaited(_prewarmChatEndpoints());
           await _loadHistory();
           final hasAny = _messages.isNotEmpty;
           final lastIsBot = hasAny ? !_messages.last.isUser : false;
@@ -1037,11 +1039,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       if (similarity != null) payload['similarity'] = similarity;
       if (tempo != null) payload['speed'] = tempo;
       if (dialect != null && dialect.isNotEmpty) payload['dialect'] = dialect;
-      final res = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(payload),
-      );
+      final res = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 8));
       if (res.statusCode >= 200 && res.statusCode < 300) {
         // Erwartet JSON { audio_b64: "..." }
         final Map<String, dynamic> j =
@@ -1341,53 +1345,135 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       if (voiceId == null || (voiceId.isEmpty)) {
         voiceId = await _reloadVoiceIdFromFirestore();
       }
-      final res = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_id': uid,
-          'avatar_id': _avatarData?.id ?? '',
-          'message': userText,
-          'top_k': 5,
-          'voice_id': (voiceId is String && voiceId.isNotEmpty)
-              ? voiceId
-              : null,
-          'avatar_name': _avatarData?.displayName,
-        }),
+      // Hedge/Race: Primär sofort, CF nach 1.5s parallel; nimm erste valide Antwort
+      final completer = Completer<Map<String, dynamic>?>();
+      bool done = false;
+
+      Future<Map<String, dynamic>?> primary() async {
+        final res = await http
+            .post(
+              uri,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'user_id': uid,
+                'avatar_id': _avatarData?.id ?? '',
+                'message': userText,
+                'top_k': 2,
+                'voice_id': (voiceId is String && voiceId.isNotEmpty)
+                    ? voiceId
+                    : null,
+                'avatar_name': _avatarData?.displayName,
+              }),
+            )
+            .timeout(const Duration(seconds: 4));
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          return jsonDecode(res.body) as Map<String, dynamic>;
+        }
+        return null;
+      }
+
+      Future<Map<String, dynamic>?> cf() async {
+        try {
+          final cfUri = Uri.parse(
+            'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse',
+          );
+          final res = await http
+              .post(
+                cfUri,
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({
+                  'userId': uid,
+                  'query': userText,
+                  'maxTokens': 180,
+                  'temperature': 0.6,
+                }),
+              )
+              .timeout(const Duration(seconds: 6));
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            final m = jsonDecode(res.body) as Map<String, dynamic>;
+            return {'answer': (m['response'] as String?)?.trim()};
+          }
+        } catch (_) {}
+        return null;
+      }
+
+      void tryComplete(Map<String, dynamic>? data) {
+        if (done) return;
+        final ans = (data?['answer'] as String?)?.trim();
+        if (ans != null && ans.isNotEmpty) {
+          done = true;
+          completer.complete(data);
+        }
+      }
+
+      // Beide sofort starten; erste gültige Antwort gewinnt
+      primary().then(tryComplete).catchError((_) {});
+      cf().then(tryComplete).catchError((_) {});
+
+      final first = await completer.future.timeout(
+        const Duration(seconds: 7),
+        onTimeout: () => null,
       );
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final answer = (data['answer'] as String?)?.trim();
-        // Nachricht sofort anzeigen für bessere UX
+
+      if (first == null) {
+        // Nichts brauchbares → klassischer Fallback
+        await _chatViaFunctions(userText);
+      } else {
+        final answer = (first['answer'] as String?)?.trim();
         if (answer != null && answer.isNotEmpty) {
           _addMessage(answer, false);
+          // TTS: benutze falls vorhanden, sonst on-demand
+          final tts = first['tts_audio_b64'] as String?;
+          if (tts != null && tts.isNotEmpty) {
+            try {
+              final bytes = base64Decode(tts);
+              final dir = await getTemporaryDirectory();
+              final file = File(
+                '${dir.path}/avatar_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
+              );
+              await file.writeAsBytes(bytes, flush: true);
+              _lastRecordingPath = file.path;
+              unawaited(_playAudioAtPath(file.path));
+            } catch (_) {}
+          } else {
+            // Erzeuge TTS schnell über Memory‑API
+            unawaited(() async {
+              try {
+                final baseTts = EnvService.memoryApiBaseUrl();
+                if (baseTts.isEmpty) return;
+                final ttsUri = Uri.parse('$baseTts/avatar/tts');
+                final tRes = await http
+                    .post(
+                      ttsUri,
+                      headers: {'Content-Type': 'application/json'},
+                      body: jsonEncode({
+                        'text': answer,
+                        'voice_id': (voiceId is String && voiceId.isNotEmpty)
+                            ? voiceId
+                            : null,
+                      }),
+                    )
+                    .timeout(const Duration(seconds: 8));
+                if (tRes.statusCode >= 200 && tRes.statusCode < 300) {
+                  final Map<String, dynamic> j =
+                      jsonDecode(tRes.body) as Map<String, dynamic>;
+                  final String? b64 = j['audio_b64'] as String?;
+                  if (b64 != null && b64.isNotEmpty) {
+                    final bytes = base64Decode(b64);
+                    final dir = await getTemporaryDirectory();
+                    final file = File(
+                      '${dir.path}/avatar_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
+                    );
+                    await file.writeAsBytes(bytes, flush: true);
+                    unawaited(_playAudioAtPath(file.path));
+                  }
+                }
+              } catch (_) {}
+            }());
+          }
+          // Lipsync parallel
+          unawaited(_startLipsync(answer));
         }
-        // TTS parallel abspielen (nicht blockierend)
-        final tts = data['tts_audio_b64'] as String?;
-        if (tts != null && tts.isNotEmpty) {
-          try {
-            final bytes = base64Decode(tts);
-            final dir = await getTemporaryDirectory();
-            final file = File(
-              '${dir.path}/avatar_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
-            );
-            await file.writeAsBytes(bytes, flush: true);
-            _lastRecordingPath = file.path;
-            // ohne await, damit UI nicht blockiert
-            // ignore: unawaited_futures
-            _playAudioAtPath(file.path);
-          } catch (_) {}
-        }
-        // Lipsync-Video ebenfalls parallel starten
-        if (answer != null && answer.isNotEmpty) {
-          try {
-            // ignore: unawaited_futures
-            _startLipsync(answer);
-          } catch (_) {}
-        }
-      } else {
-        // Fallback zu Cloud Function
-        await _chatViaFunctions(userText);
       }
     } catch (e) {
       // Fallback zu Cloud Function bei Socket-/HTTP-Fehlern
@@ -1395,6 +1481,27 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     } finally {
       if (mounted) setState(() => _isTyping = false);
     }
+  }
+
+  Future<void> _prewarmChatEndpoints() async {
+    try {
+      final base = EnvService.memoryApiBaseUrl();
+      if (base.isNotEmpty) {
+        final uri = Uri.parse('$base/healthz');
+        unawaited(http.get(uri).timeout(const Duration(seconds: 3)));
+      }
+      unawaited(
+        http
+            .get(
+              Uri.parse(
+                'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse',
+              ),
+            )
+            .timeout(const Duration(seconds: 3))
+            .then((resp) => resp)
+            .catchError((err) => err),
+      );
+    } catch (_) {}
   }
 
   Future<void> _chatViaFunctions(String userText) async {
@@ -1438,11 +1545,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               _showSystemSnack('Keine geklonte Stimme verfügbar');
               return;
             }
-            final ttsRes = await http.post(
-              ttsUri,
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({'text': answer, 'voice_id': voiceId}),
-            );
+            final ttsRes = await http
+                .post(
+                  ttsUri,
+                  headers: {'Content-Type': 'application/json'},
+                  body: jsonEncode({'text': answer, 'voice_id': voiceId}),
+                )
+                .timeout(const Duration(seconds: 8));
             if (ttsRes.statusCode >= 200 && ttsRes.statusCode < 300) {
               final Map<String, dynamic> j =
                   jsonDecode(ttsRes.body) as Map<String, dynamic>;

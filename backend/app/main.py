@@ -61,6 +61,10 @@ class InsertRequest(BaseModel):
     file_url: str | None = None
     file_name: str | None = None
     file_path: str | None = None
+    # Chunking-Parameter (optional, überschreiben Defaults)
+    target_tokens: int | None = None
+    overlap: int | None = None
+    min_chunk_tokens: int | None = None
 
 
 class InsertResponse(BaseModel):
@@ -123,6 +127,103 @@ def _record_last_insert(data: Dict[str, Any]) -> None:
         _LAST_INSERT_PATH.write_text(json.dumps(data, ensure_ascii=False, indent=2))
     except Exception:
         pass
+
+
+# Einfache Namespace-State-Verwaltung für Rolling-Summaries (lokal auf Filesystem)
+def _ns_state_dir() -> Path:
+    p = Path(__file__).resolve().parents[1] / "ns_state"
+    try:
+        p.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return p
+
+
+def _ns_state_path(namespace: str) -> Path:
+    return _ns_state_dir() / f"{namespace}.json"
+
+
+def _load_ns_state(namespace: str) -> Dict[str, Any]:
+    try:
+        p = _ns_state_path(namespace)
+        if p.exists():
+            return json.loads(p.read_text() or "{}") or {}
+    except Exception:
+        pass
+    return {"recent_texts": [], "summary_seq": 0}
+
+
+def _save_ns_state(namespace: str, state: Dict[str, Any]) -> None:
+    try:
+        _ns_state_path(namespace).write_text(json.dumps(state, ensure_ascii=False))
+    except Exception:
+        pass
+
+
+def _maybe_rolling_summary(index_name: str, namespace: str, new_texts: list[str]) -> None:
+    try:
+        if os.getenv("ROLLING_SUMMARY_ENABLED", "1") != "1":
+            return
+        every_n = int(os.getenv("ROLLING_SUMMARY_EVERY_N", "10"))
+        window_n = max(1, int(os.getenv("ROLLING_SUMMARY_WINDOW", str(every_n))))
+
+        st = _load_ns_state(namespace)
+        recent: list[str] = list(st.get("recent_texts", []))
+        recent.extend([t for t in new_texts if isinstance(t, str) and t.strip()])
+        # nur die letzten window_n Elemente halten
+        if len(recent) > window_n:
+            recent = recent[-window_n:]
+
+        if len(recent) < every_n:
+            st["recent_texts"] = recent
+            _save_ns_state(namespace, st)
+            return
+
+        # Zusammenfassung erstellen
+        prompt = (
+            "Fasse die folgenden Einträge prägnant als Meta-Zusammenfassung zusammen. "
+            "Strukturiere nach: Emotionen/Stimmung, Verhalten/Aktionen, Ereignisse/Auslöser, "
+            "Physisch/Biologisch, Soziale Interaktionen. Konzentriere dich auf Muster und Tendenzen.\n\n"
+        ) + "\n\n".join(f"- {t.strip()}" for t in recent if t.strip())
+
+        comp = client.chat.completions.create(
+            model=GPT_MODEL,
+            messages=[
+                {"role": "system", "content": "Du bist ein präziser Zusammenfasser. Antworte kurz und strukturiert."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            max_tokens=220,
+        )
+        summary = (comp.choices[0].message.content or "").strip()
+        if not summary:
+            # ohne Summary kein Eintrag
+            st["recent_texts"] = recent
+            _save_ns_state(namespace, st)
+            return
+
+        # Embedding für Meta-Chunk erzeugen
+        emb_vecs, real_dim = _create_embeddings_with_timeout([summary], EMBEDDING_MODEL, timeout_sec=10)
+        vec = {
+            "id": f"meta-{int(time.time()*1000)}",
+            "values": emb_vecs[0],
+            "metadata": {
+                "type": "meta_summary",
+                "text": summary,
+                "created_at": int(time.time()*1000),
+                "window_size": len(recent),
+                "source": "summary",
+                "summary_seq": int(st.get("summary_seq", 0) or 0) + 1,
+            },
+        }
+        upsert_vector(pc, index_name, namespace, vec)
+        # State zurücksetzen/fortschreiben
+        st["recent_texts"] = []
+        st["summary_seq"] = int(st.get("summary_seq", 0) or 0) + 1
+        _save_ns_state(namespace, st)
+        _record_last_insert({"stage": "meta_summary_upsert", "namespace": namespace, "index": index_name, "window": len(recent)})
+    except Exception as e:
+        logger.warning(f"Rolling-Summary Fehler: {e}")
 
 
 def _store_chat_message(user_id: str, avatar_id: str, sender: str, content: str) -> str:
@@ -335,11 +436,34 @@ def _process_memory_insert(payload: InsertRequest) -> InsertResponse:
     }
     _record_last_insert({**ctx})
 
+    # Chunking-Parameter anwenden (Client-Overrides erlauben)
+    try:
+        _tt = int(payload.target_tokens) if payload.target_tokens is not None else 1000
+    except Exception:
+        _tt = 1000
+    try:
+        _ov = int(payload.overlap) if payload.overlap is not None else 100
+    except Exception:
+        _ov = 100
+    _min_override = None
+    try:
+        if payload.min_chunk_tokens is not None:
+            _min_override = int(payload.min_chunk_tokens)
+    except Exception:
+        _min_override = None
+
     # Größere Chunks für kleine Inputs
-    chunks = chunk_text(payload.full_text, target_tokens=1000, overlap=100)
+    chunks = chunk_text(
+        payload.full_text,
+        target_tokens=_tt,
+        overlap=_ov,
+        min_chunk_tokens_override=_min_override,
+    )
     ctx["chunks"] = len(chunks)
     if not chunks:
+        _record_last_insert({**ctx, "stage": "chunks_empty"})
         raise HTTPException(status_code=400, detail="full_text ist leer")
+    _record_last_insert({**ctx, "stage": "chunks_ready", "chunks": len(chunks)})
 
     texts: List[str] = [c["text"] for c in chunks]
 
@@ -349,6 +473,7 @@ def _process_memory_insert(payload: InsertRequest) -> InsertResponse:
     FAKE = os.getenv("EMBEDDINGS_FAKE", "0") == "1"
     embeddings_list: List[List[float]] = []
     try:
+        _record_last_insert({**ctx, "stage": "embeddings_start", "chunks": len(chunks)})
         if FAKE:
             raise RuntimeError("FAKE embeddings enabled")
         embeddings_list, real_dim = _create_embeddings_with_timeout(texts, EMBEDDING_MODEL, timeout_sec=20)
@@ -359,6 +484,7 @@ def _process_memory_insert(payload: InsertRequest) -> InsertResponse:
         ctx["embedding_error"] = str(e)
         real_dim = EMBEDDING_DIM
         embeddings_list = [[0.001 * (i + 1)] * real_dim for i in range(len(chunks))]
+        _record_last_insert({**ctx, "stage": "embeddings_fallback", "error": str(e), "chunks": len(chunks)})
     # Index sicherstellen (per_avatar)
     ensure_index_exists(
         pc=pc,
@@ -461,6 +587,11 @@ def _process_memory_insert(payload: InsertRequest) -> InsertResponse:
     
     try:
         upsert_vectors(pc, index_name, namespace, vectors)
+        # Rolling-Summary versuchen
+        try:
+            _maybe_rolling_summary(index_name, namespace, texts)
+        except Exception:
+            pass
         logger.info(f"MEMORY_INSERT upsert batch index='{index_name}' namespace='{namespace}' inserted={len(vectors)}")
         _record_last_insert({**ctx, "stage": "upsert_batch", "inserted": len(vectors)})
         return InsertResponse(
@@ -482,6 +613,10 @@ def _process_memory_insert(payload: InsertRequest) -> InsertResponse:
             region=PINECONE_REGION,
         )
         upsert_vectors(pc, PINECONE_INDEX, namespace, vectors)
+        try:
+            _maybe_rolling_summary(PINECONE_INDEX, namespace, texts)
+        except Exception:
+            pass
         logger.info(f"MEMORY_INSERT upsert batch index='{PINECONE_INDEX}' namespace='{namespace}' inserted={len(vectors)} (fallback)")
         _record_last_insert({**ctx, "stage": "upsert_fallback", "inserted": len(vectors)})
         return InsertResponse(
@@ -1164,8 +1299,9 @@ def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
             # Speichere Avatar-Response in Firebase
             avatar_msg_id = _store_chat_message(payload.user_id, payload.avatar_id, "avatar", answer)
             
-            # Speichere Konversation in Pinecone für Psychogramm
-            _store_chat_in_pinecone(payload.user_id, payload.avatar_id, payload.message, answer)
+            # Optional: Chat in Pinecone (Default AUS)
+            if os.getenv("STORE_CHAT_IN_PINECONE", "0") == "1":
+                _store_chat_in_pinecone(payload.user_id, payload.avatar_id, payload.message, answer)
             
             chat_id = f"{payload.user_id}_{payload.avatar_id}"
         except Exception as e:

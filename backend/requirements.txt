@@ -27,3 +27,5 @@ pinecone>=5.0.0
 google-cloud-texttospeech>=2.16.3
 
 # Additional Utilities
+firebase-admin==6.4.0
+google-cloud-firestore>=2.16.0

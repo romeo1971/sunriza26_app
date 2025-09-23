@@ -52,6 +52,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final List<String> _videoUrls = [];
   final List<String> _textFileUrls = [];
   final TextEditingController _textAreaController = TextEditingController();
+  // Chunking-Einstellungen (UI)
+  double _targetTokens = 400; // Empfehlung: 200–500 (bis 1000)
+  double _overlapPercent = 15; // Empfehlung: 10–20%
+  double _minChunkTokens = 100; // Empfehlung: 50–100
   final TextEditingController _greetingController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final AvatarService _avatarService = AvatarService();
@@ -99,6 +103,99 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     } catch (_) {
       return true;
     }
+  }
+
+  Widget _buildChunkingControls() {
+    // Empfehlungen: target 800–1200, overlap 50–150, minChunk ca. 60–80% target
+    final double minAllowed = 200;
+    final double maxAllowed = 2000;
+    final double minOverlap = 0;
+    final double maxOverlap = 400;
+    // minChunkTokens nicht größer als targetTokens
+    if (_minChunkTokens > _targetTokens) _minChunkTokens = _targetTokens;
+    final double recommendedMin = (_targetTokens * 0.7).clamp(1, _targetTokens);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // target_tokens
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Zielgröße (Tokens)',
+              style: TextStyle(color: Colors.white70),
+            ),
+            Text(
+              _targetTokens.round().toString(),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+        Slider(
+          min: minAllowed,
+          max: maxAllowed,
+          divisions: ((maxAllowed - minAllowed) / 50).round(),
+          value: _targetTokens.clamp(minAllowed, maxAllowed),
+          onChanged: (v) => setState(() {
+            _targetTokens = v;
+            // minChunk sinnvoll nachführen (mind. 60% target, nicht größer als target)
+            final double min60 = (_targetTokens * 0.6);
+            if (_minChunkTokens < min60) _minChunkTokens = min60;
+            if (_minChunkTokens > _targetTokens)
+              _minChunkTokens = _targetTokens;
+          }),
+        ),
+        const SizedBox(height: 6),
+        // overlap (Prozent)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Überlappung (%)',
+              style: TextStyle(color: Colors.white70),
+            ),
+            Text(
+              '${_overlapPercent.round()}%',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+        Slider(
+          min: 0,
+          max: 40,
+          divisions: 40,
+          value: _overlapPercent.clamp(0, 40),
+          onChanged: (v) => setState(() => _overlapPercent = v),
+        ),
+        const SizedBox(height: 6),
+        // min_chunk_tokens
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Min. Chunkgröße (Tokens)',
+              style: TextStyle(color: Colors.white70),
+            ),
+            Text(
+              _minChunkTokens.round().toString(),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+        Slider(
+          min: 1,
+          max: _targetTokens,
+          divisions: (_targetTokens / 10).round().clamp(1, 1000000),
+          value: _minChunkTokens.clamp(1, _targetTokens),
+          onChanged: (v) => setState(() => _minChunkTokens = v),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Empfehlung: min. ca. ${recommendedMin.round()} Tokens (≈70% von Zielgröße).',
+          style: const TextStyle(color: Colors.white38, fontSize: 12),
+        ),
+      ],
+    );
   }
 
   bool _isTestingVoice = false;
@@ -572,6 +669,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                           ),
                           style: const TextStyle(color: Colors.white),
                         ),
+                        const SizedBox(height: 12),
+                        // Chunking Parameter
+                        const Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            'Chunking (Pinecone Speicheroptimierung)',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        _buildChunkingControls(),
                         const SizedBox(height: 12),
                         if (_textFileUrls.isNotEmpty ||
                             _newTextFiles.isNotEmpty)
@@ -3913,15 +4021,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     setState(() => _isSaving = true);
 
     () async {
-      // Sofortiges visuelles Feedback: kurzer Vorbereitungs-Spinner
-      await _showBlockingProgress<void>(
-        title: 'Vorbereitung…',
-        message: 'Bitte warten…',
-        task: () async {
-          // minimale Verzögerung, damit der Dialog sicher sichtbar ist
-          await Future.delayed(const Duration(milliseconds: 150));
-        },
-      );
       try {
         // 0) Freitext lokal als Datei anlegen (nicht in der Liste anzeigen)
         final freeText = _textAreaController.text.trim();
@@ -4188,7 +4287,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           greetingText: _greetingController.text.trim(),
         );
 
-        final ok = await _avatarService.updateAvatar(updated);
+        bool ok = false;
+        await _showBlockingProgress<void>(
+          title: 'Speichern…',
+          message: 'Daten werden gespeichert…',
+          task: () async {
+            ok = await _avatarService.updateAvatar(updated);
+          },
+        );
         if (!mounted) return;
         if (ok) {
           if (!mounted) return;
@@ -4226,34 +4332,55 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               }
             } catch (_) {}
           }
-          if (combinedText.trim().isNotEmpty) {
-            try {
-              await _triggerMemoryInsert(
-                userId: uid,
-                avatarId: updated.id,
-                fullText: combinedText,
-                fileUrl: freeTextUploadedUrl,
-                fileName: freeTextUploadedName,
-                filePath: freeTextUploadedPath,
-                source: 'app',
-              );
-            } catch (e) {
-              // ignore
-            }
-          }
-          // Immer: profile.txt als Chunks in Pinecone aktualisieren (stable file)
-          try {
-            await _triggerMemoryInsert(
-              userId: uid,
-              avatarId: updated.id,
-              fullText: profileContent,
-              fileName: 'profile.txt',
-              filePath: profilePath,
-              source: 'profile',
-            );
-          } catch (e) {
-            // ignore
-          }
+          // Texte in Speicher übernehmen – immer mit modalem Spinner
+          await _showBlockingProgress<void>(
+            title: 'Speichern…',
+            message: 'Texte werden in den Speicher übernommen…',
+            task: () async {
+              if (combinedText.trim().isNotEmpty) {
+                try {
+                  await _triggerMemoryInsert(
+                    userId: uid,
+                    avatarId: updated.id,
+                    fullText: combinedText,
+                    fileUrl: freeTextUploadedUrl,
+                    fileName: freeTextUploadedName,
+                    filePath: freeTextUploadedPath,
+                    source: 'app',
+                  );
+                } catch (e) {
+                  // ignore
+                }
+              }
+              // Immer: profile.txt als Chunks in Pinecone aktualisieren (stable file)
+              try {
+                await _triggerMemoryInsert(
+                  userId: uid,
+                  avatarId: updated.id,
+                  fullText: profileContent,
+                  fileName: 'profile.txt',
+                  filePath: profilePath,
+                  source: 'profile',
+                );
+              } catch (e) {
+                // ignore
+              }
+            },
+          );
+          if (!mounted) return;
+          await showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Texte gespeichert'),
+              content: const Text('Texte wurden erfolgreich gespeichert.'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
           // Jetzt lokale Textdateien leeren (nachdem wir sie gelesen/gesendet haben)
           _newTextFiles.clear();
           _newAudioFiles.clear();
@@ -4302,6 +4429,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       'avatar_id': avatarId,
       'full_text': fullText,
       'source': source ?? 'app',
+      // Chunking-Parameter aus UI übergeben
+      'target_tokens': _targetTokens.round(),
+      'overlap': (_targetTokens * (_overlapPercent / 100.0)).round(),
+      'min_chunk_tokens': _minChunkTokens.round(),
       if (fileUrl != null) 'file_url': fileUrl,
       if (fileName != null) 'file_name': fileName,
       if (filePath != null) 'file_path': filePath,
