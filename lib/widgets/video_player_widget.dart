@@ -39,7 +39,8 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
       looping: false,
       allowFullScreen: true,
       allowMuting: true,
-      showOptions: true,
+      showOptions: false, // verhindert überbreite Options-Controls
+      showControls: false, // Inline: keine Controls → kein Overflow
       materialProgressColors: ChewieProgressColors(
         playedColor: primary,
         handleColor: primary,

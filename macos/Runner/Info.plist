@@ -41,5 +41,7 @@
 	</array>
 	<key>GIDClientID</key>
 	<string>590744030274-ukapr3qs3e7l2ulvd6dkvv9pdah5q77e.apps.googleusercontent.com</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Mikrofon wird für Sprachaufnahme (Whisper STT) benötigt.</string>
 </dict>
 </plist>

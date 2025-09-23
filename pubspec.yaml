@@ -59,7 +59,7 @@ dependencies:
   path_provider: ^2.1.4
   path: ^1.9.1
   permission_handler: ^12.0.1
-  # record vorübergehend entfernt, bis iOS-Build stabil
+  record: ^4.4.4
   just_audio: ^0.10.5
   
   # File Upload und Media
@@ -76,6 +76,8 @@ dependencies:
   flutter_dotenv: ^6.0.0  # Für BitHuman API Key
   extended_image: ^8.2.0
   # extended_image_library: ^4.0.6
+
+dependency_overrides:
 
 dev_dependencies:
   flutter_test:

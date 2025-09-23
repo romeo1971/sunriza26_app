@@ -1,12 +1,9 @@
 {
-  "stage": "upsert_batch",
-  "index": "avatars-index",
-  "namespace": "u_test_a2",
-  "user_id": "u_test",
-  "avatar_id": "a2",
-  "text_len": 124,
-  "chunks": 1,
-  "dim": 1536,
-  "inserted": 1,
-  "ts": 1758456675755
+  "stage": "start",
+  "index": "sunriza-q6etnezj0wzei7uwhh7qmjys-gtngqt66hpvq",
+  "namespace": "q6eTNezJ0wZEi7uWhh7QMjYSBGA2_gTnGqt66hpVQbdL3WY60",
+  "user_id": "q6eTNezJ0wZEi7uWhh7QMjYSBGA2",
+  "avatar_id": "gTnGqt66hpVQbdL3WY60",
+  "text_len": 97,
+  "ts": 1758617452058
 }

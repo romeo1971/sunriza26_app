@@ -187,58 +187,87 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
           child: Row(
             children: [
               // Avatar-Bild 9:16 (ca. 2.5x höher)
-              Builder(builder: (context) {
-                const double h = 150; // ~2.5 * 60
-                const double w = h * 9 / 16;
-                return Container(
-                  width: w,
-                  height: h,
-                  decoration: BoxDecoration(
-                    color: const Color(0x1400DFA8),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: AppColors.accentGreenDark,
-                      width: 2,
+              Builder(
+                builder: (context) {
+                  const double h = 150; // ~2.5 * 60
+                  const double w = h * 9 / 16;
+                  return Container(
+                    width: w,
+                    height: h,
+                    decoration: BoxDecoration(
+                      color: const Color(0x1400DFA8),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: AppColors.accentGreenDark,
+                        width: 2,
+                      ),
                     ),
-                  ),
-                  clipBehavior: Clip.hardEdge,
-                  child: avatar.avatarImageUrl != null
-                      ? Image.network(
-                          avatar.avatarImageUrl!,
-                          width: w,
-                          height: h,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) =>
-                              _buildDefaultAvatar(),
-                        )
-                      : _buildDefaultAvatar(),
-                );
-              }),
+                    clipBehavior: Clip.hardEdge,
+                    child: avatar.avatarImageUrl != null
+                        ? Image.network(
+                            avatar.avatarImageUrl!,
+                            width: w,
+                            height: h,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) =>
+                                _buildDefaultAvatar(),
+                          )
+                        : _buildDefaultAvatar(),
+                  );
+                },
+              ),
 
               const SizedBox(width: 16),
 
-              // Avatar-Info
+              // Avatar-Info + BP-Hinweis
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      (avatar.nickname != null && avatar.nickname!.isNotEmpty)
-                          ? avatar.nickname!
-                          : avatar.firstName,
-                      style: const TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            (avatar.nickname != null &&
+                                    avatar.nickname!.isNotEmpty)
+                                ? avatar.nickname!
+                                : avatar.firstName,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Builder(
+                          builder: (context) {
+                            final tr = Map<String, dynamic>.from(
+                              avatar.training ?? {},
+                            );
+                            final provider = (tr['videoProvider'] as String?)
+                                ?.toLowerCase();
+                            final bp = Map<String, dynamic>.from(
+                              tr['beyondPresence'] ?? {},
+                            );
+                            final hasAvatarId =
+                                ((bp['avatarId'] as String?)
+                                    ?.trim()
+                                    .isNotEmpty ??
+                                false);
+                            return const SizedBox.shrink();
+                          },
+                        ),
+                      ],
                     ),
                     if (avatar.nickname != null &&
                         avatar.nickname!.isNotEmpty &&
                         avatar.nickname != avatar.firstName)
                       Text(
-                        avatar.firstName,
+                        (avatar.nickname != null && avatar.nickname!.isNotEmpty)
+                            ? avatar.firstName
+                            : '',
                         style: TextStyle(
                           fontSize: 16,
                           color: Colors.grey.shade600,

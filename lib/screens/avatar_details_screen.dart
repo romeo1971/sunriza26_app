@@ -63,6 +63,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   String? _profileImageUrl; // Krone
   String? _profileLocalPath; // Krone (lokal, noch nicht hochgeladen)
   bool _isSaving = false;
+  bool _bpCrownChangedPending =
+      false; // zeigt Hinweis: Krone geändert → manuell generieren
   VideoPlayerController? _inlineVideoController; // Inline-Player für Videos
   // Inline-Vorschaubild nicht nötig, Thumbnails entstehen in den Tiles per FutureBuilder
   final Map<String, Uint8List> _videoThumbCache = {};
@@ -77,6 +79,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Rect? _cropArea; // merkt die zuletzt bekannte Crop-Area
   // Medien-Tab: 'images' oder 'videos'
   String _mediaTab = 'images';
+  // Cache für Video-Provider-Auswahl, verhindert Zurückspringen nach Fehlern/Reloads
+  String? _cachedVideoProvider; // 'bp' | 'bithuman'
   // ElevenLabs Voice-Parameter (per Avatar speicherbar)
   double _voiceStability = 0.25;
   double _voiceSimilarity = 0.9;
@@ -256,6 +260,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?';
     // Krone-Video in Großansicht initialisieren
     _initInlineFromCrown();
+    // Kein Autogenerieren mehr – Generierung erfolgt nur auf Nutzeraktion
   }
 
   // Obsolet: Rundes Avatarbild oben wurde entfernt (Hintergrundbild reicht aus)
@@ -264,11 +269,46 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        // BP: Hinweise oberhalb des Medienbereichs
+        Builder(
+          builder: (context) {
+            if (_avatarData == null) return const SizedBox.shrink();
+            final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
+            final provider = (tr['videoProvider'] as String?)
+                ?.trim()
+                .toLowerCase();
+            if (provider != 'bp' && provider != 'beyond_presence') {
+              return const SizedBox.shrink();
+            }
+            final bp = Map<String, dynamic>.from(tr['beyondPresence'] ?? {});
+            final crownUrl = (bp['crownVideoUrl'] as String?)?.trim();
+            final avatarId = (bp['avatarId'] as String?)?.trim();
+
+            // 1) Kein Krone-Video: Hinweis zum Hochladen
+            if ((crownUrl == null || crownUrl.isEmpty) && _videoUrls.isEmpty) {
+              return Container(
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0x22FFA500),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0x55FFA500)),
+                ),
+                child: const Text(
+                  'Bitte Video hochladen (Krone setzen), um Beyond Presence zu nutzen.',
+                  style: TextStyle(color: Colors.white),
+                ),
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
         // Opener-Text oberhalb des Medienbereichs
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Text(
-            'Diese Bilder, Videos und Texte dienen dazu, den Avatar möglichst genau zu trainieren – keine Urlaubsgalerie.',
+            'Diese Bilder, Videos (>30s) und Texte dienen dazu, den Avatar möglichst genau zu trainieren – keine Urlaubsgalerie.',
             style: TextStyle(color: Colors.white.withValues(alpha: 0.85)),
           ),
         ),
@@ -322,7 +362,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               _avatarData?.training ?? {},
                             );
                             final current =
-                                (training['videoProvider'] as String?)
+                                (_cachedVideoProvider ??
+                                        (training['videoProvider'] as String?))
                                     ?.trim()
                                     .toLowerCase();
                             final value =
@@ -347,6 +388,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               onChanged: (val) async {
                                 if (val == null || _avatarData == null) return;
                                 try {
+                                  setState(() => _cachedVideoProvider = val);
                                   final uid = _avatarData!.userId;
                                   final fs = FirebaseFirestore.instance;
                                   final docRef = fs
@@ -624,6 +666,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ],
     );
   }
+
+  // Autogenerieren entfernt – Nutzer klickt bewusst „Avatar generieren“ nach Krone‑Wechsel
 
   Widget _buildVoiceSelect() {
     if (_voicesLoading) {
@@ -995,44 +1039,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                         _isGeneratingAvatar) {
                                       return;
                                     }
-                                    final ok = await showDialog<bool>(
-                                      context: context,
-                                      builder: (ctx) => AlertDialog(
-                                        title: const Text('Avatar generieren?'),
-                                        content: Column(
-                                          mainAxisSize: MainAxisSize.min,
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: const [
-                                            Text(
-                                              'Wir generieren automatisch einen lebensechten Avatar aus deinem Bild. Der Avatar spricht mit der ausgewählten Stimme oder Deiner eigenen.',
-                                            ),
-                                            SizedBox(height: 8),
-                                            Text(
-                                              'WICHTIG: Dieser Vorgang kostet pro Vorgang 50 credits! Bitte überlege Dir also genau, welches Bild Du nutzen möchtest.',
-                                              style: TextStyle(
-                                                color:
-                                                    AppColors.accentGreenDark,
-                                                fontWeight: FontWeight.w700,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                        actions: [
-                                          TextButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, false),
-                                            child: const Text('Abbrechen'),
-                                          ),
-                                          ElevatedButton(
-                                            onPressed: () =>
-                                                Navigator.pop(ctx, true),
-                                            child: const Text('Generieren'),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                    if (ok != true) return;
                                     await _handleGenerateAvatar();
                                   },
                                   style: ElevatedButton.styleFrom(
@@ -1050,7 +1056,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                     ),
                                   ),
                                   child: const Text(
-                                    'Avatar generieren',
+                                    'Aktualisieren',
                                     style: TextStyle(
                                       fontSize: 13,
                                       height: 1.2,
@@ -1343,6 +1349,71 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                   },
                                 ),
                               ),
+                            // "Aktualisieren" Button auf der Krone-Video-Großansicht (nur BP + wenn nötig)
+                            Positioned(
+                              left: 12,
+                              right: 12,
+                              bottom: 12,
+                              child: Builder(
+                                builder: (context) {
+                                  final providerVal =
+                                      (_avatarData?.training?['videoProvider']
+                                              as String?)
+                                          ?.trim()
+                                          .toLowerCase() ??
+                                      '';
+                                  final isBP =
+                                      providerVal == 'bp' ||
+                                      providerVal == 'beyond_presence';
+                                  String? bpAvatarId;
+                                  try {
+                                    final bp = Map<String, dynamic>.from(
+                                      _avatarData
+                                              ?.training?['beyondPresence'] ??
+                                          {},
+                                    );
+                                    bpAvatarId = (bp['avatarId'] as String?)
+                                        ?.trim();
+                                  } catch (_) {}
+                                  final bool needUpdate =
+                                      isBP &&
+                                      (_bpCrownChangedPending ||
+                                          ((bpAvatarId ?? '').isEmpty));
+                                  if (!needUpdate) return const SizedBox();
+                                  return ElevatedButton(
+                                    onPressed: _isGeneratingAvatar
+                                        ? null
+                                        : () async {
+                                            if (_avatarData == null) return;
+                                            await _handleGenerateAvatar();
+                                          },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.black,
+                                      foregroundColor: Colors.white,
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(
+                                        vertical: 12,
+                                      ),
+                                      minimumSize: const Size.fromHeight(0),
+                                      elevation: 0,
+                                      shadowColor: Colors.transparent,
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Aktualisieren',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        height: 1.2,
+                                        fontStyle: FontStyle.normal,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -2357,7 +2428,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               const Positioned(
                 top: 4,
                 left: 4,
-                child: Icon(Icons.emoji_events, color: Colors.amber, size: 18),
+                child: Text('⭐', style: TextStyle(fontSize: 16)),
               ),
             // Kein Häkchen mehr – Selektion wird am Trash‑Icon markiert
             // Papierkorb unten rechts – immer sichtbar
@@ -2506,10 +2577,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     padding: const EdgeInsets.all(6),
                     // Kein Border – nur Icon-Farbe wechselt
                     color: Colors.transparent,
-                    child: Icon(
-                      Icons.emoji_events,
-                      size: 16,
-                      color: isCrown ? Color(0xFFFFD700) : Colors.white,
+                    child: Text(
+                      '⭐',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: isCrown ? const Color(0xFFFFD700) : Colors.white,
+                      ),
                     ),
                   ),
                 ),
@@ -2779,41 +2852,49 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           '';
       final isBP = providerVal == 'bp' || providerVal == 'beyond_presence';
 
-      final base = dotenv.env['BITHUMAN_BASE_URL']?.trim();
-      if (base == null || base.isEmpty) {
-        _showSystemSnack('BITHUMAN_BASE_URL fehlt (.env)');
-        return;
+      String? base; // nur für BitHuman benötigt
+      if (!isBP) {
+        base = dotenv.env['BITHUMAN_BASE_URL']?.trim();
+        if (base == null || base.isEmpty) {
+          _showSystemSnack('BITHUMAN_BASE_URL fehlt (.env)');
+          return;
+        }
       }
 
-      // Bildquelle bestimmen (lokal bevorzugen)
+      // Bildquelle (nur BitHuman)
       File? imageFile;
-      if ((_profileLocalPath ?? '').isNotEmpty) {
-        final f = File(_profileLocalPath!);
-        if (await f.exists()) imageFile = f;
-      }
-      imageFile ??= await _downloadToTemp(
-        _profileImageUrl ?? _avatarData!.avatarImageUrl ?? '',
-        suffix: '.png',
-      );
-      if (imageFile == null) {
-        _showSystemSnack('Kein Bild gefunden');
-        return;
+      if (!isBP) {
+        if ((_profileLocalPath ?? '').isNotEmpty) {
+          final f = File(_profileLocalPath!);
+          if (await f.exists()) imageFile = f;
+        }
+        imageFile ??= await _downloadToTemp(
+          _profileImageUrl ?? _avatarData!.avatarImageUrl ?? '',
+          suffix: '.png',
+        );
+        if (imageFile == null) {
+          _showSystemSnack('Kein Bild gefunden');
+          return;
+        }
       }
 
-      // Audioquelle bestimmen (aktive Stimmprobe)
-      String? audioUrl = _activeAudioUrl;
-      if ((audioUrl == null || audioUrl.isEmpty) &&
-          _avatarData!.audioUrls.isNotEmpty) {
-        audioUrl = _avatarData!.audioUrls.first;
-      }
-      if (audioUrl == null || audioUrl.isEmpty) {
-        _showSystemSnack('Keine Audio-Stimmprobe vorhanden');
-        return;
-      }
-      final audioFile = await _downloadToTemp(audioUrl, suffix: '.mp3');
-      if (audioFile == null) {
-        _showSystemSnack('Audio kann nicht geladen werden');
-        return;
+      // Audioquelle (nur BitHuman)
+      File? audioFile;
+      if (!isBP) {
+        String? audioUrl = _activeAudioUrl;
+        if ((audioUrl == null || audioUrl.isEmpty) &&
+            _avatarData!.audioUrls.isNotEmpty) {
+          audioUrl = _avatarData!.audioUrls.first;
+        }
+        if (audioUrl == null || audioUrl.isEmpty) {
+          _showSystemSnack('Keine Audio-Stimmprobe vorhanden');
+          return;
+        }
+        audioFile = await _downloadToTemp(audioUrl, suffix: '.mp3');
+        if (audioFile == null) {
+          _showSystemSnack('Audio kann nicht geladen werden');
+          return;
+        }
       }
 
       await _showBlockingProgress<void>(
@@ -2823,7 +2904,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             : 'Bild und Audio werden verarbeitet.',
         task: () async {
           if (isBP) {
-            // Beyond Presence: Krone-Video ermitteln und hochladen
+            // Beyond Presence: Krone-Video ermitteln (kein Upload erforderlich)
             String? crownVideoUrl;
             try {
               final bp = Map<String, dynamic>.from(
@@ -2835,18 +2916,45 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             if (crownVideoUrl == null || crownVideoUrl.isEmpty) {
               throw Exception('Kein Krone-Video vorhanden');
             }
-
-            final vFile = await _downloadToTemp(crownVideoUrl, suffix: '.mp4');
-            if (vFile == null)
-              throw Exception('Krone-Video konnte nicht geladen werden');
-
-            final uri = Uri.parse('$base/bp/avatar/upload-video');
-            final req = http.MultipartRequest('POST', uri);
-            req.files.add(
-              await http.MultipartFile.fromPath('video', vFile.path),
+            // DOKU-KONFORM: Feld "image" – Desktop/macOS hat kein video_thumbnail → nutze vorhandenes Krone‑Bild
+            // Fallback-Reihenfolge: explizites Profilbild → erstes Bild der Galerie
+            String? imageSourceUrl = _profileImageUrl;
+            if ((imageSourceUrl == null || imageSourceUrl.isEmpty) &&
+                _imageUrls.isNotEmpty) {
+              imageSourceUrl = _imageUrls.first;
+            }
+            if (imageSourceUrl == null || imageSourceUrl.isEmpty) {
+              throw Exception('Kein Bild für BP-Upload verfügbar');
+            }
+            final jpgFile = await _downloadToTemp(
+              imageSourceUrl,
+              suffix: '.jpg',
             );
+            if (jpgFile == null) {
+              throw Exception('Bild-Download für BP-Upload fehlgeschlagen');
+            }
 
-            // Optional vorhandene avatarId mitsenden
+            // Direkt gegen BP API (kein Proxy)
+            final rawBase = (dotenv.env['BP_API_BASE_URL'] ?? '').trim();
+            final apiKey = (dotenv.env['BP_API_KEY'] ?? '').trim();
+            if (rawBase.isEmpty || apiKey.isEmpty) {
+              _showSystemSnack('BP API Konfiguration fehlt (.env)');
+              return;
+            }
+            final String bpBase = rawBase.endsWith('/v1')
+                ? rawBase
+                : '$rawBase/v1';
+            // Client ruft jetzt unseren Proxy: extrahiert Frame serverseitig und lädt zu BP
+            final localBase = dotenv.env['BITHUMAN_BASE_URL']?.trim();
+            if (localBase == null || localBase.isEmpty) {
+              _showSystemSnack(
+                'Lokaler Backend-Proxy fehlt (BITHUMAN_BASE_URL)',
+              );
+              return;
+            }
+            final uri = Uri.parse('$localBase/bp/avatar/from-video');
+            final req = http.MultipartRequest('POST', uri)
+              ..fields['videoUrl'] = crownVideoUrl;
             try {
               final bp = Map<String, dynamic>.from(
                 _avatarData?.training?['beyondPresence'] ?? {},
@@ -2855,39 +2963,45 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               if ((avatarId ?? '').isNotEmpty)
                 req.fields['avatarId'] = avatarId!;
             } catch (_) {}
-
-            final streamed = await req.send();
-            final body = await streamed.stream.bytesToString();
-            if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
-              // avatarId aus Response speichern, wenn vorhanden
-              try {
-                final data = jsonDecode(body) as Map<String, dynamic>;
-                final newId =
-                    (data['avatarId'] as String?)?.trim() ??
-                    (data['id'] as String?)?.trim();
-                if ((newId ?? '').isNotEmpty) {
-                  final tr = Map<String, dynamic>.from(
-                    _avatarData!.training ?? {},
-                  );
-                  final bp = Map<String, dynamic>.from(
-                    tr['beyondPresence'] ?? {},
-                  );
-                  bp['avatarId'] = newId;
-                  tr['beyondPresence'] = bp;
-                  final updated = _avatarData!.copyWith(
-                    training: tr,
-                    updatedAt: DateTime.now(),
-                  );
-                  final ok = await _avatarService.updateAvatar(updated);
-                  if (ok) _applyAvatar(updated);
-                }
-              } catch (_) {}
-              _showSystemSnack('BP: Krone-Video hochgeladen');
-            } else {
-              throw Exception(
-                'BP Upload fehlgeschlagen: ${streamed.statusCode} ${body.isNotEmpty ? body : ''}',
+            final resp = await req.send();
+            final lastBody = await resp.stream.bytesToString();
+            if (resp.statusCode < 200 || resp.statusCode >= 300) {
+              final preview = lastBody.length > 400
+                  ? lastBody.substring(0, 400)
+                  : lastBody;
+              _showSystemSnack(
+                'BP Proxy Fehler: ${resp.statusCode} ${preview.isNotEmpty ? preview : ''}',
               );
+              throw Exception('BP Proxy Fehler: ${resp.statusCode}');
             }
+            try {
+              final data = jsonDecode(lastBody) as Map<String, dynamic>;
+              final newId =
+                  (data['avatarId'] as String?)?.trim() ??
+                  (data['id'] as String?)?.trim();
+              if ((newId ?? '').isNotEmpty) {
+                final tr = Map<String, dynamic>.from(
+                  _avatarData!.training ?? {},
+                );
+                final bp = Map<String, dynamic>.from(
+                  tr['beyondPresence'] ?? {},
+                );
+                bp['avatarId'] = newId;
+                tr['videoProvider'] = 'bp';
+                if ((bp['crownVideoUrl'] as String?) == null ||
+                    (bp['crownVideoUrl'] as String?)!.isEmpty) {
+                  bp['crownVideoUrl'] = crownVideoUrl;
+                }
+                tr['beyondPresence'] = bp;
+                final updated = _avatarData!.copyWith(
+                  training: tr,
+                  updatedAt: DateTime.now(),
+                );
+                final ok = await _avatarService.updateAvatar(updated);
+                if (ok) _applyAvatar(updated);
+              }
+            } catch (_) {}
+            _showSystemSnack('BP: Krone-Video/Avatar aktualisiert');
             return; // BP-Case abgeschlossen
           }
 
@@ -2938,7 +3052,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             await http.MultipartFile.fromPath('image', imageFile!.path),
           );
           req.files.add(
-            await http.MultipartFile.fromPath('audio', audioFile.path),
+            await http.MultipartFile.fromPath('audio', audioFile!.path),
           );
           if ((figureId ?? '').isNotEmpty) req.fields['figure_id'] = figureId!;
           if ((modelHash ?? '').isNotEmpty) {
@@ -3001,6 +3115,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         _applyAvatar(updated);
         // Großansicht auf neue Krone updaten
         await _initInlineFromCrown();
+        // Krone wurde neu gesetzt: Nutzer soll manuell aktualisieren
+        setState(() {
+          _bpCrownChangedPending = true;
+        });
       }
       _showSystemSnack('BP: Krone-Video gesetzt');
     } catch (e) {

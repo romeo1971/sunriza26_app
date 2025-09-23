@@ -5,6 +5,7 @@ Basierend auf der offiziellen Dokumentation: https://docs.bithuman.ai
 
 import os
 from pathlib import Path
+import io
 from dotenv import load_dotenv, find_dotenv
 import asyncio
 from pathlib import Path
@@ -20,6 +21,8 @@ import time
 import threading
 import uuid
 import subprocess
+import traceback
+from typing import Tuple
 
 # BitHuman SDK initialisieren
 runtime = None
@@ -95,6 +98,41 @@ try:
 except Exception:
     pass
 
+# OpenAI Client (für Whisper STT)
+try:
+    from openai import OpenAI  # openai>=1.35.0
+    OPENAI_CLIENT = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if os.getenv("OPENAI_API_KEY") else None
+except Exception:
+    OPENAI_CLIENT = None
+
+# ------------------------------
+# Beyond Presence URL-Helfer
+# ------------------------------
+def _bp_versioned_base() -> str:
+    """Ermittelt die BP Basis-URL und stellt sicher, dass sie auf /v1 zeigt.
+
+    Beispiele:
+      - https://api.bey.dev        -> https://api.bey.dev/v1
+      - https://api.bey.dev/       -> https://api.bey.dev/v1
+      - https://api.bey.dev/v1     -> https://api.bey.dev/v1
+      - https://api.bey.dev/v1/    -> https://api.bey.dev/v1
+    """
+    base = (os.getenv("BP_API_BASE_URL") or "https://api.bey.dev").strip()
+    base = base.rstrip("/")
+    if not base.endswith("/v1"):
+        base = base + "/v1"
+    return base
+
+def _bp_headers() -> dict:
+    key = (os.getenv("BP_API_KEY") or "").strip()
+    if not key:
+        raise HTTPException(status_code=500, detail="BP API Konfiguration fehlt")
+    # Einige BP-Deployments erwarten zusätzlich einen expliziten API-Key Header
+    return {
+        "Authorization": f"Bearer {key}",
+        "X-API-Key": key,
+    }
+
 async def _try_load_imx_into_global_runtime() -> bool:
     """Versucht beim Start ein lokales .imx in die globale Runtime zu laden."""
     try:
@@ -139,6 +177,47 @@ async def startup_event():
     # Optional: globales .imx laden
     await _try_load_imx_into_global_runtime()
 
+
+@app.post("/stt/whisper")
+async def stt_whisper(audio: UploadFile = File(...), language: str | None = Form(None)):
+    """Speech-to-Text via OpenAI Whisper. Erwartet Multipart 'audio'.
+    .env: OPENAI_API_KEY erforderlich.
+    """
+    try:
+        if OPENAI_CLIENT is None:
+            raise HTTPException(status_code=500, detail="OPENAI_API_KEY fehlt oder Client nicht initialisiert")
+        with tempfile.TemporaryDirectory() as td:
+            tmp = Path(td) / (audio.filename or "audio.m4a")
+            with open(tmp, "wb") as buf:
+                shutil.copyfileobj(audio.file, buf)
+            # Whisper Transkription
+            with open(tmp, "rb") as f:
+                resp = OPENAI_CLIENT.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=f,
+                    language=language or None,
+                    response_format="json",
+                )
+            text = None
+            try:
+                text = getattr(resp, "text", None)
+            except Exception:
+                pass
+            if not text:
+                # fallback: resp ist dict-ähnlich
+                try:
+                    text = resp["text"]
+                except Exception:
+                    pass
+            if not text:
+                raise HTTPException(status_code=502, detail="Whisper lieferte keinen Text")
+            return {"text": text}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[stt/whisper] Exception: {e}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"STT Fehler: {e}")
+
 @app.get("/")
 async def root():
     """Health Check"""
@@ -160,13 +239,14 @@ async def bp_speech_to_video(
     Erwartet .env: BP_API_BASE_URL, BP_API_KEY
     """
     try:
-        bp_base = (os.getenv("BP_API_BASE_URL") or "https://api.bey.dev").strip()
-        bp_key = (os.getenv("BP_API_KEY") or "").strip()
-        if not bp_key:
-            raise HTTPException(status_code=500, detail="BP API Konfiguration fehlt")
+        bp_base = _bp_versioned_base()
+        headers = _bp_headers()
 
-        target_url = f"{bp_base.rstrip('/')}/speech-to-video"
-        headers = {"Authorization": f"Bearer {bp_key}"}
+        candidate_urls = [
+            f"{bp_base}/speech-to-video",
+            f"{bp_base}/video/speech-to-video",
+            f"{bp_base}/videos/speech-to-video",
+        ]
 
         # Multipart mit Audio
         if audio is not None:
@@ -182,9 +262,15 @@ async def bp_speech_to_video(
                     data["avatarId"] = avatarId
                 if avatarImageUrl:
                     data["avatarImageUrl"] = avatarImageUrl
-                r = requests.post(target_url, headers=headers, files=files, data=data, timeout=120)
+                last_err = None
+                r = None
+                for url in candidate_urls:
+                    r = requests.post(url, headers=headers, files=files, data=data, timeout=120)
+                    if 200 <= r.status_code < 300:
+                        break
+                    last_err = f"{r.status_code} {r.text[:300]}"
                 if not (200 <= r.status_code < 300):
-                    raise HTTPException(status_code=r.status_code, detail=f"BP Fehler: {r.text[:500]}")
+                    raise HTTPException(status_code=r.status_code, detail=f"BP Fehler: {last_err or r.text[:500]}")
                 # Bytes → Temp MP4
                 out_dir = Path(td)
                 out_path = out_dir / "bp_video.mp4"
@@ -205,9 +291,15 @@ async def bp_speech_to_video(
         if avatarImageUrl and not payload.get("avatarImageUrl"):
             payload["avatarImageUrl"] = avatarImageUrl
 
-        r = requests.post(target_url, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=120)
+        last_err = None
+        r = None
+        for url in candidate_urls:
+            r = requests.post(url, headers={**headers, "Content-Type": "application/json"}, json=payload, timeout=120)
+            if 200 <= r.status_code < 300:
+                break
+            last_err = f"{r.status_code} {r.text[:300]}"
         if not (200 <= r.status_code < 300):
-            raise HTTPException(status_code=r.status_code, detail=f"BP Fehler: {r.text[:500]}")
+            raise HTTPException(status_code=r.status_code, detail=f"BP Fehler: {last_err or r.text[:500]}")
         with tempfile.TemporaryDirectory() as td2:
             out_path = Path(td2) / "bp_video.mp4"
             with open(out_path, "wb") as f:
@@ -224,29 +316,42 @@ async def bp_avatar_upload_video(video: UploadFile = File(...), avatarId: str | 
     Erwartet Env: BP_AVATAR_UPLOAD_URL (falls nicht gesetzt, wird /avatars verwendet).
     """
     try:
-        bp_base = (os.getenv("BP_API_BASE_URL") or "https://api.bey.dev").strip()
-        bp_key = (os.getenv("BP_API_KEY") or "").strip()
-        if not bp_key:
-            raise HTTPException(status_code=500, detail="BP API Konfiguration fehlt")
+        bp_base = _bp_versioned_base()
+        headers = _bp_headers()
 
         override_url = (os.getenv("BP_AVATAR_UPLOAD_URL") or "").strip()
-        target_url = override_url if override_url else f"{bp_base.rstrip('/')}/avatars"
-        headers = {"Authorization": f"Bearer {bp_key}"}
+        # Einige Dokumentationen verwenden /v1/avatar oder /v1/avatars/upload
+        # Wir versuchen der Reihe nach mehrere bekannte Pfade, bis einer 2xx liefert
+        candidate_urls = [
+            override_url if override_url else f"{bp_base}/avatars",
+            f"{bp_base}/avatar",
+            f"{bp_base}/avatars/upload",
+        ]
 
         with tempfile.TemporaryDirectory() as td:
             tmp_video = Path(td) / (video.filename or "video.mp4")
             with open(tmp_video, "wb") as buf:
                 shutil.copyfileobj(video.file, buf)
             mime = "video/mp4"
-            files = {
-                "video": (tmp_video.name, open(tmp_video, "rb"), mime),
-            }
+            with open(tmp_video, "rb") as fsrc:
+                data_bytes = fsrc.read()
             data = {}
             if avatarId:
                 data["avatarId"] = avatarId
-            r = requests.post(target_url, headers=headers, files=files, data=data, timeout=120)
+            last_err_txt = None
+            r = None
+            for url in candidate_urls:
+                # Für jeden Versuch frische Streams verwenden
+                files = {
+                    "file": (tmp_video.name, io.BytesIO(data_bytes), mime),
+                    "video": (tmp_video.name, io.BytesIO(data_bytes), mime),
+                }
+                r = requests.post(url, headers=headers, files=files, data=data, timeout=120)
+                if 200 <= r.status_code < 300:
+                    break
+                last_err_txt = f"{r.status_code} {r.text[:300]}"
             if not (200 <= r.status_code < 300):
-                raise HTTPException(status_code=r.status_code, detail=f"BP Avatar Upload Fehler: {r.text[:500]}")
+                raise HTTPException(status_code=r.status_code, detail=f"BP Avatar Upload Fehler: {last_err_txt or r.text[:500]}")
             try:
                 return r.json()
             except Exception:
@@ -254,6 +359,138 @@ async def bp_avatar_upload_video(video: UploadFile = File(...), avatarId: str | 
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Proxy Fehler: {e}")
+
+
+def _extract_frame_with_ffmpeg(in_path: str, out_jpg_path: str) -> bool:
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return False
+    try:
+        cmd = [
+            ffmpeg,
+            "-y",
+            "-i",
+            in_path,
+            "-frames:v",
+            "1",
+            "-q:v",
+            "2",
+            out_jpg_path,
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return True
+    except Exception:
+        return False
+
+
+def _extract_frame_with_opencv(in_path: str, out_jpg_path: str) -> bool:
+    try:
+        import cv2
+    except Exception:
+        return False
+    try:
+        cap = cv2.VideoCapture(in_path)
+        ok, frame = cap.read()
+        cap.release()
+        if not ok or frame is None:
+            return False
+        ok2 = cv2.imwrite(out_jpg_path, frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
+        return bool(ok2)
+    except Exception:
+        return False
+
+
+@app.post("/bp/avatar/from-video")
+async def bp_avatar_from_video(
+    request: Request,
+    video: UploadFile | None = File(None),
+    videoUrl: str | None = Form(None),
+    avatarId: str | None = Form(None),
+):
+    """Erstellt/aktualisiert einen BP-Avatar aus einem Video, indem ein Poster-Frame erzeugt
+    und als Bild zu BP /v1/avatars (Feldname 'image') hochgeladen wird. Eignet sich für iOS/Android,
+    da die App nur URL/Datei übergibt und die Extraktion serverseitig erfolgt.
+    """
+    try:
+        # JSON Body unterstützen
+        try:
+            body = await request.json()
+        except Exception:
+            body = None
+        if body and not video and not videoUrl:
+            videoUrl = body.get("videoUrl") or videoUrl
+            avatarId = body.get("avatarId") or avatarId
+
+        print(f"[bp/avatar/from-video] incoming: video={'yes' if video else 'no'}, videoUrl={(videoUrl or '').strip()[:120]}")
+        if not video and not (videoUrl and videoUrl.strip()):
+            raise HTTPException(status_code=400, detail="video oder videoUrl erforderlich")
+
+        bp_base = _bp_versioned_base()
+        headers = _bp_headers()
+
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            # Video in Temp laden
+            video_path = td_path / ("input.mp4" if not video else (video.filename or "upload.mp4"))
+            if video is not None:
+                with open(video_path, "wb") as buf:
+                    shutil.copyfileobj(video.file, buf)
+            else:
+                try:
+                    r = requests.get(videoUrl, timeout=60)
+                    if r.status_code != 200 or not r.content:
+                        raise HTTPException(status_code=502, detail=f"Download fehlgeschlagen: {r.status_code}")
+                    with open(video_path, "wb") as f:
+                        f.write(r.content)
+                    print(f"[bp/avatar/from-video] downloaded video: {video_path} size={len(r.content)} bytes")
+                except HTTPException:
+                    raise
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"Video-Download Fehler: {e}")
+
+            # Poster-Frame extrahieren
+            jpg_path = td_path / "poster.jpg"
+            ffmpeg_path = shutil.which("ffmpeg")
+            print(f"[bp/avatar/from-video] ffmpeg found: {ffmpeg_path}")
+            ok = _extract_frame_with_ffmpeg(str(video_path), str(jpg_path))
+            if not ok:
+                print("[bp/avatar/from-video] ffmpeg failed, trying OpenCV…")
+                ok = _extract_frame_with_opencv(str(video_path), str(jpg_path))
+            if not ok or (not jpg_path.exists() or jpg_path.stat().st_size == 0):
+                raise HTTPException(status_code=500, detail="Frame-Extraktion fehlgeschlagen")
+            else:
+                try:
+                    print(f"[bp/avatar/from-video] poster: {jpg_path} size={jpg_path.stat().st_size} bytes")
+                except Exception:
+                    pass
+
+            # Upload zu BP: /v1/avatars Feldname 'image'
+            url = f"{bp_base}/avatars"
+            files = {
+                "image": (jpg_path.name, open(jpg_path, "rb"), "image/jpeg"),
+            }
+            data = {}
+            if avatarId:
+                data["avatarId"] = avatarId
+            print(f"[bp/avatar/from-video] POST {url} (fields: {list(data.keys())})")
+            r = requests.post(url, headers=headers, files=files, data=data, timeout=120)
+            print(f"[bp/avatar/from-video] BP response: {r.status_code}")
+            try:
+                snippet = (r.text or "")[:400]
+                print(f"[bp/avatar/from-video] BP body: {snippet}")
+            except Exception:
+                pass
+            if not (200 <= r.status_code < 300):
+                raise HTTPException(status_code=r.status_code, detail=r.text[:500] if r.text else f"HTTP {r.status_code}")
+            try:
+                return r.json()
+            except Exception:
+                return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[bp/avatar/from-video] Exception: {e}\n{traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Proxy Fehler: {e}")
 
 @app.get("/debug/methods")

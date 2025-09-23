@@ -22,9 +22,11 @@ class _SonicVideoPageState extends State<SonicVideoPage> {
   VideoPlayerController? _controller;
   bool _loading = false;
   String backendUrl =
-      "${const String.fromEnvironment('MEMORY_API_BASE_URL', defaultValue: '')}"
-          .isNotEmpty
-      ? const String.fromEnvironment('MEMORY_API_BASE_URL') + "/generate"
+      const String.fromEnvironment(
+        'MEMORY_API_BASE_URL',
+        defaultValue: '',
+      ).isNotEmpty
+      ? "${const String.fromEnvironment('MEMORY_API_BASE_URL')}/generate"
       : "";
 
   Future<void> _uploadAndGenerate() async {
