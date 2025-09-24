@@ -35,12 +35,13 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     final primary = Theme.of(context).colorScheme.primary;
     _chewieController = ChewieController(
       videoPlayerController: widget.controller,
-      autoPlay: false, // Kein automatisches Abspielen – verhindert Doppel-Start
+      autoPlay: false,
       looping: false,
-      allowFullScreen: true,
-      allowMuting: true,
-      showOptions: false, // verhindert überbreite Options-Controls
-      showControls: false, // Inline: keine Controls → kein Overflow
+      allowFullScreen: false,
+      allowMuting: false,
+      showOptions: false,
+      showControls: true,
+      customControls: const _MinimalControls(), // eigene minimalen Controls
       materialProgressColors: ChewieProgressColors(
         playedColor: primary,
         handleColor: primary,
@@ -54,6 +55,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
         ),
       ),
       autoInitialize: true,
+      additionalOptions: (context) => [],
     );
   }
 
@@ -78,5 +80,87 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     }
 
     return Chewie(controller: _chewieController!);
+  }
+}
+
+// Minimalistische Chewie Controls: nur Play/Pause und Progressbar
+class _MinimalControls extends StatelessWidget {
+  const _MinimalControls();
+
+  String _format(Duration d) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60);
+    final s = d.inSeconds.remainder(60);
+    return h > 0 ? '${two(h)}:${two(m)}:${two(s)}' : '${two(m)}:${two(s)}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final chewie = ChewieController.of(context);
+    final ctrl = chewie!.videoPlayerController;
+    final theme = Theme.of(context);
+    return Stack(
+      children: [
+        // Play/Pause zentral
+        Align(
+          alignment: Alignment.center,
+          child: ValueListenableBuilder<VideoPlayerValue>(
+            valueListenable: ctrl,
+            builder: (context, value, _) {
+              return Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withOpacity(0.35),
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  iconSize: 48,
+                  color: Colors.white,
+                  onPressed: () {
+                    if (value.isPlaying) {
+                      chewie.pause();
+                    } else {
+                      chewie.play();
+                    }
+                  },
+                  icon: Icon(value.isPlaying ? Icons.pause : Icons.play_arrow),
+                ),
+              );
+            },
+          ),
+        ),
+        // Fortschritt unten
+        Positioned(
+          left: 8,
+          right: 8,
+          bottom: 8,
+          child: ValueListenableBuilder<VideoPlayerValue>(
+            valueListenable: ctrl,
+            builder: (context, value, _) {
+              return Row(
+                children: [
+                  Expanded(
+                    child: VideoProgressIndicator(
+                      ctrl,
+                      allowScrubbing: true,
+                      colors: VideoProgressColors(
+                        playedColor: theme.colorScheme.primary,
+                        bufferedColor: Colors.white30,
+                        backgroundColor: Colors.white24,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _format(value.position), // nur eine laufende Zeit
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
 }

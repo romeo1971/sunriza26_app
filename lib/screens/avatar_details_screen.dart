@@ -1066,81 +1066,90 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ],
                 ),
                 const SizedBox(width: spacing),
-                // Galerie: exakt gleiche Höhe wie links, Toolbar als Overlay → kein Overflow
+                // Galerie: unten bündig (leftH) und Toolbar exakt auf Höhe der linken Navi-Leiste
                 Expanded(
-                  child: Align(
-                    alignment: Alignment.bottomLeft,
-                    child: SizedBox(
-                      height: leftH,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Positioned.fill(
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: remoteFour.length.clamp(0, 4),
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(width: gridSpacing),
-                              itemBuilder: (context, index) {
-                                final url = remoteFour[index];
-                                final isCrown =
-                                    _profileImageUrl == url ||
-                                    (_profileImageUrl == null && index == 0);
-                                return SizedBox(
-                                  width: leftW,
-                                  height: leftH,
-                                  child: _imageThumbNetwork(url, isCrown),
-                                );
-                              },
-                            ),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // Liste unten bündig
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: SizedBox(
+                          height: leftH,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: remoteFour.length.clamp(0, 4),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: gridSpacing),
+                            itemBuilder: (context, index) {
+                              final url = remoteFour[index];
+                              final isCrown =
+                                  _profileImageUrl == url ||
+                                  (_profileImageUrl == null && index == 0);
+                              return SizedBox(
+                                width: leftW,
+                                height: leftH,
+                                child: _imageThumbNetwork(url, isCrown),
+                              );
+                            },
                           ),
-                          if (_isDeleteMode &&
-                              (_selectedRemoteImages.length +
-                                      _selectedLocalImages.length) >
-                                  0)
-                            Positioned(
-                              top: 0,
-                              right: 0,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  ElevatedButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _isDeleteMode = false;
-                                        _selectedRemoteImages.clear();
-                                        _selectedLocalImages.clear();
-                                      });
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.grey,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 6,
-                                      ),
-                                    ),
-                                    child: const Icon(Icons.close, size: 18),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ElevatedButton(
-                                    onPressed: _confirmDeleteSelectedImages,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.redAccent,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 6,
-                                      ),
-                                    ),
-                                    child: const Icon(Icons.delete, size: 18),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
+                        ),
                       ),
-                    ),
+                      // Toolbar oben, ausgerichtet wie die linke Navi (Größe = navBtnH)
+                      if (_isDeleteMode &&
+                          (_selectedRemoteImages.length +
+                                  _selectedLocalImages.length) >
+                              0)
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: navBtnH,
+                                height: navBtnH,
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _isDeleteMode = false;
+                                      _selectedRemoteImages.clear();
+                                      _selectedLocalImages.clear();
+                                    });
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.grey,
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: const Icon(Icons.close, size: 20),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: navBtnH,
+                                height: navBtnH,
+                                child: ElevatedButton(
+                                  onPressed: _confirmDeleteSelectedImages,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.redAccent,
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: const Icon(Icons.delete, size: 20),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -1353,78 +1362,85 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ],
                 ),
                 const SizedBox(width: spacing),
-                // Galerie (max. 4) – immer exakt so hoch wie die linke Großansicht
+                // Galerie (max. 4) – unten bündig, Toolbar oben ausgerichtet wie links
                 Expanded(
-                  child: Align(
-                    alignment: Alignment.bottomLeft,
-                    child: SizedBox(
-                      height: leftH,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          Positioned.fill(
-                            child: ListView.separated(
-                              scrollDirection: Axis.horizontal,
-                              itemCount: remoteFour.length.clamp(0, 4),
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(width: gridSpacing),
-                              itemBuilder: (context, index) {
-                                final url = remoteFour[index];
-                                return SizedBox(
-                                  width: leftW,
-                                  height: leftH,
-                                  child: _videoTile(url, leftW, leftH),
-                                );
-                              },
-                            ),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: SizedBox(
+                          height: leftH,
+                          child: ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: remoteFour.length.clamp(0, 4),
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(width: gridSpacing),
+                            itemBuilder: (context, index) {
+                              final url = remoteFour[index];
+                              return SizedBox(
+                                width: leftW,
+                                height: leftH,
+                                child: _videoTile(url, leftW, leftH),
+                              );
+                            },
                           ),
-                          if (_isDeleteMode &&
-                              (_selectedRemoteVideos.length +
-                                      _selectedLocalVideos.length) >
-                                  0)
-                            Positioned(
-                              top: 0,
-                              right: 0,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  ElevatedButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _isDeleteMode = false;
-                                        _selectedRemoteVideos.clear();
-                                        _selectedLocalVideos.clear();
-                                      });
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.grey,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 6,
-                                      ),
-                                    ),
-                                    child: const Icon(Icons.close, size: 18),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  ElevatedButton(
-                                    onPressed: _confirmDeleteSelectedImages,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.redAccent,
-                                      foregroundColor: Colors.white,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 6,
-                                      ),
-                                    ),
-                                    child: const Icon(Icons.delete, size: 18),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
+                        ),
                       ),
-                    ),
+                      if (_isDeleteMode &&
+                          (_selectedRemoteVideos.length +
+                                  _selectedLocalVideos.length) >
+                              0)
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: navBtnH,
+                                height: navBtnH,
+                                child: ElevatedButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _isDeleteMode = false;
+                                      _selectedRemoteVideos.clear();
+                                      _selectedLocalVideos.clear();
+                                    });
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.grey,
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: const Icon(Icons.close, size: 20),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: navBtnH,
+                                height: navBtnH,
+                                child: ElevatedButton(
+                                  onPressed: _confirmDeleteSelectedImages,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.redAccent,
+                                    foregroundColor: Colors.white,
+                                    padding: EdgeInsets.zero,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: const Icon(Icons.delete, size: 20),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
                   ),
                 ),
               ],
@@ -2658,15 +2674,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 return Container(color: Colors.black26);
               },
             ),
-            if (!_isDeleteMode)
-              const Align(
-                alignment: Alignment.center,
-                child: Icon(
-                  Icons.play_circle_fill,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
+            // Mini-Play-Icon entfernt – Galerie klickt nur Krone/Trash
             // Tap in Galerie: setzt KRONE (wie verlangt). Delete funktioniert weiter über Icon.
             Positioned.fill(
               child: Material(
@@ -2693,9 +2701,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   height: 32,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: const Color(0x30000000),
+                    color: selected ? null : const Color(0x30000000),
+                    gradient: selected
+                        ? const LinearGradient(
+                            colors: [AppColors.magenta, AppColors.lightBlue],
+                          )
+                        : null,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0x66FFFFFF)),
+                    border: Border.all(
+                      color: selected
+                          ? AppColors.lightBlue.withValues(alpha: 0.7)
+                          : const Color(0x66FFFFFF),
+                    ),
                   ),
                   child: const Icon(
                     Icons.delete_outline,
@@ -2719,7 +2736,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       final fresh = await _refreshDownloadUrl(url) ?? url;
       final controller = VideoPlayerController.networkUrl(Uri.parse(fresh));
       await controller.initialize();
-      await controller.setLooping(true);
+      await controller.setLooping(false);
       controller.addListener(() async {
         try {
           final v = controller.value;
