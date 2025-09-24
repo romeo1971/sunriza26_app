@@ -51,3 +51,6 @@ service-account-key.json
 tts_apiKeys/
 *.mp3
 comfyui_env/
+avatars/*.imx
+models/**/*.imx
+avatars/

@@ -771,6 +771,7 @@ class ChatRequest(BaseModel):
     top_k: int = 5
     voice_id: str | None = None
     avatar_name: str | None = None
+    target_language: str | None = None  # z. B. 'de', 'en', 'fr'
 
 
 class ChatResponse(BaseModel):
@@ -1174,6 +1175,45 @@ def tts_endpoint(req: TTSRequest):
 
 @app.post("/avatar/chat", response_model=ChatResponse)
 def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
+    # 0) Sprache klassifizieren: klare Fremdsprache vs. gemischt (unter Berücksichtigung der Nutzer-Sprache)
+    def _classify_language(text: str, user_lang_hint: str | None) -> dict:
+        try:
+            prompt = (
+                "Ermittle Hauptsprache des folgenden Textes. Antworte NUR als kompaktes JSON:"
+                " {\"lang\":\"<iso-639-1>\",\"is_mixed\":true|false}.\n"
+                f"User-Sprache: {user_lang_hint or 'unbekannt'}.\n"
+                "Definition is_mixed: true NUR wenn >50% der Tokens in der User-Sprache sind,"
+                " aber es klar erkennbare Fremdsprach-Teile gibt. Andernfalls false."
+                "\nText:\n" + (text or "")
+            )
+            comp = client.chat.completions.create(
+                model=GPT_MODEL,
+                messages=[
+                    {"role": "system", "content": "Du bist ein präziser Sprachdetektor. Antworte nur mit JSON."},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=0,
+                max_tokens=60,
+            )
+            raw = (comp.choices[0].message.content or "").strip()
+            data = json.loads(raw)
+            lang = str(data.get("lang", "")).lower()[:5]
+            is_mixed = bool(data.get("is_mixed", False))
+            return {"lang": lang, "is_mixed": is_mixed}
+        except Exception:
+            # Fallback: Heuristik für nicht-lateinische Schriften
+            txt = (text or "")
+            tl = (user_lang_hint or "").lower().strip()
+            if any("\u3040" <= ch <= "\u30ff" for ch in txt):
+                return {"lang": "ja", "is_mixed": False}
+            if any("\u0400" <= ch <= "\u04FF" for ch in txt):
+                return {"lang": "ru", "is_mixed": False}
+            if any("\u0600" <= ch <= "\u06FF" for ch in txt):
+                return {"lang": "ar", "is_mixed": False}
+            # Einfache Indizien für Spanisch
+            if any(c in txt for c in "áéíóúñ¿¡") or any(w in txt.lower() for w in ["hola", "gracias", "buenos", "estoy", "porque", "qué", "como", "hablas"]):
+                return {"lang": "es", "is_mixed": (tl == "es")}
+            return {"lang": None, "is_mixed": False}
     # Pre-Normalisierung: häufige Tippfehler korrigieren
     msg = payload.message
     msg = re.sub(r"\bdiesel jahr\b", "dieses Jahr", msg, flags=re.IGNORECASE)
@@ -1205,7 +1245,7 @@ def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
     if champion_q:
         context_block = ""
 
-    # 2) Prompt bauen (kurz & menschlich)
+    # 2) Prompt bauen (kurz & menschlich) + Ziel-Sprache (Logik: klare Fremdsprache > user-lang; Mischsätze -> user-lang)
     system = GPT_SYSTEM_PROMPT
     if payload.avatar_name:
         system = system + f" Dein Name ist {payload.avatar_name}."
@@ -1219,6 +1259,57 @@ def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
             "Bei sehr allgemeinem Prompt stelle genau EINE kurze Rückfrage. "
             "Antwortsprache = Sprache der Nutzerfrage; wenn unklar, Deutsch."
         )
+    # Ziel-Sprache entscheiden
+    reply_lang = None
+    # Schneller Hard-Hit: Arabisch sofort erkennen (Unicode-Bereiche)
+    reply_lang = None
+    _txt_all = payload.message or ""
+    try:
+        if any('\u0600' <= ch <= '\u06FF' for ch in _txt_all) or \
+           any('\u0750' <= ch <= '\u077F' for ch in _txt_all) or \
+           any('\u08A0' <= ch <= '\u08FF' for ch in _txt_all):
+            reply_lang = 'ar'
+    except Exception:
+        pass
+
+    try:
+        cls = _classify_language(payload.message, payload.target_language) if reply_lang is None else {"lang": reply_lang, "is_mixed": False}
+        user_lang = (payload.target_language or "").strip().lower()
+        detected = (cls.get("lang") or "").strip().lower()
+        is_mixed = bool(cls.get("is_mixed"))
+        # Spezifische Korrektur für Spanisch: Satzzeichen/Diakritika erzwingen klares 'es'
+        try:
+            _txt = (payload.message or "")
+            _has_span_punct = ("¿" in _txt) or ("¡" in _txt)
+            _has_span_diac = any(ch in _txt for ch in "áéíóúñÁÉÍÓÚÑ")
+            _has_span_words = any(w in _txt.lower() for w in [
+                "hola", "gracias", "buenos", "buenas", "estoy", "porque", "por qué", "qué", "cómo", "hablas",
+                "tiempo", "aquí", "genial", "muy", "mucho", "tú", "usted"
+            ])
+            if detected == "es" or _has_span_punct or _has_span_diac or _has_span_words:
+                detected = "es"
+                is_mixed = False if user_lang != "es" else is_mixed
+        except Exception:
+            pass
+        # Entscheide: klare Fremdsprache > User-Sprache; Mischsätze -> User-Sprache
+        if user_lang and detected and detected != user_lang and not is_mixed:
+            reply_lang = detected
+        elif user_lang:
+            reply_lang = user_lang
+    except Exception:
+        reply_lang = (payload.target_language or "").strip().lower() or None
+    # Debug-Log für Sprachentscheidung
+    try:
+        logger.info(
+            f"CHAT_LANG_DECISION user_lang='{(payload.target_language or '').strip().lower()}' "
+            f"detected='{(cls.get('lang') if 'cls' in locals() else None)}' "
+            f"is_mixed='{(cls.get('is_mixed') if 'cls' in locals() else None)}' "
+            f"reply_lang='{reply_lang}'"
+        )
+    except Exception:
+        pass
+    if reply_lang:
+        system += f" Antworte stets in der Sprache '{reply_lang}'. Übersetze Inhalte falls nötig."
     user_msg = payload.message
     if context_block:
         user_msg = (

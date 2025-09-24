@@ -54,6 +54,9 @@ dependencies:
   # UI und State Management
   provider: ^6.1.2
   google_fonts: ^6.2.1
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.20.2
   
   # Utilities
   path_provider: ^2.1.4
@@ -111,6 +114,7 @@ flutter:
     - assets/sunriza_complete/gifs/
     - assets/sunriza_complete/texts/
     - .env
+  generate: true
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

@@ -1,0 +1,15 @@
+{
+  "appTitle": "Sunriza26 - Live AI Assistant",
+  "menuLanguage": "Language",
+  "languageTitle": "Choose language",
+  "greetingText": "Greeting text",
+  "texts": "Texts",
+  "voiceSelection": "Voice selection",
+  "profile": "Edit profile",
+  "terms": "Terms",
+  "imprint": "Imprint",
+  "privacy": "Privacy",
+  "help": "Help & Support",
+  "logout": "Sign out"
+}
+

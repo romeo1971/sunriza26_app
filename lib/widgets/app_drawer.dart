@@ -139,11 +139,11 @@ class AppDrawer extends StatelessWidget {
 
                 _buildDrawerItem(
                   context,
-                  icon: Icons.settings,
-                  title: 'Einstellungen',
+                  icon: Icons.language,
+                  title: 'Sprache',
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.pushNamed(context, '/settings');
+                    Navigator.pushNamed(context, '/language');
                   },
                 ),
 

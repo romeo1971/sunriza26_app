@@ -1241,6 +1241,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       bool done = false;
 
       Future<Map<String, dynamic>?> primary() async {
+        // Nutzer-Zielsprache aus Firestore/Provider (optional)
+        String? lang;
+        try {
+          final doc = await FirebaseFirestore.instance
+              .collection('users')
+              .doc(uid)
+              .get();
+          lang = (doc.data()?['language'] as String?)?.trim();
+        } catch (_) {}
         final res = await http
             .post(
               uri,
@@ -1254,6 +1263,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                     ? voiceId
                     : null,
                 'avatar_name': _avatarData?.displayName,
+                'target_language': lang,
               }),
             )
             .timeout(const Duration(seconds: 4));
@@ -1265,9 +1275,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
       Future<Map<String, dynamic>?> cf() async {
         try {
-          final cfUri = Uri.parse(
-            'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse',
-          );
+          String cfUrl = (dotenv.env['CF_FUNCTION_URL'] ?? '').trim();
+          if (cfUrl.isEmpty) {
+            cfUrl =
+                'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse';
+          }
+          final cfUri = Uri.parse(cfUrl);
           final res = await http
               .post(
                 cfUri,
@@ -1307,8 +1320,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       );
 
       if (first == null) {
-        // Nichts brauchbares → klassischer Fallback
-        await _chatViaFunctions(userText);
+        // Nichts brauchbares → optionaler CF-Fallback (per ENV)
+        final cfEnabled =
+            (dotenv.env['CF_FALLBACK_ENABLED'] ?? '0').trim() == '1';
+        if (cfEnabled) {
+          await _chatViaFunctions(userText);
+        } else {
+          _showSystemSnack('Chat nicht verfügbar (Backend-Timeout)');
+        }
       } else {
         final answer = (first['answer'] as String?)?.trim();
         if (answer != null && answer.isNotEmpty) {
@@ -1378,16 +1397,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     try {
       final base = EnvService.memoryApiBaseUrl();
       if (base.isNotEmpty) {
-        final uri = Uri.parse('$base/healthz');
+        final uri = Uri.parse('$base/health');
         unawaited(http.get(uri).timeout(const Duration(seconds: 3)));
       }
       unawaited(
-        http
-            .get(
-              Uri.parse(
-                'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse',
-              ),
-            )
+        () async {
+              String cfUrl = (dotenv.env['CF_FUNCTION_URL'] ?? '').trim();
+              if (cfUrl.isEmpty) {
+                cfUrl =
+                    'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse';
+              }
+              return await http.get(Uri.parse(cfUrl));
+            }()
             .timeout(const Duration(seconds: 3))
             .then((resp) => resp)
             .catchError((err) => err),
@@ -1403,9 +1424,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         return;
       }
       final uid = user.uid;
-      final uri = Uri.parse(
-        'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse',
-      );
+      String cfUrl = (dotenv.env['CF_FUNCTION_URL'] ?? '').trim();
+      if (cfUrl.isEmpty) {
+        cfUrl =
+            'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse';
+      }
+      final uri = Uri.parse(cfUrl);
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
@@ -1462,6 +1486,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           if (path != null) await _playAudioAtPath(path);
         }
       } else {
+        try {
+          // Debug-Ausgabe für CF-Fehler zur schnellen Diagnose
+          // ignore: avoid_print
+          print(
+            'CF ERROR ${res.statusCode}: ${res.body.substring(0, res.body.length > 300 ? 300 : res.body.length)}',
+          );
+        } catch (_) {}
         _showSystemSnack('Chat-Fehler: ${res.statusCode} (CF)');
       }
     } catch (e) {
@@ -1477,7 +1508,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   Future<void> _playAudioAtPath(String path) async {
     try {
+      await _player.stop();
       await _player.setFilePath(path);
+      // Kein Looping, einmalige Wiedergabe
+      await _player.setLoopMode(LoopMode.off);
       await _player.play();
     } catch (e) {
       _showSystemSnack('Wiedergabefehler: $e');
