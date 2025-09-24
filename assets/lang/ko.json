@@ -49,7 +49,14 @@
   "lang.uk": "우크라이나어",
   "lang.vi": "베트남어",
   "lang.zh-Hans": "중국어(간체)",
-  "lang.zh-Hant": "중국어(번체)"
+  "lang.zh-Hant": "중국어(번체)",
+  "welcome.headlineDefaultSuffix": "\n영원을 위한 이야기 – 당신이 들려줍니다",
+  "welcome.headlineAltSuffix": "\n당신의 이야기, 생각과 가치는 남아 있습니다",
+  "welcome.rotate1": "사람은 사라지지 않습니다.\n그들은 우리의 기억 속에,\n그리고 우리가 이야기하는 방식 속에 살아 있습니다.",
+  "welcome.rotate2": "당신만의 불멸의 아바타를 만들어 보세요.\n단 5분이면 당신의 마음이 영원을 스칩니다 — 오늘, 내일, 그리고 영원히.",
+  "welcome.rotate3": "필요한 것은 당신의 사진 또는 영상, 짧은 음성 녹음, 그리고 소중한 몇 가지 기억뿐입니다.",
+  "welcome.ctaPrimary": "지금 무료로 시작하기",
+  "welcome.ctaSubtext": "당신을 닮았고, 당신처럼 말하고 이야기합니다"
 }
 
 

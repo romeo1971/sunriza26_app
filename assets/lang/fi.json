@@ -49,7 +49,14 @@
   "lang.uk": "ukraina",
   "lang.vi": "vietnam",
   "lang.zh-Hans": "kiina (yksinkertaistettu)",
-  "lang.zh-Hant": "kiina (perinteinen)"
+  "lang.zh-Hant": "kiina (perinteinen)",
+  "welcome.headlineDefaultSuffix": "\nTarinoita ikuisuudelle – kerrottuna sinun ääntäsi käyttäen",
+  "welcome.headlineAltSuffix": "\nTarinesi, ajatuksesi ja arvosi jäävät elämään",
+  "welcome.rotate1": "Ihmiset eivät katoa.\nHe elävät muistoissamme\nja siinä tavassa, jolla kerromme heistä.",
+  "welcome.rotate2": "Luo oma kuolematon avatarisi.\nVain 5 minuutissa sydämesi koskettaa ikuisuutta – tänään, huomenna ja aina.",
+  "welcome.rotate3": "Tarvitset vain kuvan tai videon itsestäsi, lyhyen äänitallenteen ja muutaman sinulle tärkeän muiston.",
+  "welcome.ctaPrimary": "Aloita ilmaiseksi nyt",
+  "welcome.ctaSubtext": "Näyttää sinulta, puhuu ja kertoo kuin sinä"
 }
 
 

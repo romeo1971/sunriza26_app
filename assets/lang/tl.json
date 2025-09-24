@@ -49,7 +49,14 @@
   "lang.uk": "Ukrainian",
   "lang.vi": "Vietnamese",
   "lang.zh-Hans": "Chinese (Simplified)",
-  "lang.zh-Hant": "Chinese (Traditional)"
+  "lang.zh-Hant": "Chinese (Traditional)",
+  "welcome.headlineDefaultSuffix": "\nMga kuwento para sa kawalang-hanggan — ikinuwento mo",
+  "welcome.headlineAltSuffix": "\nMananatili ang iyong mga kuwento, isip at mga pagpapahalaga",
+  "welcome.rotate1": "Hindi nawawala ang mga tao.\nNabubuhay sila sa ating mga alaala\nat sa paraan ng ating pagkukuwento.",
+  "welcome.rotate2": "Gumawa ng sarili mong imortal na avatar.\nSa loob lamang ng 5 minuto, hinahaplos ng puso mo ang kawalang-hanggan — ngayon, bukas at magpakailanman.",
+  "welcome.rotate3": "Kailangan mo lamang ng iyong larawan o video, maikling voice recording, at ilang alaala na mahalaga sa iyo.",
+  "welcome.ctaPrimary": "Magsimula nang libre ngayon",
+  "welcome.ctaSubtext": "Mukhang ikaw, nagsasalita at nagkukuwento na parang ikaw"
 }
 
 

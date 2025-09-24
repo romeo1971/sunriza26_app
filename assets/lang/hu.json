@@ -49,7 +49,14 @@
   "lang.uk": "Ukrán",
   "lang.vi": "Vietnami",
   "lang.zh-Hans": "Kínai (egyszerűsített)",
-  "lang.zh-Hant": "Kínai (hagyományos)"
+  "lang.zh-Hant": "Kínai (hagyományos)",
+  "welcome.headlineDefaultSuffix": "\nTörténetek az örökkévalóságnak – általad elmondva",
+  "welcome.headlineAltSuffix": "\nA történeteid, gondolataid és értékeid megmaradnak",
+  "welcome.rotate1": "Az emberek nem tűnnek el.\nTovább élnek az emlékeinkben\nés abban, ahogyan elmeséljük őket.",
+  "welcome.rotate2": "Hozd létre a saját halhatatlan avatarodat.\nMindössze 5 perc alatt a szíved megérinti az örökkévalóságot – ma, holnap és mindörökké.",
+  "welcome.rotate3": "Csak egy rólad készült fotóra vagy videóra, egy rövid hangfelvételre és néhány számodra fontos emlékre van szükség.",
+  "welcome.ctaPrimary": "Kezdd el most ingyen",
+  "welcome.ctaSubtext": "Úgy néz ki, mint te, úgy beszél és mesél, mint te"
 }
 
 

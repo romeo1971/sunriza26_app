@@ -49,7 +49,14 @@
   "lang.uk": "乌克兰语",
   "lang.vi": "越南语",
   "lang.zh-Hans": "简体中文",
-  "lang.zh-Hant": "繁体中文"
+  "lang.zh-Hant": "繁体中文",
+  "welcome.headlineDefaultSuffix": "\n献给永恒的故事——由你讲述",
+  "welcome.headlineAltSuffix": "\n你的故事、思绪与价值将被保留",
+  "welcome.rotate1": "人不会消失。\n他们活在我们的记忆中，\n以及我们讲述的方式里。",
+  "welcome.rotate2": "创建你的不朽化身。\n只需 5 分钟，你的心便触及永恒——今天、明天与永远。",
+  "welcome.rotate3": "你只需要一张照片或一个视频、一段简短的语音，以及几个对你重要的回忆。",
+  "welcome.ctaPrimary": "立即免费开始",
+  "welcome.ctaSubtext": "看起来像你，说话讲述也像你"
 }
 
 

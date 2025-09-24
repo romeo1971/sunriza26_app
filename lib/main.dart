@@ -95,6 +95,13 @@ class SunrizaApp extends StatelessWidget {
             forced = Locale(lc);
           }
         }
+        // LocalizationService mit der aktuell gewählten Sprache synchronisieren
+        final locSvc = context.read<LocalizationService>();
+        final desiredCode = lc ?? 'en';
+        if (locSvc.activeCode != desiredCode) {
+          // außerhalb des Builds ausführen
+          Future.microtask(() => locSvc.useLanguageCode(desiredCode));
+        }
         return MaterialApp(
           title: 'Sunriza26 - Live AI Assistant',
           localizationsDelegates: [
@@ -288,7 +295,7 @@ class SunrizaApp extends StatelessWidget {
           create: (_) => LanguageService(),
         ),
         ChangeNotifierProvider<LocalizationService>(
-          create: (_) => LocalizationService(),
+          create: (_) => LocalizationService()..useLanguageCode('en'),
         ),
       ],
       child: isMacOS ? ExcludeSemantics(child: app) : app,

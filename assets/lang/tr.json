@@ -49,7 +49,14 @@
   "lang.uk": "Ukraynaca",
   "lang.vi": "Vietnamca",
   "lang.zh-Hans": "Çince (Basitleştirilmiş)",
-  "lang.zh-Hant": "Çince (Geleneksel)"
+  "lang.zh-Hant": "Çince (Geleneksel)",
+  "welcome.headlineDefaultSuffix": "\nSonsuzluğa uzanan hikayeler – senin anlattıkların",
+  "welcome.headlineAltSuffix": "\nHikayelerin, düşüncelerin ve değerlerin kalır",
+  "welcome.rotate1": "İnsanlar yok olmaz.\nOnlar anılarımızda yaşar\nve onları anlatış biçimimizde.",
+  "welcome.rotate2": "Kendi ölümsüz avatarını oluştur.\nSadece 5 dakikada kalbin sonsuzluğa dokunsun — bugün, yarın ve daima.",
+  "welcome.rotate3": "Tek gereken senin bir fotoğrafın veya videon, kısa bir ses kaydı ve senin için değerli birkaç anı.",
+  "welcome.ctaPrimary": "Şimdi ücretsiz başla",
+  "welcome.ctaSubtext": "Sana benzer, senin gibi konuşur ve anlatır"
 }
 
 

@@ -49,7 +49,14 @@
   "lang.uk": "Ucraino",
   "lang.vi": "Vietnamita",
   "lang.zh-Hans": "Cinese (semplificato)",
-  "lang.zh-Hant": "Cinese (tradizionale)"
+  "lang.zh-Hant": "Cinese (tradizionale)",
+  "welcome.headlineDefaultSuffix": "\nStorie per l'eternità – raccontate da te",
+  "welcome.headlineAltSuffix": "\nLe tue storie, idee e valori restano",
+  "welcome.rotate1": "Le persone non scompaiono.\nVivono nei nostri ricordi.\nE nel modo in cui li raccontiamo.",
+  "welcome.rotate2": "Crea il tuo avatar immortale.\nIn soli 5 minuti il tuo cuore tocca l'eternità – oggi, domani e per sempre.",
+  "welcome.rotate3": "Basta una tua foto o video, una breve registrazione vocale e alcuni ricordi per te importanti.",
+  "welcome.ctaPrimary": "Inizia gratis ora",
+  "welcome.ctaSubtext": "Ti assomiglia, parla e racconta come te"
 }
 
 

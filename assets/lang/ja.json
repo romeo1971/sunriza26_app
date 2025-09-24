@@ -49,7 +49,14 @@
   "lang.uk": "ウクライナ語",
   "lang.vi": "ベトナム語",
   "lang.zh-Hans": "中国語（簡体字）",
-  "lang.zh-Hant": "中国語（繁体字）"
+  "lang.zh-Hant": "中国語（繁体字）",
+  "welcome.headlineDefaultSuffix": "\n永遠に残る物語 — あなたが語り手",
+  "welcome.headlineAltSuffix": "\nあなたの物語・想い・価値は生き続ける",
+  "welcome.rotate1": "人は消えない。\n人は私たちの記憶の中に生き続け、\nそして語り継がれていく。",
+  "welcome.rotate2": "あなた自身の不朽のアバターを作ろう。\nたった5分で、あなたの心は永遠に触れる — 今日も、明日も、いつまでも。",
+  "welcome.rotate3": "必要なのは、あなたの写真/動画、短い音声、そして大切な思い出だけ。",
+  "welcome.ctaPrimary": "今すぐ無料で始める",
+  "welcome.ctaSubtext": "あなたに似て、あなたのように語りかける"
 }
 
 

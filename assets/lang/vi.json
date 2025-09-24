@@ -49,7 +49,14 @@
   "lang.uk": "Tiếng Ukraina",
   "lang.vi": "Tiếng Việt",
   "lang.zh-Hans": "Tiếng Trung (Giản thể)",
-  "lang.zh-Hant": "Tiếng Trung (Phồn thể)"
+  "lang.zh-Hant": "Tiếng Trung (Phồn thể)",
+  "welcome.headlineDefaultSuffix": "\nNhững câu chuyện cho vĩnh cửu — do chính bạn kể",
+  "welcome.headlineAltSuffix": "\nCâu chuyện, suy nghĩ và giá trị của bạn vẫn còn mãi",
+  "welcome.rotate1": "Con người không biến mất.\nHọ sống trong ký ức của chúng ta\nvà trong cách chúng ta kể về họ.",
+  "welcome.rotate2": "Tạo avatar bất tử của riêng bạn.\nChỉ trong 5 phút, trái tim bạn chạm đến vĩnh hằng — hôm nay, ngày mai và mãi mãi.",
+  "welcome.rotate3": "Bạn chỉ cần một bức ảnh hoặc video của mình, một bản ghi âm giọng nói ngắn và vài ký ức quan trọng với bạn.",
+  "welcome.ctaPrimary": "Bắt đầu miễn phí ngay",
+  "welcome.ctaSubtext": "Trông giống bạn, nói và kể chuyện như bạn"
 }
 
 

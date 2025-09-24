@@ -34,7 +34,14 @@
   "lang.uk": "Ukrainian",
   "lang.vi": "Vietnamese",
   "lang.zh-Hans": "Chinese (Simplified)",
-  "lang.zh-Hant": "Chinese (Traditional)"
+  "lang.zh-Hant": "Chinese (Traditional)",
+  "welcome.headlineDefaultSuffix": "\\nStories for eternity – told by you",
+  "welcome.headlineAltSuffix": "\\nYour stories, thoughts and values remain",
+  "welcome.rotate1": "People don't disappear.\\nThey live on – in our memories.\\nAnd in the way we tell them.",
+  "welcome.rotate2": "Create your own immortal avatar.\\nIn just 5 minutes, your heart touches eternity – today, tomorrow and forever.",
+  "welcome.rotate3": "All it takes is a picture or video of you, a short voice recording, and a few memories that matter to you.",
+  "welcome.ctaPrimary": "Start for free now",
+  "welcome.ctaSubtext": "Looks like you, speaks and tells like you"
 }
 
 

@@ -12,6 +12,7 @@ import '../theme/app_theme.dart';
 // import 'ai_assistant_screen.dart';
 import '../services/auth_service.dart';
 import '../widgets/app_drawer.dart';
+import '../services/localization_service.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -26,10 +27,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   bool _headlineAlt = false;
   Timer? _headlineTimer;
 
-  static const List<String> _rotatingMessages = [
-    'Menschen verschwinden nicht.\nSie leben weiter – in unseren Erinnerungen.\nUnd in der Art, wie wir sie erzählen.',
-    'Erstelle Deinen eigenen unsterblichen Avatar.\nIn nur 5 Minuten berührt Dein Herz die Ewigkeit - heute, morgen und für immer.',
-    'Alles, was es braucht, sind ein Bild oder Video von Dir, eine kurze Audioaufnahme Deiner Stimme und ein paar Erinnerungen, die Dir wichtig sind.',
+  static const List<String> _rotatingMessageKeys = [
+    'welcome.rotate1',
+    'welcome.rotate2',
+    'welcome.rotate3',
   ];
 
   @override
@@ -38,7 +39,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
     _rotationTimer = Timer.periodic(const Duration(seconds: 7), (_) {
       if (!mounted) return;
       setState(() {
-        _messageIndex = (_messageIndex + 1) % _rotatingMessages.length;
+        _messageIndex = (_messageIndex + 1) % _rotatingMessageKeys.length;
       });
     });
     _headlineTimer = Timer.periodic(const Duration(seconds: 21), (_) {
@@ -115,6 +116,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   Widget _buildHeroSection(BuildContext context) {
     final size = MediaQuery.of(context).size;
     final vPad = size.height < 740 ? 24.0 : 80.0;
+    final loc = context.watch<LocalizationService>();
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 24, vertical: vPad),
       decoration: BoxDecoration(
@@ -162,9 +164,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                   ),
                                 ),
                               ),
-                              const TextSpan(
-                                text:
-                                    '\nDeine Geschichten, Gedanken und Werte bleiben',
+                              TextSpan(
+                                text: loc.t('welcome.headlineAltSuffix'),
                               ),
                             ],
                           ),
@@ -192,9 +193,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                                   ),
                                 ),
                               ),
-                              const TextSpan(
-                                text:
-                                    '\nGeschichten für die Ewigkeit – erzählt von Dir',
+                              TextSpan(
+                                text: loc.t('welcome.headlineDefaultSuffix'),
                               ),
                             ],
                           ),
@@ -211,7 +211,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   transitionBuilder: (child, anim) =>
                       FadeTransition(opacity: anim, child: child),
                   child: Text(
-                    _rotatingMessages[_messageIndex],
+                    loc.t(_rotatingMessageKeys[_messageIndex]),
                     key: ValueKey<int>(_messageIndex),
                     textAlign: TextAlign.center,
                     style: GoogleFonts.plusJakartaSans(
@@ -241,6 +241,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
 
   /// Start Button
   Widget _buildStartButton(BuildContext context) {
+    final loc = context.watch<LocalizationService>();
     final w = MediaQuery.of(context).size.width;
     final h = MediaQuery.of(context).size.height;
     final btnW = math.min(320.0, w - 48.0);
@@ -275,7 +276,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
-                    'Jetzt kostenlos starten',
+                    loc.t('welcome.ctaPrimary'),
                     textAlign: TextAlign.center,
                     maxLines: 1,
                     style:
@@ -293,13 +294,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 2),
-                const FittedBox(
+                FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
-                    'Sieht so aus wie Du, spricht und erzählt wie Du',
+                    loc.t('welcome.ctaSubtext'),
                     textAlign: TextAlign.center,
                     maxLines: 1,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.w300,
                       fontSize: 12,

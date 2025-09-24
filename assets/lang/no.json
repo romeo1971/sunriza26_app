@@ -49,7 +49,14 @@
   "lang.uk": "Ukrainsk",
   "lang.vi": "Vietnamesisk",
   "lang.zh-Hans": "Kinesisk (forenklet)",
-  "lang.zh-Hant": "Kinesisk (tradisjonell)"
+  "lang.zh-Hant": "Kinesisk (tradisjonell)",
+  "welcome.headlineDefaultSuffix": "\nFortellinger for evigheten – fortalt av deg",
+  "welcome.headlineAltSuffix": "\nDine historier, tanker og verdier består",
+  "welcome.rotate1": "Mennesker forsvinner ikke.\nDe lever videre i minnene våre\nog i måten vi forteller om dem.",
+  "welcome.rotate2": "Lag din egen udødelige avatar.\nPå bare 5 minutter berører hjertet ditt evigheten – i dag, i morgen og for alltid.",
+  "welcome.rotate3": "Du trenger bare et bilde eller en video av deg, et kort stemmeopptak og noen minner som betyr noe for deg.",
+  "welcome.ctaPrimary": "Start gratis nå",
+  "welcome.ctaSubtext": "Ser ut som deg, snakker og forteller som deg"
 }
 
 

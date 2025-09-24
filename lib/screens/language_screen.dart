@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import '../services/language_service.dart';
 import 'package:provider/provider.dart';
 import '../services/localization_service.dart';
+import '../l10n/app_localizations.dart';
 
 class LanguageScreen extends StatefulWidget {
   const LanguageScreen({super.key});
@@ -254,7 +255,7 @@ class _LanguageScreenState extends State<LanguageScreen> {
   @override
   Widget build(BuildContext context) {
     // AppBar-Titel abhängig von aktuell ausgewählter Sprache
-    final loc = context.read<LocalizationService>();
+    final loc = context.watch<LocalizationService>();
     // Vorschau auf die aktuell ausgewählte Sprache (noch nicht gespeichert)
     if (_pendingLang != null && _pendingLang!.isNotEmpty) {
       loc.setPreviewLanguage(_pendingLang!);
@@ -263,9 +264,7 @@ class _LanguageScreenState extends State<LanguageScreen> {
     }
     return Scaffold(
       appBar: AppBar(
-        title: Consumer<LocalizationService>(
-          builder: (context, l, _) => Text(l.t('language.chooseTitle')),
-        ),
+        title: Text(AppLocalizations.of(context)!.languageTitle),
         backgroundColor: Colors.black,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
@@ -304,8 +303,12 @@ class _LanguageScreenState extends State<LanguageScreen> {
               .first;
           final badgeLang = (selCode ?? uiLang).split('-').first;
           // Badge-Übersetzungen kommen aus LocalizationService → keine Locale-Override mehr nötig
-          final headerText = loc.t('language.header');
-          final hintText = loc.t('language.hint');
+          final headerTextRaw = loc.t('language.header');
+          final hintTextRaw = loc.t('language.hint');
+          final headerText = headerTextRaw == 'language.header'
+              ? ''
+              : headerTextRaw;
+          final hintText = hintTextRaw == 'language.hint' ? '' : hintTextRaw;
           return Padding(
             padding: const EdgeInsets.all(16),
             child: Column(

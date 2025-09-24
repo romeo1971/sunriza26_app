@@ -49,7 +49,14 @@
   "lang.uk": "Ucraineană",
   "lang.vi": "Vietnameză",
   "lang.zh-Hans": "Chineză (simplificată)",
-  "lang.zh-Hant": "Chineză (tradițională)"
+  "lang.zh-Hant": "Chineză (tradițională)",
+  "welcome.headlineDefaultSuffix": "\nPovești pentru eternitate – spuse de tine",
+  "welcome.headlineAltSuffix": "\nPoveștile, gândurile și valorile tale rămân",
+  "welcome.rotate1": "Oamenii nu dispar.\nEi trăiesc în amintirile noastre\nși în felul în care îi povestim.",
+  "welcome.rotate2": "Creează-ți propriul avatar nemuritor.\nÎn doar 5 minute, inima ta atinge eternitatea – azi, mâine și pentru totdeauna.",
+  "welcome.rotate3": "Ai nevoie doar de o fotografie sau un videoclip cu tine, o scurtă înregistrare a vocii și câteva amintiri care contează pentru tine.",
+  "welcome.ctaPrimary": "Începe gratuit acum",
+  "welcome.ctaSubtext": "Arată ca tine, vorbește și povestește ca tine"
 }
 
 
