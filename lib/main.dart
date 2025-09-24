@@ -10,6 +10,7 @@ import 'services/ai_service.dart';
 import 'services/video_stream_service.dart';
 import 'services/auth_service.dart';
 import 'services/language_service.dart';
+import 'services/localization_service.dart';
 import 'screens/avatar_upload_memories_screen.dart';
 import 'screens/avatar_details_screen.dart';
 import 'screens/avatar_chat_screen.dart';
@@ -23,6 +24,7 @@ import 'theme/app_theme.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform;
 import 'l10n/app_localizations.dart';
+import 'package:flutter_localized_locales/flutter_localized_locales.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -95,7 +97,10 @@ class SunrizaApp extends StatelessWidget {
         }
         return MaterialApp(
           title: 'Sunriza26 - Live AI Assistant',
-          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          localizationsDelegates: [
+            ...AppLocalizations.localizationsDelegates,
+            const LocaleNamesLocalizationsDelegate(),
+          ],
           supportedLocales: AppLocalizations.supportedLocales,
           locale: forced,
           theme: ThemeData(
@@ -281,6 +286,9 @@ class SunrizaApp extends StatelessWidget {
         Provider<AuthService>(create: (_) => AuthService()),
         ChangeNotifierProvider<LanguageService>(
           create: (_) => LanguageService(),
+        ),
+        ChangeNotifierProvider<LocalizationService>(
+          create: (_) => LocalizationService(),
         ),
       ],
       child: isMacOS ? ExcludeSemantics(child: app) : app,

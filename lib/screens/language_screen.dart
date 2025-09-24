@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../theme/app_theme.dart';
 import '../services/language_service.dart';
 import 'package:provider/provider.dart';
+import '../services/localization_service.dart';
 
 class LanguageScreen extends StatefulWidget {
   const LanguageScreen({super.key});
@@ -94,6 +95,86 @@ class _LanguageScreenState extends State<LanguageScreen> {
     'zh-Hant': 'Chinese (Traditional)',
   };
 
+  // Spanisch
+  static const Map<String, String> _esNames = {
+    'ar': 'Árabe',
+    'bn': 'Bengalí',
+    'cs': 'Checo',
+    'da': 'Danés',
+    'de': 'Alemán',
+    'el': 'Griego',
+    'en': 'Inglés',
+    'es': 'Español',
+    'fa': 'Persa',
+    'fi': 'Finés',
+    'fr': 'Francés',
+    'hi': 'Hindi',
+    'hu': 'Húngaro',
+    'id': 'Indonesio',
+    'it': 'Italiano',
+    'he': 'Hebreo',
+    'ja': 'Japonés',
+    'ko': 'Coreano',
+    'mr': 'Maratí',
+    'ms': 'Malayo',
+    'nl': 'Neerlandés',
+    'no': 'Noruego',
+    'pa': 'Punyabí',
+    'pl': 'Polaco',
+    'pt': 'Portugués',
+    'ro': 'Rumano',
+    'ru': 'Ruso',
+    'sv': 'Sueco',
+    'te': 'Télugu',
+    'th': 'Tailandés',
+    'tl': 'Tagalo',
+    'tr': 'Turco',
+    'uk': 'Ucraniano',
+    'vi': 'Vietnamita',
+    'zh-Hans': 'Chino (simplificado)',
+    'zh-Hant': 'Chino (tradicional)',
+  };
+
+  // Griechisch
+  static const Map<String, String> _elNames = {
+    'ar': 'Αραβικά',
+    'bn': 'Βεγγαλικά',
+    'cs': 'Τσέχικα',
+    'da': 'Δανικά',
+    'de': 'Γερμανικά',
+    'el': 'Ελληνικά',
+    'en': 'Αγγλικά',
+    'es': 'Ισπανικά',
+    'fa': 'Περσικά',
+    'fi': 'Φινλανδικά',
+    'fr': 'Γαλλικά',
+    'hi': 'Χίντι',
+    'hu': 'Ουγγρικά',
+    'id': 'Ινδονησιακά',
+    'it': 'Ιταλικά',
+    'he': 'Εβραϊκά',
+    'ja': 'Ιαπωνικά',
+    'ko': 'Κορεατικά',
+    'mr': 'Μαραθικά',
+    'ms': 'Μαλαισιανά',
+    'nl': 'Ολλανδικά',
+    'no': 'Νορβηγικά',
+    'pa': 'Παντζαμπικά',
+    'pl': 'Πολωνικά',
+    'pt': 'Πορτογαλικά',
+    'ro': 'Ρουμανικά',
+    'ru': 'Ρωσικά',
+    'sv': 'Σουηδικά',
+    'te': 'Τελούγκου',
+    'th': 'Ταϊλανδέζικα',
+    'tl': 'Ταγκάλογκ',
+    'tr': 'Τουρκικά',
+    'uk': 'Ουκρανικά',
+    'vi': 'Βιετναμικά',
+    'zh-Hans': 'Κινέζικα (Απλοποιημένα)',
+    'zh-Hant': 'Κινέζικα (Παραδοσιακά)',
+  };
+
   String _translatedNameFor(
     String code,
     String uiLang,
@@ -101,6 +182,12 @@ class _LanguageScreenState extends State<LanguageScreen> {
   ) {
     if (uiLang == 'de') {
       return _deNames[code] ?? fallbackFromLabel;
+    }
+    if (uiLang == 'es') {
+      return _esNames[code] ?? fallbackFromLabel;
+    }
+    if (uiLang == 'el') {
+      return _elNames[code] ?? fallbackFromLabel;
     }
     // Default Englisch
     return _enNames[code] ?? fallbackFromLabel;
@@ -166,12 +253,23 @@ class _LanguageScreenState extends State<LanguageScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // AppBar-Titel abhängig von aktuell ausgewählter Sprache
+    final loc = context.read<LocalizationService>();
+    // Vorschau auf die aktuell ausgewählte Sprache (noch nicht gespeichert)
+    if (_pendingLang != null && _pendingLang!.isNotEmpty) {
+      loc.setPreviewLanguage(_pendingLang!);
+    } else {
+      loc.clearPreview();
+    }
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sprache wählen'),
+        title: Consumer<LocalizationService>(
+          builder: (context, l, _) => Text(l.t('language.chooseTitle')),
+        ),
         backgroundColor: Colors.black,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
+          color: Colors.white,
           onPressed: () async {
             if ((_pendingLang ?? '').isNotEmpty) {
               final code = _pendingLang!;
@@ -197,19 +295,17 @@ class _LanguageScreenState extends State<LanguageScreen> {
           if ((selCode ?? '').isNotEmpty) {
             try {
               final found = supported.firstWhere((e) => e[0] == selCode);
-              currentFlag = found[2] as String;
-              currentLabel = (found[1] as String).split('(').first.trim();
+              currentFlag = found[2];
+              currentLabel = (found[1]).split('(').first.trim();
             } catch (_) {}
           }
           final uiLang = (context.read<LanguageService>().languageCode ?? 'de')
               .split('-')
               .first;
-          final headerText = uiLang == 'de'
-              ? 'Du hast für App und Chat diese Sprache gewählt:'
-              : 'You selected this language for app and chat:';
-          final hintText = uiLang == 'de'
-              ? 'Tipp auf eine Flagge und bestätige mit Zurück.'
-              : 'Tap a flag and confirm with Back.';
+          final badgeLang = (selCode ?? uiLang).split('-').first;
+          // Badge-Übersetzungen kommen aus LocalizationService → keine Locale-Override mehr nötig
+          final headerText = loc.t('language.header');
+          final hintText = loc.t('language.hint');
           return Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -232,7 +328,7 @@ class _LanguageScreenState extends State<LanguageScreen> {
                           Padding(
                             padding: const EdgeInsets.only(right: 12),
                             child: Text(
-                              currentFlag!,
+                              currentFlag,
                               style: const TextStyle(fontSize: 56),
                             ),
                           ),
@@ -249,7 +345,7 @@ class _LanguageScreenState extends State<LanguageScreen> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                currentLabel!,
+                                currentLabel ?? '',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 16,
@@ -292,23 +388,19 @@ class _LanguageScreenState extends State<LanguageScreen> {
                       final p = label.split('(');
                       if (p.isNotEmpty) {
                         native = p.first.trim();
-                        // Übersetzung dynamisch anhand der UI‑Sprache ermitteln
-                        final uiLang =
-                            (context.read<LanguageService>().languageCode ??
-                                    'de')
-                                .split('-')
-                                .first;
-                        translation = _translatedNameFor(
-                          code,
-                          uiLang,
-                          p.length > 1
-                              ? p
-                                    .sublist(1)
-                                    .join('(')
-                                    .replaceAll(')', '')
-                                    .trim()
-                              : '',
-                        );
+                        final fallback = p.length > 1
+                            ? p.sublist(1).join('(').replaceAll(')', '').trim()
+                            : '';
+                        // Nur JSON‑Namen (ausgewählte Sprache), sonst Fallback‑Mapping
+                        translation = loc.t('lang.$code');
+                        if (translation == 'lang.$code' ||
+                            translation.isEmpty) {
+                          translation = _translatedNameFor(
+                            code,
+                            badgeLang,
+                            fallback,
+                          );
+                        }
                       }
                       return InkWell(
                         onTap: () async {
@@ -389,15 +481,35 @@ class _LanguageScreenState extends State<LanguageScreen> {
                                   ),
                                 ),
                               ),
-                            // Auswahl-Häkchen oben links
+                            // Auswahl-Häkchen oben links mit Gradient (wie Trash)
                             if (selected)
-                              const Positioned(
+                              Positioned(
                                 top: 6,
                                 left: 6,
-                                child: Icon(
-                                  Icons.check_circle,
-                                  color: AppColors.lightBlue,
-                                  size: 18,
+                                child: Container(
+                                  width: 22,
+                                  height: 22,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        AppColors.magenta,
+                                        AppColors.lightBlue,
+                                      ],
+                                    ),
+                                    border: Border.all(
+                                      color: AppColors.lightBlue.withValues(
+                                        alpha: 0.7,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.check,
+                                      size: 14,
+                                      color: Colors.white,
+                                    ),
+                                  ),
                                 ),
                               ),
                           ],

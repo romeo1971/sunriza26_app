@@ -6,7 +6,7 @@ class UserProfile {
   final bool isOnboarded;
   final int createdAt;
   final int updatedAt;
-  
+
   // Erweiterte Profildaten
   final String? firstName;
   final String? lastName;
@@ -18,6 +18,8 @@ class UserProfile {
   final bool phoneVerified;
   final String? stripeCustomerId;
   final String? defaultPaymentMethodId;
+  // Appsprache des Users (z. B. 'de', 'en', 'zh-Hans')
+  final String? language;
 
   UserProfile({
     required this.uid,
@@ -38,6 +40,7 @@ class UserProfile {
     this.phoneVerified = false,
     this.stripeCustomerId,
     this.defaultPaymentMethodId,
+    this.language,
   });
 
   factory UserProfile.fromMap(Map<String, dynamic> map) {
@@ -60,6 +63,7 @@ class UserProfile {
       phoneVerified: (map['phoneVerified'] as bool?) ?? false,
       stripeCustomerId: map['stripeCustomerId'] as String?,
       defaultPaymentMethodId: map['defaultPaymentMethodId'] as String?,
+      language: map['language'] as String?,
     );
   }
 
@@ -83,6 +87,7 @@ class UserProfile {
       'phoneVerified': phoneVerified,
       'stripeCustomerId': stripeCustomerId,
       'defaultPaymentMethodId': defaultPaymentMethodId,
+      'language': language,
     };
   }
 
@@ -103,6 +108,7 @@ class UserProfile {
     bool? phoneVerified,
     String? stripeCustomerId,
     String? defaultPaymentMethodId,
+    String? language,
   }) {
     return UserProfile(
       uid: uid,
@@ -121,7 +127,9 @@ class UserProfile {
       phoneNumber: phoneNumber ?? this.phoneNumber,
       phoneVerified: phoneVerified ?? this.phoneVerified,
       stripeCustomerId: stripeCustomerId ?? this.stripeCustomerId,
-      defaultPaymentMethodId: defaultPaymentMethodId ?? this.defaultPaymentMethodId,
+      defaultPaymentMethodId:
+          defaultPaymentMethodId ?? this.defaultPaymentMethodId,
+      language: language ?? this.language,
     );
   }
 }

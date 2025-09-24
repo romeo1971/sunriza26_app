@@ -19,9 +19,18 @@ service cloud.firestore {
       return p in ['bithuman'];
     }
 
+    // Sprachauswahl validieren (ISO Kurzcodes, inkl. zh-Hans/zh-Hant)
+    function allowedLanguage(code) {
+      return code in [
+        'ar','bn','cs','da','de','el','en','es','fa','fi','fr','hi','hu','id','it','he','ja','ko','mr','ms','nl','no','pa','pl','pt','ro','ru','sv','te','th','tl','tr','uk','vi','zh-Hans','zh-Hant'
+      ];
+    }
+
     // User-Dokumente (Struppi-System)
     match /users/{uid} {
-      allow get, create, update, delete: if signedIn() && uid == request.auth.uid;
+      allow get, create, update, delete: if signedIn() && uid == request.auth.uid
+        // Falls language gesetzt wird, muss sie gültig sein
+        && (!('language' in request.resource.data) || allowedLanguage(request.resource.data.language));
     }
 
     // Avatar-Dokumente (Struppi-System)

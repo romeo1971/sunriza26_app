@@ -57,6 +57,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   intl: ^0.20.2
+  flutter_localized_locales: ^2.0.5
   
   # Utilities
   path_provider: ^2.1.4
@@ -114,6 +115,7 @@ flutter:
     - assets/sunriza_complete/gifs/
     - assets/sunriza_complete/texts/
     - .env
+    - assets/lang/
   generate: true
 
   # An image asset can refer to one or more resolution-specific "variants", see
