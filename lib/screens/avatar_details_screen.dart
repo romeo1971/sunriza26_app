@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 import '../theme/app_theme.dart';
@@ -16,7 +15,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:path/path.dart' as p;
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'avatar_editor_screen.dart';
 import 'package:video_player/video_player.dart';
 import '../widgets/video_player_widget.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
@@ -79,24 +77,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   String? _profileImageUrl; // Krone
   String? _profileLocalPath; // Krone (lokal, noch nicht hochgeladen)
   bool _isSaving = false;
-  bool _bpCrownChangedPending =
-      false; // zeigt Hinweis: Krone geändert → manuell generieren
   VideoPlayerController? _inlineVideoController; // Inline-Player für Videos
   // Inline-Vorschaubild nicht nötig, Thumbnails entstehen in den Tiles per FutureBuilder
   final Map<String, Uint8List> _videoThumbCache = {};
   String? _currentInlineUrl; // merkt die aktuell dargestellte Krone-Video-URL
-  bool _autoVideoCrownApplied = false;
+  // bool _autoVideoCrownApplied = false;
   final Set<String> _selectedRemoteImages = {};
   final Set<String> _selectedLocalImages = {};
   final Set<String> _selectedRemoteVideos = {};
   final Set<String> _selectedLocalVideos = {};
   bool _isDeleteMode = false;
   bool _isDirty = false;
-  Rect? _cropArea; // merkt die zuletzt bekannte Crop-Area
+  // Rect? _cropArea; // ungenutzt
   // Medien-Tab: 'images' oder 'videos'
   String _mediaTab = 'images';
   // Cache für Video-Provider-Auswahl, verhindert Zurückspringen nach Fehlern/Reloads
-  String? _cachedVideoProvider; // 'bp' | 'bithuman'
+  // String? _cachedVideoProvider; // entfernt (nur BitHuman)
   // ElevenLabs Voice-Parameter (per Avatar speicherbar)
   double _voiceStability = 0.25;
   double _voiceSimilarity = 0.9;
@@ -121,8 +117,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // Empfehlungen: target 800–1200, overlap 50–150, minChunk ca. 60–80% target
     final double minAllowed = 200;
     final double maxAllowed = 2000;
-    final double minOverlap = 0;
-    final double maxOverlap = 400;
     // minChunkTokens nicht größer als targetTokens
     if (_minChunkTokens > _targetTokens) _minChunkTokens = _targetTokens;
     final double recommendedMin = (_targetTokens * 0.7).clamp(1, _targetTokens);
@@ -387,41 +381,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // BP: Hinweise oberhalb des Medienbereichs
-        Builder(
-          builder: (context) {
-            if (_avatarData == null) return const SizedBox.shrink();
-            final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
-            final provider = (tr['videoProvider'] as String?)
-                ?.trim()
-                .toLowerCase();
-            if (provider != 'bp' && provider != 'beyond_presence') {
-              return const SizedBox.shrink();
-            }
-            final bp = Map<String, dynamic>.from(tr['beyondPresence'] ?? {});
-            final crownUrl = (bp['crownVideoUrl'] as String?)?.trim();
-            final avatarId = (bp['avatarId'] as String?)?.trim();
-
-            // 1) Kein Krone-Video: Hinweis zum Hochladen
-            if ((crownUrl == null || crownUrl.isEmpty) && _videoUrls.isEmpty) {
-              return Container(
-                width: double.infinity,
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: const Color(0x22FFA500),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0x55FFA500)),
-                ),
-                child: const Text(
-                  'Bitte Video hochladen (Krone setzen), um Beyond Presence zu nutzen.',
-                  style: TextStyle(color: Colors.white),
-                ),
-              );
-            }
-            return const SizedBox.shrink();
-          },
-        ),
         // Opener-Text oberhalb des Medienbereichs
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -452,103 +411,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ),
           child: Column(
             children: [
-              // Video Provider Auswahl (BitHuman / Beyond Presence)
-              ExpansionTile(
-                initiallyExpanded: false,
-                collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
-                backgroundColor: Colors.white.withValues(alpha: 0.06),
-                title: const Text(
-                  'Video Provider',
-                  style: TextStyle(color: Colors.white),
-                ),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    child: Row(
-                      children: [
-                        const Text(
-                          'Provider:',
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                        const SizedBox(width: 12),
-                        Builder(
-                          builder: (context) {
-                            final training = Map<String, dynamic>.from(
-                              _avatarData?.training ?? {},
-                            );
-                            final current =
-                                (_cachedVideoProvider ??
-                                        (training['videoProvider'] as String?))
-                                    ?.trim()
-                                    .toLowerCase();
-                            final value =
-                                (current == 'bp' ||
-                                    current == 'beyond_presence')
-                                ? 'bp'
-                                : 'bithuman';
-                            return DropdownButton<String>(
-                              value: value,
-                              dropdownColor: const Color(0xFF121212),
-                              style: const TextStyle(color: Colors.white),
-                              items: const [
-                                DropdownMenuItem(
-                                  value: 'bithuman',
-                                  child: Text('BitHuman'),
-                                ),
-                                DropdownMenuItem(
-                                  value: 'bp',
-                                  child: Text('Beyond Presence'),
-                                ),
-                              ],
-                              onChanged: (val) async {
-                                if (val == null || _avatarData == null) return;
-                                try {
-                                  setState(() => _cachedVideoProvider = val);
-                                  final uid = _avatarData!.userId;
-                                  final fs = FirebaseFirestore.instance;
-                                  final docRef = fs
-                                      .collection('avatars')
-                                      .doc(_avatarData!.id);
-                                  final snap = await docRef.get();
-                                  final existing = snap.data() ?? {};
-                                  final training = Map<String, dynamic>.from(
-                                    existing['training'] ?? {},
-                                  );
-                                  training['videoProvider'] = val;
-                                  await docRef.set({
-                                    'training': training,
-                                    'updatedAt':
-                                        DateTime.now().millisecondsSinceEpoch,
-                                  }, SetOptions(merge: true));
-                                  if (mounted) setState(() {});
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'Video Provider gesetzt: ${val == 'bp' ? 'Beyond Presence' : 'BitHuman'}',
-                                      ),
-                                    ),
-                                  );
-                                } catch (e) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(
-                                        'Fehler beim Speichern: $e',
-                                      ),
-                                    ),
-                                  );
-                                }
-                              },
-                            );
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
               // Begrüßungstext
               ExpansionTile(
                 initiallyExpanded: false,
@@ -1204,84 +1066,81 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ],
                 ),
                 const SizedBox(width: spacing),
-                // Galerie: bündig unten abschließend
+                // Galerie: exakt gleiche Höhe wie links, Toolbar als Overlay → kein Overflow
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      // Top-Leiste der Bilder-Galerie
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: SizedBox(
+                      height: leftH,
+                      child: Stack(
+                        clipBehavior: Clip.none,
                         children: [
-                          if (_isDeleteMode &&
-                              (_selectedRemoteImages.length +
-                                      _selectedLocalImages.length) >
-                                  0)
-                            ElevatedButton(
-                              onPressed: () {
-                                setState(() {
-                                  _isDeleteMode = false;
-                                  _selectedRemoteImages.clear();
-                                  _selectedLocalImages.clear();
-                                });
+                          Positioned.fill(
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: remoteFour.length.clamp(0, 4),
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: gridSpacing),
+                              itemBuilder: (context, index) {
+                                final url = remoteFour[index];
+                                final isCrown =
+                                    _profileImageUrl == url ||
+                                    (_profileImageUrl == null && index == 0);
+                                return SizedBox(
+                                  width: leftW,
+                                  height: leftH,
+                                  child: _imageThumbNetwork(url, isCrown),
+                                );
                               },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.grey,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                              ),
-                              child: const Icon(Icons.close, size: 18),
                             ),
+                          ),
                           if (_isDeleteMode &&
                               (_selectedRemoteImages.length +
                                       _selectedLocalImages.length) >
                                   0)
-                            const SizedBox(width: 8),
-                          if (_isDeleteMode &&
-                              (_selectedRemoteImages.length +
-                                      _selectedLocalImages.length) >
-                                  0)
-                            ElevatedButton(
-                              onPressed: _confirmDeleteSelectedImages,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _isDeleteMode = false;
+                                        _selectedRemoteImages.clear();
+                                        _selectedLocalImages.clear();
+                                      });
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.grey,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 6,
+                                      ),
+                                    ),
+                                    child: const Icon(Icons.close, size: 18),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton(
+                                    onPressed: _confirmDeleteSelectedImages,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.redAccent,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 6,
+                                      ),
+                                    ),
+                                    child: const Icon(Icons.delete, size: 18),
+                                  ),
+                                ],
                               ),
-                              child: const Icon(Icons.delete, size: 18),
                             ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      // Galerie unten bündig mit Großansicht
-                      SizedBox(
-                        height: leftH,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: remoteFour.length.clamp(0, 4),
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(width: gridSpacing),
-                          itemBuilder: (context, index) {
-                            final url = remoteFour[index];
-                            final isCrown =
-                                _profileImageUrl == url ||
-                                (_profileImageUrl == null && index == 0);
-                            return SizedBox(
-                              width: leftW,
-                              height: leftH,
-                              child: _imageThumbNetwork(url, isCrown),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ],
@@ -1447,102 +1306,46 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 child: Builder(
                                   builder: (context) {
                                     final crown = _getCrownVideoUrl();
-                                    if (crown == null) {
-                                      return Container(
-                                        color: Colors.black26,
-                                        child: const Icon(
-                                          Icons.play_arrow,
-                                          color: Colors.white54,
-                                          size: 48,
-                                        ),
-                                      );
-                                    }
-                                    return AspectRatio(
-                                      aspectRatio: 9 / 16,
-                                      child: FutureBuilder<Uint8List?>(
-                                        future: _thumbnailForRemote(crown),
-                                        builder: (context, snapshot) {
-                                          if (snapshot.hasData &&
-                                              snapshot.data != null) {
-                                            return Image.memory(
-                                              snapshot.data!,
-                                              fit: BoxFit.cover,
-                                            );
-                                          }
-                                          return Container(
-                                            color: Colors.black26,
-                                          );
-                                        },
-                                      ),
+                                    return GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      onTap: () {
+                                        if ((crown ?? '').isNotEmpty) {
+                                          _playNetworkInline(crown!);
+                                        }
+                                      },
+                                      child: (crown == null)
+                                          ? Container(
+                                              color: Colors.black26,
+                                              child: const Icon(
+                                                Icons.play_arrow,
+                                                color: Colors.white54,
+                                                size: 48,
+                                              ),
+                                            )
+                                          : AspectRatio(
+                                              aspectRatio: 9 / 16,
+                                              child: FutureBuilder<Uint8List?>(
+                                                future: _thumbnailForRemote(
+                                                  crown,
+                                                ),
+                                                builder: (context, snapshot) {
+                                                  if (snapshot.hasData &&
+                                                      snapshot.data != null) {
+                                                    return Image.memory(
+                                                      snapshot.data!,
+                                                      fit: BoxFit.cover,
+                                                    );
+                                                  }
+                                                  return Container(
+                                                    color: Colors.black26,
+                                                  );
+                                                },
+                                              ),
+                                            ),
                                     );
                                   },
                                 ),
                               ),
-                            // "Aktualisieren" Button auf der Krone-Video-Großansicht (nur BP + wenn nötig)
-                            Positioned(
-                              left: 12,
-                              right: 12,
-                              bottom: 12,
-                              child: Builder(
-                                builder: (context) {
-                                  final providerVal =
-                                      (_avatarData?.training?['videoProvider']
-                                              as String?)
-                                          ?.trim()
-                                          .toLowerCase() ??
-                                      '';
-                                  final isBP =
-                                      providerVal == 'bp' ||
-                                      providerVal == 'beyond_presence';
-                                  String? bpAvatarId;
-                                  try {
-                                    final bp = Map<String, dynamic>.from(
-                                      _avatarData
-                                              ?.training?['beyondPresence'] ??
-                                          {},
-                                    );
-                                    bpAvatarId = (bp['avatarId'] as String?)
-                                        ?.trim();
-                                  } catch (_) {}
-                                  final bool needUpdate =
-                                      isBP &&
-                                      (_bpCrownChangedPending ||
-                                          ((bpAvatarId ?? '').isEmpty));
-                                  if (!needUpdate) return const SizedBox();
-                                  return ElevatedButton(
-                                    onPressed: _isGeneratingAvatar
-                                        ? null
-                                        : () async {
-                                            if (_avatarData == null) return;
-                                            await _handleGenerateAvatar();
-                                          },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.black,
-                                      foregroundColor: Colors.white,
-                                      alignment: Alignment.center,
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                      minimumSize: const Size.fromHeight(0),
-                                      elevation: 0,
-                                      shadowColor: Colors.transparent,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                    child: const Text(
-                                      'Aktualisieren',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        height: 1.2,
-                                        fontStyle: FontStyle.normal,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
                           ],
                         ),
                       ),
@@ -1550,81 +1353,78 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ],
                 ),
                 const SizedBox(width: spacing),
-                // Galerie (max. 4) – bündig unten abschließend
+                // Galerie (max. 4) – immer exakt so hoch wie die linke Großansicht
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      // Top-Leiste der Video-Galerie
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    child: SizedBox(
+                      height: leftH,
+                      child: Stack(
+                        clipBehavior: Clip.none,
                         children: [
-                          if (_isDeleteMode &&
-                              (_selectedRemoteVideos.length +
-                                      _selectedLocalVideos.length) >
-                                  0)
-                            ElevatedButton(
-                              onPressed: () {
-                                setState(() {
-                                  _isDeleteMode = false;
-                                  _selectedRemoteVideos.clear();
-                                  _selectedLocalVideos.clear();
-                                });
+                          Positioned.fill(
+                            child: ListView.separated(
+                              scrollDirection: Axis.horizontal,
+                              itemCount: remoteFour.length.clamp(0, 4),
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(width: gridSpacing),
+                              itemBuilder: (context, index) {
+                                final url = remoteFour[index];
+                                return SizedBox(
+                                  width: leftW,
+                                  height: leftH,
+                                  child: _videoTile(url, leftW, leftH),
+                                );
                               },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.grey,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
-                              ),
-                              child: const Icon(Icons.close, size: 18),
                             ),
+                          ),
                           if (_isDeleteMode &&
                               (_selectedRemoteVideos.length +
                                       _selectedLocalVideos.length) >
                                   0)
-                            const SizedBox(width: 8),
-                          if (_isDeleteMode &&
-                              (_selectedRemoteVideos.length +
-                                      _selectedLocalVideos.length) >
-                                  0)
-                            ElevatedButton(
-                              onPressed: _confirmDeleteSelectedImages,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent,
-                                foregroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 6,
-                                ),
+                            Positioned(
+                              top: 0,
+                              right: 0,
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  ElevatedButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _isDeleteMode = false;
+                                        _selectedRemoteVideos.clear();
+                                        _selectedLocalVideos.clear();
+                                      });
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.grey,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 6,
+                                      ),
+                                    ),
+                                    child: const Icon(Icons.close, size: 18),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton(
+                                    onPressed: _confirmDeleteSelectedImages,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.redAccent,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 6,
+                                      ),
+                                    ),
+                                    child: const Icon(Icons.delete, size: 18),
+                                  ),
+                                ],
                               ),
-                              child: const Icon(Icons.delete, size: 18),
                             ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      // Galerie unten bündig mit Großansicht
-                      SizedBox(
-                        height: leftH,
-                        child: ListView.separated(
-                          scrollDirection: Axis.horizontal,
-                          itemCount: remoteFour.length.clamp(0, 4),
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(width: gridSpacing),
-                          itemBuilder: (context, index) {
-                            final url = remoteFour[index];
-                            return SizedBox(
-                              width: leftW,
-                              height: leftH,
-                              child: _videoTile(url, leftW, leftH),
-                            );
-                          },
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ],
@@ -2485,7 +2285,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ),
     );
     if (ok == true) {
-      final progress = ValueNotifier<double>(null as double? ?? 0.0);
+      // Fortschritts-Notifier entfernt (nicht genutzt)
       await _showBlockingProgress<void>(
         title: 'Löschen…',
         message: _fileNameFromUrl(url),
@@ -2739,12 +2539,31 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   String? _getCrownVideoUrl() {
     try {
       final tr = Map<String, dynamic>.from(_avatarData?.training ?? {});
-      final bp = Map<String, dynamic>.from(tr['beyondPresence'] ?? {});
-      final v = (bp['crownVideoUrl'] as String?)?.trim();
+      final v = (tr['crownVideoUrl'] as String?)?.trim();
       if (v != null && v.isNotEmpty) return v;
     } catch (_) {}
     if (_videoUrls.isNotEmpty) return _videoUrls.first;
     return null;
+  }
+
+  Future<void> _setCrownVideo(String url) async {
+    if (_avatarData == null) return;
+    try {
+      final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
+      tr['crownVideoUrl'] = url;
+      final updated = _avatarData!.copyWith(
+        training: tr,
+        updatedAt: DateTime.now(),
+      );
+      final ok = await _avatarService.updateAvatar(updated);
+      if (ok) {
+        _applyAvatar(updated);
+        await _initInlineFromCrown();
+        _showSystemSnack('Krone-Video gesetzt');
+      }
+    } catch (e) {
+      _showSystemSnack('Fehler beim Setzen der Videokrone: $e');
+    }
   }
 
   Future<void> _clearInlinePlayer() async {
@@ -2785,31 +2604,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
-  Future<void> _deleteRemoteVideo(String url) async {
-    if (_avatarData == null) return;
-    try {
-      setState(() {
-        _videoUrls.remove(url);
-      });
-      // Wenn es die Krone war, neue Krone setzen (erstes verbleibendes)
-      final crown = _getCrownVideoUrl();
-      if (crown == null || crown == url) {
-        final next = _videoUrls.isNotEmpty ? _videoUrls.first : null;
-        if (next != null) {
-          await _setBpCrownVideo(next);
-        }
-      }
-      // Persistiere Videos
-      final updated = _avatarData!.copyWith(
-        videoUrls: [..._videoUrls],
-        updatedAt: DateTime.now(),
-      );
-      final ok = await _avatarService.updateAvatar(updated);
-      if (ok && mounted) _applyAvatar(updated);
-    } catch (e) {
-      _showSystemSnack('Video löschen fehlgeschlagen: $e');
-    }
-  }
+  // _deleteRemoteVideo ungenutzt entfernt
 
   Widget _videoTile(String url, double w, double h) {
     final crownUrl = _getCrownVideoUrl();
@@ -2817,36 +2612,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return Stack(
       children: [
         Positioned.fill(child: _videoThumbNetwork(url)),
-        // Overlay-Leiste oben (30px)
+        // Kronen-Overlay (star) – 30px Bereich oben links, separate Touch-Zone
         Positioned(
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 30,
-          child: Container(
-            color: Colors.transparent,
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Krone-Button
-                GestureDetector(
-                  onTap: () => _setBpCrownVideo(url),
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    // Kein Border – nur Icon-Farbe wechselt
-                    color: Colors.transparent,
-                    child: Text(
-                      '⭐',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: isCrown ? const Color(0xFFFFD700) : Colors.white,
-                      ),
-                    ),
-                  ),
+          top: 4,
+          left: 6,
+          child: SizedBox(
+            height: 30,
+            width: 30,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: Text(
+                '⭐',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: isCrown ? const Color(0xFFFFD700) : Colors.white,
                 ),
-                // Kein Top-Icon mehr für Löschen
-              ],
+              ),
             ),
           ),
         ),
@@ -2858,214 +2639,102 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final selected = _selectedRemoteVideos.contains(url);
     return AspectRatio(
       aspectRatio: 9 / 16,
-      child: GestureDetector(
-        onTap: () {
-          if (_isDeleteMode) {
-            setState(() {
-              if (selected) {
-                _selectedRemoteVideos.remove(url);
-              } else {
-                _selectedRemoteVideos.add(url);
-              }
-            });
-          } else {
-            // 1:1 Bild-Krone-Logik: Klick setzt Krone-Video
-            _setBpCrownVideo(url);
-          }
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.4),
-            border: Border.all(color: Colors.white24),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          clipBehavior: Clip.hardEdge,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              FutureBuilder<VideoPlayerController?>(
-                future: _createThumbController(url),
-                builder: (context, snapshot) {
-                  if (snapshot.hasData && snapshot.data != null) {
-                    return VideoPlayer(snapshot.data!);
-                  }
-                  return Container(color: Colors.black26);
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.4),
+          border: Border.all(color: Colors.white24),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        clipBehavior: Clip.hardEdge,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            FutureBuilder<Uint8List?>(
+              future: _thumbnailForRemote(url),
+              builder: (context, snapshot) {
+                if (snapshot.hasData && snapshot.data != null) {
+                  return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                }
+                return Container(color: Colors.black26);
+              },
+            ),
+            if (!_isDeleteMode)
+              const Align(
+                alignment: Alignment.center,
+                child: Icon(
+                  Icons.play_circle_fill,
+                  color: Colors.white,
+                  size: 24,
+                ),
+              ),
+            // Tap in Galerie: setzt KRONE (wie verlangt). Delete funktioniert weiter über Icon.
+            Positioned.fill(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(onTap: () => _setCrownVideo(url)),
+              ),
+            ),
+            Positioned(
+              right: 6,
+              bottom: 6,
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _isDeleteMode = true;
+                    if (selected) {
+                      _selectedRemoteVideos.remove(url);
+                    } else {
+                      _selectedRemoteVideos.add(url);
+                    }
+                  });
                 },
-              ),
-              if (!_isDeleteMode)
-                const Align(
+                child: Container(
+                  width: 32,
+                  height: 32,
                   alignment: Alignment.center,
-                  child: Icon(
-                    Icons.play_circle_fill,
-                    color: Colors.white,
-                    size: 24,
+                  decoration: BoxDecoration(
+                    color: const Color(0x30000000),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0x66FFFFFF)),
                   ),
-                ),
-              Positioned(
-                right: 6,
-                bottom: 6,
-                child: InkWell(
-                  onTap: () {
-                    setState(() {
-                      _isDeleteMode = true;
-                      if (selected) {
-                        _selectedRemoteVideos.remove(url);
-                      } else {
-                        _selectedRemoteVideos.add(url);
-                      }
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: selected ? null : const Color(0x30000000),
-                      gradient: selected
-                          ? const LinearGradient(
-                              colors: [AppColors.magenta, AppColors.lightBlue],
-                            )
-                          : null,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: selected
-                            ? AppColors.lightBlue.withValues(alpha: 0.7)
-                            : const Color(0x66FFFFFF),
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.white,
-                      size: 16,
-                    ),
+                  child: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.white,
+                    size: 16,
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _videoThumbLocal(File file) {
-    final key = file.path;
-    final selected = _selectedLocalVideos.contains(key);
-    return AspectRatio(
-      aspectRatio: 9 / 16,
-      child: GestureDetector(
-        onTap: () {
-          if (_isDeleteMode) {
-            setState(() {
-              if (selected) {
-                _selectedLocalVideos.remove(key);
-              } else {
-                _selectedLocalVideos.add(key);
-              }
-            });
-          } else {
-            _playLocalInline(file);
-          }
-        },
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.3),
-            border: Border.all(color: Colors.white24),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          clipBehavior: Clip.hardEdge,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              FutureBuilder<Uint8List?>(
-                future: _thumbnailForLocal(file.path),
-                builder: (context, snapshot) {
-                  if (snapshot.hasData && snapshot.data != null) {
-                    return Image.memory(snapshot.data!, fit: BoxFit.cover);
-                  }
-                  return Container(color: Colors.black26);
-                },
-              ),
-              if (!_isDeleteMode)
-                const Align(
-                  alignment: Alignment.center,
-                  child: Icon(
-                    Icons.play_circle_fill,
-                    color: Colors.white,
-                    size: 24,
-                  ),
-                ),
-              Positioned(
-                right: 6,
-                bottom: 6,
-                child: InkWell(
-                  onTap: () {
-                    setState(() {
-                      _isDeleteMode = true;
-                      if (selected) {
-                        _selectedLocalVideos.remove(key);
-                      } else {
-                        _selectedLocalVideos.add(key);
-                      }
-                    });
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: selected ? null : const Color(0x30000000),
-                      gradient: selected
-                          ? const LinearGradient(
-                              colors: [AppColors.magenta, AppColors.lightBlue],
-                            )
-                          : null,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: selected
-                            ? AppColors.lightBlue.withValues(alpha: 0.7)
-                            : const Color(0x66FFFFFF),
-                      ),
-                    ),
-                    child: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.white,
-                      size: 16,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  // _videoThumbLocal ungenutzt entfernt
 
   Future<void> _playNetworkInline(String url) async {
     try {
-      // Vorherigen Controller freigeben
       await _inlineVideoController?.dispose();
-      final controller = VideoPlayerController.networkUrl(Uri.parse(url));
+      final fresh = await _refreshDownloadUrl(url) ?? url;
+      final controller = VideoPlayerController.networkUrl(Uri.parse(fresh));
       await controller.initialize();
       await controller.setLooping(true);
-      await controller.play();
-      setState(() => _inlineVideoController = controller);
-    } catch (e) {
-      // Versuch: Download-URL auffrischen (z.B. abgelaufener Token)
-      try {
-        final fresh = await _refreshDownloadUrl(url);
-        if (fresh != null) {
-          final controller = VideoPlayerController.networkUrl(Uri.parse(fresh));
-          await controller.initialize();
-          await controller.setLooping(true);
-          await controller.play();
-          setState(() => _inlineVideoController = controller);
-          // gespeicherte URL ersetzen und persistieren
-          final idx = _videoUrls.indexOf(url);
-          if (idx >= 0) {
-            _videoUrls[idx] = fresh;
-            await _persistTextFileUrls();
+      controller.addListener(() async {
+        try {
+          final v = controller.value;
+          if (v.isInitialized &&
+              !v.isPlaying &&
+              v.position >= v.duration &&
+              v.duration > Duration.zero) {
+            // Abspielende beendet → Inline-Player räumen, Thumbnail sichtbar
+            await _clearInlinePlayer();
           }
-          return;
-        }
-      } catch (_) {}
+        } catch (_) {}
+      });
+      await controller.play();
+      if (mounted) setState(() => _inlineVideoController = controller);
+    } catch (e) {
       _showSystemSnack('Video kann nicht geladen werden');
     }
   }
@@ -3103,167 +2772,49 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (_isGeneratingAvatar) return;
     setState(() => _isGeneratingAvatar = true);
     try {
-      // Provider-Weiche
-      final providerVal =
-          (_avatarData?.training?['videoProvider'] as String?)
-              ?.trim()
-              .toLowerCase() ??
-          '';
-      final isBP = providerVal == 'bp' || providerVal == 'beyond_presence';
-
-      String? base; // nur für BitHuman benötigt
-      if (!isBP) {
-        base = dotenv.env['BITHUMAN_BASE_URL']?.trim();
-        if (base == null || base.isEmpty) {
-          _showSystemSnack('BITHUMAN_BASE_URL fehlt (.env)');
-          return;
-        }
+      // Nur BitHuman verwenden
+      final base = dotenv.env['BITHUMAN_BASE_URL']?.trim();
+      if (base == null || base.isEmpty) {
+        _showSystemSnack('BITHUMAN_BASE_URL fehlt (.env)');
+        return;
       }
 
-      // Bildquelle (nur BitHuman)
+      // Bildquelle (BitHuman)
       File? imageFile;
-      if (!isBP) {
-        if ((_profileLocalPath ?? '').isNotEmpty) {
-          final f = File(_profileLocalPath!);
-          if (await f.exists()) imageFile = f;
-        }
-        imageFile ??= await _downloadToTemp(
-          _profileImageUrl ?? _avatarData!.avatarImageUrl ?? '',
-          suffix: '.png',
-        );
-        if (imageFile == null) {
-          _showSystemSnack('Kein Bild gefunden');
-          return;
-        }
+      if ((_profileLocalPath ?? '').isNotEmpty) {
+        final f = File(_profileLocalPath!);
+        if (await f.exists()) imageFile = f;
+      }
+      imageFile ??= await _downloadToTemp(
+        _profileImageUrl ?? _avatarData!.avatarImageUrl ?? '',
+        suffix: '.png',
+      );
+      if (imageFile == null) {
+        _showSystemSnack('Kein Bild gefunden');
+        return;
       }
 
-      // Audioquelle (nur BitHuman)
+      // Audioquelle (BitHuman)
       File? audioFile;
-      if (!isBP) {
-        String? audioUrl = _activeAudioUrl;
-        if ((audioUrl == null || audioUrl.isEmpty) &&
-            _avatarData!.audioUrls.isNotEmpty) {
-          audioUrl = _avatarData!.audioUrls.first;
-        }
-        if (audioUrl == null || audioUrl.isEmpty) {
-          _showSystemSnack('Keine Audio-Stimmprobe vorhanden');
-          return;
-        }
-        audioFile = await _downloadToTemp(audioUrl, suffix: '.mp3');
-        if (audioFile == null) {
-          _showSystemSnack('Audio kann nicht geladen werden');
-          return;
-        }
+      String? audioUrl = _activeAudioUrl;
+      if ((audioUrl == null || audioUrl.isEmpty) &&
+          _avatarData!.audioUrls.isNotEmpty) {
+        audioUrl = _avatarData!.audioUrls.first;
+      }
+      if (audioUrl == null || audioUrl.isEmpty) {
+        _showSystemSnack('Keine Audio-Stimmprobe vorhanden');
+        return;
+      }
+      audioFile = await _downloadToTemp(audioUrl, suffix: '.mp3');
+      if (audioFile == null) {
+        _showSystemSnack('Audio kann nicht geladen werden');
+        return;
       }
 
       await _showBlockingProgress<void>(
         title: 'Avatar wird generiert…',
-        message: isBP
-            ? 'Video wird zu Beyond Presence gesendet…'
-            : 'Bild und Audio werden verarbeitet.',
+        message: 'Bild und Audio werden verarbeitet.',
         task: () async {
-          if (isBP) {
-            // Beyond Presence: Krone-Video ermitteln (kein Upload erforderlich)
-            String? crownVideoUrl;
-            try {
-              final bp = Map<String, dynamic>.from(
-                _avatarData?.training?['beyondPresence'] ?? {},
-              );
-              crownVideoUrl = (bp['crownVideoUrl'] as String?)?.trim();
-            } catch (_) {}
-            crownVideoUrl ??= _videoUrls.isNotEmpty ? _videoUrls.first : null;
-            if (crownVideoUrl == null || crownVideoUrl.isEmpty) {
-              throw Exception('Kein Krone-Video vorhanden');
-            }
-            // DOKU-KONFORM: Feld "image" – Desktop/macOS hat kein video_thumbnail → nutze vorhandenes Krone‑Bild
-            // Fallback-Reihenfolge: explizites Profilbild → erstes Bild der Galerie
-            String? imageSourceUrl = _profileImageUrl;
-            if ((imageSourceUrl == null || imageSourceUrl.isEmpty) &&
-                _imageUrls.isNotEmpty) {
-              imageSourceUrl = _imageUrls.first;
-            }
-            if (imageSourceUrl == null || imageSourceUrl.isEmpty) {
-              throw Exception('Kein Bild für BP-Upload verfügbar');
-            }
-            final jpgFile = await _downloadToTemp(
-              imageSourceUrl,
-              suffix: '.jpg',
-            );
-            if (jpgFile == null) {
-              throw Exception('Bild-Download für BP-Upload fehlgeschlagen');
-            }
-
-            // Direkt gegen BP API (kein Proxy)
-            final rawBase = (dotenv.env['BP_API_BASE_URL'] ?? '').trim();
-            final apiKey = (dotenv.env['BP_API_KEY'] ?? '').trim();
-            if (rawBase.isEmpty || apiKey.isEmpty) {
-              _showSystemSnack('BP API Konfiguration fehlt (.env)');
-              return;
-            }
-            final String bpBase = rawBase.endsWith('/v1')
-                ? rawBase
-                : '$rawBase/v1';
-            // Client ruft jetzt unseren Proxy: extrahiert Frame serverseitig und lädt zu BP
-            final localBase = dotenv.env['BITHUMAN_BASE_URL']?.trim();
-            if (localBase == null || localBase.isEmpty) {
-              _showSystemSnack(
-                'Lokaler Backend-Proxy fehlt (BITHUMAN_BASE_URL)',
-              );
-              return;
-            }
-            final uri = Uri.parse('$localBase/bp/avatar/from-video');
-            final req = http.MultipartRequest('POST', uri)
-              ..fields['videoUrl'] = crownVideoUrl;
-            try {
-              final bp = Map<String, dynamic>.from(
-                _avatarData?.training?['beyondPresence'] ?? {},
-              );
-              final avatarId = (bp['avatarId'] as String?)?.trim();
-              if ((avatarId ?? '').isNotEmpty)
-                req.fields['avatarId'] = avatarId!;
-            } catch (_) {}
-            final resp = await req.send();
-            final lastBody = await resp.stream.bytesToString();
-            if (resp.statusCode < 200 || resp.statusCode >= 300) {
-              final preview = lastBody.length > 400
-                  ? lastBody.substring(0, 400)
-                  : lastBody;
-              _showSystemSnack(
-                'BP Proxy Fehler: ${resp.statusCode} ${preview.isNotEmpty ? preview : ''}',
-              );
-              throw Exception('BP Proxy Fehler: ${resp.statusCode}');
-            }
-            try {
-              final data = jsonDecode(lastBody) as Map<String, dynamic>;
-              final newId =
-                  (data['avatarId'] as String?)?.trim() ??
-                  (data['id'] as String?)?.trim();
-              if ((newId ?? '').isNotEmpty) {
-                final tr = Map<String, dynamic>.from(
-                  _avatarData!.training ?? {},
-                );
-                final bp = Map<String, dynamic>.from(
-                  tr['beyondPresence'] ?? {},
-                );
-                bp['avatarId'] = newId;
-                tr['videoProvider'] = 'bp';
-                if ((bp['crownVideoUrl'] as String?) == null ||
-                    (bp['crownVideoUrl'] as String?)!.isEmpty) {
-                  bp['crownVideoUrl'] = crownVideoUrl;
-                }
-                tr['beyondPresence'] = bp;
-                final updated = _avatarData!.copyWith(
-                  training: tr,
-                  updatedAt: DateTime.now(),
-                );
-                final ok = await _avatarService.updateAvatar(updated);
-                if (ok) _applyAvatar(updated);
-              }
-            } catch (_) {}
-            _showSystemSnack('BP: Krone-Video/Avatar aktualisiert');
-            return; // BP-Case abgeschlossen
-          }
-
           // 1) Figure sicherstellen (nur wenn noch nicht vorhanden)
           String? figureId;
           String? modelHash;
@@ -3358,33 +2909,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
-  Future<void> _setBpCrownVideo(String url) async {
-    if (_avatarData == null) return;
-    try {
-      final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
-      final bp = Map<String, dynamic>.from(tr['beyondPresence'] ?? {});
-      bp['crownVideoUrl'] = url;
-      tr['beyondPresence'] = bp;
-      final updated = _avatarData!.copyWith(
-        training: tr,
-        updatedAt: DateTime.now(),
-      );
-      final ok = await _avatarService.updateAvatar(updated);
-      if (ok) {
-        _applyAvatar(updated);
-        // Großansicht auf neue Krone updaten
-        await _initInlineFromCrown();
-        // Krone wurde neu gesetzt: Nutzer soll manuell aktualisieren
-        setState(() {
-          _bpCrownChangedPending = true;
-        });
-      }
-      _showSystemSnack('BP: Krone-Video gesetzt');
-    } catch (e) {
-      _showSystemSnack('Fehler beim Setzen der Videokrone: $e');
-    }
-  }
-
   Future<VideoPlayerController?> _createThumbController(String url) async {
     try {
       final fresh = await _refreshDownloadUrl(url) ?? url;
@@ -3472,21 +2996,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
-  Future<Uint8List?> _thumbnailForLocal(String path) async {
-    try {
-      if (_videoThumbCache.containsKey(path)) return _videoThumbCache[path]!;
-      final data = await vt.VideoThumbnail.thumbnailData(
-        video: path,
-        imageFormat: vt.ImageFormat.JPEG,
-        maxWidth: 360,
-        quality: 60,
-      );
-      if (data != null) _videoThumbCache[path] = data;
-      return data;
-    } catch (_) {
-      return null;
-    }
-  }
+  // _thumbnailForLocal ungenutzt entfernt
 
   // _bigMediaButton entfällt im neuen Layout
 
@@ -4792,20 +4302,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await FirebaseStorageService.deleteFile(url);
       _videoUrls.remove(url);
     }
-    // Krone-Video prüfen und ggf. neu setzen
+    // Krone-Video sicherstellen: wenn Krone gelöscht oder fehlt, nächstes setzen
     try {
       final currentCrown = _getCrownVideoUrl();
-      if (currentCrown == null || !_videoUrls.contains(currentCrown)) {
+      final crownDeleted =
+          currentCrown != null && _selectedRemoteVideos.contains(currentCrown);
+      final crownMissing =
+          currentCrown != null && !_videoUrls.contains(currentCrown);
+      if (crownDeleted || crownMissing || currentCrown == null) {
         if (_videoUrls.isNotEmpty) {
-          await _setBpCrownVideo(_videoUrls.first);
+          await _setCrownVideo(_videoUrls.first);
         } else {
-          // Keine Videos mehr vorhanden: Crown in training entfernen
+          // Keine Videos mehr vorhanden: crownVideoUrl aus training entfernen
           if (_avatarData != null) {
             final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
-            final bp = Map<String, dynamic>.from(tr['beyondPresence'] ?? {});
-            if (bp.containsKey('crownVideoUrl')) {
-              bp.remove('crownVideoUrl');
-              tr['beyondPresence'] = bp;
+            if (tr.containsKey('crownVideoUrl')) {
+              tr.remove('crownVideoUrl');
               final updated = _avatarData!.copyWith(
                 training: tr,
                 updatedAt: DateTime.now(),
@@ -4921,25 +4433,4 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 }
 
-class _CropFramePainter extends CustomPainter {
-  final Rect area; // normierte Koordinaten 0..1 relativ zur Bildfläche
-  _CropFramePainter(this.area);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final rect = Rect.fromLTWH(
-      area.left * size.width,
-      area.top * size.height,
-      area.width * size.width,
-      area.height * size.height,
-    );
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2
-      ..color = Colors.white.withOpacity(0.9);
-    canvas.drawRect(rect, paint);
-  }
-
-  @override
-  bool shouldRepaint(_CropFramePainter oldDelegate) => oldDelegate.area != area;
-}
+// _CropFramePainter ungenutzt entfernt

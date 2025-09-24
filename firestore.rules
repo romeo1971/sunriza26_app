@@ -16,7 +16,7 @@ service cloud.firestore {
     }
     // Video-Provider prüfen
     function allowedVideoProvider(p) {
-      return p in ['bithuman', 'bp', 'beyond_presence'];
+      return p in ['bithuman'];
     }
 
     // User-Dokumente (Struppi-System)

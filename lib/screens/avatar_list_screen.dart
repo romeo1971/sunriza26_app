@@ -219,7 +219,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
 
               const SizedBox(width: 16),
 
-              // Avatar-Info + BP-Hinweis
+              // Avatar-Info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,24 +241,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        Builder(
-                          builder: (context) {
-                            final tr = Map<String, dynamic>.from(
-                              avatar.training ?? {},
-                            );
-                            final provider = (tr['videoProvider'] as String?)
-                                ?.toLowerCase();
-                            final bp = Map<String, dynamic>.from(
-                              tr['beyondPresence'] ?? {},
-                            );
-                            final hasAvatarId =
-                                ((bp['avatarId'] as String?)
-                                    ?.trim()
-                                    .isNotEmpty ??
-                                false);
-                            return const SizedBox.shrink();
-                          },
-                        ),
+                        const SizedBox.shrink(),
                       ],
                     ),
                     if (avatar.nickname != null &&

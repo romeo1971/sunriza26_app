@@ -3,10 +3,9 @@ import 'package:just_audio/just_audio.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
+// import 'dart:typed_data'; // nicht mehr benötigt
 import 'package:http/http.dart' as http;
 import 'package:video_player/video_player.dart';
-import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:path_provider/path_provider.dart';
@@ -228,15 +227,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   @override
   Widget build(BuildContext context) {
     final backgroundImage = _avatarData?.avatarImageUrl;
-    // BP: Wenn Krone‑Video vorhanden, KEIN Bild als Hintergrund zeigen –
-    // stattdessen wird oben das Video‑Standbild eingeblendet.
-    final tr = Map<String, dynamic>.from(_avatarData?.training ?? {});
-    final provider = (tr['videoProvider'] as String?)?.toLowerCase();
-    final isBP = provider == 'bp' || provider == 'beyond_presence';
-    final bp = Map<String, dynamic>.from(tr['beyondPresence'] ?? {});
-    final hasCrownVideo =
-        ((bp['crownVideoUrl'] as String?)?.trim().isNotEmpty ?? false);
-    final useBgDecoration = !_videoService.isReady && !(isBP && hasCrownVideo);
+    final useBgDecoration = !_videoService.isReady;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -315,37 +306,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   Widget _buildAvatarImage() {
     final hasImage = _avatarData?.avatarImageUrl != null;
-    final training = _avatarData?.training ?? {};
-    final providerVal = (training['videoProvider'] as String?)?.toLowerCase();
-    final isBP = providerVal == 'bp' || providerVal == 'beyond_presence';
-    final crownVideoUrl = (training['beyondPresence'] is Map)
-        ? ((training['beyondPresence']['crownVideoUrl'] as String?)?.trim())
-        : null;
 
     return Container(
       width: double.infinity,
       decoration: null,
       child: Stack(
         children: [
-          // BP: Krone-Video Standbild (wenn Player noch nicht aktiv)
-          if (isBP && (crownVideoUrl ?? '').isNotEmpty)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: AnimatedOpacity(
-                  opacity: _videoService.isReady ? 0.0 : 1.0,
-                  duration: const Duration(milliseconds: 150),
-                  child: FutureBuilder<Uint8List?>(
-                    future: _bpCrownThumb(crownVideoUrl!),
-                    builder: (context, snap) {
-                      if (snap.hasData && snap.data != null) {
-                        return Image.memory(snap.data!, fit: BoxFit.cover);
-                      }
-                      return const SizedBox.shrink();
-                    },
-                  ),
-                ),
-              ),
-            ),
           // Video-Overlay (zeigt sobald Player bereit ist, unabhängig vom Audio)
           Positioned.fill(
             child: IgnorePointer(
@@ -449,20 +415,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         ],
       ),
     );
-  }
-
-  Future<Uint8List?> _bpCrownThumb(String url) async {
-    try {
-      final data = await vt.VideoThumbnail.thumbnailData(
-        video: url,
-        imageFormat: vt.ImageFormat.JPEG,
-        maxWidth: 720,
-        quality: 60,
-      );
-      return data;
-    } catch (_) {
-      return null;
-    }
   }
 
   Widget _buildChatMessages() {
@@ -1194,68 +1146,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       // Referenzen aus Avatar (Bild optional für Fallback)
       final imageUrl = _avatarData?.avatarImageUrl ?? '';
 
-      // Provider-Weiche (training.videoProvider)
-      final training = _avatarData?.training ?? {};
-      final providerVal = (training['videoProvider'] as String?)
-          ?.trim()
-          .toLowerCase();
-      final useBP =
-          providerVal == 'bp' ||
-          providerVal == 'beyond_presence' ||
-          (dotenv.env['BP_PRIMARY'] == '1');
-
-      if (useBP) {
-        // avatarId ist Pflicht für BP
-        final bpMap = Map<String, dynamic>.from(
-          training['beyondPresence'] ?? {},
-        );
-        final avatarId = (bpMap['avatarId'] as String?)?.trim();
-        final crownVideoUrl = (bpMap['crownVideoUrl'] as String?)?.trim();
-        if ((avatarId ?? '').isEmpty) {
-          _showSystemSnack(
-            'Bitte Avatar generieren (Krone‑Video zu BP hochladen)',
-          );
-          return;
-        }
-        // Beyond Presence: Direkt gegen BP API
-        final rawBase = (dotenv.env['BP_API_BASE_URL'] ?? '').trim();
-        final apiKey = (dotenv.env['BP_API_KEY'] ?? '').trim();
-        if (rawBase.isEmpty || apiKey.isEmpty) {
-          _showSystemSnack('BP_API_BASE_URL/BP_API_KEY fehlt (.env)');
-          return;
-        }
-        final String bpBase = rawBase.endsWith('/v1') ? rawBase : '$rawBase/v1';
-        final uri = Uri.parse('$bpBase/speech-to-video');
-        final req = http.MultipartRequest('POST', uri)
-          ..headers.addAll({
-            'Authorization': 'Bearer $apiKey',
-            'X-API-Key': apiKey,
-          });
-        req.files.add(await http.MultipartFile.fromPath('audio', audioPath));
-        req.fields['avatarId'] = avatarId!;
-        if (imageUrl.isNotEmpty) {
-          req.fields['avatarImageUrl'] = imageUrl;
-        }
-        if (crownVideoUrl != null && crownVideoUrl.isNotEmpty) {
-          req.fields['avatarVideoUrl'] = crownVideoUrl;
-        }
-        final streamed = await req.send();
-        if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
-          final bytes = await streamed.stream.toBytes();
-          final dir = await getTemporaryDirectory();
-          final out = File(
-            '${dir.path}/bp_${DateTime.now().millisecondsSinceEpoch}.mp4',
-          );
-          await out.writeAsBytes(bytes, flush: true);
-          await _videoService.startStreamingFromUrl(out.path);
-        } else {
-          final body = await streamed.stream.bytesToString();
-          _showSystemSnack(
-            'BP speech-to-video fehlgeschlagen: ${streamed.statusCode} ${body.isNotEmpty ? body : ''}',
-          );
-        }
-        return;
-      }
+      // Beyond Presence entfernt – immer BitHuman verwenden
 
       // BitHuman: Figure sicherstellen
       final fig = await _ensureFigure();
