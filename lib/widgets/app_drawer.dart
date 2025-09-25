@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';
+import 'package:provider/provider.dart';
+import '../services/localization_service.dart';
 import '../theme/app_theme.dart';
 import '../screens/user_profile_screen.dart';
 
@@ -83,7 +85,7 @@ class AppDrawer extends StatelessWidget {
                 _buildDrawerItem(
                   context,
                   icon: Icons.person,
-                  title: 'Profil bearbeiten',
+                  title: context.read<LocalizationService>().t('profile'),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.push(
@@ -98,7 +100,7 @@ class AppDrawer extends StatelessWidget {
                 _buildDrawerItem(
                   context,
                   icon: Icons.description,
-                  title: 'AGB',
+                  title: context.read<LocalizationService>().t('terms'),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.pushNamed(context, '/legal-terms');
@@ -108,7 +110,7 @@ class AppDrawer extends StatelessWidget {
                 _buildDrawerItem(
                   context,
                   icon: Icons.info,
-                  title: 'Impressum',
+                  title: context.read<LocalizationService>().t('imprint'),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.pushNamed(context, '/legal-imprint');
@@ -118,7 +120,7 @@ class AppDrawer extends StatelessWidget {
                 _buildDrawerItem(
                   context,
                   icon: Icons.privacy_tip,
-                  title: 'Datenschutz',
+                  title: context.read<LocalizationService>().t('privacy'),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.pushNamed(context, '/legal-privacy');
@@ -130,7 +132,9 @@ class AppDrawer extends StatelessWidget {
                 _buildDrawerItem(
                   context,
                   icon: Icons.payment,
-                  title: 'Zahlungsmethoden',
+                  title: context.read<LocalizationService>().t(
+                    'menu.paymentMethods',
+                  ),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.pushNamed(context, '/payment-methods');
@@ -140,7 +144,7 @@ class AppDrawer extends StatelessWidget {
                 _buildDrawerItem(
                   context,
                   icon: Icons.language,
-                  title: 'Sprache',
+                  title: context.read<LocalizationService>().t('menuLanguage'),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.pushNamed(context, '/language');
@@ -150,7 +154,7 @@ class AppDrawer extends StatelessWidget {
                 _buildDrawerItem(
                   context,
                   icon: Icons.help,
-                  title: 'Hilfe & Support',
+                  title: context.read<LocalizationService>().t('help'),
                   onTap: () {
                     Navigator.pop(context);
                     Navigator.pushNamed(context, '/support');
@@ -170,9 +174,9 @@ class AppDrawer extends StatelessWidget {
                 Icons.logout,
                 color: AppColors.accentGreenDark,
               ),
-              title: const Text(
-                'Abmelden',
-                style: TextStyle(
+              title: Text(
+                context.read<LocalizationService>().t('logout'),
+                style: const TextStyle(
                   color: AppColors.accentGreenDark,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,

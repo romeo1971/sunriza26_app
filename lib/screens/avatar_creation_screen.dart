@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../services/avatar_service.dart';
+import '../services/localization_service.dart';
 
 class AvatarCreationScreen extends StatefulWidget {
   const AvatarCreationScreen({super.key});
@@ -41,13 +43,17 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Avatar erstellen'),
+        title: Text(
+          context.read<LocalizationService>().t('avatars.createTooltip'),
+        ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
           if (_firstNameController.text.trim().isNotEmpty && !_isLoading)
             IconButton(
-              tooltip: 'Speichern',
+              tooltip: context.read<LocalizationService>().t(
+                'avatars.details.saveTooltip',
+              ),
               onPressed: _isLoading ? null : _createAvatar,
               icon: const Icon(Icons.save_outlined),
             ),
@@ -76,20 +82,26 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Grunddaten',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        Text(
+          context.read<LocalizationService>().t(
+            'avatars.details.personDataTitle',
+          ),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
         TextFormField(
           controller: _firstNameController,
-          decoration: const InputDecoration(
-            labelText: 'Vorname *',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: context.read<LocalizationService>().t(
+              'avatars.details.firstNameLabel',
+            ),
+            border: const OutlineInputBorder(),
           ),
           validator: (value) {
             if (value == null || value.isEmpty) {
-              return 'Vorname ist erforderlich';
+              return context.read<LocalizationService>().t(
+                'avatars.details.firstNameRequired',
+              );
             }
             return null;
           },
@@ -97,18 +109,24 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
         const SizedBox(height: 16),
         TextFormField(
           controller: _nicknameController,
-          decoration: const InputDecoration(
-            labelText: 'Spitzname',
-            border: OutlineInputBorder(),
-            hintText: 'z.B. Oma, Opa, Mama',
+          decoration: InputDecoration(
+            labelText: context.read<LocalizationService>().t(
+              'avatars.details.nicknameLabel',
+            ),
+            border: const OutlineInputBorder(),
+            hintText: context.read<LocalizationService>().t(
+              'avatars.details.nicknameHint',
+            ),
           ),
         ),
         const SizedBox(height: 16),
         TextFormField(
           controller: _lastNameController,
-          decoration: const InputDecoration(
-            labelText: 'Nachname',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: context.read<LocalizationService>().t(
+              'avatars.details.lastNameLabel',
+            ),
+            border: const OutlineInputBorder(),
           ),
         ),
       ],
@@ -119,17 +137,24 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Lebensdaten',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        Text(
+          context.read<LocalizationService>().t(
+            'avatars.details.personDataTitle',
+          ),
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
         TextFormField(
           controller: _birthDateController,
-          decoration: const InputDecoration(
-            labelText: 'Geburtsdatum',
-            border: OutlineInputBorder(),
-            suffixIcon: Icon(Icons.calendar_today),
+          decoration: InputDecoration(
+            labelText: context.read<LocalizationService>().t(
+              'avatars.details.birthDateLabel',
+            ),
+            hintText: context.read<LocalizationService>().t(
+              'avatars.details.birthDateHint',
+            ),
+            border: const OutlineInputBorder(),
+            suffixIcon: const Icon(Icons.calendar_today),
           ),
           readOnly: true,
           onTap: () => _selectDate(context, true),
@@ -137,10 +162,15 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
         const SizedBox(height: 16),
         TextFormField(
           controller: _deathDateController,
-          decoration: const InputDecoration(
-            labelText: 'Todesdatum (optional)',
-            border: OutlineInputBorder(),
-            suffixIcon: Icon(Icons.calendar_today),
+          decoration: InputDecoration(
+            labelText: context.read<LocalizationService>().t(
+              'avatars.details.deathDateLabel',
+            ),
+            hintText: context.read<LocalizationService>().t(
+              'avatars.details.deathDateHint',
+            ),
+            border: const OutlineInputBorder(),
+            suffixIcon: const Icon(Icons.calendar_today),
           ),
           readOnly: true,
           onTap: () => _selectDate(context, false),
@@ -150,6 +180,14 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
   }
 
   Future<void> _selectDate(BuildContext context, bool isBirthDate) async {
+    final loc = context.read<LocalizationService>();
+    final String cancel = loc.t('avatars.details.cancel');
+    final String ok = loc.t('avatars.details.ok');
+    final String help = loc.t(
+      isBirthDate
+          ? 'avatars.details.birthDateHint'
+          : 'avatars.details.deathDateHint',
+    );
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: isBirthDate
@@ -157,6 +195,9 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
           : DateTime.now(),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
+      cancelText: cancel,
+      confirmText: ok,
+      helpText: help,
     );
     if (picked != null) {
       setState(() {
@@ -196,22 +237,38 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
       if (avatar != null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Avatar erfolgreich erstellt!')),
+            SnackBar(
+              content: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.dataSavedSuccessfully',
+                ),
+              ),
+            ),
           );
           Navigator.pop(context, avatar);
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Fehler beim Erstellen des Avatars')),
+            SnackBar(
+              content: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.saveFailed',
+                ),
+              ),
+            ),
           );
         }
       }
     } catch (e) {
       if (mounted) {
+        final msg = context.read<LocalizationService>().t(
+          'avatars.details.errorGeneric',
+          params: {'msg': e.toString()},
+        );
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        ).showSnackBar(SnackBar(content: Text(msg)));
       }
     } finally {
       if (mounted) {

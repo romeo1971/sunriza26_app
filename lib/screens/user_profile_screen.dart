@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/user_service.dart';
 import '../models/user_profile.dart';
 import '../widgets/app_drawer.dart';
+import '../services/localization_service.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -79,7 +81,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            url != null ? 'Profilbild aktualisiert' : 'Upload fehlgeschlagen',
+            url != null
+                ? context.read<LocalizationService>().t('profile.photoUpdated')
+                : context.read<LocalizationService>().t('errorUploadFailed'),
           ),
         ),
       );
@@ -95,9 +99,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     try {
       await _userService.deleteUserPhoto();
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Profilbild entfernt')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            context.read<LocalizationService>().t('profile.photoRemoved'),
+          ),
+        ),
+      );
       await _load();
     } finally {
       if (!mounted) return;
@@ -146,9 +154,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       }
 
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Profil gespeichert')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(context.read<LocalizationService>().t('profile.saved')),
+        ),
+      );
       Navigator.pop(context);
     } finally {
       if (!mounted) return;
@@ -162,16 +172,18 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       backgroundColor: Colors.grey.shade900,
       drawer: const AppDrawer(),
       appBar: AppBar(
-        title: const Text('Profil bearbeiten'),
+        title: Text(context.read<LocalizationService>().t('profile')),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
         actions: [
           if (!_loading)
             TextButton(
               onPressed: _save,
-              child: const Text(
-                'Speichern',
-                style: TextStyle(color: Colors.white),
+              child: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.saveTooltip',
+                ),
+                style: const TextStyle(color: Colors.white),
               ),
             ),
         ],
@@ -187,44 +199,92 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   const SizedBox(height: 32),
 
                   // Persönliche Daten
-                  _buildSection('Persönliche Daten', [
-                    _buildTextField(_displayNameController, 'Anzeigename'),
-                    _buildTextField(_firstNameController, 'Vorname'),
-                    _buildTextField(_lastNameController, 'Nachname'),
-                    _buildTextField(
-                      _phoneController,
-                      'Telefonnummer',
-                      keyboardType: TextInputType.phone,
+                  _buildSection(
+                    context.read<LocalizationService>().t(
+                      'profile.personalData',
                     ),
-                  ]),
+                    [
+                      _buildTextField(
+                        _displayNameController,
+                        context.read<LocalizationService>().t(
+                          'profile.displayName',
+                        ),
+                      ),
+                      _buildTextField(
+                        _firstNameController,
+                        context.read<LocalizationService>().t(
+                          'avatars.details.firstNameLabel',
+                        ),
+                      ),
+                      _buildTextField(
+                        _lastNameController,
+                        context.read<LocalizationService>().t(
+                          'avatars.details.lastNameLabel',
+                        ),
+                      ),
+                      _buildTextField(
+                        _phoneController,
+                        context.read<LocalizationService>().t(
+                          'profile.phoneNumber',
+                        ),
+                        keyboardType: TextInputType.phone,
+                      ),
+                    ],
+                  ),
 
                   const SizedBox(height: 24),
 
                   // Adressdaten
-                  _buildSection('Adresse', [
-                    _buildTextField(_streetController, 'Straße und Hausnummer'),
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 1,
-                          child: _buildTextField(_postalCodeController, 'PLZ'),
+                  _buildSection(
+                    context.read<LocalizationService>().t('profile.address'),
+                    [
+                      _buildTextField(
+                        _streetController,
+                        context.read<LocalizationService>().t(
+                          'profile.streetAndNumber',
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          flex: 2,
-                          child: _buildTextField(_cityController, 'Stadt'),
+                      ),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 1,
+                            child: _buildTextField(
+                              _postalCodeController,
+                              context.read<LocalizationService>().t(
+                                'profile.postalCode',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            flex: 2,
+                            child: _buildTextField(
+                              _cityController,
+                              context.read<LocalizationService>().t(
+                                'profile.city',
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      _buildTextField(
+                        _countryController,
+                        context.read<LocalizationService>().t(
+                          'profile.country',
                         ),
-                      ],
-                    ),
-                    _buildTextField(_countryController, 'Land'),
-                  ]),
+                      ),
+                    ],
+                  ),
 
                   const SizedBox(height: 24),
 
                   // Zahlungseinstellungen
-                  _buildSection('Zahlungseinstellungen', [
-                    _buildPaymentSection(),
-                  ]),
+                  _buildSection(
+                    context.read<LocalizationService>().t(
+                      'profile.paymentSettings',
+                    ),
+                    [_buildPaymentSection()],
+                  ),
 
                   const SizedBox(height: 32),
 
@@ -257,7 +317,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ElevatedButton.icon(
               onPressed: _uploadPhoto,
               icon: const Icon(Icons.photo_camera),
-              label: const Text('Foto ändern'),
+              label: Text(
+                context.read<LocalizationService>().t('profile.changePhoto'),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.deepPurple,
                 foregroundColor: Colors.white,
@@ -268,9 +330,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               TextButton.icon(
                 onPressed: _deletePhoto,
                 icon: const Icon(Icons.delete, color: Colors.red),
-                label: const Text(
-                  'Entfernen',
-                  style: TextStyle(color: Colors.red),
+                label: Text(
+                  context.read<LocalizationService>().t('profile.remove'),
+                  style: const TextStyle(color: Colors.red),
                 ),
               ),
           ],
@@ -349,21 +411,30 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             Expanded(
               child: Text(
                 _profile?.stripeCustomerId != null
-                    ? 'Zahlungsmethoden konfiguriert'
-                    : 'Keine Zahlungsmethoden hinterlegt',
+                    ? context.read<LocalizationService>().t(
+                        'profile.paymentsConfigured',
+                      )
+                    : context.read<LocalizationService>().t(
+                        'profile.noPayments',
+                      ),
                 style: const TextStyle(color: Colors.white),
               ),
             ),
             TextButton(
               onPressed: () {
-                // TODO: Stripe-Integration
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Stripe-Integration wird implementiert'),
+                  SnackBar(
+                    content: Text(
+                      context.read<LocalizationService>().t(
+                        'profile.stripeTodo',
+                      ),
+                    ),
                   ),
                 );
               },
-              child: const Text('Verwalten'),
+              child: Text(
+                context.read<LocalizationService>().t('profile.manage'),
+              ),
             ),
           ],
         ),
@@ -378,24 +449,31 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               const SizedBox(width: 12),
               Text(
                 _profile!.phoneVerified
-                    ? 'Telefonnummer verifiziert'
-                    : 'Telefonnummer nicht verifiziert',
+                    ? context.read<LocalizationService>().t(
+                        'profile.phoneVerified',
+                      )
+                    : context.read<LocalizationService>().t(
+                        'profile.phoneNotVerified',
+                      ),
                 style: const TextStyle(color: Colors.white),
               ),
               if (!_profile!.phoneVerified) ...[
                 const Spacer(),
                 TextButton(
                   onPressed: () {
-                    // TODO: Telefon-Verifikation
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
+                      SnackBar(
                         content: Text(
-                          'Telefon-Verifikation wird implementiert',
+                          context.read<LocalizationService>().t(
+                            'profile.phoneVerifyTodo',
+                          ),
                         ),
                       ),
                     );
                   },
-                  child: const Text('Verifizieren'),
+                  child: Text(
+                    context.read<LocalizationService>().t('profile.verify'),
+                  ),
                 ),
               ],
             ],
@@ -417,7 +495,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               foregroundColor: Colors.white,
               padding: const EdgeInsets.symmetric(vertical: 16),
             ),
-            child: const Text('Profil speichern'),
+            child: Text(
+              context.read<LocalizationService>().t('profile.saveProfile'),
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -425,7 +505,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           width: double.infinity,
           child: TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Abbrechen'),
+            child: Text(
+              context.read<LocalizationService>().t('avatars.details.cancel'),
+            ),
           ),
         ),
       ],

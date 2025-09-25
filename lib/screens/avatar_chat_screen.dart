@@ -17,6 +17,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:record/record.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:http_parser/http_parser.dart';
+import 'package:provider/provider.dart';
+import '../services/localization_service.dart';
 
 class AvatarChatScreen extends StatefulWidget {
   const AvatarChatScreen({super.key});
@@ -432,11 +434,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                   color: Colors.white70,
                   size: 18,
                 ),
-                label: Text(
-                  _isLoadingMore
-                      ? 'Lade ältere Nachrichten…'
-                      : 'Ältere Nachrichten anzeigen',
-                  style: const TextStyle(color: Colors.white70),
+                label: Builder(
+                  builder: (context) {
+                    final t = (_isLoadingMore)
+                        ? 'chat.loadingOlder'
+                        : 'chat.showOlder';
+                    return Text(
+                      context.read<LocalizationService>().t(t),
+                      style: const TextStyle(color: Colors.white70),
+                    );
+                  },
                 ),
               ),
             ),

@@ -5,7 +5,6 @@ import '../theme/app_theme.dart';
 import '../services/language_service.dart';
 import 'package:provider/provider.dart';
 import '../services/localization_service.dart';
-import '../l10n/app_localizations.dart';
 
 class LanguageScreen extends StatefulWidget {
   const LanguageScreen({super.key});
@@ -264,7 +263,7 @@ class _LanguageScreenState extends State<LanguageScreen> {
     }
     return Scaffold(
       appBar: AppBar(
-        title: Text(AppLocalizations.of(context)!.languageTitle),
+        title: Text(loc.t('language.chooseTitle')),
         backgroundColor: Colors.black,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
