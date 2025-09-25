@@ -55,7 +55,9 @@ class _AvatarUploadMemoriesScreenState
               decoration: BoxDecoration(
                 color: const Color(0x1400DFA8),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.accentGreenDark.withValues(alpha: 0.3)),
+                border: Border.all(
+                  color: AppColors.accentGreenDark.withValues(alpha: 0.3),
+                ),
               ),
               child: const Text(
                 'Bitte lade Bilder, Videos oder Texte hoch – oder verfasse etwas Persönliches.',
@@ -423,7 +425,7 @@ class _AvatarUploadMemoriesScreenState
             : () {
                 if (!hasAvatarSelected) {
                   _showErrorSnackBar(
-                    'Bitte wähle ein Avatar-Bild (Krone) aus.',
+                    'Bitte wähle ein Avatar-Bild (Hero-Image) aus.',
                   );
                 }
               },

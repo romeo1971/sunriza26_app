@@ -85,14 +85,14 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
       return;
     }
 
-    // Wenn kein lokales Bild existiert, versuche das Krone-Bild zu laden
+    // Wenn kein lokales Bild existiert, versuche das Hero-Image zu laden
     if (_selectedImage == null &&
         (widget.avatarImageUrl?.isNotEmpty ?? false)) {
       try {
         final file = await _downloadAvatarImageToTemp(widget.avatarImageUrl!);
         setState(() => _selectedImage = file);
       } catch (e) {
-        _showErrorSnackBar('Konnte Krone-Bild nicht laden: $e');
+        _showErrorSnackBar('Konnte Hero-Image nicht laden: $e');
         return;
       }
     }
@@ -167,7 +167,7 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
                   padding: const EdgeInsets.all(24.0),
                   child: Column(
                     children: [
-                      // KRONE-BILD (füllt den Bereich)
+                      // Hero-Image (füllt den Bereich)
                       GestureDetector(
                         onTap: _selectImage,
                         child: Container(

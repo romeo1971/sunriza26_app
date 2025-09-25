@@ -76,13 +76,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final List<File> _newTextFiles = [];
   final List<File> _newAudioFiles = [];
   String? _activeAudioUrl; // ausgewählte Stimmprobe
-  String? _profileImageUrl; // Krone
-  String? _profileLocalPath; // Krone (lokal, noch nicht hochgeladen)
+  String? _profileImageUrl; // Hero-Image
+  String? _profileLocalPath; // Hero-Image (lokal, noch nicht hochgeladen)
   bool _isSaving = false;
   VideoPlayerController? _inlineVideoController; // Inline-Player für Videos
   // Inline-Vorschaubild nicht nötig, Thumbnails entstehen in den Tiles per FutureBuilder
   final Map<String, Uint8List> _videoThumbCache = {};
-  String? _currentInlineUrl; // merkt die aktuell dargestellte Krone-Video-URL
+  String? _currentInlineUrl; // merkt die aktuell dargestellte Hero-Video-URL
   // bool _autoVideoCrownApplied = false;
   final Set<String> _selectedRemoteImages = {};
   final Set<String> _selectedLocalImages = {};
@@ -251,7 +251,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (!sameDate(_birthDate, current.birthDate)) dirty = true;
     if (!sameDate(_deathDate, current.deathDate)) dirty = true;
 
-    // Krone / Profilbild geändert
+    // Hero-Image / Profilbild geändert
     final baselineCrown = current.avatarImageUrl;
     if ((_profileImageUrl ?? '') != (baselineCrown ?? '')) dirty = true;
 
@@ -372,7 +372,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         _avatarData?.greetingText?.trim().isNotEmpty == true
         ? _avatarData!.greetingText!
         : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?';
-    // Krone-Video in Großansicht initialisieren
+    // Hero-Video in Großansicht initialisieren
     _initInlineFromCrown();
     // Kein Autogenerieren mehr – Generierung erfolgt nur auf Nutzeraktion
   }
@@ -662,7 +662,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
   }
 
-  // Autogenerieren entfernt – Nutzer klickt bewusst „Avatar generieren“ nach Krone‑Wechsel
+  // Autogenerieren entfernt – Nutzer klickt bewusst „Avatar generieren“ nach Hero-Image‑Wechsel
 
   Widget _buildVoiceSelect() {
     if (_voicesLoading) {
@@ -880,7 +880,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           // Begrenze links sinnvoll
           if (leftW > 240) leftW = 240;
           if (leftW < 160) leftW = 160;
-          // Kronebild im 9:16 Portrait‑Format (mobil)
+          // Hero-Image im 9:16 Portrait‑Format (mobil)
           final double leftH = leftW * (16 / 9);
           final double totalH = navBtnH + 8 + leftH;
 
@@ -889,7 +889,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Krone links GROSS (responsive)
+                // Hero-Image links GROSS (responsive)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1182,7 +1182,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           double leftW = cons.maxWidth - spacing - minRightWidth;
           if (leftW > 240) leftW = 240;
           if (leftW < 160) leftW = 160;
-          // Video-Preview ebenfalls im 9:16 Portrait‑Format wie das Kronebild
+          // Video-Preview ebenfalls im 9:16 Portrait‑Format wie das Hero-Image
           final double leftH = leftW * (16 / 9);
           final double totalH = navBtnH + 8 + leftH;
 
@@ -2547,7 +2547,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               _profileImageUrl = url;
               _updateDirty();
             });
-            // Krone sofort persistent speichern
+            // Hero-Image sofort persistent speichern
             await _persistTextFileUrls();
           }
         },
@@ -2643,10 +2643,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (ok) {
         _applyAvatar(updated);
         await _initInlineFromCrown();
-        _showSystemSnack('Krone-Video gesetzt');
+        _showSystemSnack('Hero-Video gesetzt');
       }
     } catch (e) {
-      _showSystemSnack('Fehler beim Setzen der Videokrone: $e');
+      _showSystemSnack('Fehler beim Setzen des Hero-Videos: $e');
     }
   }
 
@@ -2696,7 +2696,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return Stack(
       children: [
         Positioned.fill(child: _videoThumbNetwork(url)),
-        // Kronen-Overlay (star) – 30px Bereich oben links, separate Touch-Zone
+        // Hero-Video-Overlay (star) – 30px Bereich oben links, separate Touch-Zone
         Positioned(
           top: 4,
           left: 6,
@@ -2742,8 +2742,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 return Container(color: Colors.black26);
               },
             ),
-            // Mini-Play-Icon entfernt – Galerie klickt nur Krone/Trash
-            // Tap in Galerie: setzt KRONE (wie verlangt). Delete funktioniert weiter über Icon.
+            // Mini-Play-Icon entfernt – Galerie klickt nur Hero-Video/Trash
+            // Tap in Galerie: setzt Hero-Video (wie verlangt). Delete funktioniert weiter über Icon.
             Positioned.fill(
               child: Material(
                 color: Colors.transparent,
@@ -4433,7 +4433,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await FirebaseStorageService.deleteFile(url);
       _videoUrls.remove(url);
     }
-    // Krone-Video sicherstellen: wenn Krone gelöscht oder fehlt, nächstes setzen
+    // Hero-Video sicherstellen: wenn Hero-Video gelöscht oder fehlt, nächstes setzen
     try {
       final currentCrown = _getCrownVideoUrl();
       final crownDeleted =
@@ -4469,9 +4469,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _selectedRemoteVideos.clear();
     _selectedLocalVideos.clear();
     // Persistiere Änderungen sofort (Storage + Firestore)
-    // Spezialsituation: Krone wurde gelöscht und es gibt KEINE weiteren Bilder → avatarImageUrl muss auf null
+    // Spezialsituation: Hero-Image wurde gelöscht und es gibt KEINE weiteren Bilder → avatarImageUrl muss auf null
     if (_profileImageUrl == null && _imageUrls.isEmpty) {
-      // Erzwinge Clear des Kronenfeldes in Firestore
+      // Erzwinge Clear des Hero-Image-Feldes in Firestore
       final updated = _avatarData!.copyWith(
         imageUrls: [],
         videoUrls: [..._videoUrls],

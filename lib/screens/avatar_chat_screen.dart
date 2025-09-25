@@ -112,7 +112,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       return {'figureId': figureId, 'modelHash': modelHash};
     }
 
-    // Krone-Bild holen
+    // Hero-Image holen
     final imageUrl = _avatarData!.avatarImageUrl;
     if (imageUrl == null || imageUrl.isEmpty) {
       return {'figureId': null, 'modelHash': null};

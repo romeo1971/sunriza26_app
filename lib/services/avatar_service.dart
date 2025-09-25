@@ -207,7 +207,7 @@ class AvatarService {
             updatedAvatar.greetingText!.trim().isEmpty) {
           payload['greetingText'] = FieldValue.delete();
         }
-        // Falls das Krone-Bild entfernt wurde, Feld löschen
+        // Falls das Hero-Image entfernt wurde, Feld löschen
         if (updatedAvatar.avatarImageUrl == null ||
             (updatedAvatar.avatarImageUrl?.isEmpty ?? true)) {
           payload['avatarImageUrl'] = FieldValue.delete();
