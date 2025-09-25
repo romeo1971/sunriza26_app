@@ -25,6 +25,8 @@ import 'package:image/image.dart' as img;
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import '../services/env_service.dart';
+import '../services/localization_service.dart';
+import 'package:provider/provider.dart';
 
 class _NamedItem {
   final String name;
@@ -434,7 +436,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                           color: Colors.white,
                           size: 20,
                         ),
-                        tooltip: 'Stimme testen',
+                        tooltip: context.read<LocalizationService>().t(
+                          'avatars.details.voiceTestTooltip',
+                        ),
                         onPressed: _isTestingVoice ? null : _testVoicePlayback,
                       ),
                   ],
@@ -756,7 +760,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               backgroundColor: AppColors.accentGreenDark,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Probehören'),
+            child: Text(
+              context.read<LocalizationService>().t(
+                'avatars.details.previewListenButton',
+              ),
+            ),
           ),
         ),
       ],
@@ -1474,12 +1482,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  tooltip: 'Öffnen',
+                  tooltip: context.read<LocalizationService>().t(
+                    'avatars.details.openTooltip',
+                  ),
                   icon: const Icon(Icons.open_in_new, color: Colors.white70),
                   onPressed: () => _openUrl(url),
                 ),
                 IconButton(
-                  tooltip: 'Löschen',
+                  tooltip: context.read<LocalizationService>().t(
+                    'avatars.details.deleteTooltip',
+                  ),
                   icon: const Icon(
                     Icons.delete_outline,
                     color: Colors.redAccent,
@@ -1515,7 +1527,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  tooltip: 'Anzeigen',
+                  tooltip: context.read<LocalizationService>().t(
+                    'avatars.details.showTooltip',
+                  ),
                   icon: const Icon(
                     Icons.visibility_outlined,
                     color: Colors.white70,
@@ -1523,7 +1537,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   onPressed: () => _openLocalFile(f),
                 ),
                 IconButton(
-                  tooltip: 'Entfernen',
+                  tooltip: context.read<LocalizationService>().t(
+                    'avatars.details.removeTooltip',
+                  ),
                   icon: const Icon(Icons.close, color: Colors.white54),
                   onPressed: () => _confirmDeleteLocalText(f),
                 ),
@@ -1566,7 +1582,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               children: [
                 if (total > _textFilesPageSize)
                   IconButton(
-                    tooltip: 'Vorherige Seite',
+                    tooltip: context.read<LocalizationService>().t(
+                      'avatars.details.prevPageTooltip',
+                    ),
                     icon: const Icon(Icons.chevron_left, color: Colors.white70),
                     onPressed: (_textFilesPage > 0)
                         ? () => setState(() => _textFilesPage--)
@@ -1579,7 +1597,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ),
                 if (total > _textFilesPageSize)
                   IconButton(
-                    tooltip: 'Nächste Seite',
+                    tooltip: context.read<LocalizationService>().t(
+                      'avatars.details.nextPageTooltip',
+                    ),
                     icon: const Icon(
                       Icons.chevron_right,
                       color: Colors.white70,
@@ -1667,7 +1687,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
-                tooltip: 'Als Stimme wählen',
+                tooltip: context.read<LocalizationService>().t(
+                  'avatars.details.selectAsVoiceTooltip',
+                ),
                 icon: Icon(
                   _activeAudioUrl == url ? Icons.star : Icons.star_border,
                   color: _activeAudioUrl == url ? Colors.amber : Colors.white70,
@@ -1680,29 +1702,45 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 },
               ),
               IconButton(
-                tooltip: 'Abspielen',
+                tooltip: context.read<LocalizationService>().t(
+                  'avatars.details.playTooltip',
+                ),
                 icon: const Icon(Icons.play_arrow, color: Colors.white70),
                 onPressed: () => _openUrl(url),
               ),
               IconButton(
-                tooltip: 'Löschen',
+                tooltip: context.read<LocalizationService>().t(
+                  'avatars.details.deleteTooltip',
+                ),
                 icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                 onPressed: () async {
                   final ok = await showDialog<bool>(
                     context: context,
                     builder: (ctx) => AlertDialog(
-                      title: const Text('Audio löschen?'),
+                      title: Text(
+                        context.read<LocalizationService>().t(
+                          'avatars.details.confirmDeleteAudioTitle',
+                        ),
+                      ),
                       content: Text(
                         '${_fileNameFromUrl(url)} endgültig löschen?',
                       ),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(ctx, false),
-                          child: const Text('Abbrechen'),
+                          child: Text(
+                            context.read<LocalizationService>().t(
+                              'avatars.details.cancel',
+                            ),
+                          ),
                         ),
                         ElevatedButton(
                           onPressed: () => Navigator.pop(ctx, true),
-                          child: const Text('Löschen'),
+                          child: Text(
+                            context.read<LocalizationService>().t(
+                              'avatars.details.delete',
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -1734,7 +1772,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             overflow: TextOverflow.ellipsis,
           ),
           trailing: IconButton(
-            tooltip: 'Entfernen',
+            tooltip: context.read<LocalizationService>().t(
+              'avatars.details.removeTooltip',
+            ),
             icon: const Icon(Icons.close, color: Colors.white54),
             onPressed: () {
               setState(() {
@@ -1779,7 +1819,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     .isNotEmpty ??
                 false))
               IconButton(
-                tooltip: 'Begrüßung vorlesen',
+                tooltip: context.read<LocalizationService>().t(
+                  'avatars.details.readGreetingTooltip',
+                ),
                 icon: const Icon(Icons.volume_up, color: Colors.white),
                 onPressed: _isTestingVoice ? null : _testVoicePlayback,
               ),
@@ -2263,16 +2305,29 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Datei entfernen?'),
-        content: Text('${pathFromLocalFile(f.path)} wirklich entfernen?'),
+        title: Text(
+          context.read<LocalizationService>().t(
+            'avatars.details.confirmRemoveFileTitle',
+          ),
+        ),
+        content: Text(
+          context.read<LocalizationService>().t(
+            'avatars.details.confirmRemoveFileContent',
+            params: {'name': pathFromLocalFile(f.path)},
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
+            child: Text(
+              context.read<LocalizationService>().t('avatars.details.cancel'),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen'),
+            child: Text(
+              context.read<LocalizationService>().t('avatars.details.delete'),
+            ),
           ),
         ],
       ),
@@ -2286,16 +2341,29 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Datei löschen?'),
-        content: Text('${_fileNameFromUrl(url)} endgültig löschen?'),
+        title: Text(
+          context.read<LocalizationService>().t(
+            'avatars.details.confirmDeleteFileTitle',
+          ),
+        ),
+        content: Text(
+          context.read<LocalizationService>().t(
+            'avatars.details.confirmDeleteFileContent',
+            params: {'name': _fileNameFromUrl(url)},
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
+            child: Text(
+              context.read<LocalizationService>().t('avatars.details.cancel'),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen'),
+            child: Text(
+              context.read<LocalizationService>().t('avatars.details.delete'),
+            ),
           ),
         ],
       ),
@@ -3416,12 +3484,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           children: [
             ListTile(
               leading: const Icon(Icons.photo_library),
-              title: const Text('Galerie'),
+              title: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.galleryTitle',
+                ),
+              ),
               onTap: () => Navigator.pop(ctx, ImageSource.gallery),
             ),
             ListTile(
               leading: const Icon(Icons.photo_camera),
-              title: const Text('Kamera'),
+              title: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.cameraTitle',
+                ),
+              ),
               onTap: () => Navigator.pop(ctx, ImageSource.camera),
             ),
           ],
@@ -3986,14 +4062,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           await showDialog(
             context: context,
             builder: (ctx) => AlertDialog(
-              title: const Text('Erfolgreich gespeichert'),
+              title: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.savedTitle',
+                ),
+              ),
               content: const Text(
                 'Deine Daten wurden erfolgreich gespeichert.',
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('OK'),
+                  child: Text(
+                    context.read<LocalizationService>().t('avatars.details.ok'),
+                  ),
                 ),
               ],
             ),
@@ -4056,12 +4138,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           await showDialog(
             context: context,
             builder: (ctx) => AlertDialog(
-              title: const Text('Texte gespeichert'),
-              content: const Text('Texte wurden erfolgreich gespeichert.'),
+              title: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.textsSavedTitle',
+                ),
+              ),
+              content: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.textsSavedContent',
+                ),
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('OK'),
+                  child: Text(
+                    context.read<LocalizationService>().t('avatars.details.ok'),
+                  ),
                 ),
               ],
             ),
@@ -4071,14 +4163,27 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           _newAudioFiles.clear();
         } else {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Speichern fehlgeschlagen')),
+            SnackBar(
+              content: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.saveFailed',
+                ),
+              ),
+            ),
           );
         }
       } catch (e) {
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context.read<LocalizationService>().t(
+                'avatars.details.error',
+                params: {'msg': e.toString()},
+              ),
+            ),
+          ),
+        );
       } finally {
         if (mounted) {
           setState(() {
@@ -4221,7 +4326,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text('Ausgewählte löschen ($total)'),
+        title: Text(
+          context.read<LocalizationService>().t(
+            'avatars.details.deleteSelectedTitle',
+            params: {'total': total.toString()},
+          ),
+        ),
         content: SizedBox(
           width: 360,
           child: SingleChildScrollView(
@@ -4295,11 +4405,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
+            child: Text(
+              context.read<LocalizationService>().t('avatars.details.cancel'),
+            ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen'),
+            child: Text(
+              context.read<LocalizationService>().t('avatars.details.delete'),
+            ),
           ),
         ],
       ),
@@ -4381,13 +4495,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Datenwelt'),
+        title: Text(
+          context.watch<LocalizationService>().t('avatars.details.appbarTitle'),
+        ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
           if (_isDirty)
             IconButton(
-              tooltip: 'Speichern',
+              tooltip: context.read<LocalizationService>().t(
+                'avatars.details.saveTooltip',
+              ),
               onPressed: _isSaving ? null : _saveAvatarDetails,
               icon: Icon(
                 Icons.save_outlined,
