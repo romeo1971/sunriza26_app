@@ -98,7 +98,7 @@ class _MinimalControls extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final chewie = ChewieController.of(context);
-    final ctrl = chewie!.videoPlayerController;
+    final ctrl = chewie.videoPlayerController;
     final theme = Theme.of(context);
     return Stack(
       children: [

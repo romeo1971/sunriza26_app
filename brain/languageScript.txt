@@ -1,9 +1,10 @@
 Anweisung (kurz und verbindlich):
 
-1) Suche harte UI‑Strings im Code und ersetze sie durch klare Schlüssel (Bereichspräfix, z.B. avatars.*, welcome.*, language.*).
-2) Trage alle neuen Schlüssel samt hochwertigen Übersetzungen in jede Datei unter assets/lang/*.json ein (keine Fallbacks/Schlüssel‑Echos).
-3) Nutze vorhandenen LocalizationService t(key) konsequent im Code.
-4) Prüfe, dass keine Schlüssel am Start angezeigt werden (sichtbare Defaults vermeiden), dann commit & push.
+1) Suche harte UI‑Strings im Code (Text, title:, message:, Snackbars/Dialogs/Tooltips) und ersetze sie durch Schlüssel (Bereichspräfix z.B. avatars.*, welcome.*, language.*).
+2) Ergänze die neuen Schlüssel mit vollständigen Übersetzungen in ALLEN Dateien unter assets/lang/*.json (keine englischen Fallbacks, keine Schlüssel‑Echos).
+3) Verwende konsequent LocalizationService: context.read/watch<LocalizationService>().t(key, params?).
+4) Verifiziere per Voll‑Scan, dass keine Rohtexte übrig sind; lints laufen; dann git add/commit/push.
+5) Bei Änderungen an Schlüsseln: alle Sprachen synchron aktualisieren und lang.template.json mitführen.
 
 Zu pflegende Dateien (assets/lang/):
 ar.json, bn.json, cs.json, da.json, de.json, el.json, en.json,
@@ -12,3 +13,14 @@ id.json, it.json, ja.json, ko.json, mr.json, ms.json, nl.json,
 no.json, pa.json, pl.json, pt.json, ro.json, ru.json, sv.json,
 te.json, th.json, tl.json, tr.json, uk.json, vi.json,
 zh-Hans.json, zh-Hant.json, lang.template.json
+
+Aktuelle Schlüsselgruppen (Auszug):
+- avatars.details.* (Stimmauswahl, Personendaten, Begrüßungstext, Texte, Upload/Fehler/Progress)
+- avatars.* (Listen/Fehler/Leerzustände)
+- welcome.* (Startscreen)
+- language.* (Sprachauswahl)
+
+Checks (immer ausführen):
+- grep auf sichtbare Anführungs‑Strings im Screen/Widgets
+- keine const Widgets mit t(...)
+- alle Dialoge/Progress/Tooltips/Snackbars über Keys

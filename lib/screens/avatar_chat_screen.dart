@@ -137,16 +137,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         // Debug-Ausgabe & UI-Hinweis
         try {
           print(
-            '🧩 BitHuman Figure erstellt: figureId=' +
-                (figureId ?? 'null') +
-                ', modelHash=' +
-                (modelHash ?? 'null'),
+            '🧩 BitHuman Figure erstellt: figureId=${figureId ?? 'null'}, modelHash=${modelHash ?? 'null'}',
           );
           _showSystemSnack(
-            'BitHuman Figure: ' +
-                (figureId ?? '—') +
-                ' | Model: ' +
-                (modelHash ?? '—'),
+            'BitHuman Figure: ${figureId ?? '—'} | Model: ${modelHash ?? '—'}',
           );
         } catch (_) {}
         // Persistieren in Firestore unter users/<uid>/avatars/<id>

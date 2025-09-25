@@ -129,9 +129,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Zielgröße (Tokens)',
-              style: TextStyle(color: Colors.white70),
+            Text(
+              context.read<LocalizationService>().t(
+                'avatars.details.chunk.targetTokens',
+              ),
+              style: const TextStyle(color: Colors.white70),
             ),
             Text(
               _targetTokens.round().toString(),
@@ -149,8 +151,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             // minChunk sinnvoll nachführen (mind. 60% target, nicht größer als target)
             final double min60 = (_targetTokens * 0.6);
             if (_minChunkTokens < min60) _minChunkTokens = min60;
-            if (_minChunkTokens > _targetTokens)
+            if (_minChunkTokens > _targetTokens) {
               _minChunkTokens = _targetTokens;
+            }
           }),
         ),
         const SizedBox(height: 6),
@@ -158,9 +161,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Überlappung (%)',
-              style: TextStyle(color: Colors.white70),
+            Text(
+              context.read<LocalizationService>().t(
+                'avatars.details.chunk.overlap',
+              ),
+              style: const TextStyle(color: Colors.white70),
             ),
             Text(
               '${_overlapPercent.round()}%',
@@ -180,9 +185,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Min. Chunkgröße (Tokens)',
-              style: TextStyle(color: Colors.white70),
+            Text(
+              context.read<LocalizationService>().t(
+                'avatars.details.chunk.minSize',
+              ),
+              style: const TextStyle(color: Colors.white70),
             ),
             Text(
               _minChunkTokens.round().toString(),
@@ -199,7 +206,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          'Empfehlung: min. ca. ${recommendedMin.round()} Tokens (≈70% von Zielgröße).',
+          context.read<LocalizationService>().t(
+            'avatars.details.chunk.recommendation',
+            params: {'min': recommendedMin.round().toString()},
+          ),
           style: const TextStyle(color: Colors.white38, fontSize: 12),
         ),
       ],
@@ -371,7 +381,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _greetingController.text =
         _avatarData?.greetingText?.trim().isNotEmpty == true
         ? _avatarData!.greetingText!
-        : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?';
+        : context.read<LocalizationService>().t(
+            'avatars.details.defaultGreeting',
+          );
     // Hero-Video in Großansicht initialisieren
     _initInlineFromCrown();
     // Kein Autogenerieren mehr – Generierung erfolgt nur auf Nutzeraktion
@@ -387,7 +399,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0),
           child: Text(
-            'Diese Bilder, Videos (>30s) und Texte dienen dazu, den Avatar möglichst genau zu trainieren – keine Urlaubsgalerie.',
+            context.read<LocalizationService>().t('avatars.details.mediaHint'),
             style: TextStyle(color: Colors.white.withValues(alpha: 0.85)),
           ),
         ),
@@ -421,9 +433,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 title: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Text(
-                      'Begrüßungstext',
-                      style: TextStyle(color: Colors.white),
+                    Text(
+                      context.read<LocalizationService>().t('greetingText'),
+                      style: const TextStyle(color: Colors.white),
                     ),
                     if (((_avatarData?.training?['voice']?['elevenVoiceId']
                                 as String?)
@@ -456,8 +468,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                           controller: _greetingController,
                           maxLines: 3,
                           style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            hintText: 'Begrüßungstext des Avatars',
+                          decoration: InputDecoration(
+                            hintText: context.read<LocalizationService>().t(
+                              'avatars.details.greetingHint',
+                            ),
                           ),
                           onChanged: (_) => _updateDirty(),
                         ),
@@ -472,9 +486,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 initiallyExpanded: false,
                 collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
                 backgroundColor: Colors.white.withValues(alpha: 0.06),
-                title: const Text(
-                  'Texte',
-                  style: TextStyle(color: Colors.white),
+                title: Text(
+                  context.read<LocalizationService>().t('texts'),
+                  style: const TextStyle(color: Colors.white),
                 ),
                 children: [
                   Padding(
@@ -501,21 +515,25 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: const Column(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  'Textdateien hochladen',
-                                  style: TextStyle(
+                                  context.read<LocalizationService>().t(
+                                    'avatars.details.textUploadTitle',
+                                  ),
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 16,
                                   ),
                                 ),
-                                SizedBox(height: 2),
+                                const SizedBox(height: 2),
                                 Text(
-                                  '(.txt, .md, .rtf) – Wissen/Erinnerungen hinzufügen',
-                                  style: TextStyle(
+                                  context.read<LocalizationService>().t(
+                                    'avatars.details.textUploadSubtitle',
+                                  ),
+                                  style: const TextStyle(
                                     fontWeight: FontWeight.w300,
                                     fontSize: 13,
                                   ),
@@ -525,11 +543,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        const Align(
+                        Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'Freitext (wird als .txt gespeichert)',
-                            style: TextStyle(color: Colors.white70),
+                            context.read<LocalizationService>().t(
+                              'avatars.details.freeTextLabel',
+                            ),
+                            style: const TextStyle(color: Colors.white70),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -537,7 +557,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                           controller: _textAreaController,
                           maxLines: 4,
                           decoration: InputDecoration(
-                            hintText: 'Schreibe Gedanken/Erinnerungen…',
+                            hintText: context.read<LocalizationService>().t(
+                              'avatars.details.freeTextHint',
+                            ),
                             hintStyle: const TextStyle(color: Colors.white54),
                             filled: true,
                             fillColor: Colors.white.withValues(alpha: 0.06),
@@ -558,11 +580,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         ),
                         const SizedBox(height: 12),
                         // Chunking Parameter
-                        const Align(
+                        Align(
                           alignment: Alignment.centerLeft,
                           child: Text(
-                            'Chunking (Pinecone Speicheroptimierung)',
-                            style: TextStyle(color: Colors.white70),
+                            context.read<LocalizationService>().t(
+                              'avatars.details.chunkingLabel',
+                            ),
+                            style: const TextStyle(color: Colors.white70),
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -582,9 +606,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 initiallyExpanded: false,
                 collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
                 backgroundColor: Colors.white.withValues(alpha: 0.06),
-                title: const Text(
-                  'Stimmauswahl',
-                  style: TextStyle(color: Colors.white),
+                title: Text(
+                  context.read<LocalizationService>().t('voiceSelection'),
+                  style: const TextStyle(color: Colors.white),
                 ),
                 children: [
                   Padding(
@@ -614,12 +638,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: const Column(
+                            child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Text(
-                                  'Audio-Dateien hochladen',
+                                  context.read<LocalizationService>().t(
+                                    'avatars.details.audioUploadTitle',
+                                  ),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w700,
                                     fontSize: 16,
@@ -627,7 +653,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 ),
                                 SizedBox(height: 2),
                                 Text(
-                                  '(.mp3, .m4a, .wav, .aac, .ogg) – Stimme/Referenzen',
+                                  context.read<LocalizationService>().t(
+                                    'avatars.details.audioUploadSubtitle',
+                                  ),
                                   style: TextStyle(
                                     fontWeight: FontWeight.w300,
                                     fontSize: 13,
@@ -671,8 +699,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Stimme wählen (ElevenLabs)',
+        Text(
+          context.read<LocalizationService>().t(
+            'avatars.details.elevenVoiceSelectTitle',
+          ),
           style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 6),
@@ -687,8 +717,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               isExpanded: true,
               dropdownColor: Colors.black87,
               value: _selectedVoiceId,
-              hint: const Text(
-                'Stimme wählen',
+              hint: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.voiceSelectLabel',
+                ),
                 style: TextStyle(color: Colors.white70),
               ),
               items: () {
@@ -701,8 +733,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 items.add(
                   DropdownMenuItem<String>(
                     value: '__CLONE__',
-                    child: const Text(
-                      'MEIN VOICE KLON',
+                    child: Text(
+                      context.read<LocalizationService>().t(
+                        'avatars.details.myVoiceCloneLabel',
+                      ),
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
@@ -717,7 +751,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     DropdownMenuItem<String>(
                       value: id,
                       child: Text(
-                        (v['name'] ?? 'Voice') as String,
+                        (v['name'] ??
+                                context.read<LocalizationService>().t(
+                                  'avatars.details.voiceFallbackName',
+                                ))
+                            as String,
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
@@ -1054,9 +1092,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                       borderRadius: BorderRadius.circular(8),
                                     ),
                                   ),
-                                  child: const Text(
-                                    'Aktualisieren',
-                                    style: TextStyle(
+                                  child: Text(
+                                    context.read<LocalizationService>().t(
+                                      'avatars.refreshTooltip',
+                                    ),
+                                    style: const TextStyle(
                                       fontSize: 13,
                                       height: 1.2,
                                       fontStyle: FontStyle.normal,
@@ -1571,9 +1611,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Textdateien',
-              style: TextStyle(
+            Text(
+              context.read<LocalizationService>().t(
+                'avatars.details.textFilesTitle',
+              ),
+              style: const TextStyle(
                 color: Colors.white70,
                 fontWeight: FontWeight.w600,
               ),
@@ -1610,8 +1652,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ),
                 IconButton(
                   tooltip: _textFilesExpanded
-                      ? 'Liste einklappen'
-                      : 'Liste ausklappen',
+                      ? context.read<LocalizationService>().t(
+                          'avatars.details.collapseList',
+                        )
+                      : context.read<LocalizationService>().t(
+                          'avatars.details.expandList',
+                        ),
                   icon: Icon(
                     _textFilesExpanded ? Icons.expand_less : Icons.expand_more,
                     color: Colors.white70,
@@ -1630,7 +1676,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
             isDense: true,
-            hintText: 'Keywords… (Dateinamen filtern)',
+            hintText: context.read<LocalizationService>().t(
+              'avatars.details.textFileFilterHint',
+            ),
             hintStyle: const TextStyle(color: Colors.white54),
             filled: true,
             fillColor: Colors.white.withValues(alpha: 0.06),
@@ -1659,7 +1707,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             child: Align(
               alignment: Alignment.centerRight,
               child: Text(
-                '${start + 1}–$end von $total',
+                context.read<LocalizationService>().t(
+                  'avatars.details.rangeOfTotal',
+                  params: {
+                    'start': '${start + 1}',
+                    'end': '$end',
+                    'total': '$total',
+                  },
+                ),
                 style: const TextStyle(color: Colors.white38, fontSize: 12),
               ),
             ),
@@ -1723,7 +1778,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         ),
                       ),
                       content: Text(
-                        '${_fileNameFromUrl(url)} endgültig löschen?',
+                        context.read<LocalizationService>().t(
+                          'avatars.details.confirmDeleteAudioContent',
+                          params: {'name': _fileNameFromUrl(url)},
+                        ),
                       ),
                       actions: [
                         TextButton(
@@ -1767,7 +1825,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           contentPadding: EdgeInsets.zero,
           leading: const Icon(Icons.upload_file, color: Colors.amber),
           title: Text(
-            '${pathFromLocalFile(f.path)} (neu)',
+            '${pathFromLocalFile(f.path)} ${context.read<LocalizationService>().t('avatars.details.newSuffix')}',
             style: const TextStyle(color: Colors.white70),
             overflow: TextOverflow.ellipsis,
           ),
@@ -1803,7 +1861,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ElevatedButton.icon(
               onPressed: _isSaving ? null : _onCloneVoice,
               icon: const Icon(Icons.auto_fix_high),
-              label: Text(_isSaving ? 'Wird geklont...' : 'Stimme klonen'),
+              label: Text(
+                _isSaving
+                    ? context.read<LocalizationService>().t(
+                        'avatars.details.cloningInProgress',
+                      )
+                    : context.read<LocalizationService>().t(
+                        'avatars.details.cloneVoiceButton',
+                      ),
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _isSaving
                     ? Colors.grey
@@ -1835,16 +1901,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Stimmeinstellungen',
-          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        Text(
+          context.read<LocalizationService>().t(
+            'avatars.details.voiceSettingsTitle',
+          ),
+          style: const TextStyle(
+            color: Colors.white70,
+            fontWeight: FontWeight.w600,
+          ),
         ),
         const SizedBox(height: 8),
         Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 90,
-              child: Text('Stability', style: TextStyle(color: Colors.white70)),
+              child: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.stability',
+                ),
+                style: const TextStyle(color: Colors.white70),
+              ),
             ),
             Expanded(
               child: Slider(
@@ -1868,11 +1944,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 90,
               child: Text(
-                'Similarity',
-                style: TextStyle(color: Colors.white70),
+                context.read<LocalizationService>().t(
+                  'avatars.details.similarity',
+                ),
+                style: const TextStyle(color: Colors.white70),
               ),
             ),
             Expanded(
@@ -1899,9 +1977,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         const SizedBox(height: 8),
         Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 90,
-              child: Text('Tempo', style: TextStyle(color: Colors.white70)),
+              child: Text(
+                context.read<LocalizationService>().t('avatars.details.tempo'),
+                style: const TextStyle(color: Colors.white70),
+              ),
             ),
             Expanded(
               child: Slider(
@@ -1927,48 +2008,63 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         const SizedBox(height: 8),
         Row(
           children: [
-            const SizedBox(
+            SizedBox(
               width: 90,
-              child: Text('Dialekt', style: TextStyle(color: Colors.white70)),
+              child: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.dialect',
+                ),
+                style: const TextStyle(color: Colors.white70),
+              ),
             ),
             Expanded(
               child: DropdownButtonFormField<String>(
                 initialValue: _voiceDialect,
                 dropdownColor: Colors.black,
-                items: const [
+                items: [
                   DropdownMenuItem(
                     value: 'de-DE',
                     child: Text(
-                      'Deutsch (DE)',
-                      style: TextStyle(color: Colors.white),
+                      context.read<LocalizationService>().t(
+                        'avatars.details.dialect.de-DE',
+                      ),
+                      style: const TextStyle(color: Colors.white),
                     ),
                   ),
                   DropdownMenuItem(
                     value: 'de-AT',
                     child: Text(
-                      'Deutsch (AT)',
-                      style: TextStyle(color: Colors.white),
+                      context.read<LocalizationService>().t(
+                        'avatars.details.dialect.de-AT',
+                      ),
+                      style: const TextStyle(color: Colors.white),
                     ),
                   ),
                   DropdownMenuItem(
                     value: 'de-CH',
                     child: Text(
-                      'Deutsch (CH)',
-                      style: TextStyle(color: Colors.white),
+                      context.read<LocalizationService>().t(
+                        'avatars.details.dialect.de-CH',
+                      ),
+                      style: const TextStyle(color: Colors.white),
                     ),
                   ),
                   DropdownMenuItem(
                     value: 'en-US',
                     child: Text(
-                      'Englisch (US)',
-                      style: TextStyle(color: Colors.white),
+                      context.read<LocalizationService>().t(
+                        'avatars.details.dialect.en-US',
+                      ),
+                      style: const TextStyle(color: Colors.white),
                     ),
                   ),
                   DropdownMenuItem(
                     value: 'en-GB',
                     child: Text(
-                      'Englisch (UK)',
-                      style: TextStyle(color: Colors.white),
+                      context.read<LocalizationService>().t(
+                        'avatars.details.dialect.en-GB',
+                      ),
+                      style: const TextStyle(color: Colors.white),
                     ),
                   ),
                 ],
@@ -2004,7 +2100,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final ok = await _avatarService.updateAvatar(updated);
     if (ok && mounted) {
       _applyAvatar(updated);
-      _showSystemSnack('Stimmeinstellungen gespeichert');
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.voiceSettingsSaved',
+        ),
+      );
     }
   }
 
@@ -2012,7 +2112,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     try {
       final base = dotenv.env['MEMORY_API_BASE_URL'];
       if (base == null || base.isEmpty) {
-        _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
+        _showSystemSnack(
+          context.read<LocalizationService>().t(
+            'avatars.details.backendUrlMissing',
+          ),
+        );
         return;
       }
       String? voiceId;
@@ -2021,7 +2125,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ?.trim();
       } catch (_) {}
       if (voiceId == null || voiceId.isEmpty) {
-        _showSystemSnack('Keine geklonte Stimme vorhanden');
+        _showSystemSnack(
+          context.read<LocalizationService>().t(
+            'avatars.details.noClonedVoice',
+          ),
+        );
         return;
       }
 
@@ -2031,7 +2139,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ? _greetingController.text.trim()
           : (_avatarData?.greetingText?.trim().isNotEmpty == true
                 ? _avatarData!.greetingText!.trim()
-                : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
+                : context.read<LocalizationService>().t(
+                    'avatars.details.defaultGreeting',
+                  ));
 
       final payload = <String, dynamic>{
         'text': greeting,
@@ -2052,7 +2162,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final b64 = data['audio_b64'] as String?;
         if (b64 == null || b64.isEmpty) {
-          _showSystemSnack('Kein Audio erhalten');
+          _showSystemSnack(
+            context.read<LocalizationService>().t(
+              'avatars.details.noAudioReceived',
+            ),
+          );
           return;
         }
         final bytes = base64Decode(b64);
@@ -2065,10 +2179,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         await _voiceTestPlayer.play();
       } else {
         final detail = (res.body.isNotEmpty) ? ' ${res.body}' : '';
-        _showSystemSnack('TTS fehlgeschlagen: ${res.statusCode}$detail');
+        _showSystemSnack(
+          context.read<LocalizationService>().t(
+            'avatars.details.ttsFailed',
+            params: {'code': res.statusCode.toString(), 'detail': detail},
+          ),
+        );
       }
     } catch (e) {
-      _showSystemSnack('Test-Fehler: $e');
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.testError',
+          params: {'msg': '$e'},
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isTestingVoice = false);
     }
@@ -2094,19 +2218,36 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (ok) {
         if (!mounted) return;
         _applyAvatar(updated);
-        _showSystemSnack('Stimmprobe gespeichert');
+        _showSystemSnack(
+          context.read<LocalizationService>().t(
+            'avatars.details.voiceSampleSaved',
+          ),
+        );
       } else {
-        _showSystemSnack('Speichern der Stimmprobe fehlgeschlagen');
+        _showSystemSnack(
+          context.read<LocalizationService>().t(
+            'avatars.details.voiceSampleSaveFailed',
+          ),
+        );
       }
     } catch (e) {
-      _showSystemSnack('Fehler beim Speichern: $e');
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.saveError',
+          params: {'msg': '$e'},
+        ),
+      );
     }
   }
 
   Future<void> _onCloneVoice() async {
     if (_avatarData == null) return;
     if (_isSaving) {
-      _showSystemSnack('Stimme wird bereits geklont...');
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.cloningAlreadyInProgress',
+        ),
+      );
       return;
     }
 
@@ -2116,13 +2257,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // Altes Verhalten: Wenn noch lokale Audios vorhanden, erst speichern lassen
     if (_newAudioFiles.isNotEmpty) {
       setState(() => _isSaving = false);
-      _showSystemSnack('Bitte zuerst speichern, dann klonen.');
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.saveFirstThenClone',
+        ),
+      );
       return;
     }
     final audios = List<String>.from(_avatarData!.audioUrls);
     if (audios.isEmpty) {
       setState(() => _isSaving = false);
-      _showSystemSnack('Keine Audio-Stimmprobe vorhanden.');
+      _showSystemSnack(
+        context.read<LocalizationService>().t('avatars.details.noAudioSample'),
+      );
       return;
     }
     // EXPLIZIT NUR die markierte Probe verwenden (keine implizite Reihenfolge)
@@ -2137,18 +2284,30 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
     if (selected.isEmpty) {
       setState(() => _isSaving = false);
-      _showSystemSnack('Bitte markiere eine Audio-Datei mit dem Stern.');
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.markAudioWithStar',
+        ),
+      );
       return;
     }
     try {
       await _showBlockingProgress(
-        title: 'Stimme wird geklont…',
-        message: 'Das dauert einen Moment. Bitte gedulde dich.',
+        title: context.read<LocalizationService>().t(
+          'avatars.details.cloningTitle',
+        ),
+        message: context.read<LocalizationService>().t(
+          'avatars.details.cloningWaitMessage',
+        ),
         task: () async {
           final uid = FirebaseAuth.instance.currentUser!.uid;
           final base = dotenv.env['MEMORY_API_BASE_URL'];
           if (base == null || base.isEmpty) {
-            _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
+            _showSystemSnack(
+              context.read<LocalizationService>().t(
+                'avatars.details.backendUrlMissing',
+              ),
+            );
             return;
           }
           final uri = Uri.parse('$base/avatar/voice/create');
@@ -2196,7 +2355,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 )
                 .timeout(const Duration(seconds: 45));
           } on TimeoutException {
-            _showSystemSnack('Klonen abgebrochen: Zeitüberschreitung');
+            _showSystemSnack(
+              context.read<LocalizationService>().t(
+                'avatars.details.cloneTimeout',
+              ),
+            );
             return;
           }
           if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -2224,22 +2387,44 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               final ok = await _avatarService.updateAvatar(updated);
               if (ok) {
                 _applyAvatar(updated);
-                _showSystemSnack('Stimme geklont. Voice-ID gespeichert.');
+                _showSystemSnack(
+                  context.read<LocalizationService>().t(
+                    'avatars.details.voiceClonedSaved',
+                  ),
+                );
                 if (mounted) setState(() => _isDirty = false);
               } else {
-                _showSystemSnack('Speichern der Voice-ID fehlgeschlagen.');
+                _showSystemSnack(
+                  context.read<LocalizationService>().t(
+                    'avatars.details.saveVoiceIdFailed',
+                  ),
+                );
               }
             } else {
-              _showSystemSnack('ElevenLabs: keine voice_id erhalten.');
+              _showSystemSnack(
+                context.read<LocalizationService>().t(
+                  'avatars.details.elevenNoVoiceId',
+                ),
+              );
             }
           } else {
             final detail = (res.body.isNotEmpty) ? ' ${res.body}' : '';
-            _showSystemSnack('Klonen fehlgeschlagen: ${res.statusCode}$detail');
+            _showSystemSnack(
+              context.read<LocalizationService>().t(
+                'avatars.details.cloneFailed',
+                params: {'code': res.statusCode.toString(), 'detail': detail},
+              ),
+            );
           }
         },
       );
     } catch (e) {
-      _showSystemSnack('Klon-Fehler: $e');
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.cloneError',
+          params: {'msg': '$e'},
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
@@ -2371,13 +2556,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (ok == true) {
       // Fortschritts-Notifier entfernt (nicht genutzt)
       await _showBlockingProgress<void>(
-        title: 'Löschen…',
+        title: context.read<LocalizationService>().t(
+          'avatars.details.deletingTitle',
+        ),
         message: _fileNameFromUrl(url),
         progress: null, // kein Prozent für Delete
         task: () async {
           final deleted = await FirebaseStorageService.deleteFile(url);
           if (!deleted) {
-            _showSystemSnack('Löschen fehlgeschlagen');
+            _showSystemSnack(
+              context.read<LocalizationService>().t(
+                'avatars.details.deleteFailed',
+              ),
+            );
             return;
           }
           // Pinecone: zugehörige Chunks löschen (OR: file_url / file_path / file_name)
@@ -2398,7 +2589,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           if (mounted) setState(() {});
           final ok = await _persistTextFileUrls();
           if (!ok) {
-            _showSystemSnack('Firestore-Update fehlgeschlagen');
+            _showSystemSnack(
+              context.read<LocalizationService>().t(
+                'avatars.details.firestoreUpdateFailed',
+              ),
+            );
           }
         },
       );
@@ -2643,10 +2838,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (ok) {
         _applyAvatar(updated);
         await _initInlineFromCrown();
-        _showSystemSnack('Hero-Video gesetzt');
+        _showSystemSnack(
+          context.read<LocalizationService>().t('avatars.details.heroVideoSet'),
+        );
       }
     } catch (e) {
-      _showSystemSnack('Fehler beim Setzen des Hero-Videos: $e');
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.setHeroVideoError',
+          params: {'msg': '$e'},
+        ),
+      );
     }
   }
 
@@ -2820,7 +3022,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await controller.play();
       if (mounted) setState(() => _inlineVideoController = controller);
     } catch (e) {
-      _showSystemSnack('Video kann nicht geladen werden');
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.videoLoadFailed',
+        ),
+      );
     }
   }
 
@@ -2834,7 +3040,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await controller.play();
       setState(() => _inlineVideoController = controller);
     } catch (e) {
-      _showSystemSnack('Lokales Video kann nicht geladen werden');
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.localVideoLoadFailed',
+        ),
+      );
     }
   }
 
@@ -2860,7 +3070,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       // Nur BitHuman verwenden
       final base = dotenv.env['BITHUMAN_BASE_URL']?.trim();
       if (base == null || base.isEmpty) {
-        _showSystemSnack('BITHUMAN_BASE_URL fehlt (.env)');
+        _showSystemSnack(
+          context.read<LocalizationService>().t(
+            'avatars.details.bithumanBaseUrlMissing',
+          ),
+        );
         return;
       }
 
@@ -2875,7 +3089,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         suffix: '.png',
       );
       if (imageFile == null) {
-        _showSystemSnack('Kein Bild gefunden');
+        _showSystemSnack(
+          context.read<LocalizationService>().t('avatars.details.noImageFound'),
+        );
         return;
       }
 
@@ -2887,18 +3103,30 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         audioUrl = _avatarData!.audioUrls.first;
       }
       if (audioUrl == null || audioUrl.isEmpty) {
-        _showSystemSnack('Keine Audio-Stimmprobe vorhanden');
+        _showSystemSnack(
+          context.read<LocalizationService>().t(
+            'avatars.details.noAudioSample',
+          ),
+        );
         return;
       }
       audioFile = await _downloadToTemp(audioUrl, suffix: '.mp3');
       if (audioFile == null) {
-        _showSystemSnack('Audio kann nicht geladen werden');
+        _showSystemSnack(
+          context.read<LocalizationService>().t(
+            'avatars.details.audioLoadFailed',
+          ),
+        );
         return;
       }
 
       await _showBlockingProgress<void>(
-        title: 'Avatar wird generiert…',
-        message: 'Bild und Audio werden verarbeitet.',
+        title: context.read<LocalizationService>().t(
+          'avatars.details.generatingAvatarTitle',
+        ),
+        message: context.read<LocalizationService>().t(
+          'avatars.details.processingImageAudio',
+        ),
         task: () async {
           // 1) Figure sicherstellen (nur wenn noch nicht vorhanden)
           String? figureId;
@@ -2978,7 +3206,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               // Sofort persistieren (Firestore aktualisieren)
               await _persistTextFileUrls();
             }
-            _showSystemSnack('Avatar-Video erstellt');
+            _showSystemSnack(
+              context.read<LocalizationService>().t(
+                'avatars.details.avatarVideoCreated',
+              ),
+            );
           } else {
             final body = await streamed.stream.bytesToString();
             _showSystemSnack(
@@ -2988,7 +3220,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         },
       );
     } catch (e) {
-      _showSystemSnack('Fehler: $e');
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.errorGeneric',
+          params: {'msg': '$e'},
+        ),
+      );
     } finally {
       if (mounted) setState(() => _isGeneratingAvatar = false);
     }
@@ -3190,7 +3427,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
       source = ImageSource.gallery; // Kamera nicht unterstützen auf Desktop
     } else {
-      source = await _chooseSource('Bildquelle wählen');
+      source = await _chooseSource(
+        context.read<LocalizationService>().t(
+          'avatars.details.chooseImageSourceTitle',
+        ),
+      );
       if (source == null) return;
     }
     if (source == ImageSource.gallery) {
@@ -3419,10 +3660,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       final progress = ValueNotifier<double>(0.0);
       await _showBlockingProgress<void>(
-        title: 'Audio wird hochgeladen…',
+        title: context.read<LocalizationService>().t(
+          'avatars.details.uploadAudioTitle',
+        ),
         message: result.files.length == 1
-            ? 'Datei ${result.files.first.name} wird gespeichert.'
-            : '${result.files.length} Dateien werden gespeichert.',
+            ? context.read<LocalizationService>().t(
+                'avatars.details.fileSavingMessage',
+                params: {'name': result.files.first.name},
+              )
+            : context.read<LocalizationService>().t(
+                'avatars.details.filesSavingMessage',
+                params: {'count': '${result.files.length}'},
+              ),
         progress: progress,
         task: () async {
           for (int i = 0; i < result.files.length; i++) {
@@ -3469,8 +3718,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (uploaded.isNotEmpty) {
         _showSystemSnack(
           uploaded.length == 1
-              ? 'Audio hochgeladen.'
-              : '${uploaded.length} Audios hochgeladen.',
+              ? context.read<LocalizationService>().t(
+                  'avatars.details.audioUploadedSingle',
+                )
+              : context.read<LocalizationService>().t(
+                  'avatars.details.audioUploadedMulti',
+                  params: {'count': '${uploaded.length}'},
+                ),
         );
       }
     }
@@ -3513,11 +3767,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         // Vorname (Pflichtfeld)
         _buildTextField(
           controller: _firstNameController,
-          label: 'Vorname *',
-          hint: 'Gib den Vornamen ein',
+          label: context.read<LocalizationService>().t(
+            'avatars.details.firstNameLabel',
+          ),
+          hint: context.read<LocalizationService>().t(
+            'avatars.details.firstNameHint',
+          ),
           validator: (value) {
             if (value == null || value.isEmpty) {
-              return 'Vorname ist erforderlich';
+              return context.read<LocalizationService>().t(
+                'avatars.details.firstNameRequired',
+              );
             }
             return null;
           },
@@ -3528,8 +3788,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         // Spitzname (optional)
         _buildTextField(
           controller: _nicknameController,
-          label: 'Spitzname',
-          hint: 'Gib einen Spitznamen ein (optional)',
+          label: context.read<LocalizationService>().t(
+            'avatars.details.nicknameLabel',
+          ),
+          hint: context.read<LocalizationService>().t(
+            'avatars.details.nicknameHint',
+          ),
         ),
 
         const SizedBox(height: 16),
@@ -3537,8 +3801,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         // Nachname (optional)
         _buildTextField(
           controller: _lastNameController,
-          label: 'Nachname',
-          hint: 'Gib den Nachnamen ein (optional)',
+          label: context.read<LocalizationService>().t(
+            'avatars.details.lastNameLabel',
+          ),
+          hint: context.read<LocalizationService>().t(
+            'avatars.details.lastNameHint',
+          ),
         ),
 
         const SizedBox(height: 16),
@@ -3546,8 +3814,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         // Geburtsdatum (optional)
         _buildDateField(
           controller: _birthDateController,
-          label: 'Geburtsdatum',
-          hint: 'Wähle das Geburtsdatum',
+          label: context.read<LocalizationService>().t(
+            'avatars.details.birthDateLabel',
+          ),
+          hint: context.read<LocalizationService>().t(
+            'avatars.details.birthDateHint',
+          ),
           onTap: () => _selectBirthDate(),
         ),
 
@@ -3556,8 +3828,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         // Sterbedatum (optional)
         _buildDateField(
           controller: _deathDateController,
-          label: 'Sterbedatum',
-          hint: 'Wähle das Sterbedatum (optional)',
+          label: context.read<LocalizationService>().t(
+            'avatars.details.deathDateLabel',
+          ),
+          hint: context.read<LocalizationService>().t(
+            'avatars.details.deathDateHint',
+          ),
           onTap: () => _selectDeathDate(),
         ),
 
@@ -3579,9 +3855,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         initiallyExpanded: false,
         collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
         backgroundColor: Colors.white.withValues(alpha: 0.06),
-        title: const Text(
-          'Personendaten',
-          style: TextStyle(color: Colors.white),
+        title: Text(
+          context.read<LocalizationService>().t(
+            'avatars.details.personDataTitle',
+          ),
+          style: const TextStyle(color: Colors.white),
         ),
         children: [
           Padding(
@@ -3703,7 +3981,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           const Icon(Icons.cake, color: AppColors.accentGreenDark),
           const SizedBox(width: 12),
           Text(
-            'Berechnetes Alter: $_calculatedAge Jahre',
+            context.read<LocalizationService>().t(
+              'avatars.details.calculatedAge',
+              params: {'age': _calculatedAge?.toString() ?? ''},
+            ),
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
@@ -3810,8 +4091,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final imgProgress = ValueNotifier<double>(0.0);
         if (_newImageFiles.isNotEmpty) {
           await _showBlockingProgress<void>(
-            title: 'Bilder werden hochgeladen…',
-            message: '${_newImageFiles.length} Dateien werden gespeichert.',
+            title: context.read<LocalizationService>().t(
+              'avatars.details.uploadImagesTitle',
+            ),
+            message: context.read<LocalizationService>().t(
+              'avatars.details.filesSavingMessage',
+              params: {'count': '${_newImageFiles.length}'},
+            ),
             progress: imgProgress,
             task: () async {
               for (int i = 0; i < _newImageFiles.length; i++) {
@@ -3841,8 +4127,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final vidProgress = ValueNotifier<double>(0.0);
         if (_newVideoFiles.isNotEmpty) {
           await _showBlockingProgress<void>(
-            title: 'Videos werden hochgeladen…',
-            message: '${_newVideoFiles.length} Dateien werden gespeichert.',
+            title: context.read<LocalizationService>().t(
+              'avatars.details.uploadVideosTitle',
+            ),
+            message: context.read<LocalizationService>().t(
+              'avatars.details.filesSavingMessage',
+              params: {'count': '${_newVideoFiles.length}'},
+            ),
             progress: vidProgress,
             task: () async {
               for (int i = 0; i < _newVideoFiles.length; i++) {
@@ -3916,8 +4207,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final txtProgress = ValueNotifier<double>(0.0);
         if (_newTextFiles.isNotEmpty) {
           await _showBlockingProgress<void>(
-            title: 'Texte werden hochgeladen…',
-            message: '${_newTextFiles.length} Dateien werden gespeichert.',
+            title: context.read<LocalizationService>().t(
+              'avatars.details.uploadTextsTitle',
+            ),
+            message: context.read<LocalizationService>().t(
+              'avatars.details.filesSavingMessage',
+              params: {'count': '${_newTextFiles.length}'},
+            ),
             progress: txtProgress,
             task: () async {
               for (int i = 0; i < _newTextFiles.length; i++) {
@@ -4050,8 +4346,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
         bool ok = false;
         await _showBlockingProgress<void>(
-          title: 'Speichern…',
-          message: 'Daten werden gespeichert…',
+          title: context.read<LocalizationService>().t(
+            'avatars.details.savingTitle',
+          ),
+          message: context.read<LocalizationService>().t(
+            'avatars.details.savingData',
+          ),
           task: () async {
             ok = await _avatarService.updateAvatar(updated);
           },
@@ -4067,8 +4367,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   'avatars.details.savedTitle',
                 ),
               ),
-              content: const Text(
-                'Deine Daten wurden erfolgreich gespeichert.',
+              content: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.dataSavedSuccessfully',
+                ),
               ),
               actions: [
                 TextButton(
@@ -4101,8 +4403,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
           // Texte in Speicher übernehmen – immer mit modalem Spinner
           await _showBlockingProgress<void>(
-            title: 'Speichern…',
-            message: 'Texte werden in den Speicher übernommen…',
+            title: context.read<LocalizationService>().t(
+              'avatars.details.savingTitle',
+            ),
+            message: context.read<LocalizationService>().t(
+              'avatars.details.textsTransferMessage',
+            ),
             task: () async {
               if (combinedText.trim().isNotEmpty) {
                 try {
@@ -4254,7 +4560,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         note: 'fallback:${fileName ?? 'text'}',
       );
       if (mounted) {
-        _showSystemSnack('Memory insert Fehler – Fallback ausgeführt');
+        _showSystemSnack(
+          context.read<LocalizationService>().t(
+            'avatars.details.memoryInsertFallback',
+          ),
+        );
       }
     }
   }
@@ -4353,7 +4663,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 ..._selectedRemoteVideos.map(
                   (u) => ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Container(
+                    child: SizedBox(
                       width: 54,
                       height: 96,
                       child: FutureBuilder<VideoPlayerController?>(
@@ -4377,7 +4687,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 ..._selectedLocalVideos.map(
                   (filePath) => ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Container(
+                    child: SizedBox(
                       width: 54,
                       height: 96,
                       child: FutureBuilder<VideoPlayerController?>(
