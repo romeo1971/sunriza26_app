@@ -56,7 +56,17 @@
   "welcome.rotate2": "당신만의 불멸의 아바타를 만들어 보세요.\n단 5분이면 당신의 마음이 영원을 스칩니다 — 오늘, 내일, 그리고 영원히.",
   "welcome.rotate3": "필요한 것은 당신의 사진 또는 영상, 짧은 음성 녹음, 그리고 소중한 몇 가지 기억뿐입니다.",
   "welcome.ctaPrimary": "지금 무료로 시작하기",
-  "welcome.ctaSubtext": "당신을 닮았고, 당신처럼 말하고 이야기합니다"
+  "welcome.ctaSubtext": "당신을 닮았고, 당신처럼 말하고 이야기합니다",
+  "avatars.errorIndexMissing": "Firestore 색인이 없습니다. 실행: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "아바타를 불러오는 중 오류: {msg}",
+  "avatars.title": "내 아바타",
+  "avatars.refreshTooltip": "새로고침",
+  "avatars.createTooltip": "새 아바타 만들기",
+  "avatars.emptyTitle": "아직 아바타가 없습니다",
+  "avatars.emptySubtitle": "첫 번째 아바타를 만들고 특별한 대화를 시작하세요",
+  "avatars.emptyCta": "첫 아바타 만들기",
+  "avatars.noMessages": "아직 메시지가 없습니다",
+  "avatars.editTooltip": "아바타 편집"
 }
 
 

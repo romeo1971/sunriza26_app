@@ -56,7 +56,17 @@
   "welcome.rotate2": "Skapa din egen odödliga avatar.\nPå bara 5 minuter rör ditt hjärta vid evigheten – idag, imorgon och för alltid.",
   "welcome.rotate3": "Det enda du behöver är ett foto eller en video på dig, en kort röstinspelning och några minnen som betyder mycket för dig.",
   "welcome.ctaPrimary": "Börja gratis nu",
-  "welcome.ctaSubtext": "Ser ut som du, talar och berättar som du"
+  "welcome.ctaSubtext": "Ser ut som du, talar och berättar som du",
+  "avatars.errorIndexMissing": "Firestore-index saknas. Kör: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Fel vid inläsning av avatarer: {msg}",
+  "avatars.title": "Mina avatarer",
+  "avatars.refreshTooltip": "Uppdatera",
+  "avatars.createTooltip": "Skapa ny avatar",
+  "avatars.emptyTitle": "Inga avatarer ännu",
+  "avatars.emptySubtitle": "Skapa din första avatar och börja ett speciellt samtal",
+  "avatars.emptyCta": "Skapa första avataren",
+  "avatars.noMessages": "Inga meddelanden ännu",
+  "avatars.editTooltip": "Redigera avatar"
 }
 
 

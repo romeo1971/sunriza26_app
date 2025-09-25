@@ -56,7 +56,17 @@
   "welcome.rotate2": "Gumawa ng sarili mong imortal na avatar.\nSa loob lamang ng 5 minuto, hinahaplos ng puso mo ang kawalang-hanggan — ngayon, bukas at magpakailanman.",
   "welcome.rotate3": "Kailangan mo lamang ng iyong larawan o video, maikling voice recording, at ilang alaala na mahalaga sa iyo.",
   "welcome.ctaPrimary": "Magsimula nang libre ngayon",
-  "welcome.ctaSubtext": "Mukhang ikaw, nagsasalita at nagkukuwento na parang ikaw"
+  "welcome.ctaSubtext": "Mukhang ikaw, nagsasalita at nagkukuwento na parang ikaw",
+  "avatars.errorIndexMissing": "Walang Firestore index. Patakbuhin: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Error sa paglo-load ng mga avatar: {msg}",
+  "avatars.title": "Aking mga avatar",
+  "avatars.refreshTooltip": "I-refresh",
+  "avatars.createTooltip": "Gumawa ng bagong avatar",
+  "avatars.emptyTitle": "Wala pang mga avatar",
+  "avatars.emptySubtitle": "Gumawa ng iyong unang avatar at magsimula ng isang espesyal na usapan",
+  "avatars.emptyCta": "Gumawa ng unang avatar",
+  "avatars.noMessages": "Wala pang mga mensahe",
+  "avatars.editTooltip": "I-edit ang avatar"
 }
 
 

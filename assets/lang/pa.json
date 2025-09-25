@@ -56,7 +56,17 @@
   "welcome.rotate2": "ਆਪਣਾ ਅਮਰ ਅਵਤਾਰ ਬਣਾਓ।\nਕੇਵਲ 5 ਮਿੰਟਾਂ ਵਿੱਚ, ਤੇਰਾ ਦਿਲ ਹਮੇਸ਼ਾਂ ਨੂੰ ਛੂਹਦਾ ਹੈ — ਅੱਜ, ਕੱਲ੍ਹ ਅਤੇ ਸਦਾ ਲਈ।",
   "welcome.rotate3": "ਕੇਵਲ ਤੇਰੀ ਇਕ ਫ਼ੋਟੋ/ਵੀਡੀਓ, ਛੋਟੀ ਆਵਾਜ਼ ਰਿਕਾਰਡਿੰਗ ਅਤੇ ਕੁਝ ਯਾਦਾਂ ਜੋ ਤੇਰੇ ਲਈ ਮਹੱਤਵਪੂਰਨ ਹਨ।",
   "welcome.ctaPrimary": "ਹੁਣੇ ਮੁਫ਼ਤ ਸ਼ੁਰੂ ਕਰੋ",
-  "welcome.ctaSubtext": "ਤੇਰੇ ਵਰਗਾ ਲੱਗਦਾ ਹੈ, ਤੇਰੇ ਵਰਗਾ ਬੋਲਦਾ ਤੇ ਸੁਣਾਉਂਦਾ ਹੈ"
+  "welcome.ctaSubtext": "ਤੇਰੇ ਵਰਗਾ ਲੱਗਦਾ ਹੈ, ਤੇਰੇ ਵਰਗਾ ਬੋਲਦਾ ਤੇ ਸੁਣਾਉਂਦਾ ਹੈ",
+  "avatars.errorIndexMissing": "Firestore ਇੰਡੈਕਸ ਨਹੀਂ ਹੈ। ਚਲਾਓ: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "ਅਵਤਾਰ ਲੋਡ ਕਰਨ ਵਿੱਚ ਗਲਤੀ: {msg}",
+  "avatars.title": "ਮੇਰੇ ਅਵਤਾਰ",
+  "avatars.refreshTooltip": "ਰੀਫ੍ਰੈਸ਼",
+  "avatars.createTooltip": "ਨਵਾਂ ਅਵਤਾਰ ਬਣਾਓ",
+  "avatars.emptyTitle": "ਹਾਲੇ ਕੋਈ ਅਵਤਾਰ ਨਹੀਂ",
+  "avatars.emptySubtitle": "ਆਪਣਾ ਪਹਿਲਾ ਅਵਤਾਰ ਬਣਾਓ ਅਤੇ ਖਾਸ ਗੱਲਬਾਤ ਸ਼ੁਰੂ ਕਰੋ",
+  "avatars.emptyCta": "ਪਹਿਲਾ ਅਵਤਾਰ ਬਣਾਓ",
+  "avatars.noMessages": "ਹਾਲੇ ਕੋਈ ਸੁਨੇਹੇ ਨਹੀਂ",
+  "avatars.editTooltip": "ਅਵਤਾਰ ਸੋਧੋ"
 }
 
 

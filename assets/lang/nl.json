@@ -56,7 +56,17 @@
   "welcome.rotate2": "Maak je eigen onsterfelijke avatar.\nIn slechts 5 minuten raakt je hart de eeuwigheid – vandaag, morgen en voor altijd.",
   "welcome.rotate3": "Alles wat je nodig hebt is een foto of video van jezelf, een korte spraakopname en een paar herinneringen die voor jou belangrijk zijn.",
   "welcome.ctaPrimary": "Begin nu gratis",
-  "welcome.ctaSubtext": "Lijkt op jou, spreekt en vertelt zoals jij"
+  "welcome.ctaSubtext": "Lijkt op jou, spreekt en vertelt zoals jij",
+  "avatars.errorIndexMissing": "Firestore-index ontbreekt. Voer uit: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Fout bij het laden van avatars: {msg}",
+  "avatars.title": "Mijn avatars",
+  "avatars.refreshTooltip": "Vernieuwen",
+  "avatars.createTooltip": "Nieuwe avatar maken",
+  "avatars.emptyTitle": "Nog geen avatars",
+  "avatars.emptySubtitle": "Maak je eerste avatar en start een bijzonder gesprek",
+  "avatars.emptyCta": "Eerste avatar maken",
+  "avatars.noMessages": "Nog geen berichten",
+  "avatars.editTooltip": "Avatar bewerken"
 }
 
 

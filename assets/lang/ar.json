@@ -56,7 +56,17 @@
   "welcome.rotate2": "أنشئ صورتك الخالدة (Avatar).\nفي 5 دقائق فقط، يلامس قلبك الأبد — اليوم وغداً ودائماً.",
   "welcome.rotate3": "كل ما تحتاجه صورة أو فيديو لك، تسجيل صوتي قصير، وبضع ذكريات تهمك.",
   "welcome.ctaPrimary": "ابدأ مجاناً الآن",
-  "welcome.ctaSubtext": "يبدو مثلك، يتكلم ويروي مثلك"
+  "welcome.ctaSubtext": "يبدو مثلك، يتكلم ويروي مثلك",
+  "avatars.errorIndexMissing": "فهرس Firestore مفقود. نفّذ: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "خطأ عند تحميل الأفاتارات: {msg}",
+  "avatars.title": "أفاتاراتي",
+  "avatars.refreshTooltip": "تحديث",
+  "avatars.createTooltip": "إنشاء أفاتار جديد",
+  "avatars.emptyTitle": "لا توجد أفاتارات بعد",
+  "avatars.emptySubtitle": "أنشئ أول أفاتار وابدأ محادثة مميزة",
+  "avatars.emptyCta": "إنشاء الأفاتار الأول",
+  "avatars.noMessages": "لا توجد رسائل بعد",
+  "avatars.editTooltip": "تعديل الأفاتار"
 }
 
 

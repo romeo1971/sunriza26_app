@@ -56,7 +56,17 @@
   "welcome.rotate2": "তোমার অমর অবতার বানাও।\nমাত্র ৫ মিনিটে তোমার হৃদয় ছুঁয়ে দিক অনন্তকাল — আজ, কাল, চিরকাল।",
   "welcome.rotate3": "তোমার একটি ছবি/ভিডিও, ছোট্ট ভয়েস রেকর্ডিং আর কয়েকটি প্রিয় স্মৃতিই যথেষ্ট।",
   "welcome.ctaPrimary": "এখনই ফ্রি শুরু করো",
-  "welcome.ctaSubtext": "তোমার মতই দেখায়, তোমার মতই বলে"
+  "welcome.ctaSubtext": "তোমার মতই দেখায়, তোমার মতই বলে",
+  "avatars.errorIndexMissing": "Firestore সূচী নেই। চালাও: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "অবতার লোডে ত্রুটি: {msg}",
+  "avatars.title": "আমার অবতার",
+  "avatars.refreshTooltip": "রিফ্রেশ",
+  "avatars.createTooltip": "নতুন অবতার তৈরি",
+  "avatars.emptyTitle": "এখনও কোনো অবতার নেই",
+  "avatars.emptySubtitle": "তোমার প্রথম অবতার তৈরি কর এবং একটি বিশেষ কথোপকথন শুরু কর",
+  "avatars.emptyCta": "প্রথম অবতার তৈরি কর",
+  "avatars.noMessages": "এখনও কোনো বার্তা নেই",
+  "avatars.editTooltip": "অবতার সম্পাদনা"
 }
 
 

@@ -1,0 +1,14 @@
+Anweisung (kurz und verbindlich):
+
+1) Suche harte UI‑Strings im Code und ersetze sie durch klare Schlüssel (Bereichspräfix, z.B. avatars.*, welcome.*, language.*).
+2) Trage alle neuen Schlüssel samt hochwertigen Übersetzungen in jede Datei unter assets/lang/*.json ein (keine Fallbacks/Schlüssel‑Echos).
+3) Nutze vorhandenen LocalizationService t(key) konsequent im Code.
+4) Prüfe, dass keine Schlüssel am Start angezeigt werden (sichtbare Defaults vermeiden), dann commit & push.
+
+Zu pflegende Dateien (assets/lang/):
+ar.json, bn.json, cs.json, da.json, de.json, el.json, en.json,
+es.json, fa.json, fi.json, fr.json, he.json, hi.json, hu.json,
+id.json, it.json, ja.json, ko.json, mr.json, ms.json, nl.json,
+no.json, pa.json, pl.json, pt.json, ro.json, ru.json, sv.json,
+te.json, th.json, tl.json, tr.json, uk.json, vi.json,
+zh-Hans.json, zh-Hant.json, lang.template.json

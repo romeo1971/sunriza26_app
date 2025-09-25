@@ -56,7 +56,17 @@
   "welcome.rotate2": "Buat avatar abadimu sendiri.\nDalam 5 menit saja, hatimu menyentuh keabadian – hari ini, esok, dan selamanya.",
   "welcome.rotate3": "Yang kamu butuhkan hanyalah foto atau video dirimu, rekaman suara singkat, dan beberapa kenangan yang berarti bagimu.",
   "welcome.ctaPrimary": "Mulai gratis sekarang",
-  "welcome.ctaSubtext": "Mirip denganmu, berbicara dan bercerita sepertimu"
+  "welcome.ctaSubtext": "Mirip denganmu, berbicara dan bercerita sepertimu",
+  "avatars.errorIndexMissing": "Indeks Firestore hilang. Jalankan: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Kesalahan memuat avatar: {msg}",
+  "avatars.title": "Avatar saya",
+  "avatars.refreshTooltip": "Muat ulang",
+  "avatars.createTooltip": "Buat avatar baru",
+  "avatars.emptyTitle": "Belum ada avatar",
+  "avatars.emptySubtitle": "Buat avatar pertama Anda dan mulai percakapan spesial",
+  "avatars.emptyCta": "Buat avatar pertama",
+  "avatars.noMessages": "Belum ada pesan",
+  "avatars.editTooltip": "Edit avatar"
 }
 
 

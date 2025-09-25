@@ -56,7 +56,17 @@
   "welcome.rotate2": "สร้างอวตารอมตะของคุณเอง\nภายใน 5 นาที หัวใจของคุณจะสัมผัสนิรันดร์ — วันนี้ พรุ่งนี้ และตลอดไป",
   "welcome.rotate3": "สิ่งที่ต้องมีมีเพียงรูปหรือวิดีโอของคุณ เสียงสั้น ๆ และความทรงจำไม่กี่อย่างที่สำคัญกับคุณ",
   "welcome.ctaPrimary": "เริ่มใช้ฟรีตอนนี้",
-  "welcome.ctaSubtext": "มีหน้าตาเหมือนคุณ พูดและเล่าเรื่องเหมือนคุณ"
+  "welcome.ctaSubtext": "มีหน้าตาเหมือนคุณ พูดและเล่าเรื่องเหมือนคุณ",
+  "avatars.errorIndexMissing": "ขาดดัชนี Firestore โปรดรัน: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "เกิดข้อผิดพลาดในการโหลดอวตาร: {msg}",
+  "avatars.title": "อวตารของฉัน",
+  "avatars.refreshTooltip": "รีเฟรช",
+  "avatars.createTooltip": "สร้างอวตารใหม่",
+  "avatars.emptyTitle": "ยังไม่มีอวตาร",
+  "avatars.emptySubtitle": "สร้างอวตารตัวแรกของคุณและเริ่มบทสนทนาพิเศษ",
+  "avatars.emptyCta": "สร้างอวตารแรก",
+  "avatars.noMessages": "ยังไม่มีข้อความ",
+  "avatars.editTooltip": "แก้ไขอวตาร"
 }
 
 

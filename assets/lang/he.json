@@ -56,7 +56,17 @@
   "welcome.rotate2": "צור/צרי את האווטאר הנצחי שלך.\nתוך 5 דקות בלבד, לבך נוגע בנצח – היום, מחר ולעד.",
   "welcome.rotate3": "דרושה רק תמונה או וידאו שלך, הקלטת קול קצרה וכמה זיכרונות שיקרים לך.",
   "welcome.ctaPrimary": "התחל/י בחינם עכשיו",
-  "welcome.ctaSubtext": "נראה כמוך, מדבר ומספר כמוך"
+  "welcome.ctaSubtext": "נראה כמוך, מדבר ומספר כמוך",
+  "avatars.errorIndexMissing": "חסר אינדקס Firestore. הרץ: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "שגיאה בטעינת אווטרים: {msg}",
+  "avatars.title": "האוואטרים שלי",
+  "avatars.refreshTooltip": "רענן",
+  "avatars.createTooltip": "צור אווטאר חדש",
+  "avatars.emptyTitle": "אין עדיין אווטרים",
+  "avatars.emptySubtitle": "צור/צרי את האווטאר הראשון והתחל/י שיחה מיוחדת",
+  "avatars.emptyCta": "צור/צרי אווטאר ראשון",
+  "avatars.noMessages": "אין הודעות עדיין",
+  "avatars.editTooltip": "ערוך אווטאר"
 }
 
 

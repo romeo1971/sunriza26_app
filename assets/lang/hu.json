@@ -56,7 +56,17 @@
   "welcome.rotate2": "Hozd létre a saját halhatatlan avatarodat.\nMindössze 5 perc alatt a szíved megérinti az örökkévalóságot – ma, holnap és mindörökké.",
   "welcome.rotate3": "Csak egy rólad készült fotóra vagy videóra, egy rövid hangfelvételre és néhány számodra fontos emlékre van szükség.",
   "welcome.ctaPrimary": "Kezdd el most ingyen",
-  "welcome.ctaSubtext": "Úgy néz ki, mint te, úgy beszél és mesél, mint te"
+  "welcome.ctaSubtext": "Úgy néz ki, mint te, úgy beszél és mesél, mint te",
+  "avatars.errorIndexMissing": "Hiányzik a Firestore index. Futtasd: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Hiba az avatarok betöltésekor: {msg}",
+  "avatars.title": "Avatarjaim",
+  "avatars.refreshTooltip": "Frissítés",
+  "avatars.createTooltip": "Új avatar létrehozása",
+  "avatars.emptyTitle": "Még nincsenek avatarok",
+  "avatars.emptySubtitle": "Hozd létre az első avatarodat és kezdj egy különleges beszélgetést",
+  "avatars.emptyCta": "Első avatar létrehozása",
+  "avatars.noMessages": "Még nincsenek üzenetek",
+  "avatars.editTooltip": "Avatar szerkesztése"
 }
 
 

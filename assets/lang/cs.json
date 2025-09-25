@@ -56,7 +56,17 @@
   "welcome.rotate2": "Vytvoř si svůj nesmrtelný avatar.\nZa pouhých 5 minut se tvé srdce dotkne věčnosti – dnes, zítra i navždy.",
   "welcome.rotate3": "Stačí fotka nebo video, krátká nahrávka hlasu a pár vzpomínek, na kterých ti záleží.",
   "welcome.ctaPrimary": "Začni zdarma hned teď",
-  "welcome.ctaSubtext": "Vypadá jako ty, mluví a vypráví jako ty"
+  "welcome.ctaSubtext": "Vypadá jako ty, mluví a vypráví jako ty",
+  "avatars.errorIndexMissing": "Chybí index Firestore. Spusť: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Chyba při načítání avatarů: {msg}",
+  "avatars.title": "Moje avatary",
+  "avatars.refreshTooltip": "Obnovit",
+  "avatars.createTooltip": "Vytvořit nový avatar",
+  "avatars.emptyTitle": "Zatím žádné avatary",
+  "avatars.emptySubtitle": "Vytvoř svůj první avatar a začni výjimečný rozhovor",
+  "avatars.emptyCta": "Vytvořit první avatar",
+  "avatars.noMessages": "Zatím žádné zprávy",
+  "avatars.editTooltip": "Upravit avatar"
 }
 
 

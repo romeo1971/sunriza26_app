@@ -56,7 +56,17 @@
   "welcome.rotate2": "Skab din egen udødelige avatar.\nPå blot 5 minutter rører dit hjerte ved evigheden – i dag, i morgen og for altid.",
   "welcome.rotate3": "Du skal kun bruge et billede eller en video af dig, en kort stemmeoptagelse og nogle minder, der betyder noget for dig.",
   "welcome.ctaPrimary": "Start gratis nu",
-  "welcome.ctaSubtext": "Ligner dig, taler og fortæller som dig"
+  "welcome.ctaSubtext": "Ligner dig, taler og fortæller som dig",
+  "avatars.errorIndexMissing": "Firestore-indeks mangler. Kør: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Fejl ved indlæsning af avatarer: {msg}",
+  "avatars.title": "Mine avatarer",
+  "avatars.refreshTooltip": "Opdater",
+  "avatars.createTooltip": "Opret ny avatar",
+  "avatars.emptyTitle": "Ingen avatarer endnu",
+  "avatars.emptySubtitle": "Opret din første avatar og start en særlig samtale",
+  "avatars.emptyCta": "Opret første avatar",
+  "avatars.noMessages": "Ingen beskeder endnu",
+  "avatars.editTooltip": "Rediger avatar"
 }
 
 

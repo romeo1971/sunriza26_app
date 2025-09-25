@@ -56,7 +56,17 @@
   "welcome.rotate2": "创建你的不朽化身。\n只需 5 分钟，你的心便触及永恒——今天、明天与永远。",
   "welcome.rotate3": "你只需要一张照片或一个视频、一段简短的语音，以及几个对你重要的回忆。",
   "welcome.ctaPrimary": "立即免费开始",
-  "welcome.ctaSubtext": "看起来像你，说话讲述也像你"
+  "welcome.ctaSubtext": "看起来像你，说话讲述也像你",
+  "avatars.errorIndexMissing": "缺少 Firestore 索引。请运行：firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "加载头像时出错：{msg}",
+  "avatars.title": "我的头像",
+  "avatars.refreshTooltip": "刷新",
+  "avatars.createTooltip": "创建新头像",
+  "avatars.emptyTitle": "暂时没有头像",
+  "avatars.emptySubtitle": "创建你的第一个头像，开始一次特别的对话",
+  "avatars.emptyCta": "创建第一个头像",
+  "avatars.noMessages": "暂时没有消息",
+  "avatars.editTooltip": "编辑头像"
 }
 
 

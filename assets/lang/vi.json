@@ -56,7 +56,17 @@
   "welcome.rotate2": "Tạo avatar bất tử của riêng bạn.\nChỉ trong 5 phút, trái tim bạn chạm đến vĩnh hằng — hôm nay, ngày mai và mãi mãi.",
   "welcome.rotate3": "Bạn chỉ cần một bức ảnh hoặc video của mình, một bản ghi âm giọng nói ngắn và vài ký ức quan trọng với bạn.",
   "welcome.ctaPrimary": "Bắt đầu miễn phí ngay",
-  "welcome.ctaSubtext": "Trông giống bạn, nói và kể chuyện như bạn"
+  "welcome.ctaSubtext": "Trông giống bạn, nói và kể chuyện như bạn",
+  "avatars.errorIndexMissing": "Thiếu chỉ mục Firestore. Chạy: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Lỗi khi tải avatar: {msg}",
+  "avatars.title": "Avatar của tôi",
+  "avatars.refreshTooltip": "Làm mới",
+  "avatars.createTooltip": "Tạo avatar mới",
+  "avatars.emptyTitle": "Chưa có avatar",
+  "avatars.emptySubtitle": "Tạo avatar đầu tiên và bắt đầu một cuộc trò chuyện đặc biệt",
+  "avatars.emptyCta": "Tạo avatar đầu tiên",
+  "avatars.noMessages": "Chưa có tin nhắn",
+  "avatars.editTooltip": "Chỉnh sửa avatar"
 }
 
 

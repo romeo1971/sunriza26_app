@@ -56,7 +56,17 @@
   "welcome.rotate2": "Kendi ölümsüz avatarını oluştur.\nSadece 5 dakikada kalbin sonsuzluğa dokunsun — bugün, yarın ve daima.",
   "welcome.rotate3": "Tek gereken senin bir fotoğrafın veya videon, kısa bir ses kaydı ve senin için değerli birkaç anı.",
   "welcome.ctaPrimary": "Şimdi ücretsiz başla",
-  "welcome.ctaSubtext": "Sana benzer, senin gibi konuşur ve anlatır"
+  "welcome.ctaSubtext": "Sana benzer, senin gibi konuşur ve anlatır",
+  "avatars.errorIndexMissing": "Firestore dizini eksik. Çalıştırın: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Avatarlar yüklenirken hata: {msg}",
+  "avatars.title": "Avatarlarım",
+  "avatars.refreshTooltip": "Yenile",
+  "avatars.createTooltip": "Yeni avatar oluştur",
+  "avatars.emptyTitle": "Henüz avatar yok",
+  "avatars.emptySubtitle": "İlk avatarını oluştur ve özel bir sohbet başlat",
+  "avatars.emptyCta": "İlk avatari oluştur",
+  "avatars.noMessages": "Henüz mesaj yok",
+  "avatars.editTooltip": "Avatarı düzenle"
 }
 
 

@@ -56,7 +56,17 @@
   "welcome.rotate2": "Δημιούργησε τον αθάνατο avatar σου.\nΣε μόλις 5 λεπτά, η καρδιά σου αγγίζει την αιωνιότητα – σήμερα, αύριο και για πάντα.",
   "welcome.rotate3": "Χρειάζεσαι μόνο μια φωτογραφία ή βίντεο σου, μια σύντομη ηχογράφηση φωνής και μερικές αναμνήσεις που έχουν σημασία για εσένα.",
   "welcome.ctaPrimary": "Ξεκίνα δωρεάν τώρα",
-  "welcome.ctaSubtext": "Μοιάζει με εσένα, μιλά και διηγείται όπως εσύ"
+  "welcome.ctaSubtext": "Μοιάζει με εσένα, μιλά και διηγείται όπως εσύ",
+  "avatars.errorIndexMissing": "Λείπει το ευρετήριο Firestore. Τρέξε: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Σφάλμα κατά τη φόρτωση των avatar: {msg}",
+  "avatars.title": "Τα avatar μου",
+  "avatars.refreshTooltip": "Ανανέωση",
+  "avatars.createTooltip": "Δημιουργία νέου avatar",
+  "avatars.emptyTitle": "Δεν υπάρχουν ακόμα avatar",
+  "avatars.emptySubtitle": "Δημιούργησε το πρώτο σου avatar και ξεκίνα μια ξεχωριστή συζήτηση",
+  "avatars.emptyCta": "Δημιουργία πρώτου avatar",
+  "avatars.noMessages": "Δεν υπάρχουν μηνύματα ακόμα",
+  "avatars.editTooltip": "Επεξεργασία avatar"
 }
 
 

@@ -56,7 +56,17 @@
   "welcome.rotate2": "あなた自身の不朽のアバターを作ろう。\nたった5分で、あなたの心は永遠に触れる — 今日も、明日も、いつまでも。",
   "welcome.rotate3": "必要なのは、あなたの写真/動画、短い音声、そして大切な思い出だけ。",
   "welcome.ctaPrimary": "今すぐ無料で始める",
-  "welcome.ctaSubtext": "あなたに似て、あなたのように語りかける"
+  "welcome.ctaSubtext": "あなたに似て、あなたのように語りかける",
+  "avatars.errorIndexMissing": "Firestore のインデックスがありません。実行: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "アバター読み込みエラー: {msg}",
+  "avatars.title": "マイアバター",
+  "avatars.refreshTooltip": "更新",
+  "avatars.createTooltip": "新しいアバターを作成",
+  "avatars.emptyTitle": "まだアバターがありません",
+  "avatars.emptySubtitle": "最初のアバターを作成して特別な会話を始めましょう",
+  "avatars.emptyCta": "最初のアバターを作成",
+  "avatars.noMessages": "まだメッセージはありません",
+  "avatars.editTooltip": "アバターを編集"
 }
 
 

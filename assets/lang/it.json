@@ -56,7 +56,17 @@
   "welcome.rotate2": "Crea il tuo avatar immortale.\nIn soli 5 minuti il tuo cuore tocca l'eternità – oggi, domani e per sempre.",
   "welcome.rotate3": "Basta una tua foto o video, una breve registrazione vocale e alcuni ricordi per te importanti.",
   "welcome.ctaPrimary": "Inizia gratis ora",
-  "welcome.ctaSubtext": "Ti assomiglia, parla e racconta come te"
+  "welcome.ctaSubtext": "Ti assomiglia, parla e racconta come te",
+  "avatars.errorIndexMissing": "Indice Firestore mancante. Esegui: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Errore nel caricamento degli avatar: {msg}",
+  "avatars.title": "I miei avatar",
+  "avatars.refreshTooltip": "Aggiorna",
+  "avatars.createTooltip": "Crea nuovo avatar",
+  "avatars.emptyTitle": "Ancora nessun avatar",
+  "avatars.emptySubtitle": "Crea il tuo primo avatar e inizia una conversazione speciale",
+  "avatars.emptyCta": "Crea primo avatar",
+  "avatars.noMessages": "Ancora nessun messaggio",
+  "avatars.editTooltip": "Modifica avatar"
 }
 
 

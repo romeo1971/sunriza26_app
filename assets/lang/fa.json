@@ -56,7 +56,17 @@
   "welcome.rotate2": "آواتار جاودانه‌ی خودت را بساز.\nتنها در ۵ دقیقه، قلبت ابدیت را لمس می‌کند — امروز، فردا و برای همیشه.",
   "welcome.rotate3": "تنها به یک عکس یا ویدیوی خودت، یک ضبط صدای کوتاه و چند خاطره‌ی مهم برایت نیاز است.",
   "welcome.ctaPrimary": "همین حالا رایگان شروع کن",
-  "welcome.ctaSubtext": "شبیه توست، مثل تو صحبت و روایت می‌کند"
+  "welcome.ctaSubtext": "شبیه توست، مثل تو صحبت و روایت می‌کند",
+  "avatars.errorIndexMissing": "نمایه Firestore موجود نیست. اجرا کن: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "خطا در بارگذاری آواتارها: {msg}",
+  "avatars.title": "آواتارهای من",
+  "avatars.refreshTooltip": "به‌روزرسانی",
+  "avatars.createTooltip": "ایجاد آواتار جدید",
+  "avatars.emptyTitle": "هنوز آواتاری وجود ندارد",
+  "avatars.emptySubtitle": "اولین آواتار خود را بساز و یک گفت‌وگوی ویژه را آغاز کن",
+  "avatars.emptyCta": "ساخت اولین آواتار",
+  "avatars.noMessages": "هنوز پیامی نیست",
+  "avatars.editTooltip": "ویرایش آواتار"
 }
 
 

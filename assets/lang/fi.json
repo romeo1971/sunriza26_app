@@ -56,7 +56,17 @@
   "welcome.rotate2": "Luo oma kuolematon avatarisi.\nVain 5 minuutissa sydämesi koskettaa ikuisuutta – tänään, huomenna ja aina.",
   "welcome.rotate3": "Tarvitset vain kuvan tai videon itsestäsi, lyhyen äänitallenteen ja muutaman sinulle tärkeän muiston.",
   "welcome.ctaPrimary": "Aloita ilmaiseksi nyt",
-  "welcome.ctaSubtext": "Näyttää sinulta, puhuu ja kertoo kuin sinä"
+  "welcome.ctaSubtext": "Näyttää sinulta, puhuu ja kertoo kuin sinä",
+  "avatars.errorIndexMissing": "Firestore-indeksi puuttuu. Aja: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Virhe avatarten latauksessa: {msg}",
+  "avatars.title": "Omat avatarit",
+  "avatars.refreshTooltip": "Päivitä",
+  "avatars.createTooltip": "Luo uusi avatar",
+  "avatars.emptyTitle": "Ei vielä avataria",
+  "avatars.emptySubtitle": "Luo ensimmäinen avatarisi ja aloita erityinen keskustelu",
+  "avatars.emptyCta": "Luo ensimmäinen avatar",
+  "avatars.noMessages": "Ei vielä viestejä",
+  "avatars.editTooltip": "Muokkaa avataria"
 }
 
 

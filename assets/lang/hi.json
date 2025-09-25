@@ -56,7 +56,17 @@
   "welcome.rotate2": "अपना अमर अवतार बनाओ।\nसिर्फ 5 मिनट में, तुम्हारा दिल अनंत को छूता है — आज, कल और हमेशा।",
   "welcome.rotate3": "बस तुम्हारी एक तस्वीर/वीडियो, एक छोटी वॉइस रिकॉर्डिंग और कुछ यादें जो तुम्हारे लिए मायने रखती हैं।",
   "welcome.ctaPrimary": "अभी मुफ्त में शुरू करें",
-  "welcome.ctaSubtext": "तुम्हारी तरह दिखता है, तुम्हारी तरह बोलता और सुनाता है"
+  "welcome.ctaSubtext": "तुम्हारी तरह दिखता है, तुम्हारी तरह बोलता और सुनाता है",
+  "avatars.errorIndexMissing": "Firestore इंडेक्स नहीं मिला। चलाएँ: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "अवतार लोड करते समय त्रुटि: {msg}",
+  "avatars.title": "मेरे अवतार",
+  "avatars.refreshTooltip": "ताज़ा करें",
+  "avatars.createTooltip": "नया अवतार बनाएँ",
+  "avatars.emptyTitle": "अभी कोई अवतार नहीं",
+  "avatars.emptySubtitle": "अपना पहला अवतार बनाएँ और एक खास बातचीत शुरू करें",
+  "avatars.emptyCta": "पहला अवतार बनाएँ",
+  "avatars.noMessages": "अभी कोई संदेश नहीं",
+  "avatars.editTooltip": "अवतार संपादित करें"
 }
 
 

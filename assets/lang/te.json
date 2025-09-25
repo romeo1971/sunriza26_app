@@ -56,7 +56,17 @@
   "welcome.rotate2": "నీ అమరమైన అవతార్‌ను సృష్టించు.\nకేవలం 5 నిమిషాల్లోనే, నీ హృదయం శాశ్వతాన్ని తాకుతుంది — ఈ రోజు, రేపు, ఎల్లప్పుడూ.",
   "welcome.rotate3": "నీ ఫోటో లేదా వీడియో, చిన్న వాయిస్ రికార్డింగ్, నీకు ముఖ్యమైన కొన్ని జ్ఞాపకాలు — ఇవే చాలు.",
   "welcome.ctaPrimary": "ఇప్పుడే ఉచితంగా ప్రారంభించు",
-  "welcome.ctaSubtext": "నీలాగే కనిపిస్తుంది, నీలాగే మాట్లాడి చెబుతుంది"
+  "welcome.ctaSubtext": "నీలాగే కనిపిస్తుంది, నీలాగే మాట్లాడి చెబుతుంది",
+  "avatars.errorIndexMissing": "Firestore సూచీ లేదు. నడుపు: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "అవతార్ లోడ్ లో లోపం: {msg}",
+  "avatars.title": "నా అవతార్లు",
+  "avatars.refreshTooltip": "రిఫ్రెష్",
+  "avatars.createTooltip": "క్రొత్త అవతార్ సృష్టించు",
+  "avatars.emptyTitle": "ఇంకా అవతార్లు లేవు",
+  "avatars.emptySubtitle": "నీ మొదటి అవతార్ సృష్టించి ఒక ప్రత్యేక సంభాషణ ప్రారంభించు",
+  "avatars.emptyCta": "మొదటి అవతార్ సృష్టించు",
+  "avatars.noMessages": "ఇంకా సందేశాలు లేవు",
+  "avatars.editTooltip": "అవతార్ సవరించు"
 }
 
 

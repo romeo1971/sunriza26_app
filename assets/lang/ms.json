@@ -56,7 +56,17 @@
   "welcome.rotate2": "Cipta avatar abadi anda sendiri.\nDalam 5 minit sahaja, hati anda menyentuh keabadian – hari ini, esok dan selamanya.",
   "welcome.rotate3": "Anda hanya perlukan gambar atau video anda, rakaman suara ringkas dan beberapa kenangan yang penting bagi anda.",
   "welcome.ctaPrimary": "Mula percuma sekarang",
-  "welcome.ctaSubtext": "Rupa seperti anda, bercakap dan bercerita seperti anda"
+  "welcome.ctaSubtext": "Rupa seperti anda, bercakap dan bercerita seperti anda",
+  "avatars.errorIndexMissing": "Indeks Firestore tiada. Jalankan: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Ralat memuat avatar: {msg}",
+  "avatars.title": "Avatar saya",
+  "avatars.refreshTooltip": "Muat semula",
+  "avatars.createTooltip": "Cipta avatar baharu",
+  "avatars.emptyTitle": "Belum ada avatar",
+  "avatars.emptySubtitle": "Cipta avatar pertama anda dan mulakan perbualan istimewa",
+  "avatars.emptyCta": "Cipta avatar pertama",
+  "avatars.noMessages": "Belum ada mesej",
+  "avatars.editTooltip": "Edit avatar"
 }
 
 

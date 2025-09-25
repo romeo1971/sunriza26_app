@@ -56,7 +56,17 @@
   "welcome.rotate2": "Creează-ți propriul avatar nemuritor.\nÎn doar 5 minute, inima ta atinge eternitatea – azi, mâine și pentru totdeauna.",
   "welcome.rotate3": "Ai nevoie doar de o fotografie sau un videoclip cu tine, o scurtă înregistrare a vocii și câteva amintiri care contează pentru tine.",
   "welcome.ctaPrimary": "Începe gratuit acum",
-  "welcome.ctaSubtext": "Arată ca tine, vorbește și povestește ca tine"
+  "welcome.ctaSubtext": "Arată ca tine, vorbește și povestește ca tine",
+  "avatars.errorIndexMissing": "Lipsește indexul Firestore. Rulează: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Eroare la încărcarea avatarurilor: {msg}",
+  "avatars.title": "Avatarele mele",
+  "avatars.refreshTooltip": "Reîmprospătează",
+  "avatars.createTooltip": "Creează avatar nou",
+  "avatars.emptyTitle": "Încă nu există avatare",
+  "avatars.emptySubtitle": "Creează-ți primul avatar și începe o conversație specială",
+  "avatars.emptyCta": "Creează primul avatar",
+  "avatars.noMessages": "Încă nu există mesaje",
+  "avatars.editTooltip": "Editează avatar"
 }
 
 

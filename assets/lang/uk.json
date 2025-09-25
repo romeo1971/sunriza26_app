@@ -56,7 +56,17 @@
   "welcome.rotate2": "Створи свій власний безсмертний аватар.\nЛише за 5 хвилин твоє серце торкнеться вічності — сьогодні, завтра і назавжди.",
   "welcome.rotate3": "Потрібні лише твоє фото або відео, короткий запис голосу і кілька спогадів, що мають для тебе значення.",
   "welcome.ctaPrimary": "Почати безкоштовно зараз",
-  "welcome.ctaSubtext": "Виглядає як ти, говорить і розповідає як ти"
+  "welcome.ctaSubtext": "Виглядає як ти, говорить і розповідає як ти",
+  "avatars.errorIndexMissing": "Відсутній індекс Firestore. Виконай: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Помилка під час завантаження аватарів: {msg}",
+  "avatars.title": "Мої аватари",
+  "avatars.refreshTooltip": "Оновити",
+  "avatars.createTooltip": "Створити новий аватар",
+  "avatars.emptyTitle": "Ще немає аватарів",
+  "avatars.emptySubtitle": "Створи свій перший аватар і почни особливу розмову",
+  "avatars.emptyCta": "Створити перший аватар",
+  "avatars.noMessages": "Ще немає повідомлень",
+  "avatars.editTooltip": "Редагувати аватар"
 }
 
 

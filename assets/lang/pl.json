@@ -56,7 +56,17 @@
   "welcome.rotate2": "Stwórz własnego nieśmiertelnego awatara.\nW zaledwie 5 minut Twoje serce dotknie wieczności – dziś, jutro i na zawsze.",
   "welcome.rotate3": "Wystarczy Twoje zdjęcie lub wideo, krótka próbka głosu i kilka ważnych dla Ciebie wspomnień.",
   "welcome.ctaPrimary": "Zacznij za darmo już teraz",
-  "welcome.ctaSubtext": "Wygląda jak Ty, mówi i opowiada jak Ty"
+  "welcome.ctaSubtext": "Wygląda jak Ty, mówi i opowiada jak Ty",
+  "avatars.errorIndexMissing": "Brak indeksu Firestore. Uruchom: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Błąd podczas ładowania awatarów: {msg}",
+  "avatars.title": "Moje awatary",
+  "avatars.refreshTooltip": "Odśwież",
+  "avatars.createTooltip": "Utwórz nowy awatar",
+  "avatars.emptyTitle": "Jeszcze brak awatarów",
+  "avatars.emptySubtitle": "Utwórz swój pierwszy awatar i rozpocznij wyjątkową rozmowę",
+  "avatars.emptyCta": "Utwórz pierwszy awatar",
+  "avatars.noMessages": "Brak wiadomości",
+  "avatars.editTooltip": "Edytuj awatara"
 }
 
 

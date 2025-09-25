@@ -56,7 +56,17 @@
   "welcome.rotate2": "Erstelle Deinen eigenen unsterblichen Avatar.\nIn nur 5 Minuten berührt Dein Herz die Ewigkeit – heute, morgen und für immer.",
   "welcome.rotate3": "Alles, was es braucht, sind ein Bild oder Video von Dir, eine kurze Audioaufnahme Deiner Stimme und ein paar Erinnerungen, die Dir wichtig sind.",
   "welcome.ctaPrimary": "Jetzt kostenlos starten",
-  "welcome.ctaSubtext": "Sieht so aus wie Du, spricht und erzählt wie Du"
+  "welcome.ctaSubtext": "Sieht so aus wie Du, spricht und erzählt wie Du",
+  "avatars.errorIndexMissing": "Firestore-Index fehlt. Führe: firebase deploy --only firestore:indexes",
+  "avatars.errorLoad": "Fehler beim Laden der Avatare: {msg}",
+  "avatars.title": "Meine Avatare",
+  "avatars.refreshTooltip": "Aktualisieren",
+  "avatars.createTooltip": "Neuen Avatar erstellen",
+  "avatars.emptyTitle": "Noch keine Avatare",
+  "avatars.emptySubtitle": "Erstelle deinen ersten Avatar und beginne eine besondere Unterhaltung",
+  "avatars.emptyCta": "Ersten Avatar erstellen",
+  "avatars.noMessages": "Noch keine Nachrichten",
+  "avatars.editTooltip": "Avatar bearbeiten"
 }
 
 

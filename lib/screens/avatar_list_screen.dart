@@ -4,6 +4,8 @@ import 'package:firebase_core/firebase_core.dart';
 import '../models/avatar_data.dart' as model;
 import '../widgets/app_drawer.dart';
 import '../services/avatar_service.dart';
+import '../services/localization_service.dart';
+import 'package:provider/provider.dart';
 
 class AvatarListScreen extends StatefulWidget {
   const AvatarListScreen({super.key});
@@ -36,11 +38,14 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
       });
     } on FirebaseException catch (e) {
       if (mounted) {
+        final loc = context.read<LocalizationService>();
         final msg = e.code == 'failed-precondition'
-            ? 'Firestore-Index fehlt. Führe: firebase deploy --only firestore:indexes'
-            : e.message ?? e.toString();
+            ? loc.t('avatars.errorIndexMissing')
+            : (e.message ?? e.toString());
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler beim Laden der Avatare: $msg')),
+          SnackBar(
+            content: Text(loc.t('avatars.errorLoad', params: {'msg': msg})),
+          ),
         );
       }
       setState(() {
@@ -51,8 +56,13 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
         _isLoading = false;
       });
       if (mounted) {
+        final loc = context.read<LocalizationService>();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler beim Laden der Avatare: $e')),
+          SnackBar(
+            content: Text(
+              loc.t('avatars.errorLoad', params: {'msg': e.toString()}),
+            ),
+          ),
         );
       }
     }
@@ -60,12 +70,13 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = context.watch<LocalizationService>();
     return Scaffold(
       drawer: const AppDrawer(),
       appBar: AppBar(
-        title: const FittedBox(
+        title: FittedBox(
           fit: BoxFit.scaleDown,
-          child: Text('Meine Avatare'),
+          child: Text(loc.t('avatars.title')),
         ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
@@ -74,13 +85,13 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
           IconButton(
             onPressed: _loadAvatars,
             icon: const Icon(Icons.refresh),
-            tooltip: 'Aktualisieren',
+            tooltip: loc.t('avatars.refreshTooltip'),
           ),
           if (!_isLoading && _avatars.isNotEmpty)
             IconButton(
               onPressed: _createNewAvatar,
               icon: const Icon(Icons.add),
-              tooltip: 'Neuen Avatar erstellen',
+              tooltip: loc.t('avatars.createTooltip'),
             ),
         ],
       ),
@@ -102,6 +113,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
   }
 
   Widget _buildEmptyState() {
+    final loc = context.watch<LocalizationService>();
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32.0),
@@ -127,7 +139,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
             ),
             const SizedBox(height: 24),
             Text(
-              'Noch keine Avatare',
+              loc.t('avatars.emptyTitle'),
               style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w600,
@@ -136,7 +148,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Erstelle deinen ersten Avatar und beginne eine besondere Unterhaltung',
+              loc.t('avatars.emptySubtitle'),
               style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
               textAlign: TextAlign.center,
             ),
@@ -144,7 +156,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
             ElevatedButton.icon(
               onPressed: _createNewAvatar,
               icon: const Icon(Icons.add),
-              label: const Text('Ersten Avatar erstellen'),
+              label: Text(loc.t('avatars.emptyCta')),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.accentGreenDark,
                 foregroundColor: Colors.white,
@@ -175,6 +187,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
   }
 
   Widget _buildAvatarCard(model.AvatarData avatar) {
+    final loc = context.watch<LocalizationService>();
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 4,
@@ -260,7 +273,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                       ),
                     const SizedBox(height: 4),
                     Text(
-                      avatar.lastMessage ?? 'Noch keine Nachrichten',
+                      avatar.lastMessage ?? loc.t('avatars.noMessages'),
                       style: TextStyle(
                         fontSize: 14,
                         color: Colors.grey.shade400,
@@ -277,7 +290,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    tooltip: 'Avatar bearbeiten',
+                    tooltip: loc.t('avatars.editTooltip'),
                     icon: const Icon(Icons.edit, size: 18, color: Colors.white),
                     onPressed: () async {
                       await Navigator.pushNamed(
