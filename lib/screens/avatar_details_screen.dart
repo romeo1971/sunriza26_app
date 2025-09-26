@@ -18,7 +18,6 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:video_player/video_player.dart';
 import '../widgets/video_player_widget.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
-import 'dart:typed_data';
 import '../services/elevenlabs_service.dart';
 import 'dart:async';
 import 'package:image/image.dart' as img;

@@ -13,6 +13,12 @@ from openai import OpenAI
 from google.cloud import texttospeech
 import base64, requests, json, tempfile, subprocess, threading
 
+# LiveKit Server SDK
+try:
+    from livekit import api as lk_api  # type: ignore
+except Exception:
+    lk_api = None
+
 # Firebase Admin SDK für Chat-Storage
 try:
     import firebase_admin
@@ -88,6 +94,11 @@ PINECONE_INDEX = os.getenv("PINECONE_INDEX", "avatars-index")
 PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws")
 PINECONE_REGION = os.getenv("PINECONE_REGION", "us-east-1")
 
+# LiveKit
+LIVEKIT_URL = os.getenv("LIVEKIT_URL", "").strip()
+LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "").strip()
+LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "").strip()
+
 # Standard-Modelle (nur ändern, wenn explizit angewiesen)
 GPT_MODEL = os.getenv("GPT_MODEL", "gpt-4o-mini")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
@@ -116,6 +127,55 @@ app = FastAPI(title="Avatar Memory API", version="0.1.0")
 logger = logging.getLogger("uvicorn.error")
 client = OpenAI(api_key=OPENAI_API_KEY, timeout=20, max_retries=0)
 pc = get_pinecone(PINECONE_API_KEY)
+
+class LivekitTokenRequest(BaseModel):
+    user_id: str
+    avatar_id: str
+    room: str | None = None
+    name: str | None = None
+
+class LivekitTokenResponse(BaseModel):
+    url: str
+    token: str
+    room: str
+    identity: str
+
+@app.post("/livekit/token", response_model=LivekitTokenResponse)
+def create_livekit_token(payload: LivekitTokenRequest) -> LivekitTokenResponse:
+    if not (LIVEKIT_URL and LIVEKIT_API_KEY and LIVEKIT_API_SECRET):
+        raise HTTPException(status_code=400, detail="LIVEKIT_URL/API_KEY/API_SECRET fehlen")
+    if lk_api is None:
+        raise HTTPException(status_code=500, detail="LiveKit Server SDK nicht installiert")
+    try:
+        identity = payload.user_id.strip()
+        room = (payload.room or f"user_{payload.user_id.strip()}_avatar_{payload.avatar_id.strip()}")[:128]
+        name = (payload.name or identity)[:64]
+        at = lk_api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        grants = lk_api.VideoGrants(room=room, room_join=True)
+        token = at.with_identity(identity).with_name(name).with_grants(grants).to_jwt()
+        return LivekitTokenResponse(url=LIVEKIT_URL, token=token, room=room, identity=identity)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Token Fehler: {e}")
+
+
+# NEU: ElevenLabs Voices Liste (Proxy)
+@app.get("/avatar/voices")
+def list_elevenlabs_voices() -> Dict[str, Any]:
+    key = os.getenv("ELEVENLABS_API_KEY")
+    if not key:
+        raise HTTPException(status_code=400, detail="ELEVENLABS_API_KEY fehlt")
+    try:
+        r = requests.get(
+            "https://api.elevenlabs.io/v1/voices",
+            headers={"xi-api-key": key, "accept": "application/json"},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()  # enthält { voices: [...] }
+    except requests.HTTPError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=e.response.text)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Voices Fehler: {e}")
 
 
 # Persistenter Debug-Recorder für die letzte Insert-Operation

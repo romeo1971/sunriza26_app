@@ -81,6 +81,9 @@ dependencies:
   extended_image: ^8.2.0
   # extended_image_library: ^4.0.6
 
+  # LiveKit Flutter SDK (Room Join/Leave, Remote Audio/Video)
+  livekit_client: ^2.2.6
+
 dependency_overrides:
 
 dev_dependencies:

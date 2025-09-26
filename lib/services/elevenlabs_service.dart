@@ -89,27 +89,31 @@ class ElevenLabsService {
     }
   }
 
-  /// Holt verfügbare Voices
+  /// Holt verfügbare Voices ausschließlich über Backend-Proxy (/avatar/voices)
+  /// – kein direkter ElevenLabs-Aufruf im Client.
   static Future<List<Map<String, dynamic>>?> getVoices() async {
-    if (_apiKey == null) return null;
-
     try {
-      final response = await http.get(
-        Uri.parse('$_baseUrl/voices'),
-        headers: {'xi-api-key': _apiKey!, 'accept': 'application/json'},
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return List<Map<String, dynamic>>.from(data['voices']);
-      } else {
-        print(
-          '❌ ElevenLabs Voices HTTP ${response.statusCode}: ${response.body}',
-        );
+      final base = (dotenv.env['MEMORY_API_BASE_URL'] ?? '').trim();
+      if (base.isEmpty) {
+        print('❌ Backend URL fehlt: MEMORY_API_BASE_URL');
+        return null;
       }
-      return null;
+      final r = await http.get(
+        Uri.parse('$base/avatar/voices'),
+        headers: {'accept': 'application/json'},
+      );
+      if (r.statusCode >= 200 && r.statusCode < 300) {
+        final data = jsonDecode(r.body);
+        final list = (data is Map && data['voices'] is List)
+            ? List<Map<String, dynamic>>.from(data['voices'])
+            : <Map<String, dynamic>>[];
+        return list;
+      } else {
+        print('❌ Backend Voices HTTP ${r.statusCode}: ${r.body}');
+        return null;
+      }
     } catch (e) {
-      print('❌ ElevenLabs Voices Fehler: $e');
+      print('❌ Backend Voices Fehler: $e');
       return null;
     }
   }

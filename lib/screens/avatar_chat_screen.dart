@@ -19,6 +19,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:provider/provider.dart';
 import '../services/localization_service.dart';
+import '../services/livekit_service.dart';
+import 'package:livekit_client/livekit_client.dart' as lk;
 
 class AvatarChatScreen extends StatefulWidget {
   const AvatarChatScreen({super.key});
@@ -34,6 +36,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   bool _isRecording = false;
   bool _isTyping = false;
   bool _isSpeaking = false;
+  bool _isMuted =
+      false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
   StreamSubscription<PlayerState>? _playerStateSub;
   String? _partnerName;
   // entfernt – nicht mehr benötigt
@@ -85,6 +89,32 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     } catch (e) {
       print('❌ BitHuman Initialisierung fehlgeschlagen: $e');
     }
+  }
+
+  Future<void> _maybeJoinLiveKit() async {
+    try {
+      if ((dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() != '1') return;
+      final base = EnvService.memoryApiBaseUrl();
+      if (base.isEmpty) return;
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null || _avatarData == null) return;
+      final uri = Uri.parse('$base/livekit/token');
+      final res = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'user_id': user.uid,
+          'avatar_id': _avatarData!.id,
+          'name': user.displayName,
+        }),
+      );
+      if (res.statusCode < 200 || res.statusCode >= 300) return;
+      final data = jsonDecode(res.body) as Map<String, dynamic>;
+      final token = (data['token'] as String?)?.trim();
+      final room = (data['room'] as String?)?.trim() ?? 'sunriza';
+      if (token == null || token.isEmpty) return;
+      await LiveKitService().join(room: room, token: token);
+    } catch (_) {}
   }
 
   Future<File?> _downloadToTemp(String url, {String? suffix}) async {
@@ -201,6 +231,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           _avatarData = args;
         });
         _loadPartnerName().then((_) async {
+          await _maybeJoinLiveKit();
           // Prewarm Chat/CF Endpunkte für schnellere erste Antwort
           unawaited(_prewarmChatEndpoints());
           await _loadHistory();
@@ -294,7 +325,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               ),
             ),
           ),
-          // Settings-Icon entfernt
+          // Mute/Unmute (Feature‑Flag)
+          if ((dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() == '1')
+            IconButton(
+              tooltip: _isMuted ? 'Unmute' : 'Mute',
+              onPressed: () async {
+                setState(() => _isMuted = !_isMuted);
+                try {
+                  await _player.setVolume(_isMuted ? 0.0 : 1.0);
+                } catch (_) {}
+              },
+              icon: Icon(
+                _isMuted ? Icons.volume_off : Icons.volume_up,
+                color: Colors.white,
+              ),
+            ),
         ],
       ),
     );
@@ -308,7 +353,27 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       decoration: null,
       child: Stack(
         children: [
-          // Video-Overlay (zeigt sobald Player bereit ist, unabhängig vom Audio)
+          // LiveKit Remote-Video (Feature‑Flag)
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: true,
+              child: AnimatedBuilder(
+                animation: LiveKitService().remoteVideo,
+                builder: (context, _) {
+                  final enabled =
+                      (dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() == '1';
+                  final track = LiveKitService().remoteVideo.value;
+                  if (!enabled || track == null) return const SizedBox.shrink();
+                  return lk.VideoTrackRenderer(
+                    track,
+                    fit: lk.VideoViewFit.cover,
+                  );
+                },
+              ),
+            ),
+          ),
+
+          // Video-Overlay (lokales MP4 vom BitHuman-Flow)
           Positioned.fill(
             child: IgnorePointer(
               child: AnimatedOpacity(
@@ -1765,7 +1830,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     final variants = [
       'Ach wie nett – bist Du es, $first?$roleTail',
       'Hey, bist Du $first?$roleTail',
-      'Klingst nach $first – bist Du’s?$roleTail',
+      'Klingst nach $first – bist Du\'s?$roleTail',
       'Bist Du es, $first?$roleTail',
     ];
     return variants[DateTime.now().millisecondsSinceEpoch % variants.length];
@@ -1955,6 +2020,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     _playerStateSub?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
+    // LiveKit sauber trennen (no-op wenn Feature deaktiviert)
+    unawaited(LiveKitService().leave());
     super.dispose();
   }
 }
