@@ -1,7 +1,72 @@
+@app.post("/avatar/facts/list", response_model=FactListResponse)
+def list_avatar_facts(payload: FactListRequest) -> FactListResponse:
+    if not FIREBASE_AVAILABLE or not db:
+        raise HTTPException(status_code=500, detail="Firestore nicht verfügbar")
+    try:
+        query = db.collection("avatarFactsQueue") \
+            .where("user_id", "==", payload.user_id) \
+            .where("avatar_id", "==", payload.avatar_id) \
+            .where("status", "==", payload.status)
+        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
+        if payload.cursor:
+            query = query.where("created_at", "<", payload.cursor)
+        docs = query.limit(payload.limit + 1).get()
+        items: list[FactItem] = []
+        for idx, doc in enumerate(docs):
+            if idx >= payload.limit:
+                break
+            data = doc.to_dict() or {}
+            items.append(_fact_doc_to_item(data))
+        has_more = len(docs) > payload.limit
+        next_cursor = None
+        if has_more:
+            last_doc = docs[payload.limit - 1]
+            last_data = last_doc.to_dict() or {}
+            next_cursor = int(last_data.get("created_at", 0))
+        return FactListResponse(items=items, has_more=has_more, next_cursor=next_cursor)
+    except Exception as e:
+        logger.exception("Fact-List Fehler")
+        raise HTTPException(status_code=500, detail=f"Fact-List Fehler: {e}")
+
+
+@app.post("/avatar/facts/update", response_model=FactUpdateResponse)
+def update_avatar_fact(payload: FactUpdateRequest) -> FactUpdateResponse:
+    if not FIREBASE_AVAILABLE or not db:
+        raise HTTPException(status_code=500, detail="Firestore nicht verfügbar")
+    try:
+        fact_ref = db.collection("avatarFactsQueue").document(payload.fact_id)
+        snap = fact_ref.get()
+        if not snap.exists:
+            raise HTTPException(status_code=404, detail="Fact nicht gefunden")
+        data = snap.to_dict() or {}
+        if data.get("user_id") != payload.user_id or data.get("avatar_id") != payload.avatar_id:
+            raise HTTPException(status_code=403, detail="Zugriff verweigert")
+        ts = int(time.time() * 1000)
+        history = data.get("history") or []
+        if not isinstance(history, list):
+            history = []
+        history.append({
+            "action": payload.new_status,
+            "at": ts,
+            "by": _anonymize_user_id(payload.user_id),
+            "note": payload.note,
+        })
+        fact_ref.update({
+            "status": payload.new_status,
+            "updated_at": ts,
+            "history": history,
+        })
+        merged = {**data, "status": payload.new_status, "updated_at": ts, "history": history}
+        return FactUpdateResponse(fact=_fact_doc_to_item(merged))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Fact-Update Fehler")
+        raise HTTPException(status_code=500, detail=f"Fact-Update Fehler: {e}")
 import os
 import urllib.parse
-from typing import List, Dict, Any
-import time, uuid
+from typing import List, Dict, Any, Optional
+import time, uuid, hashlib
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 import re
@@ -23,7 +88,7 @@ except Exception:
 try:
     import firebase_admin
     from firebase_admin import credentials, firestore
-    
+
     # Firebase initialisieren (falls noch nicht geschehen)
     if not firebase_admin._apps:
         # Versuche Service Account Key zu finden
@@ -131,6 +196,7 @@ pc = get_pinecone(PINECONE_API_KEY)
 # In‑Memory Latenz‑Histories (Rolling Window)
 _LAT_HIST: dict[str, list[int]] = {}
 _LAT_MAX = 500  # pro Pfad maximal 500 Einträge im Fenster
+_USER_CACHE: dict[str, Dict[str, Any]] = {}
 
 def _record_latency_sample(path: str, dur_ms: int) -> None:
     try:
@@ -286,6 +352,58 @@ def _record_last_insert(data: Dict[str, Any]) -> None:
         pass
 
 
+def _cache_user_snapshot(user_id: str) -> Dict[str, Any]:
+    if not FIREBASE_AVAILABLE or not db:
+        return {}
+    try:
+        if user_id in _USER_CACHE:
+            return _USER_CACHE[user_id] or {}
+        snap = db.collection("users").document(user_id).get()
+        data = snap.to_dict() or {}
+        email = data.get("email") or data.get("profileEmail")
+        display_name = data.get("displayName") or data.get("profileName")
+        info = {
+            "email": email if isinstance(email, str) else None,
+            "display_name": display_name if isinstance(display_name, str) else None,
+        }
+        _USER_CACHE[user_id] = info
+        return info
+    except Exception:
+        return {}
+
+
+def _anonymize_user_id(user_id: str) -> str:
+    try:
+        return hashlib.sha256(user_id.encode("utf-8")).hexdigest()[:16]
+    except Exception:
+        return user_id
+
+
+def _personalize_context_texts(texts: list[str], avatar_name: str | None) -> list[str]:
+    if not avatar_name:
+        return texts
+    tokens = {avatar_name.strip()}
+    tokens.update(part.strip() for part in avatar_name.replace("-", " ").split() if part.strip())
+    tokens = {t for t in tokens if len(t) >= 2}
+    ordered_tokens = sorted(tokens, key=len, reverse=True)
+    out: list[str] = []
+    for original in texts:
+        prefix = ""
+        core = original
+        if original.startswith("- "):
+            prefix = "- "
+            core = original[2:]
+        modified = core
+        for name in ordered_tokens:
+            pattern = re.compile(rf"\b{re.escape(name)}\b", flags=re.IGNORECASE)
+            modified = pattern.sub("Ich", modified)
+        modified = re.sub(r"\bIch hat\b", "Ich habe", modified, flags=re.IGNORECASE)
+        modified = re.sub(r"\bIch ist\b", "Ich bin", modified, flags=re.IGNORECASE)
+        modified = re.sub(r"\bIch war\b", "Ich war", modified, flags=re.IGNORECASE)
+        out.append(prefix + modified)
+    return out
+
+
 # Einfache Namespace-State-Verwaltung für Rolling-Summaries (lokal auf Filesystem)
 def _ns_state_dir() -> Path:
     p = Path(__file__).resolve().parents[1] / "ns_state"
@@ -321,8 +439,9 @@ def _maybe_rolling_summary(index_name: str, namespace: str, new_texts: list[str]
     try:
         if os.getenv("ROLLING_SUMMARY_ENABLED", "1") != "1":
             return
-        every_n = int(os.getenv("ROLLING_SUMMARY_EVERY_N", "10"))
-        window_n = max(1, int(os.getenv("ROLLING_SUMMARY_WINDOW", str(every_n))))
+        every_n = max(1, int(os.getenv("ROLLING_SUMMARY_EVERY_N", "1")))
+        default_window = max(5, every_n)
+        window_n = max(1, int(os.getenv("ROLLING_SUMMARY_WINDOW", str(default_window))))
 
         st = _load_ns_state(namespace)
         recent: list[str] = list(st.get("recent_texts", []))
@@ -359,6 +478,16 @@ def _maybe_rolling_summary(index_name: str, namespace: str, new_texts: list[str]
             _save_ns_state(namespace, st)
             return
 
+        try:
+            delete_by_filter(
+                pc=pc,
+                index_name=index_name,
+                namespace=namespace,
+                flt={"type": {"$eq": "meta_summary"}},
+            )
+        except Exception:
+            pass
+
         # Embedding für Meta-Chunk erzeugen
         emb_vecs, real_dim = _create_embeddings_with_timeout([summary], EMBEDDING_MODEL, timeout_sec=10)
         vec = {
@@ -392,7 +521,7 @@ def _store_chat_message(user_id: str, avatar_id: str, sender: str, content: str)
         chat_id = f"{user_id}_{avatar_id}"
         message_id = f"msg-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
         timestamp = int(time.time() * 1000)
-        
+
         message_data = {
             "message_id": message_id,
             "sender": sender,
@@ -401,10 +530,10 @@ def _store_chat_message(user_id: str, avatar_id: str, sender: str, content: str)
             "avatar_id": avatar_id,
             "user_id": user_id,
         }
-        
+
         # Speichere in Firebase: avatarUserChats/{chat_id}/messages/{message_id}
         db.collection("avatarUserChats").document(chat_id).collection("messages").document(message_id).set(message_data)
-        
+
         # Zusätzlich Chat-Metadata aktualisieren
         chat_metadata = {
             "user_id": user_id,
@@ -414,11 +543,159 @@ def _store_chat_message(user_id: str, avatar_id: str, sender: str, content: str)
             "last_sender": sender,
         }
         db.collection("avatarUserChats").document(chat_id).set(chat_metadata, merge=True)
-        
+
         return message_id
     except Exception as e:
         logger.warning(f"Firebase Chat-Storage Fehler: {e}")
         return f"msg-{int(time.time()*1000)}"
+
+
+def _store_chat_fact(
+    user_id: str,
+    avatar_id: str,
+    source_message_id: str,
+    fact_text: str,
+    confidence: float,
+    scope: str = "user",
+) -> Dict[str, Any] | None:
+    if not FIREBASE_AVAILABLE or not db:
+        return None
+    try:
+        info = _cache_user_snapshot(user_id)
+        chat_id = f"{user_id}_{avatar_id}"
+        fact_id = f"fact-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
+        fact_hash = hashlib.sha256(fact_text.strip().lower().encode("utf-8")).hexdigest()
+
+        try:
+            existing = db.collection("avatarFactsQueue") \
+                .where("avatar_id", "==", avatar_id) \
+                .where("fact_hash", "==", fact_hash) \
+                .limit(1).get()
+            if existing:
+                return None
+        except Exception:
+            pass
+
+        ts = int(time.time()*1000)
+        doc = {
+            "fact_id": fact_id,
+            "user_id": user_id,
+            "avatar_id": avatar_id,
+            "source_chat_id": chat_id,
+            "source_message_id": source_message_id,
+            "fact_text": fact_text.strip(),
+            "confidence": float(confidence),
+            "scope": scope,
+            "created_at": ts,
+            "updated_at": ts,
+            "status": "pending",
+            "last_reviewer": None,
+            "history": [
+                {
+                    "action": "captured",
+                    "at": ts,
+                    "by": _anonymize_user_id(user_id),
+                }
+            ],
+            "author_email": info.get("email"),
+            "author_display_name": info.get("display_name"),
+            "author_hash": _anonymize_user_id(user_id),
+            "fact_hash": fact_hash,
+        }
+        db.collection("avatarFactsQueue").document(fact_id).set(doc)
+        return {
+            "fact_id": fact_id,
+            "fact_text": fact_text.strip(),
+            "confidence": float(confidence),
+            "scope": scope,
+            "source_message_id": source_message_id,
+            "status": "pending",
+        }
+    except Exception as e:
+        logger.warning(f"Chat-Fact Speicherfehler: {e}")
+        return None
+
+
+def _extract_chat_facts(
+    user_id: str,
+    avatar_id: str,
+    source_message_id: str,
+    user_text: str | None,
+    avatar_text: str | None,
+) -> list[dict[str, Any]]:
+    facts: list[dict[str, Any]] = []
+    convo_avatar = (avatar_text or "").strip()
+    convo_user = (user_text or "").strip()
+    if not convo_avatar and not convo_user:
+        return facts
+
+    try:
+        conversation = (
+            "Nutzer: " + (convo_user or "[leer]") + "\nAvatar: " + (convo_avatar or "[leer]")
+        )
+        prompt = (
+            "Extrahiere maximal zwei neue, überprüfbare Fakten über den Avatar aus der folgenden Konversation."
+            " Ein Fakt muss sich direkt auf Daten zum Avatar beziehen (Familie, Beziehungen, Vorlieben, Biografie usw.)."
+            " Ignoriere Smalltalk, Meinungen oder Fragen. Antworte ausschließlich als JSON-Array mit Einträgen der Form"
+            " {\"fact_text\": str, \"confidence\": float zwischen 0 und 1, \"scope\": 'avatar'|'user'|'other'}.")
+        messages = [
+            {
+                "role": "system",
+                "content": "Du bist ein wissensbasierter Extraktor. Konzentriere dich nur auf explizit genannte Fakten über den Avatar.",
+            },
+            {
+                "role": "user",
+                "content": prompt + "\n\nKonversation:\n" + conversation,
+            },
+        ]
+        comp = client.chat.completions.create(
+            model=GPT_MODEL,
+            messages=messages,
+            temperature=0,
+            max_tokens=180,
+        )
+        raw = (comp.choices[0].message.content or "").strip()
+        data = None
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            try:
+                start = raw.find("[")
+                end = raw.rfind("]")
+                if start != -1 and end != -1:
+                    data = json.loads(raw[start : end + 1])
+            except Exception:
+                data = None
+        if not isinstance(data, list):
+            return facts
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            text = str(entry.get("fact_text", "")).strip()
+            if not text:
+                continue
+            conf = entry.get("confidence", 0.6)
+            try:
+                conf = float(conf)
+            except Exception:
+                conf = 0.6
+            conf = max(0.0, min(1.0, conf))
+            scope = str(entry.get("scope", "avatar")).strip().lower() or "avatar"
+            facts.append(
+                {
+                    "fact_text": text,
+                    "confidence": conf,
+                    "scope": scope,
+                    "source_message_id": source_message_id,
+                }
+            )
+        if facts:
+            logger.info(
+                f"CHAT_FACT_EXTRACTED uid='{user_id}' avatar='{avatar_id}' count={len(facts)}"
+            )
+    except Exception as e:
+        logger.warning(f"CHAT_FACT_EXTRACT error: {e}")
+    return facts
 
 
 def _get_chat_history(user_id: str, avatar_id: str, limit: int = 50, before_timestamp: int | None = None) -> tuple[List[Dict[str, Any]], bool]:
@@ -964,6 +1241,7 @@ class ChatResponse(BaseModel):
     used_context: List[Dict[str, Any]]
     tts_audio_b64: str | None = None
     chat_id: str | None = None  # Für Chat-Verlauf-Tracking
+    fact_candidates: List[Dict[str, Any]] | None = None
 
 class ChatMessage(BaseModel):
     message_id: str
@@ -1559,6 +1837,8 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
         t = md.get("text")
         if t:
             context_texts.append(f"- {t}")
+    if context_texts:
+        context_texts = _personalize_context_texts(context_texts, payload.avatar_name)
     context_block = "\n".join(context_texts) if context_texts else ""
 
     # PINECONE KONTEXT IMMER NUTZEN - keine Heuristik mehr
@@ -1570,7 +1850,7 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
     system = GPT_SYSTEM_PROMPT
     if payload.avatar_name:
         system = system + f" Dein Name ist {payload.avatar_name}."
-    # Ohne Kontext: erlaube allgemeines Wissen statt “weiß ich nicht”
+    # Ohne Kontext: erlaube allgemeines Wissen statt "weiß ich nicht"
     if not context_block:
         system = (
             "Du bist der Avatar (Ich-Form, duzen). "
@@ -1633,9 +1913,13 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
         system += f" Antworte stets in der Sprache '{reply_lang}'. Übersetze Inhalte falls nötig."
     user_msg = payload.message
     if context_block:
+        name_hint = (payload.avatar_name or "").strip()
+        name_clause = f" (dein Name: {name_hint})" if name_hint else ""
         user_msg = (
             f"Kontext:\n{context_block}\n\nFrage: {payload.message}\n"
-            "Nutze den obigen Kontext vorrangig. Wenn der Kontext die Antwort nicht eindeutig enthält, beantworte korrekt mit deinem allgemeinen Wissen."
+            "Nutze den obigen Kontext vorrangig. Wenn der Kontext die Antwort nicht eindeutig enthält, beantworte korrekt mit deinem allgemeinen Wissen. "
+            "Alles, was im Kontext in der dritten Person über dich steht, musst du strikt in Ich-Form umschreiben"
+            f"{name_clause}. Erwähne deinen eigenen Namen nicht in der dritten Person."
         )
     # PINECONE KONTEXT IMMER NUTZEN
     # if champion_q:
@@ -1703,24 +1987,59 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
             except Exception:
                 tts_b64 = None
 
-        # Chat-Storage: Speichere User-Message und Avatar-Response
+        fact_candidates: list[Dict[str, Any]] = []
+        chat_id = None
         try:
-            # Speichere User-Message in Firebase
             user_msg_id = _store_chat_message(payload.user_id, payload.avatar_id, "user", payload.message)
-            
-            # Speichere Avatar-Response in Firebase
             avatar_msg_id = _store_chat_message(payload.user_id, payload.avatar_id, "avatar", answer)
-            
-            # Optional: Chat in Pinecone (Default AUS)
+
+            chat_id = f"{payload.user_id}_{payload.avatar_id}"
+
+            if os.getenv("CHAT_FACT_SCANNER", "0") == "1":
+                try:
+                    extracted = _extract_chat_facts(
+                        user_id=payload.user_id,
+                        avatar_id=payload.avatar_id,
+                        source_message_id=avatar_msg_id,
+                        user_text=payload.message,
+                        avatar_text=answer,
+                    )
+                    for fact in extracted:
+                        stored = _store_chat_fact(
+                            user_id=payload.user_id,
+                            avatar_id=payload.avatar_id,
+                            source_message_id=fact.get("source_message_id") or avatar_msg_id,
+                            fact_text=fact.get("fact_text", ""),
+                            confidence=float(fact.get("confidence", 0.6)),
+                            scope=str(fact.get("scope", "avatar")),
+                        )
+                        if stored:
+                            fact_candidates.append(stored)
+                            logger.info(
+                                "CHAT_FACT_FOUND uid='%s' avatar='%s' fact_id='%s' text='%s' conf=%.2f",
+                                payload.user_id,
+                                payload.avatar_id,
+                                stored.get("fact_id"),
+                                stored.get("fact_text"),
+                                stored.get("confidence", 0.0),
+                            )
+                except Exception as _fe:
+                    logger.warning(f"CHAT_FACT_SCANNER Fehler: {_fe}")
+
             if os.getenv("STORE_CHAT_IN_PINECONE", "0") == "1":
                 _store_chat_in_pinecone(payload.user_id, payload.avatar_id, payload.message, answer)
-            
-            chat_id = f"{payload.user_id}_{payload.avatar_id}"
+
         except Exception as e:
             logger.warning(f"Chat-Storage Fehler: {e}")
             chat_id = None
 
-        return ChatResponse(answer=answer, used_context=context_items, tts_audio_b64=tts_b64, chat_id=chat_id)
+        return ChatResponse(
+            answer=answer,
+            used_context=context_items,
+            tts_audio_b64=tts_b64,
+            chat_id=chat_id,
+            fact_candidates=fact_candidates or None,
+        )
     except Exception as e:
         logger.exception("Chat-Fehler")
         raise HTTPException(status_code=500, detail=f"Chat-Fehler: {e}")
@@ -1823,4 +2142,67 @@ def get_avatar_info(payload: AvatarInfoRequest) -> AvatarInfoResponse:
     except Exception as e:
         logger.warning(f"Avatar Info Fehler: {e}")
         return AvatarInfoResponse(avatar_image_url=None)
+
+
+class FactListRequest(BaseModel):
+    user_id: str
+    avatar_id: str
+    status: str = "pending"
+    limit: int = 20
+    cursor: Optional[int] = None
+
+
+class FactHistoryEntry(BaseModel):
+    action: str
+    at: int
+    by: Optional[str] = None
+    note: Optional[str] = None
+
+
+class FactItem(BaseModel):
+    fact_id: str
+    fact_text: str
+    confidence: float
+    scope: str
+    status: str
+    created_at: int
+    updated_at: int
+    author_email: Optional[str] = None
+    author_display_name: Optional[str] = None
+    author_hash: Optional[str] = None
+    history: Optional[List[FactHistoryEntry]] = None
+
+
+class FactListResponse(BaseModel):
+    items: List[FactItem]
+    has_more: bool
+    next_cursor: Optional[int] = None
+
+
+class FactUpdateRequest(BaseModel):
+    user_id: str
+    avatar_id: str
+    fact_id: str
+    new_status: str
+    note: Optional[str] = None
+
+
+class FactUpdateResponse(BaseModel):
+    fact: FactItem
+
+
+def _fact_doc_to_item(doc: Dict[str, Any]) -> FactItem:
+    return FactItem(
+        fact_id=str(doc.get("fact_id")),
+        fact_text=str(doc.get("fact_text", "")),
+        confidence=float(doc.get("confidence", 0.0)),
+        scope=str(doc.get("scope", "avatar")),
+        status=str(doc.get("status", "pending")),
+        created_at=int(doc.get("created_at", 0)),
+        updated_at=int(doc.get("updated_at", doc.get("created_at", 0))),
+        author_email=doc.get("author_email"),
+        author_display_name=doc.get("author_display_name"),
+        author_hash=doc.get("author_hash"),
+        history=[FactHistoryEntry(**entry) for entry in (doc.get("history") or []) if isinstance(entry, dict)],
+    )
 

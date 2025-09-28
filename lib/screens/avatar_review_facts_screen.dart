@@ -1,0 +1,346 @@
+import 'package:flutter/material.dart';
+import 'package:sunriza26/services/fact_review_service.dart';
+
+class AvatarReviewFactsScreen extends StatefulWidget {
+  final String avatarId;
+
+  const AvatarReviewFactsScreen({super.key, required this.avatarId});
+
+  @override
+  State<AvatarReviewFactsScreen> createState() =>
+      _AvatarReviewFactsScreenState();
+}
+
+class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
+  final FactReviewService _service = FactReviewService();
+  final ScrollController _scrollController = ScrollController();
+
+  List<FactItem> _facts = [];
+  bool _isLoading = false;
+  bool _isLoadingMore = false;
+  bool _hasMore = false;
+  int? _cursor;
+  String _statusFilter = 'pending';
+  final Set<String> _processing = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchFacts(reset: true);
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchFacts({bool reset = false}) async {
+    if (_isLoading || _isLoadingMore) return;
+    setState(() {
+      if (reset) {
+        _isLoading = true;
+      } else {
+        _isLoadingMore = true;
+      }
+    });
+    try {
+      final response = await _service.fetchFacts(
+        widget.avatarId,
+        status: _statusFilter,
+        cursor: reset ? null : _cursor,
+      );
+      setState(() {
+        if (reset) {
+          _facts = response.items;
+        } else {
+          _facts.addAll(response.items);
+        }
+        _hasMore = response.hasMore;
+        _cursor = response.nextCursor;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Fakten konnten nicht geladen werden: $e')),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+        _isLoadingMore = false;
+      });
+    }
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+            _scrollController.position.maxScrollExtent - 200 &&
+        _hasMore &&
+        !_isLoadingMore) {
+      _fetchFacts();
+    }
+  }
+
+  Future<void> _changeStatus(FactItem item, String status) async {
+    if (_processing.contains(item.factId)) return;
+    setState(() {
+      _processing.add(item.factId);
+    });
+
+    try {
+      final updated = await _service.updateFact(
+        widget.avatarId,
+        factId: item.factId,
+        newStatus: status,
+      );
+      setState(() {
+        _processing.remove(item.factId);
+        _facts = _facts
+            .map((f) => f.factId == updated.factId ? updated : f)
+            .toList();
+        if (_statusFilter != updated.status) {
+          _facts.removeWhere((f) => f.factId == updated.factId);
+        }
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Fakt ${status == 'approved' ? 'freigegeben' : 'abgelehnt'}',
+          ),
+        ),
+      );
+    } catch (e) {
+      setState(() {
+        _processing.remove(item.factId);
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Aktualisierung fehlgeschlagen: $e')),
+      );
+    }
+  }
+
+  Future<void> _onFilterChanged(String status) async {
+    setState(() {
+      _statusFilter = status;
+      _cursor = null;
+      _facts = [];
+      _hasMore = false;
+    });
+    await _fetchFacts(reset: true);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Faktenfreigabe'),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+      ),
+      body: Column(
+        children: [
+          _buildFilterBar(),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () => _fetchFacts(reset: true),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _facts.isEmpty
+                  ? ListView(
+                      children: const [
+                        SizedBox(height: 120),
+                        Center(child: Text('Keine Fakten gefunden.')),
+                      ],
+                    )
+                  : ListView.builder(
+                      controller: _scrollController,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      itemCount: _facts.length + (_isLoadingMore ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index >= _facts.length) {
+                          return const Padding(
+                            padding: EdgeInsets.all(16.0),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        final fact = _facts[index];
+                        final processing = _processing.contains(fact.factId);
+                        return Card(
+                          margin: const EdgeInsets.only(bottom: 12),
+                          color: const Color(0xFF111111),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  fact.factText,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Wrap(
+                                  spacing: 12,
+                                  runSpacing: 6,
+                                  children: [
+                                    _buildChip(
+                                      'Confidence: ${(fact.confidence * 100).toStringAsFixed(0)}%',
+                                    ),
+                                    _buildChip('Scope: ${fact.scope}'),
+                                    _buildChip('Status: ${fact.status}'),
+                                  ],
+                                ),
+                                const SizedBox(height: 8),
+                                if (fact.authorDisplayName != null ||
+                                    fact.authorEmail != null)
+                                  Text(
+                                    'Quelle: ${fact.authorDisplayName ?? ''} ${fact.authorEmail ?? ''}'
+                                        .trim(),
+                                    style: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                if (fact.history.isNotEmpty) ...[
+                                  const SizedBox(height: 12),
+                                  const Text(
+                                    'Historie',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: fact.history
+                                        .map(
+                                          (h) => Text(
+                                            '${DateTime.fromMillisecondsSinceEpoch(h.at).toLocal()} - ${h.action}${h.note != null ? ' (${h.note})' : ''}',
+                                            style: TextStyle(
+                                              color: Colors.grey.shade500,
+                                              fontSize: 11,
+                                            ),
+                                          ),
+                                        )
+                                        .toList(),
+                                  ),
+                                ],
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        onPressed: processing
+                                            ? null
+                                            : () => _changeStatus(
+                                                fact,
+                                                'approved',
+                                              ),
+                                        icon: processing
+                                            ? const SizedBox(
+                                                width: 14,
+                                                height: 14,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 1.5,
+                                                    ),
+                                              )
+                                            : const Icon(Icons.check),
+                                        label: const Text('Freigeben'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              Colors.green.shade600,
+                                          foregroundColor: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: ElevatedButton.icon(
+                                        onPressed: processing
+                                            ? null
+                                            : () => _changeStatus(
+                                                fact,
+                                                'rejected',
+                                              ),
+                                        icon: const Icon(Icons.close),
+                                        label: const Text('Ablehnen'),
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.red.shade600,
+                                          foregroundColor: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          const Text('Status:', style: TextStyle(color: Colors.white70)),
+          const SizedBox(width: 12),
+          DropdownButton<String>(
+            value: _statusFilter,
+            dropdownColor: const Color(0xFF1C1C1E),
+            underline: const SizedBox.shrink(),
+            style: const TextStyle(color: Colors.white),
+            items: const [
+              DropdownMenuItem(value: 'pending', child: Text('Pending')),
+              DropdownMenuItem(value: 'approved', child: Text('Approved')),
+              DropdownMenuItem(value: 'rejected', child: Text('Rejected')),
+            ],
+            onChanged: (value) {
+              if (value == null || value == _statusFilter) return;
+              _onFilterChanged(value);
+            },
+          ),
+          const Spacer(),
+          IconButton(
+            tooltip: 'Aktualisieren',
+            icon: const Icon(Icons.refresh, color: Colors.white70),
+            onPressed: () => _fetchFacts(reset: true),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildChip(String text) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0x22FFFFFF),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(color: Colors.white70, fontSize: 12),
+      ),
+    );
+  }
+}

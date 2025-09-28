@@ -5,6 +5,8 @@ import '../models/avatar_data.dart' as model;
 import '../widgets/app_drawer.dart';
 import '../services/avatar_service.dart';
 import '../services/localization_service.dart';
+// import '../services/fact_review_service.dart';
+import 'avatar_review_facts_screen.dart';
 import 'package:provider/provider.dart';
 
 class AvatarListScreen extends StatefulWidget {
@@ -289,6 +291,23 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  IconButton(
+                    tooltip: 'Fakten prüfen',
+                    icon: const Icon(
+                      Icons.fact_check,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              AvatarReviewFactsScreen(avatarId: avatar.id),
+                        ),
+                      );
+                    },
+                  ),
                   IconButton(
                     tooltip: loc.t('avatars.editTooltip'),
                     icon: const Icon(Icons.edit, size: 18, color: Colors.white),

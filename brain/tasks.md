@@ -12,6 +12,9 @@ Stand: 26.09.2025
  - [~] Firebase-Chat-Speicherung im chatAgent entfällt – Speicherung erfolgt zentral im Backend `/avatar/chat`
 - [ ] Baue MCP-Pinecone-Tools Phase B (direktes SDK, Parität zu Backend)
 - [~] Pinecone-Assistant Evaluierung entfällt – Entscheidung: wir bleiben bei Tools (kein Assistant)
+- [x] Rolling-Summary nach jedem Avatar-Text-Eintrag validieren und ggf. neu generieren
+- [x] Chat-Fakten-Scanner mit Review-Queue (Fakten aus Konversationen erkennen, Dubletten prüfen)
+- [ ] Review-UI für Avatar-Besitzer (Faktenfreigabe inkl. User-/E-Mail-Historie)
 
 ## Nächster Schritt
 - Strikter MCP‑Pfad: Chat über Backend `/avatar/chat` via Agent‑Tool; keine App‑Flow‑Änderungen.
