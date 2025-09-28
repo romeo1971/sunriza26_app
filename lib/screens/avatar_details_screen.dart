@@ -26,6 +26,7 @@ import 'package:path_provider/path_provider.dart';
 import '../services/env_service.dart';
 import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter/painting.dart';
 
 class _NamedItem {
   final String name;
@@ -113,6 +114,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       return true;
     }
   }
+
+  final Set<String> _refreshingImages = {};
 
   Widget _buildChunkingControls() {
     // Empfehlungen: target 800–1200, overlap 50–150, minChunk ca. 60–80% target
@@ -1054,6 +1057,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                         ? Image.network(
                                             _profileImageUrl!,
                                             fit: BoxFit.cover,
+                                            key: ValueKey(_profileImageUrl!),
+                                            errorBuilder:
+                                                (context, error, stack) {
+                                                  _handleImageError(
+                                                    _profileImageUrl!,
+                                                  );
+                                                  return Container(
+                                                    color: Colors.black26,
+                                                    alignment: Alignment.center,
+                                                    child: const Icon(
+                                                      Icons.image_not_supported,
+                                                      color: Colors.white54,
+                                                      size: 48,
+                                                    ),
+                                                  );
+                                                },
                                           )
                                         : Container(
                                             color: Colors.white12,
@@ -2759,7 +2778,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: Image.network(url, fit: BoxFit.cover),
+              child: Image.network(
+                url,
+                fit: BoxFit.cover,
+                key: ValueKey(url),
+                errorBuilder: (context, error, stack) {
+                  _handleImageError(url);
+                  return Container(
+                    color: Colors.black26,
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.image_not_supported,
+                      color: Colors.white54,
+                    ),
+                  );
+                },
+              ),
             ),
             if (isCrown)
               const Positioned(
@@ -4958,8 +4992,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         '${dir.path}/reCrop_${DateTime.now().millisecondsSinceEpoch}.png',
       ).create(recursive: true);
       await cached.writeAsBytes(bytes, flush: true);
-      final customPath = FirebaseStorageService.pathFromUrl(url);
-      if (customPath.isEmpty) {
+      if (mounted) setState(() => _profileLocalPath = cached.path);
+
+      final originalPath = FirebaseStorageService.pathFromUrl(url);
+      if (originalPath.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Speicherpfad konnte nicht ermittelt werden.'),
@@ -4967,18 +5003,46 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         );
         return;
       }
+      final baseDir = p.dirname(originalPath);
+      final ext = p.extension(originalPath).isNotEmpty
+          ? p.extension(originalPath)
+          : '.jpg';
+      final newPath =
+          '$baseDir/recrop_${DateTime.now().millisecondsSinceEpoch}$ext';
+
       final upload = await FirebaseStorageService.uploadImage(
         cached,
-        customPath: customPath,
+        customPath: newPath,
       );
       if (upload != null && mounted) {
+        String newUrl;
+        try {
+          newUrl = await FirebaseStorage.instance
+              .ref()
+              .child(newPath)
+              .getDownloadURL();
+        } catch (_) {
+          newUrl = upload;
+        }
+
+        PaintingBinding.instance.imageCache
+          ..evict(NetworkImage(url))
+          ..evict(NetworkImage(newUrl));
+
         setState(() {
           final index = _imageUrls.indexOf(url);
           if (index != -1) {
-            _imageUrls[index] = upload;
-            if (_profileImageUrl == url) _profileImageUrl = upload;
+            _imageUrls[index] = newUrl;
           }
+          if (_profileImageUrl == url) _profileImageUrl = newUrl;
+          if (_profileLocalPath == cached.path) _profileLocalPath = null;
         });
+
+        await _persistTextFileUrls();
+
+        try {
+          await FirebaseStorageService.deleteFile(url);
+        } catch (_) {}
         try {
           await cached.delete();
         } catch (_) {}
@@ -4987,6 +5051,27 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Zuschneiden fehlgeschlagen: $e')));
+    }
+  }
+
+  Future<void> _handleImageError(String url) async {
+    if (_refreshingImages.contains(url)) return;
+    _refreshingImages.add(url);
+    try {
+      final fresh = await _refreshDownloadUrl(url);
+      if (fresh != null && fresh.isNotEmpty && fresh != url && mounted) {
+        setState(() {
+          final idx = _imageUrls.indexOf(url);
+          if (idx != -1) {
+            _imageUrls[idx] = fresh;
+          }
+          if (_profileImageUrl == url) _profileImageUrl = fresh;
+        });
+        await _persistTextFileUrls();
+      }
+    } catch (_) {
+    } finally {
+      _refreshingImages.remove(url);
     }
   }
 }
