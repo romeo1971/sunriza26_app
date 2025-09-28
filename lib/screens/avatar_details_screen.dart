@@ -689,7 +689,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
   }
 
-  // Autogenerieren entfernt – Nutzer klickt bewusst „Avatar generieren“ nach Hero-Image‑Wechsel
+  // Autogenerieren entfernt – Nutzer klickt bewusst „Avatar generieren" nach Hero-Image‑Wechsel
 
   Widget _buildVoiceSelect() {
     if (_voicesLoading) {
@@ -2807,6 +2807,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 ),
               ),
             ),
+            Positioned(
+              left: 6,
+              bottom: 6,
+              child: InkWell(
+                onTap: () => _reopenCrop(url),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0x30000000),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0x66FFFFFF)),
+                  ),
+                  child: const Icon(Icons.crop, color: Colors.white, size: 16),
+                ),
+              ),
+            ),
           ],
         ),
       ),
@@ -3367,38 +3383,82 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () {
-                          cropController.crop();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.transparent,
-                          shadowColor: Colors.transparent,
-                          padding: EdgeInsets.zero,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Ink(
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFE91E63), AppColors.lightBlue],
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 14),
-                            child: Center(
-                              child: Text(
-                                'Zuschneiden',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                result = null;
+                                Navigator.pop(ctx);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade800,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: Text(
+                                      'Abbrechen',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
                           ),
-                        ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                cropController.crop();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFFE91E63),
+                                      AppColors.lightBlue,
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: Text(
+                                      'Zuschneiden',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -4874,6 +4934,60 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _deathDateController.dispose();
     _inlineVideoController?.dispose();
     super.dispose();
+  }
+
+  Future<void> _reopenCrop(String url, [String? tempPath]) async {
+    try {
+      File? source;
+      if (tempPath != null && tempPath.isNotEmpty) {
+        final f = File(tempPath);
+        if (await f.exists()) source = f;
+      }
+      source ??= await _downloadToTemp(url, suffix: '.png');
+      if (source == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bild konnte nicht geladen werden.')),
+        );
+        return;
+      }
+      final newCrop = await _cropToPortrait916(source);
+      if (newCrop == null) return;
+      final bytes = await newCrop.readAsBytes();
+      final dir = await getTemporaryDirectory();
+      final cached = await File(
+        '${dir.path}/reCrop_${DateTime.now().millisecondsSinceEpoch}.png',
+      ).create(recursive: true);
+      await cached.writeAsBytes(bytes, flush: true);
+      final customPath = FirebaseStorageService.pathFromUrl(url);
+      if (customPath.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Speicherpfad konnte nicht ermittelt werden.'),
+          ),
+        );
+        return;
+      }
+      final upload = await FirebaseStorageService.uploadImage(
+        cached,
+        customPath: customPath,
+      );
+      if (upload != null && mounted) {
+        setState(() {
+          final index = _imageUrls.indexOf(url);
+          if (index != -1) {
+            _imageUrls[index] = upload;
+            if (_profileImageUrl == url) _profileImageUrl = upload;
+          }
+        });
+        try {
+          await cached.delete();
+        } catch (_) {}
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Zuschneiden fehlgeschlagen: $e')));
+    }
   }
 }
 

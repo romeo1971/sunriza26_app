@@ -36,6 +36,15 @@ class FirebaseStorageService {
     }
   }
 
+  static String pathFromUrl(String url) {
+    try {
+      final ref = _storage.refFromURL(url);
+      return ref.fullPath;
+    } catch (_) {
+      return '';
+    }
+  }
+
   /// Upload ein Video zu Firebase Storage
   static Future<String?> uploadVideo(
     File videoFile, {
