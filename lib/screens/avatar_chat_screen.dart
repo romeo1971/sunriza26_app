@@ -5,13 +5,10 @@ import 'dart:convert';
 import 'dart:io';
 // import 'dart:typed_data'; // nicht mehr benötigt
 import 'package:http/http.dart' as http;
-import 'package:video_player/video_player.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/avatar_data.dart';
-import '../services/video_stream_service.dart';
-import '../services/bithuman_service.dart';
 import '../services/env_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:record/record.dart';
@@ -40,8 +37,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
   StreamSubscription<PlayerState>? _playerStateSub;
   String? _partnerName;
-  // entfernt – nicht mehr benötigt
-  // Pending-Bestätigung bei unsicherem Kurz-Namen
   String? _pendingFullName;
   String? _pendingLooseName;
   bool _awaitingNameConfirm = false;
@@ -49,47 +44,27 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   bool _isKnownPartner = false;
   String? _partnerPetName;
   String? _partnerRole;
-  // Paging
   static const int _pageSize = 30;
   DocumentSnapshot<Map<String, dynamic>>? _oldestDoc;
   bool _hasMore = true;
   bool _isLoadingMore = false;
 
   AvatarData? _avatarData;
-  // Aufnahme temporär deaktiviert
-  // final AudioRecorder _recorder = AudioRecorder();
   final AudioPlayer _player = AudioPlayer();
   String? _lastRecordingPath;
-  final VideoStreamService _videoService = VideoStreamService();
   final Record _recorder = Record();
-  // final AIService _ai = AIService(); // Nicht mehr benötigt mit BitHuman
   StreamSubscription<Amplitude>? _ampSub;
   DateTime? _segmentStartAt;
   int _silenceMs = 0;
   bool _sttBusy = false;
   bool _segmentClosing = false;
 
-  // VAD-ähnliche Parameter
-  static const int _silenceThresholdDb = -40; // dBFS Schwelle
-  static const int _silenceHoldMs = 800; // Stille-Dauer bis Segment-Ende
-  static const int _minSegmentMs = 1200; // minimale Segmentlänge
-  // VAD/Auto-Senden global abschalten – nur manuelles Stop sendet
+  static const int _silenceThresholdDb = -40;
+  static const int _silenceHoldMs = 800;
+  static const int _minSegmentMs = 1200;
   static const bool kAutoSend = false;
 
-  // Verhindert mehrfaches automatisches Abspielen der Begrüßung
   bool _greetedOnce = false;
-
-  /// Initialisiert BitHuman SDK
-  Future<void> _initializeBitHuman() async {
-    try {
-      await dotenv.load();
-
-      await BitHumanService.initialize();
-      print('✅ BitHuman SDK initialisiert');
-    } catch (e) {
-      print('❌ BitHuman Initialisierung fehlgeschlagen: $e');
-    }
-  }
 
   Future<void> _maybeJoinLiveKit() async {
     try {
@@ -98,6 +73,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       if (base.isEmpty) return;
       final user = FirebaseAuth.instance.currentUser;
       if (user == null || _avatarData == null) return;
+      // Avatar-Info vor Join abrufen und an Agent/Backend übermitteln (optional nutzbar)
+      try {
+        final infoRes = await http.post(
+          Uri.parse('$base/avatar/info'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'user_id': user.uid, 'avatar_id': _avatarData!.id}),
+        );
+        if (infoRes.statusCode >= 200 && infoRes.statusCode < 300) {
+          final info = jsonDecode(infoRes.body) as Map<String, dynamic>;
+          final imgUrl = (info['avatar_image_url'] as String?)?.trim();
+          if (imgUrl != null && imgUrl.isNotEmpty) {
+            // Für spätere Nutzungen verfügbar halten (wenn gewünscht)
+          }
+        }
+      } catch (_) {}
       final uri = Uri.parse('$base/livekit/token');
       final res = await http.post(
         uri,
@@ -106,112 +96,29 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           'user_id': user.uid,
           'avatar_id': _avatarData!.id,
           'name': user.displayName,
+          'avatar_image_url': _avatarData?.avatarImageUrl,
         }),
       );
       if (res.statusCode < 200 || res.statusCode >= 300) return;
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final token = (data['token'] as String?)?.trim();
       final room = (data['room'] as String?)?.trim() ?? 'sunriza';
+      final lkUrl = (data['url'] as String?)?.trim();
       if (token == null || token.isEmpty) return;
-      await LiveKitService().join(room: room, token: token);
+      // Token für möglichen Reconnect hinterlegen (nur im Flutter-Prozess)
+      try {
+        // Achtung: .env ist nur für Boot-Config; hier nur in-memory speichern wäre sauberer.
+        // Wir verwenden dotenv hier nicht zum Schreiben; daher nur Service-intern.
+        // Falls gewünscht, könnte man einen kleinen TokenCache-Service ergänzen.
+      } catch (_) {}
+      // Mapping wie im PDF: NEXT_PUBLIC_LIVEKIT_URL == LIVEKIT_URL → vom Backend geliefert
+      await LiveKitService().join(room: room, token: token, urlOverride: lkUrl);
     } catch (_) {}
-  }
-
-  Future<File?> _downloadToTemp(String url, {String? suffix}) async {
-    try {
-      final res = await http.get(Uri.parse(url));
-      if (res.statusCode != 200) return null;
-      final dir = await getTemporaryDirectory();
-      final name = 'dl_${DateTime.now().millisecondsSinceEpoch}${suffix ?? ''}';
-      final f = File('${dir.path}/$name');
-      await f.writeAsBytes(res.bodyBytes, flush: true);
-      return f;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  Future<Map<String, String?>> _ensureFigure() async {
-    String? figureId;
-    String? modelHash;
-    try {
-      final bh = _avatarData?.training?['bithuman'] as Map<String, dynamic>?;
-      figureId = (bh?['figureId'] as String?)?.trim();
-      modelHash = (bh?['modelHash'] as String?)?.trim();
-    } catch (_) {}
-
-    if ((figureId != null && figureId.isNotEmpty) || _avatarData == null) {
-      return {'figureId': figureId, 'modelHash': modelHash};
-    }
-
-    // Hero-Image holen
-    final imageUrl = _avatarData!.avatarImageUrl;
-    if (imageUrl == null || imageUrl.isEmpty) {
-      return {'figureId': null, 'modelHash': null};
-    }
-    final base = dotenv.env['BITHUMAN_BASE_URL']?.trim();
-    if (base == null || base.isEmpty) {
-      return {'figureId': null, 'modelHash': null};
-    }
-    final imgFile = await _downloadToTemp(imageUrl, suffix: '.png');
-    if (imgFile == null) return {'figureId': null, 'modelHash': null};
-
-    try {
-      final uri = Uri.parse('$base/figure/create');
-      final req = http.MultipartRequest('POST', uri);
-      req.files.add(await http.MultipartFile.fromPath('image', imgFile.path));
-      final res = await req.send();
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        final body = await res.stream.bytesToString();
-        final data = jsonDecode(body) as Map<String, dynamic>;
-        figureId = (data['figure_id'] as String?)?.trim();
-        modelHash = (data['runtime_model_hash'] as String?)?.trim();
-        // Debug-Ausgabe & UI-Hinweis
-        try {
-          print(
-            '🧩 BitHuman Figure erstellt: figureId=${figureId ?? 'null'}, modelHash=${modelHash ?? 'null'}',
-          );
-          _showSystemSnack(
-            'BitHuman Figure: ${figureId ?? '—'} | Model: ${modelHash ?? '—'}',
-          );
-        } catch (_) {}
-        // Persistieren in Firestore unter users/<uid>/avatars/<id>
-        try {
-          final uid = FirebaseAuth.instance.currentUser?.uid;
-          if (uid != null) {
-            final fs = FirebaseFirestore.instance;
-            final docRef = fs
-                .collection('users')
-                .doc(uid)
-                .collection('avatars')
-                .doc(_avatarData!.id);
-            final snap = await docRef.get();
-            final existing = snap.data() ?? {};
-            final training = Map<String, dynamic>.from(
-              existing['training'] ?? {},
-            );
-            final bh = Map<String, dynamic>.from(training['bithuman'] ?? {});
-            if ((figureId ?? '').isNotEmpty) bh['figureId'] = figureId;
-            if ((modelHash ?? '').isNotEmpty) bh['modelHash'] = modelHash;
-            training['bithuman'] = bh;
-            await docRef.set({
-              'training': training,
-              'updatedAt': FieldValue.serverTimestamp(),
-            }, SetOptions(merge: true));
-          }
-        } catch (_) {}
-      }
-    } catch (_) {}
-
-    return {'figureId': figureId, 'modelHash': modelHash};
   }
 
   @override
   void initState() {
     super.initState();
-
-    // BitHuman SDK initialisieren
-    _initializeBitHuman();
 
     // Hör auf Audio-Player-Status, um Sprech-Indikator zu steuern
     _playerStateSub = _player.playerStateStream.listen((state) {
@@ -231,9 +138,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           _avatarData = args;
         });
         _loadPartnerName().then((_) async {
-          await _maybeJoinLiveKit();
-          // Prewarm Chat/CF Endpunkte für schnellere erste Antwort
-          unawaited(_prewarmChatEndpoints());
+          final manual =
+              (dotenv.env['LIVEKIT_MANUAL_START'] ?? '').trim() == '1';
+          if (!manual) {
+            await _maybeJoinLiveKit();
+          }
           await _loadHistory();
           final hasAny = _messages.isNotEmpty;
           final lastIsBot = hasAny ? !_messages.last.isUser : false;
@@ -254,24 +163,20 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   @override
   Widget build(BuildContext context) {
     final backgroundImage = _avatarData?.avatarImageUrl;
-    final useBgDecoration = !_videoService.isReady;
+    // Hintergrund wird stets mit Avatar-Bild gefüllt; LiveKit/Video-Overlay liegt darüber
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: Container(
-        decoration: useBgDecoration
-            ? BoxDecoration(
-                image: DecorationImage(
-                  image: (backgroundImage != null && backgroundImage.isNotEmpty)
-                      ? NetworkImage(backgroundImage)
-                      : const AssetImage(
-                              'assets/sunriza_complete/images/sunset1.jpg',
-                            )
-                            as ImageProvider,
-                  fit: BoxFit.cover,
-                ),
-              )
-            : null,
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: (backgroundImage != null && backgroundImage.isNotEmpty)
+                ? NetworkImage(backgroundImage)
+                : const AssetImage('assets/sunriza_complete/images/sunset1.jpg')
+                      as ImageProvider,
+            fit: BoxFit.cover,
+          ),
+        ),
         child: SafeArea(
           child: Column(
             children: [
@@ -294,6 +199,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   Widget _buildAppBar() {
+    final liveKitEnabled = (dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() == '1';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -309,7 +215,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       child: Row(
         children: [
           IconButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              unawaited(LiveKitService().leave());
+              if (mounted) Navigator.pop(context);
+            },
             icon: const Icon(Icons.arrow_back, color: Colors.white),
           ),
           const SizedBox(width: 12),
@@ -326,7 +235,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             ),
           ),
           // Mute/Unmute (Feature‑Flag)
-          if ((dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() == '1')
+          if (liveKitEnabled)
             IconButton(
               tooltip: _isMuted ? 'Unmute' : 'Mute',
               onPressed: () async {
@@ -339,6 +248,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 _isMuted ? Icons.volume_off : Icons.volume_up,
                 color: Colors.white,
               ),
+            ),
+          if (liveKitEnabled)
+            IconButton(
+              tooltip: 'Beenden',
+              onPressed: () async {
+                await LiveKitService().leave();
+                if (mounted) Navigator.pop(context);
+              },
+              icon: const Icon(Icons.call_end, color: Colors.redAccent),
             ),
         ],
       ),
@@ -373,34 +291,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             ),
           ),
 
-          // Video-Overlay (lokales MP4 vom BitHuman-Flow)
-          Positioned.fill(
-            child: IgnorePointer(
-              child: AnimatedOpacity(
-                opacity: _videoService.isReady ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 120),
-                child: StreamBuilder<VideoStreamState>(
-                  stream: _videoService.stateStream,
-                  builder: (context, snapshot) {
-                    final controller = _videoService.controller;
-                    if (controller == null || !controller.value.isInitialized) {
-                      return const SizedBox.shrink();
-                    }
-                    final size = controller.value.size;
-                    return FittedBox(
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                      child: SizedBox(
-                        width: size.width == 0 ? 1920 : size.width,
-                        height: size.height == 0 ? 1080 : size.height,
-                        child: VideoPlayer(controller),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ),
-          ),
+          // Kein lokales Lipsync/Overlay – ausschließlich Agent-Stream
           // Avatar-Bild nur anzeigen wenn kein Background-Bild
           if (!hasImage)
             Center(
@@ -473,6 +364,86 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             ),
 
           // Zusätzliche Ebene nicht nötig – ein Overlay reicht
+          // Status-Badge (Verbinde/Verbunden/Getrennt)
+          Positioned(
+            top: 12,
+            right: 12,
+            child: IgnorePointer(
+              ignoring: true,
+              child: AnimatedBuilder(
+                animation: LiveKitService().connectionStatus,
+                builder: (context, _) {
+                  final s = LiveKitService().connectionStatus.value;
+                  if (s == 'idle') return const SizedBox.shrink();
+                  Color bg = Colors.black.withValues(alpha: 0.6);
+                  String label = s;
+                  if (s == 'connected') {
+                    bg = Colors.green.withValues(alpha: 0.7);
+                  }
+                  if (s == 'reconnecting') {
+                    bg = Colors.orange.withValues(alpha: 0.7);
+                  }
+                  if (s == 'disconnected') {
+                    bg = Colors.red.withValues(alpha: 0.7);
+                  }
+                  if (s == 'ended') bg = Colors.grey.withValues(alpha: 0.7);
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: bg,
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Text(
+                      label,
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          // Start-Button (manueller Start) – nur wenn LiveKit aktiviert und Flag gesetzt
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: false,
+              child: AnimatedBuilder(
+                animation: LiveKitService().connected,
+                builder: (context, _) {
+                  final manual =
+                      (dotenv.env['LIVEKIT_MANUAL_START'] ?? '').trim() == '1';
+                  final enabled =
+                      (dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() == '1';
+                  final isConn = LiveKitService().connected.value;
+                  if (!enabled || !manual || isConn) {
+                    return const SizedBox.shrink();
+                  }
+                  return Center(
+                    child: ElevatedButton.icon(
+                      onPressed: () async {
+                        await _maybeJoinLiveKit();
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.black.withValues(alpha: 0.6),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24),
+                        ),
+                      ),
+                      icon: const Icon(Icons.play_arrow),
+                      label: const Text('Gespräch starten'),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -1012,11 +983,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         voiceId = await _reloadVoiceIdFromFirestore();
       }
 
-      // Nur wenn voiceId verfügbar ist, starte Lipsync
-      if (voiceId != null) {
-        _startLipsync(text);
-      }
-
       final base = EnvService.memoryApiBaseUrl();
       if (base.isEmpty) {
         _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
@@ -1093,8 +1059,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       await _playAudioAtPath(path);
     }
   }
-
-  // _uploadAudioToFirebase entfernt - nicht mehr benötigt mit BitHuman
 
   Future<String?> _ensureTtsForText(String text) async {
     try {
@@ -1203,69 +1167,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     }
   }
 
-  Future<void> _startLipsync(String text) async {
-    try {
-      // Generiere TTS Audio zuerst
-      final audioPath = await _ensureTtsForText(text);
-      if (audioPath == null) return;
-
-      // Referenzen aus Avatar (Bild optional für Fallback)
-      final imageUrl = _avatarData?.avatarImageUrl ?? '';
-
-      // Beyond Presence entfernt – immer BitHuman verwenden
-
-      // BitHuman: Figure sicherstellen
-      final fig = await _ensureFigure();
-      final figureId = fig['figureId'];
-      final modelHash = fig['modelHash'];
-
-      final base = dotenv.env['BITHUMAN_BASE_URL']?.trim();
-      if (base == null || base.isEmpty) return;
-
-      if (imageUrl.isEmpty) return;
-      final imgFile = await _downloadToTemp(imageUrl, suffix: '.png');
-      if (imgFile == null) return;
-
-      // Backend-Request: generate-avatar
-      final uri = Uri.parse('$base/generate-avatar');
-      final req = http.MultipartRequest('POST', uri);
-      req.files.add(await http.MultipartFile.fromPath('image', imgFile.path));
-      req.files.add(await http.MultipartFile.fromPath('audio', audioPath));
-      if ((figureId ?? '').isNotEmpty) req.fields['figure_id'] = figureId!;
-      if ((modelHash ?? '').isNotEmpty) {
-        req.fields['runtime_model_hash'] = modelHash!;
-      }
-      final streamed = await req.send();
-      if (streamed.statusCode >= 200 && streamed.statusCode < 300) {
-        final bytes = await streamed.stream.toBytes();
-        final dir = await getTemporaryDirectory();
-        final out = File(
-          '${dir.path}/chat_avatar_${DateTime.now().millisecondsSinceEpoch}.mp4',
-        );
-        await out.writeAsBytes(bytes, flush: true);
-
-        // 1) Sofort lokal abspielen (ohne Upload-Wartezeit)
-        try {
-          await _videoService.startStreamingFromUrl(
-            out.path,
-            onProgress: (msg) => print('📊 BitHuman Local Progress: $msg'),
-            onError: (err) => print('❌ BitHuman Local Error: $err'),
-          );
-        } catch (e) {
-          print('⚠️ Lokale Videowiedergabe fehlgeschlagen: $e');
-        }
-
-        // Kein Upload für Chat-Antworten – nur lokale Wiedergabe
-      } else {
-        final body = await streamed.stream.bytesToString();
-        print('❌ BitHuman generate-avatar: ${streamed.statusCode} $body');
-      }
-    } catch (e) {
-      print('💥 BITHUMAN LIPSYNC FEHLER: $e');
-      // Ignorieren – TTS läuft als Fallback weiter
-    }
-  }
-
   void _addMessage(String text, bool isUser, {String? audioPath}) {
     setState(() {
       _messages.add(
@@ -1302,10 +1203,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       if (voiceId == null || (voiceId.isEmpty)) {
         voiceId = await _reloadVoiceIdFromFirestore();
       }
-      // Hedge/Race: Primär sofort, CF nach 1.5s parallel; nimm erste valide Antwort
-      final completer = Completer<Map<String, dynamic>?>();
-      bool done = false;
-
       Future<Map<String, dynamic>?> primary() async {
         // Nutzer-Zielsprache aus Firestore/Provider (optional)
         String? lang;
@@ -1332,154 +1229,39 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 'target_language': lang,
               }),
             )
-            .timeout(const Duration(seconds: 4));
+            .timeout(const Duration(seconds: 15));
         if (res.statusCode >= 200 && res.statusCode < 300) {
           return jsonDecode(res.body) as Map<String, dynamic>;
         }
         return null;
       }
 
-      Future<Map<String, dynamic>?> cf() async {
-        try {
-          String cfUrl = (dotenv.env['CF_FUNCTION_URL'] ?? '').trim();
-          if (cfUrl.isEmpty) {
-            cfUrl =
-                'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse';
-          }
-          final cfUri = Uri.parse(cfUrl);
-          final res = await http
-              .post(
-                cfUri,
-                headers: {'Content-Type': 'application/json'},
-                body: jsonEncode({
-                  'userId': uid,
-                  'query': userText,
-                  'maxTokens': 180,
-                  'temperature': 0.6,
-                }),
-              )
-              .timeout(const Duration(seconds: 6));
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            final m = jsonDecode(res.body) as Map<String, dynamic>;
-            return {'answer': (m['response'] as String?)?.trim()};
-          }
-        } catch (_) {}
-        return null;
-      }
+      final res = await primary().timeout(const Duration(seconds: 20));
 
-      void tryComplete(Map<String, dynamic>? data) {
-        if (done) return;
-        final ans = (data?['answer'] as String?)?.trim();
-        if (ans != null && ans.isNotEmpty) {
-          done = true;
-          completer.complete(data);
-        }
-      }
-
-      // Beide sofort starten; erste gültige Antwort gewinnt
-      primary().then(tryComplete).catchError((_) {});
-      cf().then(tryComplete).catchError((_) {});
-
-      final first = await completer.future.timeout(
-        const Duration(seconds: 7),
-        onTimeout: () => null,
-      );
-
-      if (first == null) {
-        // Nichts brauchbares → optionaler CF-Fallback (per ENV)
-        final cfEnabled =
-            (dotenv.env['CF_FALLBACK_ENABLED'] ?? '0').trim() == '1';
-        if (cfEnabled) {
-          await _chatViaFunctions(userText);
-        } else {
-          _showSystemSnack('Chat nicht verfügbar (Backend-Timeout)');
-        }
+      final answer = (res?['answer'] as String?)?.trim();
+      if (answer == null || answer.isEmpty) {
+        _showSystemSnack('Chat nicht verfügbar (keine Antwort)');
       } else {
-        final answer = (first['answer'] as String?)?.trim();
-        if (answer != null && answer.isNotEmpty) {
-          _addMessage(answer, false);
-          // TTS: benutze falls vorhanden, sonst on-demand
-          final tts = first['tts_audio_b64'] as String?;
-          if (tts != null && tts.isNotEmpty) {
-            try {
-              final bytes = base64Decode(tts);
-              final dir = await getTemporaryDirectory();
-              final file = File(
-                '${dir.path}/avatar_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
-              );
-              await file.writeAsBytes(bytes, flush: true);
-              _lastRecordingPath = file.path;
-              unawaited(_playAudioAtPath(file.path));
-            } catch (_) {}
-          } else {
-            // Erzeuge TTS schnell über Memory‑API
-            unawaited(() async {
-              try {
-                final baseTts = EnvService.memoryApiBaseUrl();
-                if (baseTts.isEmpty) return;
-                final ttsUri = Uri.parse('$baseTts/avatar/tts');
-                final tRes = await http
-                    .post(
-                      ttsUri,
-                      headers: {'Content-Type': 'application/json'},
-                      body: jsonEncode({
-                        'text': answer,
-                        'voice_id': (voiceId is String && voiceId.isNotEmpty)
-                            ? voiceId
-                            : null,
-                      }),
-                    )
-                    .timeout(const Duration(seconds: 8));
-                if (tRes.statusCode >= 200 && tRes.statusCode < 300) {
-                  final Map<String, dynamic> j =
-                      jsonDecode(tRes.body) as Map<String, dynamic>;
-                  final String? b64 = j['audio_b64'] as String?;
-                  if (b64 != null && b64.isNotEmpty) {
-                    final bytes = base64Decode(b64);
-                    final dir = await getTemporaryDirectory();
-                    final file = File(
-                      '${dir.path}/avatar_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
-                    );
-                    await file.writeAsBytes(bytes, flush: true);
-                    unawaited(_playAudioAtPath(file.path));
-                  }
-                }
-              } catch (_) {}
-            }());
-          }
-          // Lipsync parallel
-          unawaited(_startLipsync(answer));
+        _addMessage(answer, false);
+        final tts = res?['tts_audio_b64'] as String?;
+        if (tts != null && tts.isNotEmpty) {
+          try {
+            final bytes = base64Decode(tts);
+            final dir = await getTemporaryDirectory();
+            final file = File(
+              '${dir.path}/avatar_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
+            );
+            await file.writeAsBytes(bytes, flush: true);
+            _lastRecordingPath = file.path;
+            unawaited(_playAudioAtPath(file.path));
+          } catch (_) {}
         }
       }
     } catch (e) {
-      // Fallback zu Cloud Function bei Socket-/HTTP-Fehlern
-      await _chatViaFunctions(userText);
+      _showSystemSnack('Chat fehlgeschlagen: $e');
     } finally {
       if (mounted) setState(() => _isTyping = false);
     }
-  }
-
-  Future<void> _prewarmChatEndpoints() async {
-    try {
-      final base = EnvService.memoryApiBaseUrl();
-      if (base.isNotEmpty) {
-        final uri = Uri.parse('$base/health');
-        unawaited(http.get(uri).timeout(const Duration(seconds: 3)));
-      }
-      unawaited(
-        () async {
-              String cfUrl = (dotenv.env['CF_FUNCTION_URL'] ?? '').trim();
-              if (cfUrl.isEmpty) {
-                cfUrl =
-                    'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse';
-              }
-              return await http.get(Uri.parse(cfUrl));
-            }()
-            .timeout(const Duration(seconds: 3))
-            .then((resp) => resp)
-            .catchError((err) => err),
-      );
-    } catch (_) {}
   }
 
   Future<void> _chatViaFunctions(String userText) async {
@@ -2016,7 +1798,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   @override
   void dispose() {
-    _videoService.dispose();
+    // _videoService.dispose(); // entfernt – kein lokales Lipsync mehr
     _playerStateSub?.cancel();
     _messageController.dispose();
     _scrollController.dispose();

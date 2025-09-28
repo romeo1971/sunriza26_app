@@ -8,8 +8,6 @@ export interface AppConfig {
   location: string;
   customVoiceName: string;
   referenceVideoUrl: string;
-  vertexAiModelId: string;
-  vertexAiEndpoint: string;
 }
 
 // Minimal, robust: verwende Env/Fallbacks (kein Secret Manager nötig)
@@ -25,8 +23,6 @@ export async function loadConfig(): Promise<AppConfig> {
     location,
     customVoiceName,
     referenceVideoUrl,
-    vertexAiModelId: process.env.VERTEX_AI_MODEL_ID || 'imagen-video-generator',
-    vertexAiEndpoint: process.env.VERTEX_AI_ENDPOINT || 'us-central1-aiplatform.googleapis.com',
   };
 }
 

@@ -19,8 +19,6 @@ async function loadConfig() {
         location,
         customVoiceName,
         referenceVideoUrl,
-        vertexAiModelId: process.env.VERTEX_AI_MODEL_ID || 'imagen-video-generator',
-        vertexAiEndpoint: process.env.VERTEX_AI_ENDPOINT || 'us-central1-aiplatform.googleapis.com',
     };
 }
 /**

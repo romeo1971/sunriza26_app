@@ -159,7 +159,7 @@ async def create_avatar_video(image_path, audio_path, output_path):
     finally:
         await runtime.stop()
 
-asyncio.run(create_avatar_video("avatar.jpg", "audio.mp3", "output.mp4"))
+asyncio.run(create_avatar_video("hans_avatar.jpeg", "audio.mp3", "output.mp4"))
 ```
 
 ### Streaming-Implementierung:

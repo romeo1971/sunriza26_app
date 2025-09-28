@@ -87,6 +87,49 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data);
     }
 
+    // Nutzergebundene Avatare (aktuelle App-Struktur: users/{uid}/avatars/{avatarId})
+    match /users/{uid}/avatars/{avatarId} {
+      allow create: if signedIn()
+        && uid == request.auth.uid
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.id == avatarId
+        && request.resource.data.keys().hasOnly([
+          'id','userId','firstName','nickname','lastName',
+          'birthDate','deathDate','calculatedAge','avatarImageUrl',
+          'imageUrls','videoUrls','textFileUrls','audioUrls','writtenTexts',
+          'lastMessage','lastMessageTime','createdAt','updatedAt','isPublic',
+          'training'
+        ])
+        && validString(request.resource.data.firstName, 1, 100)
+        && validTimestamp(request.resource.data.createdAt)
+        && validTimestamp(request.resource.data.updatedAt)
+        && (!('nickname' in request.resource.data) || validString(request.resource.data.nickname, 0, 100))
+        && (!('lastName' in request.resource.data) || validString(request.resource.data.lastName, 0, 100))
+        && (!('avatarImageUrl' in request.resource.data) || validString(request.resource.data.avatarImageUrl, 1, 2000))
+        && (!('birthDate' in request.resource.data) || request.resource.data.birthDate is int)
+        && (!('deathDate' in request.resource.data) || request.resource.data.deathDate is int)
+        && (!('calculatedAge' in request.resource.data) || request.resource.data.calculatedAge is int)
+        && (!('lastMessage' in request.resource.data) || validString(request.resource.data.lastMessage, 0, 1000))
+        && (!('lastMessageTime' in request.resource.data) || request.resource.data.lastMessageTime is int)
+        && (!('imageUrls' in request.resource.data) || request.resource.data.imageUrls is list)
+        && (!('videoUrls' in request.resource.data) || request.resource.data.videoUrls is list)
+        && (!('textFileUrls' in request.resource.data) || request.resource.data.textFileUrls is list)
+        && (!('audioUrls' in request.resource.data) || request.resource.data.audioUrls is list)
+        && (!('writtenTexts' in request.resource.data) || request.resource.data.writtenTexts is list)
+        && (!('isPublic' in request.resource.data) || request.resource.data.isPublic is bool)
+        && (!('training' in request.resource.data) || request.resource.data.training is map);
+
+      allow get, list: if signedIn() && uid == request.auth.uid;
+
+      allow update: if signedIn()
+        && uid == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.id == resource.data.id
+        && validTimestamp(request.resource.data.updatedAt);
+
+      allow delete: if signedIn() && uid == request.auth.uid;
+    }
+
     // Avatar Freetexts (Struppi-System)
     match /avatars/{avatarId}/freetexts/{docId} {
       allow create: if signedIn()

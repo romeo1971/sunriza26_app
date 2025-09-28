@@ -3,7 +3,7 @@ import urllib.parse
 from typing import List, Dict, Any
 import time, uuid
 
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
 import re
 import logging
 from pydantic import BaseModel
@@ -90,7 +90,7 @@ else:
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-PINECONE_INDEX = os.getenv("PINECONE_INDEX", "avatars-index")
+PINECONE_INDEX = os.getenv("PINECONE_INDEX", "sunriza")
 PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws")
 PINECONE_REGION = os.getenv("PINECONE_REGION", "us-east-1")
 
@@ -128,11 +128,98 @@ logger = logging.getLogger("uvicorn.error")
 client = OpenAI(api_key=OPENAI_API_KEY, timeout=20, max_retries=0)
 pc = get_pinecone(PINECONE_API_KEY)
 
+# In‑Memory Latenz‑Histories (Rolling Window)
+_LAT_HIST: dict[str, list[int]] = {}
+_LAT_MAX = 500  # pro Pfad maximal 500 Einträge im Fenster
+
+def _record_latency_sample(path: str, dur_ms: int) -> None:
+    try:
+        arr = _LAT_HIST.setdefault(path, [])
+        arr.append(int(dur_ms))
+        # Rolling Window beschneiden
+        if len(arr) > _LAT_MAX:
+            del arr[: len(arr) - _LAT_MAX]
+    except Exception:
+        pass
+
+def _percentile(sorted_vals: list[int], p: float) -> float:
+    if not sorted_vals:
+        return 0.0
+    p = max(0.0, min(100.0, float(p)))
+    k = (p / 100.0) * (len(sorted_vals) - 1)
+    f = int(k)
+    c = min(f + 1, len(sorted_vals) - 1)
+    if f == c:
+        return float(sorted_vals[f])
+    d0 = sorted_vals[f] * (c - k)
+    d1 = sorted_vals[c] * (k - f)
+    return float(d0 + d1)
+
+# Observability: Latenz-Middleware
+@app.middleware("http")
+async def timing_middleware(request: Request, call_next):
+    t0 = time.perf_counter()
+    response = None
+    try:
+        response = await call_next(request)
+        return response
+    finally:
+        dur_ms = int((time.perf_counter() - t0) * 1000)
+        try:
+            if response is not None:
+                response.headers["X-Response-Time-ms"] = str(dur_ms)
+        except Exception:
+            pass
+        try:
+            logger.info(
+                "LATENCY method=%s path=%s status=%s dur_ms=%s",
+                request.method,
+                request.url.path,
+                getattr(response, "status_code", None),
+                dur_ms,
+            )
+            # Rolling-Window Sample erfassen
+            _record_latency_sample(request.url.path, dur_ms)
+        except Exception:
+            pass
+
+# Pinecone Query mit hartem Timeout
+def _query_with_timeout(index_name: str, namespace: str, vec: List[float], top_k: int = 5, timeout_sec: int = 10) -> Dict[str, Any]:
+    result: Dict[str, Any] = {}
+    errors: list[Exception] = []
+
+    def _worker() -> None:
+        try:
+            idx = pc.Index(index_name)
+            res = idx.query(
+                vector=vec,
+                top_k=top_k,
+                namespace=namespace,
+                include_values=False,
+                include_metadata=True,
+            )
+            if isinstance(res, dict):
+                result.update(res)
+            else:
+                result["matches"] = getattr(res, "matches", [])
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    th = threading.Thread(target=_worker, daemon=True)
+    th.start()
+    th.join(timeout=timeout_sec)
+    if result:
+        return result
+    if errors:
+        raise errors[0]
+    raise TimeoutError("Pinecone query timeout")
+
 class LivekitTokenRequest(BaseModel):
     user_id: str
     avatar_id: str
     room: str | None = None
     name: str | None = None
+    avatar_image_url: str | None = None
 
 class LivekitTokenResponse(BaseModel):
     url: str
@@ -153,6 +240,16 @@ def create_livekit_token(payload: LivekitTokenRequest) -> LivekitTokenResponse:
         at = lk_api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
         grants = lk_api.VideoGrants(room=room, room_join=True)
         token = at.with_identity(identity).with_name(name).with_grants(grants).to_jwt()
+        # Optional: Avatar-Bild in Firestore synchronisieren
+        try:
+            if FIREBASE_AVAILABLE and db and payload.avatar_image_url:
+                doc_ref = db.collection("users").document(payload.user_id).collection("avatars").document(payload.avatar_id)
+                doc_ref.set({
+                    "avatarImageUrl": payload.avatar_image_url.strip(),
+                    "updatedAt": firestore.SERVER_TIMESTAMP if FIREBASE_AVAILABLE else int(time.time()*1000),
+                }, merge=True)
+        except Exception as _e:
+            logger.warning(f"AvatarImageUrl Persist Fehler: {_e}")
         return LivekitTokenResponse(url=LIVEKIT_URL, token=token, room=room, identity=identity)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Token Fehler: {e}")
@@ -448,7 +545,7 @@ def _fetch_vectors_with_timeout(index_name: str, namespace: str, ids: List[str],
 
 
 def _pinecone_index_for(user_id: str, avatar_id: str) -> str:
-    mode = os.getenv("PINECONE_INDEX_MODE", "namespace").lower()
+    mode = os.getenv("PINECONE_INDEX_MODE", "per_avatar").lower()
     base = os.getenv("PINECONE_INDEX", "avatars-index")
     if mode == "per_avatar":
         def _san(s: str) -> str:
@@ -465,7 +562,7 @@ def _pinecone_index_for(user_id: str, avatar_id: str) -> str:
 def on_startup() -> None:
     # Bei namespace-Modus nur Basis-Index sicherstellen,
     # bei per_avatar wird dynamisch vor Inserts/Queries erzeugt
-    mode = os.getenv("PINECONE_INDEX_MODE", "namespace").lower()
+    mode = os.getenv("PINECONE_INDEX_MODE", "per_avatar").lower()
     logger.info(f"PINECONE mode='{mode}' base_index='{PINECONE_INDEX}' cloud='{PINECONE_CLOUD}' region='{PINECONE_REGION}'")
     if mode != "per_avatar":
         ensure_index_exists(
@@ -481,6 +578,30 @@ def on_startup() -> None:
 @app.get("/health")
 def health() -> Dict[str, Any]:
     return {"status": "healthy", "service": "memory-backend"}
+
+
+@app.get("/metrics/latency")
+def latency_metrics() -> Dict[str, Any]:
+    """Einfaches Latenz-Dashboard (Rolling-Window) pro Pfad.
+    Liefert count, min, p50, p95, p99, max in Millisekunden.
+    """
+    out: Dict[str, Any] = {}
+    try:
+        for path, vals in _LAT_HIST.items():
+            if not vals:
+                continue
+            svals = sorted(vals)
+            out[path] = {
+                "count": len(svals),
+                "min": int(svals[0]),
+                "p50": int(_percentile(svals, 50)),
+                "p95": int(_percentile(svals, 95)),
+                "p99": int(_percentile(svals, 99)),
+                "max": int(svals[-1]),
+            }
+    except Exception as e:
+        logger.warning(f"Latency-Metrics Fehler: {e}")
+    return out
 
 
 def _process_memory_insert(payload: InsertRequest) -> InsertResponse:
@@ -781,43 +902,47 @@ class QueryResponse(BaseModel):
 @app.post("/avatar/memory/query", response_model=QueryResponse)
 def memory_query(payload: QueryRequest) -> QueryResponse:
     namespace = f"{payload.user_id}_{payload.avatar_id}"
-    index_name = _pinecone_index_for(payload.user_id, payload.avatar_id)
+    primary_index = _pinecone_index_for(payload.user_id, payload.avatar_id)
+    base_index = os.getenv("PINECONE_INDEX", "avatars-index")
+    enable_fallback = os.getenv("PINECONE_QUERY_FALLBACK_BASE", "1") == "1"
     try:
-        emb = client.embeddings.create(model=EMBEDDING_MODEL, input=[payload.query])
-        vec = emb.data[0].embedding
-        # Index sicherstellen (per_avatar)
-        ensure_index_exists(
-            pc=pc,
-            index_name=index_name,
-            dimension=EMBEDDING_DIM,
-            metric="cosine",
-            cloud=PINECONE_CLOUD,
-            region=PINECONE_REGION,
+        logger.info(
+            f"MEMORY_QUERY uid='{payload.user_id}' avatar='{payload.avatar_id}' ns='{namespace}' idx='{primary_index}' base='{base_index}' top_k={payload.top_k}"
         )
-        index = pc.Index(index_name)
-        res = index.query(
-            vector=vec,
-            top_k=payload.top_k,
-            namespace=namespace,
-            include_values=False,
-            include_metadata=True,
-        )
-        # Pinecone SDK returns dict-like
-        matches = res.get("matches", []) if isinstance(res, dict) else res.matches  # type: ignore
-        results: List[Dict[str, Any]] = []
-        for m in matches:
-            if isinstance(m, dict):
-                results.append({
-                    "id": m.get("id"),
-                    "score": m.get("score"),
-                    "metadata": m.get("metadata"),
-                })
-            else:
-                results.append({
-                    "id": getattr(m, "id", None),
-                    "score": getattr(m, "score", None),
-                    "metadata": getattr(m, "metadata", None),
-                })
+        # 1) Embedding mit hartem Timeout erzeugen (einmal für alle Versuche)
+        emb_list, real_dim = _create_embeddings_with_timeout([payload.query], EMBEDDING_MODEL, timeout_sec=10)
+        vec = emb_list[0]
+
+        def _run_query(index_name: str) -> list[dict]:
+            # Query ausführen
+            res = _query_with_timeout(index_name=index_name, namespace=namespace, vec=vec, top_k=payload.top_k, timeout_sec=10)
+            matches = res.get("matches", []) if isinstance(res, dict) else getattr(res, "matches", [])
+            out: list[dict] = []
+            for m in matches:
+                if isinstance(m, dict):
+                    out.append({
+                        "id": m.get("id"),
+                        "score": m.get("score"),
+                        "metadata": m.get("metadata"),
+                    })
+                else:
+                    out.append({
+                        "id": getattr(m, "id", None),
+                        "score": getattr(m, "score", None),
+                        "metadata": getattr(m, "metadata", None),
+                    })
+            return out
+
+        # 2) Primär: per‑Avatar Index
+        results = _run_query(primary_index)
+        if not results and enable_fallback and base_index != primary_index:
+            try:
+                logger.info(f"PINECONE query fallback: primary='{primary_index}' empty → trying base='{base_index}' ns='{namespace}'")
+                results = _run_query(base_index)
+            except Exception as _e:
+                logger.warning(f"PINECONE fallback query error: {_e}")
+
+        # 3) Antwort
         return QueryResponse(namespace=namespace, results=results)
     except Exception as e:
         logger.exception("Pinecone-Query-Fehler")
@@ -1013,6 +1138,39 @@ def create_eleven_voice(payload: CreateVoiceFromAudioRequest) -> CreateVoiceFrom
             threading.Thread(target=_async_cleanup, daemon=True).start()
         except Exception as _e:
             logger.warning(f"Async Cleanup Start Fehler: {_e}")
+        # Voice-State zentral speichern (Firestore), falls verfügbar
+        try:
+            if FIREBASE_AVAILABLE and db:
+                doc_ref = db.collection("users").document(payload.user_id).collection("avatars").document(payload.avatar_id)
+                voice_state = {
+                    "elevenVoiceId": voice_id,
+                    "name": name,
+                }
+                # Labels in Voice-State übernehmen
+                if payload.dialect:
+                    voice_state["dialect"] = str(payload.dialect)
+                if payload.tempo is not None:
+                    try:
+                        voice_state["tempo"] = float(payload.tempo)
+                    except Exception:
+                        pass
+                if payload.stability is not None:
+                    try:
+                        voice_state["stability"] = float(payload.stability)
+                    except Exception:
+                        pass
+                if payload.similarity is not None:
+                    try:
+                        voice_state["similarity"] = float(payload.similarity)
+                    except Exception:
+                        pass
+                doc_ref.set({
+                    "training": {"voice": voice_state},
+                    "updatedAt": firestore.SERVER_TIMESTAMP if FIREBASE_AVAILABLE else int(time.time()*1000),
+                }, merge=True)
+        except Exception as _e:
+            logger.warning(f"Voice-State Persist Fehler: {_e}")
+
         return CreateVoiceFromAudioResponse(voice_id=voice_id, name=name)
     except requests.HTTPError as e:
         logger.exception("ElevenLabs Voice Create HTTPError")
@@ -1233,8 +1391,100 @@ def tts_endpoint(req: TTSRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"TTS Fehler: {e}")
 
+
+# Voice-State zentrale Ablage/Abfrage
+class VoiceState(BaseModel):
+    voice_id: str | None = None
+    name: str | None = None
+    stability: float | None = None
+    similarity: float | None = None
+    tempo: float | None = None
+    dialect: str | None = None
+
+class VoiceStateGetRequest(BaseModel):
+    user_id: str
+    avatar_id: str
+
+class VoiceStateSetRequest(BaseModel):
+    user_id: str
+    avatar_id: str
+    voice: VoiceState
+
+
+def _read_voice_state(user_id: str, avatar_id: str) -> Dict[str, Any]:
+    if not FIREBASE_AVAILABLE or not db:
+        return {}
+    try:
+        doc = db.collection("users").document(user_id).collection("avatars").document(avatar_id).get()
+        data = doc.to_dict() or {}
+        training = (data.get("training") or {}) if isinstance(data, dict) else {}
+        voice = (training.get("voice") or {}) if isinstance(training, dict) else {}
+        # Normalisiere Schlüssel
+        mapped = {
+            "voice_id": voice.get("elevenVoiceId") or voice.get("voice_id"),
+            "name": voice.get("name"),
+            "stability": voice.get("stability"),
+            "similarity": voice.get("similarity"),
+            "tempo": voice.get("tempo"),
+            "dialect": voice.get("dialect"),
+        }
+        # Entferne leere Felder
+        return {k: v for k, v in mapped.items() if v is not None}
+    except Exception as e:
+        logger.warning(f"Voice-State Read Fehler: {e}")
+        return {}
+
+
+def _write_voice_state(user_id: str, avatar_id: str, voice: Dict[str, Any]) -> bool:
+    if not FIREBASE_AVAILABLE or not db:
+        return False
+    try:
+        # Eingehende Keys normalisieren → Firestore Format
+        vs: Dict[str, Any] = {}
+        if voice.get("voice_id"):
+            vs["elevenVoiceId"] = str(voice["voice_id"]).strip()
+        for fld in ("name", "dialect"):
+            if voice.get(fld) is not None:
+                vs[fld] = str(voice.get(fld))
+        for fld in ("stability", "similarity", "tempo"):
+            if voice.get(fld) is not None:
+                try:
+                    vs[fld] = float(voice.get(fld))
+                except Exception:
+                    pass
+        db.collection("users").document(user_id).collection("avatars").document(avatar_id).set({
+            "training": {"voice": vs},
+            "updatedAt": firestore.SERVER_TIMESTAMP if FIREBASE_AVAILABLE else int(time.time()*1000),
+        }, merge=True)
+        return True
+    except Exception as e:
+        logger.warning(f"Voice-State Write Fehler: {e}")
+        return False
+
+
+@app.post("/avatar/voice/state/get")
+def get_voice_state(payload: VoiceStateGetRequest) -> Dict[str, Any]:
+    try:
+        state = _read_voice_state(payload.user_id, payload.avatar_id)
+        return {"voice": state}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Voice-State Get Fehler: {e}")
+
+
+@app.post("/avatar/voice/state/set")
+def set_voice_state(payload: VoiceStateSetRequest) -> Dict[str, Any]:
+    try:
+        ok = _write_voice_state(payload.user_id, payload.avatar_id, payload.voice.model_dump())
+        if not ok:
+            raise HTTPException(status_code=500, detail="Voice-State speichern fehlgeschlagen (kein Firestore)")
+        return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Voice-State Set Fehler: {e}")
+
 @app.post("/avatar/chat", response_model=ChatResponse)
-def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
+def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
     # 0) Sprache klassifizieren: klare Fremdsprache vs. gemischt (unter Berücksichtigung der Nutzer-Sprache)
     def _classify_language(text: str, user_lang_hint: str | None) -> dict:
         try:
@@ -1285,6 +1535,17 @@ def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
     msg = re.sub(r"\bweiss\b", "weiß", msg, flags=re.IGNORECASE)
     payload.message = msg
     # 1) RAG: relevante Schnipsel holen
+    try:
+        client_ip = "?"
+        try:
+            client_ip = request.client.host if request and request.client else "?"
+        except Exception:
+            client_ip = "?"
+        logger.info(
+            f"CHAT_RAG_CALL uid='{payload.user_id}' avatar='{payload.avatar_id}' top_k={payload.top_k} msg_len={len(payload.message or '')} ip='{client_ip}' message='{(payload.message or '').strip()[:200]}'"
+        )
+    except Exception:
+        pass
     qres = memory_query(QueryRequest(
         user_id=payload.user_id,
         avatar_id=payload.avatar_id,
@@ -1300,10 +1561,10 @@ def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
             context_texts.append(f"- {t}")
     context_block = "\n".join(context_texts) if context_texts else ""
 
-    # Heuristik: Allgemeine Wissensfrage nach "(Fußball-)Weltmeister" → Kontext ignorieren
-    champion_q = re.search(r"weltmeister", msg, flags=re.IGNORECASE)
-    if champion_q:
-        context_block = ""
+    # PINECONE KONTEXT IMMER NUTZEN - keine Heuristik mehr
+    # champion_q = re.search(r"weltmeister", msg, flags=re.IGNORECASE)
+    # if champion_q:
+    #     context_block = ""
 
     # 2) Prompt bauen (kurz & menschlich) + Ziel-Sprache (Logik: klare Fremdsprache > user-lang; Mischsätze -> user-lang)
     system = GPT_SYSTEM_PROMPT
@@ -1376,9 +1637,9 @@ def chat_with_avatar(payload: ChatRequest) -> ChatResponse:
             f"Kontext:\n{context_block}\n\nFrage: {payload.message}\n"
             "Nutze den obigen Kontext vorrangig. Wenn der Kontext die Antwort nicht eindeutig enthält, beantworte korrekt mit deinem allgemeinen Wissen."
         )
-    # Spezifische Klärung für Weltmeister-Fragen: gib amtierenden Titelträger
-    if champion_q:
-        user_msg += "\nHinweis: Gemeint ist der aktuell amtierende Weltmeister (Herren, sofern nicht 'Frauen' erwähnt). Antworte knapp: Land + Jahr des Titels."
+    # PINECONE KONTEXT IMMER NUTZEN
+    # if champion_q:
+    #     user_msg += "\nHinweis: Gemeint ist der aktuell amtierende Weltmeister (Herren, sofern nicht 'Frauen' erwähnt). Antworte knapp: Land + Jahr des Titels."
 
     # 3) OpenAI Chat
     try:
@@ -1532,4 +1793,34 @@ def debug_embedding(req: DebugEmbeddingRequest) -> Dict[str, Any]:
     except Exception as e:
         logger.exception("Debug-Embedding-Fehler")
         return {"ok": False, "error": str(e)}
+
+
+# Avatar Info (z. B. Bild-URL) für Agent/Client
+class AvatarInfoRequest(BaseModel):
+    user_id: str
+    avatar_id: str
+
+class AvatarInfoResponse(BaseModel):
+    avatar_image_url: str | None = None
+
+@app.post("/avatar/info", response_model=AvatarInfoResponse)
+def get_avatar_info(payload: AvatarInfoRequest) -> AvatarInfoResponse:
+    try:
+        if not FIREBASE_AVAILABLE or not db:
+            return AvatarInfoResponse(avatar_image_url=None)
+        doc = db.collection("users").document(payload.user_id).collection("avatars").document(payload.avatar_id).get()
+        data = doc.to_dict() or {}
+        url = None
+        try:
+            url = (data.get("avatarImageUrl") or data.get("avatar_image_url") or "")
+            if isinstance(url, str):
+                url = url.strip() or None
+            else:
+                url = None
+        except Exception:
+            url = None
+        return AvatarInfoResponse(avatar_image_url=url)
+    except Exception as e:
+        logger.warning(f"Avatar Info Fehler: {e}")
+        return AvatarInfoResponse(avatar_image_url=None)
 

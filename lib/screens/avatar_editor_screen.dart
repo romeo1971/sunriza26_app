@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:sunriza26/services/bithuman_service.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
-import 'package:http/http.dart' as http;
 
 class AvatarEditorScreen extends StatefulWidget {
   final String avatarId;
@@ -23,7 +21,6 @@ class AvatarEditorScreen extends StatefulWidget {
 class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
   String? _generatedAgentId;
   File? _selectedImage;
-  bool _isGenerating = false;
   bool _isInitialized = false;
   final ImagePicker _picker = ImagePicker();
 
@@ -34,17 +31,9 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
   }
 
   Future<void> _initializeServices() async {
-    try {
-      await BitHumanService.initialize();
-
-      setState(() {
-        _isInitialized = true;
-      });
-
-      print('✅ BitHuman Service initialisiert');
-    } catch (e) {
-      _showErrorSnackBar('Fehler bei der Initialisierung: $e');
-    }
+    setState(() {
+      _isInitialized = true;
+    });
   }
 
   Future<void> _selectImage() async {
@@ -66,74 +55,14 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
     }
   }
 
-  Future<File> _downloadAvatarImageToTemp(String url) async {
-    final uri = Uri.parse(url);
-    final resp = await http.get(uri);
-    if (resp.statusCode >= 200 && resp.statusCode < 300) {
-      final tmpPath =
-          '${Directory.systemTemp.path}/avatar_${DateTime.now().millisecondsSinceEpoch}.jpg';
-      final f = File(tmpPath);
-      await f.writeAsBytes(resp.bodyBytes);
-      return f;
-    }
-    throw Exception('Bild-Download fehlgeschlagen (${resp.statusCode})');
-  }
-
   Future<void> _generateAgent() async {
     if (!_isInitialized) {
       _showErrorSnackBar('Service ist noch nicht initialisiert.');
       return;
     }
 
-    // Wenn kein lokales Bild existiert, versuche das Hero-Image zu laden
-    if (_selectedImage == null &&
-        (widget.avatarImageUrl?.isNotEmpty ?? false)) {
-      try {
-        final file = await _downloadAvatarImageToTemp(widget.avatarImageUrl!);
-        setState(() => _selectedImage = file);
-      } catch (e) {
-        _showErrorSnackBar('Konnte Hero-Image nicht laden: $e');
-        return;
-      }
-    }
-
-    if (_selectedImage == null) {
-      _showErrorSnackBar('Kein Bild vorhanden.');
-      return;
-    }
-
-    setState(() {
-      _isGenerating = true;
-    });
-
-    try {
-      final agentId = await BitHumanService.generateAgentFromImage(
-        _selectedImage!,
-        widget.avatarName,
-      );
-
-      if (agentId != null) {
-        setState(() {
-          _generatedAgentId = agentId;
-        });
-        _showSuccessSnackBar(
-          '🎭 Avatar Agent für "${widget.avatarName}" erfolgreich generiert!\n\nAgent ID: $agentId',
-        );
-      } else {
-        _showErrorSnackBar('Agent-Generierung fehlgeschlagen.');
-      }
-    } catch (e) {
-      _showErrorSnackBar('Fehler bei der Agent-Generierung: $e');
-    } finally {
-      setState(() {
-        _isGenerating = false;
-      });
-    }
-  }
-
-  void _showSuccessSnackBar(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.green),
+    _showErrorSnackBar(
+      'BitHuman-Generierung ist deaktiviert. Bitte LiveKit-Agent verwenden.',
     );
   }
 
@@ -199,7 +128,7 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
 
                       // Generate Button (CI-Farbe)
                       ElevatedButton(
-                        onPressed: _isGenerating ? null : _generateAgent,
+                        onPressed: _generateAgent,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.black,
                           foregroundColor: Colors.white,
@@ -211,58 +140,40 @@ class _AvatarEditorScreenState extends State<AvatarEditorScreen> {
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: Text(
-                          _isGenerating
-                              ? 'Generiere Avatar...'
-                              : 'Avatar generieren',
-                          style: const TextStyle(fontSize: 16),
+                        child: const Text(
+                          'Avatar generieren (deaktiviert)',
+                          style: TextStyle(fontSize: 16),
                         ),
                       ),
 
-                      if (_generatedAgentId != null) ...[
-                        const SizedBox(height: 24),
-                        Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade50,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.green.shade200),
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.check_circle,
-                                color: Colors.green.shade600,
-                                size: 24,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Avatar Agent generiert!',
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        color: Colors.green.shade700,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      'Agent ID: $_generatedAgentId',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: Colors.green.shade600,
-                                        fontFamily: 'monospace',
-                                      ),
-                                    ),
-                                  ],
+                      if (_generatedAgentId != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 24),
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  color: Colors.orange.shade600,
+                                  size: 24,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Text(
+                                    'BitHuman-Agenten werden nicht mehr lokal generiert. Bitte verwende den LiveKit-Agent.',
+                                    style: TextStyle(fontSize: 13),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
-                      ],
                     ],
                   ),
                 ),
