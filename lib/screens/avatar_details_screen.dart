@@ -2743,122 +2743,118 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Widget _imageThumbNetwork(String url, bool isCrown) {
     final selected = _selectedRemoteImages.contains(url);
-    return AspectRatio(
-      aspectRatio: 1,
-      child: GestureDetector(
-        onTap: () async {
-          if (_isDeleteMode) {
-            setState(() {
-              if (selected) {
-                _selectedRemoteImages.remove(url);
-              } else {
-                _selectedRemoteImages.add(url);
-              }
-            });
-          } else {
-            setState(() {
-              _profileImageUrl = url;
-              _updateDirty();
-            });
-            // Hero-Image sofort persistent speichern
-            await _persistTextFileUrls();
-          }
-        },
-        onLongPress: () => setState(() {
-          // Long-Press nur im Löschmodus relevant
-          if (_isDeleteMode) {
+    return GestureDetector(
+      onTap: () async {
+        if (_isDeleteMode) {
+          setState(() {
             if (selected) {
               _selectedRemoteImages.remove(url);
             } else {
               _selectedRemoteImages.add(url);
             }
+          });
+        } else {
+          setState(() {
+            _profileImageUrl = url;
+            _updateDirty();
+          });
+          // Hero-Image sofort persistent speichern
+          await _persistTextFileUrls();
+        }
+      },
+      onLongPress: () => setState(() {
+        // Long-Press nur im Löschmodus relevant
+        if (_isDeleteMode) {
+          if (selected) {
+            _selectedRemoteImages.remove(url);
+          } else {
+            _selectedRemoteImages.add(url);
           }
-        }),
-        child: Stack(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                url,
-                fit: BoxFit.cover,
-                key: ValueKey(url),
-                errorBuilder: (context, error, stack) {
-                  _handleImageError(url);
-                  return Container(
-                    color: Colors.black26,
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.image_not_supported,
-                      color: Colors.white54,
-                    ),
-                  );
-                },
-              ),
-            ),
-            if (isCrown)
-              const Positioned(
-                top: 4,
-                left: 4,
-                child: Text('⭐', style: TextStyle(fontSize: 16)),
-              ),
-            // Kein Häkchen mehr – Selektion wird am Trash‑Icon markiert
-            // Papierkorb unten rechts – immer sichtbar
-            Positioned(
-              right: 6,
-              bottom: 6,
-              child: InkWell(
-                onTap: () {
-                  setState(() {
-                    _isDeleteMode = true;
-                    if (selected) {
-                      _selectedRemoteImages.remove(url);
-                    } else {
-                      _selectedRemoteImages.add(url);
-                    }
-                  });
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: selected ? null : const Color(0x30000000),
-                    gradient: selected
-                        ? const LinearGradient(
-                            colors: [AppColors.magenta, AppColors.lightBlue],
-                          )
-                        : null,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: selected
-                          ? AppColors.lightBlue.withValues(alpha: 0.7)
-                          : const Color(0x66FFFFFF),
-                    ),
-                  ),
+        }
+      }),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.network(
+              url,
+              fit: BoxFit.cover,
+              key: ValueKey(url),
+              errorBuilder: (context, error, stack) {
+                _handleImageError(url);
+                return Container(
+                  color: Colors.black26,
+                  alignment: Alignment.center,
                   child: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.white,
-                    size: 16,
+                    Icons.image_not_supported,
+                    color: Colors.white54,
                   ),
+                );
+              },
+            ),
+          ),
+          if (isCrown)
+            const Positioned(
+              top: 4,
+              left: 4,
+              child: Text('⭐', style: TextStyle(fontSize: 16)),
+            ),
+          Positioned(
+            right: 6,
+            bottom: 6,
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _isDeleteMode = true;
+                  if (selected) {
+                    _selectedRemoteImages.remove(url);
+                  } else {
+                    _selectedRemoteImages.add(url);
+                  }
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: selected ? null : const Color(0x30000000),
+                  gradient: selected
+                      ? const LinearGradient(
+                          colors: [AppColors.magenta, AppColors.lightBlue],
+                        )
+                      : null,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: selected
+                        ? AppColors.lightBlue.withValues(alpha: 0.7)
+                        : const Color(0x66FFFFFF),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.white,
+                  size: 16,
                 ),
               ),
             ),
-            Positioned(
-              left: 6,
-              bottom: 6,
-              child: InkWell(
-                onTap: () => _reopenCrop(url),
-                child: Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: const Color(0x30000000),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0x66FFFFFF)),
-                  ),
-                  child: const Icon(Icons.crop, color: Colors.white, size: 16),
+          ),
+          Positioned(
+            left: 6,
+            bottom: 6,
+            child: InkWell(
+              onTap: () => _reopenCrop(url),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0x30000000),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0x66FFFFFF)),
                 ),
+                child: const Icon(Icons.crop, color: Colors.white, size: 16),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2946,7 +2942,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final isCrown = crownUrl != null && url == crownUrl;
     return Stack(
       children: [
-        Positioned.fill(child: _videoThumbNetwork(url)),
+        Positioned.fill(child: _imageThumbNetwork(url, isCrown)),
         // Hero-Video-Overlay (star) – 30px Bereich oben links, separate Touch-Zone
         Positioned(
           top: 4,
