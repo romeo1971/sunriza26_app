@@ -22,6 +22,7 @@ class AvatarData {
   final DateTime updatedAt;
   final Map<String, dynamic>? training;
   final String? greetingText;
+  final String? role;
 
   AvatarData({
     required this.id,
@@ -47,6 +48,7 @@ class AvatarData {
     required this.updatedAt,
     this.training,
     this.greetingText,
+    this.role,
   });
 
   // Factory constructor für Firestore
@@ -81,6 +83,7 @@ class AvatarData {
       updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updatedAt']),
       training: map['training'],
       greetingText: map['greetingText'],
+      role: map['role'],
     );
   }
 
@@ -122,6 +125,7 @@ class AvatarData {
       map['postalCode'] = postalCode;
     }
     if (country != null && country!.isNotEmpty) map['country'] = country;
+    if (role != null && role!.isNotEmpty) map['role'] = role;
 
     return map;
   }
@@ -151,6 +155,7 @@ class AvatarData {
     DateTime? updatedAt,
     Map<String, dynamic>? training,
     String? greetingText,
+    String? role,
     bool clearAvatarImageUrl = false,
   }) {
     return AvatarData(
@@ -179,6 +184,7 @@ class AvatarData {
       updatedAt: updatedAt ?? this.updatedAt,
       training: training ?? this.training,
       greetingText: greetingText ?? this.greetingText,
+      role: role ?? this.role,
     );
   }
 

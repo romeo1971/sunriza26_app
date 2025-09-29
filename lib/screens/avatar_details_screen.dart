@@ -54,6 +54,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final _deathDateController = TextEditingController();
   final _regionInputController = TextEditingController();
   bool _regionEditing = true;
+  String? _role;
 
   DateTime? _birthDate;
   DateTime? _deathDate;
@@ -637,6 +638,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         if (_textFileUrls.isNotEmpty ||
                             _newTextFiles.isNotEmpty)
                           _buildTextFilesList(),
+                        const SizedBox(height: 16),
+                        _buildRoleDropdown(),
                       ],
                     ),
                   ),
@@ -726,6 +729,46 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ),
               const SizedBox(height: 16),
             ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildRoleDropdown() {
+    final items = <Map<String, String>>[
+      {'key': 'explicit', 'label': 'Explicit Content'},
+      {'key': 'live_coach', 'label': 'Live Coach'},
+      {'key': 'trauer', 'label': 'Trauerbegleitung'},
+      {'key': 'love_coach', 'label': 'Love Coach'},
+      {'key': 'verkaeufer', 'label': 'Verkäufer'},
+      {'key': 'berater', 'label': 'Berater'},
+      {'key': 'freund', 'label': 'Freund'},
+      {'key': 'lehrer_coach', 'label': 'Lehrer/Coach'},
+      {'key': 'pfarrer', 'label': 'Pfarrer (Beichte)'},
+      {'key': 'psychiater', 'label': 'Psychiater'},
+      {'key': 'seelsorger', 'label': 'Seelsorger'},
+      {'key': 'medizinisch', 'label': 'Medizinischer Berater'},
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Rolle', style: TextStyle(color: Colors.white70)),
+        const SizedBox(height: 8),
+        DropdownButtonFormField<String>(
+          value: _role,
+          dropdownColor: const Color(0xFF1C1C1E),
+          items: items
+              .map(
+                (e) =>
+                    DropdownMenuItem(value: e['key'], child: Text(e['label']!)),
+              )
+              .toList(),
+          onChanged: (v) => setState(() => _role = v),
+          decoration: const InputDecoration(
+            filled: true,
+            fillColor: Color(0x22FFFFFF),
+            border: OutlineInputBorder(borderSide: BorderSide.none),
           ),
         ),
       ],
@@ -2154,6 +2197,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final updated = _avatarData!.copyWith(
       training: existing,
       updatedAt: DateTime.now(),
+      role: _role ?? _avatarData!.role,
     );
     final ok = await _avatarService.updateAvatar(updated);
     if (ok && mounted) {
@@ -3243,6 +3287,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               final updated = _avatarData!.copyWith(
                 training: tr,
                 updatedAt: DateTime.now(),
+                role: _role ?? _avatarData!.role,
               );
               final ok = await _avatarService.updateAvatar(updated);
               if (ok) _applyAvatar(updated);

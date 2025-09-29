@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:sunriza26/services/fact_review_service.dart';
+import 'package:provider/provider.dart';
+import 'package:sunriza26/services/localization_service.dart';
 
 class AvatarReviewFactsScreen extends StatefulWidget {
   final String avatarId;
@@ -107,7 +109,11 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Fakt ${status == 'approved' ? 'freigegeben' : 'abgelehnt'}',
+            status == 'approved'
+                ? 'Fakt freigegeben'
+                : (status == 'rejected'
+                      ? 'Fakt abgelehnt'
+                      : 'Fakt aktualisiert'),
           ),
         ),
       );
@@ -196,7 +202,11 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
                                       'Confidence: ${(fact.confidence * 100).toStringAsFixed(0)}%',
                                     ),
                                     _buildChip('Scope: ${fact.scope}'),
-                                    _buildChip('Status: ${fact.status}'),
+                                    _buildChip(
+                                      context.read<LocalizationService>().t(
+                                        'facts.status.${fact.status}',
+                                      ),
+                                    ),
                                   ],
                                 ),
                                 const SizedBox(height: 8),
@@ -239,49 +249,72 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
                                 const SizedBox(height: 12),
                                 Row(
                                   children: [
-                                    Expanded(
-                                      child: ElevatedButton.icon(
-                                        onPressed: processing
-                                            ? null
-                                            : () => _changeStatus(
-                                                fact,
-                                                'approved',
-                                              ),
-                                        icon: processing
-                                            ? const SizedBox(
-                                                width: 14,
-                                                height: 14,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 1.5,
-                                                    ),
-                                              )
-                                            : const Icon(Icons.check),
-                                        label: const Text('Freigeben'),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor:
-                                              Colors.green.shade600,
-                                          foregroundColor: Colors.white,
+                                    if (_statusFilter == 'pending') ...[
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: processing
+                                              ? null
+                                              : () => _changeStatus(
+                                                  fact,
+                                                  'approved',
+                                                ),
+                                          icon: processing
+                                              ? const SizedBox(
+                                                  width: 14,
+                                                  height: 14,
+                                                  child:
+                                                      CircularProgressIndicator(
+                                                        strokeWidth: 1.5,
+                                                      ),
+                                                )
+                                              : const Icon(Icons.check),
+                                          label: const Text('Freigeben'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                Colors.green.shade600,
+                                            foregroundColor: Colors.white,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Expanded(
-                                      child: ElevatedButton.icon(
-                                        onPressed: processing
-                                            ? null
-                                            : () => _changeStatus(
-                                                fact,
-                                                'rejected',
-                                              ),
-                                        icon: const Icon(Icons.close),
-                                        label: const Text('Ablehnen'),
-                                        style: ElevatedButton.styleFrom(
-                                          backgroundColor: Colors.red.shade600,
-                                          foregroundColor: Colors.white,
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: processing
+                                              ? null
+                                              : () => _changeStatus(
+                                                  fact,
+                                                  'rejected',
+                                                ),
+                                          icon: const Icon(Icons.close),
+                                          label: const Text('Ablehnen'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                Colors.red.shade600,
+                                            foregroundColor: Colors.white,
+                                          ),
                                         ),
                                       ),
-                                    ),
+                                    ] else ...[
+                                      Expanded(
+                                        child: ElevatedButton.icon(
+                                          onPressed: processing
+                                              ? null
+                                              : () => _changeStatus(
+                                                  fact,
+                                                  'deleted',
+                                                ),
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                          ),
+                                          label: const Text('Löschen'),
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor:
+                                                Colors.red.shade700,
+                                            foregroundColor: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ],
                                 ),
                               ],
@@ -302,17 +335,39 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          const Text('Status:', style: TextStyle(color: Colors.white70)),
+          Text(
+            context.read<LocalizationService>().t('Status:'),
+            style: const TextStyle(color: Colors.white70),
+          ),
           const SizedBox(width: 12),
           DropdownButton<String>(
             value: _statusFilter,
             dropdownColor: const Color(0xFF1C1C1E),
             underline: const SizedBox.shrink(),
             style: const TextStyle(color: Colors.white),
-            items: const [
-              DropdownMenuItem(value: 'pending', child: Text('Pending')),
-              DropdownMenuItem(value: 'approved', child: Text('Approved')),
-              DropdownMenuItem(value: 'rejected', child: Text('Rejected')),
+            items: [
+              DropdownMenuItem(
+                value: 'pending',
+                child: Text(
+                  context.read<LocalizationService>().t('facts.status.pending'),
+                ),
+              ),
+              DropdownMenuItem(
+                value: 'approved',
+                child: Text(
+                  context.read<LocalizationService>().t(
+                    'facts.status.approved',
+                  ),
+                ),
+              ),
+              DropdownMenuItem(
+                value: 'rejected',
+                child: Text(
+                  context.read<LocalizationService>().t(
+                    'facts.status.rejected',
+                  ),
+                ),
+              ),
             ],
             onChanged: (value) {
               if (value == null || value == _statusFilter) return;
@@ -321,7 +376,9 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
           ),
           const Spacer(),
           IconButton(
-            tooltip: 'Aktualisieren',
+            tooltip: context.read<LocalizationService>().t(
+              'avatars.refreshTooltip',
+            ),
             icon: const Icon(Icons.refresh, color: Colors.white70),
             onPressed: () => _fetchFacts(reset: true),
           ),

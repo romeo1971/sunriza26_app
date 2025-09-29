@@ -229,5 +229,8 @@
   "regionHint": "Gib PLZ und/oder Stadt ein. Wir versuchen, die Daten automatisch zu ergänzen.",
   "regionEditTooltip": "Region bearbeiten",
   "regionSummaryPlaceholder": "Keine Region ausgewählt",
-  "avatars.details.countryDropdownHint": "Land wählen"
+  "avatars.details.countryDropdownHint": "Land wählen",
+  "facts.status.pending": "Ausstehend",
+  "facts.status.approved": "Freigegeben",
+  "facts.status.rejected": "Abgelehnt"
 }

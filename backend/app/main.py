@@ -13,6 +13,13 @@ from pathlib import Path
 from openai import OpenAI
 from google.cloud import texttospeech
 import base64, requests, json, tempfile, subprocess, threading
+import unicodedata
+from datetime import datetime, timedelta, timezone
+try:
+    # Für saubere Fehlererkennung bei Firestore-Indexproblemen
+    from google.api_core.exceptions import FailedPrecondition, InvalidArgument
+except Exception:  # noqa: BLE001
+    FailedPrecondition = InvalidArgument = Exception  # type: ignore
 
 # LiveKit Server SDK
 try:
@@ -133,6 +140,131 @@ pc = get_pinecone(PINECONE_API_KEY)
 _LAT_HIST: dict[str, list[int]] = {}
 _LAT_MAX = 500  # pro Pfad maximal 500 Einträge im Fenster
 _USER_CACHE: dict[str, Dict[str, Any]] = {}
+
+
+def _is_index_missing_error(err: Exception) -> bool:
+    """Erkennt typische Firestore-Fehler, wenn ein Composite-Index fehlt.
+    Falls erkannt, können wir mit leerer Liste antworten statt 500.
+    """
+    try:
+        if isinstance(err, (FailedPrecondition, InvalidArgument)):
+            return True
+        msg = str(err).lower()
+        # Häufige Textfragmente der Admin-SDK Fehlermeldung
+        hints = [
+            "failed_precondition",
+            "requires an index",
+            "missing index",
+            "need to create index",
+            "request has insufficient indexes",
+            "indexes are not defined",
+        ]
+        return any(h in msg for h in hints)
+    except Exception:
+        return False
+
+
+def _strip_accents(text: str) -> str:
+    try:
+        return ''.join(
+            ch for ch in unicodedata.normalize('NFD', text)
+            if unicodedata.category(ch) != 'Mn'
+        )
+    except Exception:
+        return text
+
+
+def _normalize_fact_text_for_hash(text: str) -> str:
+    """Erzeuge eine robuste Normalform für Duplikaterkennung.
+    - Kleinbuchstaben, Akzente entfernen (ä->a, ö->o, ü->u, ß->ss)
+    - Zahlen auf Platzhalter # normalisieren
+    - Synonyme vereinheitlichen ("länger"/"groesser" -> "groesser")
+    - Possessivformen vereinfachen ("deiner"/"dein" -> "avatar")
+    - Nur alnum und Leerzeichen, Whitespace komprimieren
+    """
+    try:
+        s = (text or '').lower().strip()
+        s = _strip_accents(s).replace('ß', 'ss')
+        # Synonyme/Heuristiken
+        repl = {
+            ' laenger ': ' groesser ',
+            ' länger ': ' groesser ',
+            ' groesser ': ' groesser ',
+            ' grosser ': ' groesser ',
+            ' grosseres ': ' groesser ',
+            ' dein ': ' avatar ',
+            ' deiner ': ' avatar ',
+            ' des avatars ': ' avatar ',
+        }
+        # Padding spaces for safe replacements
+        s = f' {s} '
+        for a, b in repl.items():
+            s = s.replace(a, b)
+        s = s.strip()
+        # Zahlen vereinheitlichen
+        import re as _re
+        s = _re.sub(r"\d+", "#", s)
+        # Nur alnum/space
+        s = ''.join(ch if ch.isalnum() or ch.isspace() else ' ' for ch in s)
+        # Mehrfachspaces -> ein Space
+        s = ' '.join(s.split())
+        return s
+    except Exception:
+        return text or ''
+
+
+def _is_sexual_or_offensive(text: str) -> bool:
+    try:
+        t = (text or '').lower()
+        bad = [
+            'penis', 'vagina', 'sex', 'porno', 'porn', 'ficken', 'blowjob',
+            'anal', 'dildo', 'ejakulat', 'sperma', 'orgasmus',
+        ]
+        return any(w in t for w in bad)
+    except Exception:
+        return False
+
+
+def _is_allowed_user_fact(text: str) -> bool:
+    """Behalte nur sinnvolle, stabile Nutzer-Fakten (Whitelist-Muster)."""
+    try:
+        import re as _re
+        t = (text or '').lower().strip()
+        # Name wird separat erkannt/gespeichert → hier nicht nötig
+        if _re.search(r"\bmein\s+name\s+ist\b|\bich\s+heisse?\b", t):
+            return False
+        # Tiere/Kinder Anzahl
+        if _re.search(r"\bich\s+habe\s+\d+\s+(hunde|katzen|kinder)\b", t):
+            return True
+        # Stadt/Land (einfaches Muster)
+        if _re.search(r"\bich\s+wohne?\s+in\s+[a-zäöüß\-]{2,}\b", t):
+            return True
+        return False
+    except Exception:
+        return False
+
+
+def _should_store_fact(f: dict, role: str | None = None) -> bool:
+    try:
+        text = str(f.get('fact_text') or '').strip()
+        scope = str(f.get('scope') or '').lower()
+        claim_type = str(f.get('claim_type') or 'statement').lower()
+        conf = float(f.get('confidence') or 0)
+        if not text or conf < 0.75:
+            return False
+        if claim_type in ('question', 'joke', 'quote'):
+            return False
+        # Sexual/NSFW nur speichern, wenn explizit als Avatar-Fakt sinnvoll –
+        # standardmäßig: nicht speichern. Auch bei role='explicit' speichern wir
+        # solche Aussagen NICHT als Fakten (nur Chat erlaubt).
+        if _is_sexual_or_offensive(text):
+            return False
+        if scope == 'user':
+            return _is_allowed_user_fact(text)
+        # Standard: avatar
+        return True
+    except Exception:
+        return False
 
 def _record_latency_sample(path: str, dur_ms: int) -> None:
     try:
@@ -306,6 +438,197 @@ def _cache_user_snapshot(user_id: str) -> Dict[str, Any]:
         return info
     except Exception:
         return {}
+
+
+def _read_known_user_name(user_id: str, avatar_id: str) -> Optional[str]:
+    """Liest einen benutzerspezifischen Anzeigenamen aus der Chat-Beziehung.
+    Quelle: avatarUserChats/{user_id}_{avatar_id}.user_name; Fallback: users/{user_id}.displayName
+    """
+    if not FIREBASE_AVAILABLE or not db:
+        return None
+    try:
+        chat_id = f"{user_id}_{avatar_id}"
+        snap = db.collection("avatarUserChats").document(chat_id).get()
+        data = snap.to_dict() or {}
+        nm = (data.get("user_name") or data.get("participant_name") or "").strip()
+        if nm:
+            return nm
+    except Exception:
+        pass
+    try:
+        u = _cache_user_snapshot(user_id)
+        if u.get("display_name"):
+            return str(u["display_name"]).strip()
+    except Exception:
+        pass
+    return None
+
+
+def _maybe_update_user_name(user_id: str, avatar_id: str, user_text: str) -> None:
+    """Erkennt Muster wie "mein Name ist X" oder "ich heiße X" und speichert den Namen
+    in avatarUserChats/{chat_id}.user_name. (kein Fehlerwurf)
+    """
+    if not FIREBASE_AVAILABLE or not db:
+        return
+    try:
+        import re as _re
+        t = (user_text or "").strip()
+        m = _re.search(r"\bmein\s+name\s+ist\s+([A-Za-zÄÖÜäöüß\-]{2,}(?:\s+[A-Za-zÄÖÜäöüß\-]{2,}){0,2})\b", t, flags=_re.IGNORECASE)
+        if not m:
+            m = _re.search(r"\bich\s+heisse?\s+([A-Za-zÄÖÜäöüß\-]{2,}(?:\s+[A-Za-zÄÖÜäöüß\-]{2,}){0,2})\b", t, flags=_re.IGNORECASE)
+        if m:
+            name = m.group(1).strip()
+            chat_id = f"{user_id}_{avatar_id}"
+            db.collection("avatarUserChats").document(chat_id).set({
+                "user_name": name,
+                "updatedAt": firestore.SERVER_TIMESTAMP if FIREBASE_AVAILABLE else int(time.time()*1000),
+            }, merge=True)
+    except Exception:
+        pass
+
+
+# --- Daily User Summaries (per user_id + avatar_id + day) ---
+
+def _utc_midnight(dt: datetime) -> datetime:
+    dt = dt.astimezone(timezone.utc)
+    return datetime(dt.year, dt.month, dt.day, tzinfo=timezone.utc)
+
+
+def _yyyymmdd(dt: datetime) -> str:
+    return dt.strftime("%Y%m%d")
+
+
+def _has_daily_summary(user_id: str, avatar_id: str, yyyymmdd: str) -> bool:
+    if not FIREBASE_AVAILABLE or not db:
+        return False
+    try:
+        ref = db.collection("users").document(user_id).collection("avatars").document(avatar_id).collection("dailySummaries").document(yyyymmdd)
+        snap = ref.get()
+        return snap.exists
+    except Exception:
+        return False
+
+
+def _store_daily_summary(user_id: str, avatar_id: str, yyyymmdd: str, summary: dict) -> None:
+    if not FIREBASE_AVAILABLE or not db:
+        return
+    try:
+        ref = db.collection("users").document(user_id).collection("avatars").document(avatar_id).collection("dailySummaries").document(yyyymmdd)
+        ref.set({
+            **summary,
+            "created_at": int(time.time()*1000),
+            "date": yyyymmdd,
+        }, merge=True)
+    except Exception:
+        pass
+
+
+def _build_day_summary_with_llm(messages: list[dict], lang_hint: str | None = None) -> dict | None:
+    try:
+        # Kontexte bauen (nur Text, kurze Zeilen)
+        lines: list[str] = []
+        for m in messages[:200]:  # Kappung
+            sender = m.get("sender") or "?"
+            txt = (m.get("content") or "").strip()
+            if not txt:
+                continue
+            lines.append(f"{sender}: {txt}")
+        convo = "\n".join(lines)
+        prompt = (
+            "Erstelle eine kompakte Tageszusammenfassung der Unterhaltung. "
+            "Antworte NUR als JSON mit Feldern: "
+            "{\"summary\": str (5-8 Sätze, nur Wichtiges), "
+            " \"bullet_points\": [str (3-6 Kernaussagen)], "
+            " \"sentiments\": [str (z.B. 'angespannt', 'versöhnt', 'fröhlich')], "
+            " \"topics\": [str (Hauptthemen)], "
+            " \"open_questions\": [str] }."
+        )
+        if lang_hint:
+            prompt += f" Schreibe in Sprache: {lang_hint}."
+        comp = client.chat.completions.create(
+            model=GPT_MODEL,
+            messages=[
+                {"role": "system", "content": "Du bist ein genauer Tageszusammenfasser. Antworte nur mit JSON."},
+                {"role": "user", "content": prompt + "\n\n" + convo},
+            ],
+            temperature=0.2,
+            max_tokens=300,
+        )
+        raw = (comp.choices[0].message.content or "").strip()
+        try:
+            data = json.loads(raw)
+        except Exception:
+            start = raw.find("{")
+            end = raw.rfind("}")
+            data = json.loads(raw[start:end+1]) if (start != -1 and end != -1) else None
+        if not isinstance(data, dict):
+            return None
+        # Sanitize
+        data["summary"] = str(data.get("summary") or "").strip()
+        for key in ("bullet_points", "sentiments", "topics", "open_questions"):
+            val = data.get(key)
+            if not isinstance(val, list):
+                data[key] = []
+            else:
+                data[key] = [str(x).strip() for x in val if isinstance(x, (str, int, float))][:10]
+        return data
+    except Exception as _e:
+        logger.warning(f"Daily summary LLM Fehler: {_e}")
+        return None
+
+
+def _maybe_generate_yesterday_summary(user_id: str, avatar_id: str, lang_hint: str | None = None) -> None:
+    """Wenn gestern Chats stattfanden und noch keine Summary existiert, erstelle sie jetzt."""
+    if not FIREBASE_AVAILABLE or not db:
+        return
+    try:
+        now = datetime.now(timezone.utc)
+        today_mid = _utc_midnight(now)
+        yesterday_mid = today_mid - timedelta(days=1)
+        yyyymmdd = _yyyymmdd(yesterday_mid)
+        if _has_daily_summary(user_id, avatar_id, yyyymmdd):
+            return
+        # Nachrichten von gestern laden
+        start_ms = int(yesterday_mid.timestamp()*1000)
+        end_ms = int(today_mid.timestamp()*1000) - 1
+        chat_id = f"{user_id}_{avatar_id}"
+        q = db.collection("avatarUserChats").document(chat_id).collection("messages")\
+            .where("timestamp", ">=", start_ms).where("timestamp", "<=", end_ms)\
+            .order_by("timestamp")
+        docs = q.get()
+        messages = [d.to_dict() for d in docs]
+        if not messages:
+            return
+        data = _build_day_summary_with_llm(messages, lang_hint)
+        if not data or not data.get("summary"):
+            return
+        _store_daily_summary(user_id, avatar_id, yyyymmdd, data)
+        # Optional: Auch in Pinecone ablegen
+        try:
+            text = data.get("summary")
+            emb_list, real_dim = _create_embeddings_with_timeout([text], EMBEDDING_MODEL, timeout_sec=10)
+            namespace = f"{user_id}_{avatar_id}"
+            index_name = _pinecone_index_for(user_id, avatar_id)
+            ensure_index_exists(pc=pc, index_name=index_name, dimension=real_dim, metric="cosine", cloud=PINECONE_CLOUD, region=PINECONE_REGION)
+            vec = {
+                "id": f"daily-{yyyymmdd}",
+                "values": emb_list[0],
+                "metadata": {
+                    "type": "user_daily_summary",
+                    "date": yyyymmdd,
+                    "user_id": user_id,
+                    "avatar_id": avatar_id,
+                    "summary": text,
+                    "sentiments": data.get("sentiments") or [],
+                    "topics": data.get("topics") or [],
+                    "created_at": int(time.time()*1000),
+                },
+            }
+            upsert_vector(pc, index_name, namespace, vec)
+        except Exception as _e:
+            logger.warning(f"Pinecone daily summary Fehler: {_e}")
+    except Exception as e:
+        logger.warning(f"Daily summary Fehler: {e}")
 
 
 def _anonymize_user_id(user_id: str) -> str:
@@ -562,17 +885,33 @@ def _store_chat_fact(
         info = _cache_user_snapshot(user_id)
         chat_id = f"{user_id}_{avatar_id}"
         fact_id = f"fact-{int(time.time()*1000)}-{uuid.uuid4().hex[:6]}"
-        fact_hash = hashlib.sha256(fact_text.strip().lower().encode("utf-8")).hexdigest()
+        # Robuster Hash über normalisierte Fakt-Form (verhindert erneutes Speichern ähnlicher Behauptungen)
+        norm = _normalize_fact_text_for_hash(fact_text)
+        fact_hash = hashlib.sha256(norm.encode("utf-8")).hexdigest()
 
         try:
+            # Dublettenregel: existiert derselbe Hash bereits in pending/approved/rejected → nicht erneut speichern
             existing = db.collection("avatarFactsQueue") \
                 .where("avatar_id", "==", avatar_id) \
                 .where("fact_hash", "==", fact_hash) \
-                .limit(1).get()
+                .limit(50).get()
             if existing:
                 return None
-        except Exception:
-            pass
+        except Exception as _e:
+            # Bei Index-Fehler: zusätzlich Fallback: einfache Textsuche in den letzten ~500 Einträgen des Avatars
+            if _is_index_missing_error(_e):
+                try:
+                    raw = db.collection("avatarFactsQueue").where("avatar_id", "==", avatar_id).limit(500).get()
+                    for d in raw:
+                        data2 = d.to_dict() or {}
+                        if data2.get("fact_hash") == fact_hash:
+                            return None
+                        # Zusatz: falls früher ohne Normalisierung gespeichert wurde
+                        old_hash = hashlib.sha256((data2.get("fact_text") or "").strip().lower().encode("utf-8")).hexdigest()
+                        if old_hash == fact_hash:
+                            return None
+                except Exception:
+                    pass
 
         ts = int(time.time()*1000)
         doc = {
@@ -599,6 +938,12 @@ def _store_chat_fact(
             "author_display_name": info.get("display_name"),
             "author_hash": _anonymize_user_id(user_id),
             "fact_hash": fact_hash,
+            # optionale Klassifikation – wird beim Extrahieren gefüllt
+            "claim_type": None,
+            "polarity": None,
+            "certainty": None,
+            "subject": None,
+            "extracted_from": "user",
         }
         db.collection("avatarFactsQueue").document(fact_id).set(doc)
         return {
@@ -628,22 +973,23 @@ def _extract_chat_facts(
         return facts
 
     try:
-        conversation = (
-            "Nutzer: " + (convo_user or "[leer]") + "\nAvatar: " + (convo_avatar or "[leer]")
-        )
+        # Nur Nutzertext analysieren – Avatar-Antworten sind keine Faktenquelle
+        conversation = "Nutzer: " + (convo_user or "[leer]")
         prompt = (
-            "Extrahiere maximal zwei neue, überprüfbare Fakten über den Avatar aus der folgenden Konversation."
-            " Ein Fakt muss sich direkt auf Daten zum Avatar beziehen (Familie, Beziehungen, Vorlieben, Biografie usw.)."
-            " Ignoriere Smalltalk, Meinungen oder Fragen. Antworte ausschließlich als JSON-Array mit Einträgen der Form"
-            " {\"fact_text\": str, \"confidence\": float zwischen 0 und 1, \"scope\": 'avatar'|'user'|'other'}.")
+            "Analysiere ausschließlich den Nutzertext (Avatar-Antworten ignorieren). "
+            "Extrahiere maximal zwei neue, überprüfbare Fakten. "
+            "Priorität: (1) Fakten ÜBER DEN AVATAR, (2) sonst ÜBER DEN NUTZER. "
+            "Antworte NUR als JSON-Array. Eintrag: {\\\"fact_text\\\": str, \\\"confidence\\\": float 0..1, \\\"scope\\\": 'avatar'|'user', \\\"claim_type\\\": 'statement'|'assumption'|'question'|'joke'|'quote', \\\"polarity\\\": 'affirmative'|'negative', \\\"certainty\\\": float 0..1, \\\"subject\\\": 'avatar'|'user'}. "
+            "Hinweise: Annahmen (vermutet, wohl, vielleicht), Zitate (\"...\" sagte X), Fragen (?), Humor markieren."
+        )
         messages = [
             {
                 "role": "system",
-                "content": "Du bist ein wissensbasierter Extraktor. Konzentriere dich nur auf explizit genannte Fakten über den Avatar.",
+                "content": "Du bist ein wissensbasierter Extraktor. Konzentriere dich ausschließlich auf Fakten aus dem Nutzertext.",
             },
             {
                 "role": "user",
-                "content": prompt + "\n\nKonversation:\n" + conversation,
+                "content": prompt + "\n\nNutzertext:\n" + conversation,
             },
         ]
         comp = client.chat.completions.create(
@@ -679,12 +1025,27 @@ def _extract_chat_facts(
                 conf = 0.6
             conf = max(0.0, min(1.0, conf))
             scope = str(entry.get("scope", "avatar")).strip().lower() or "avatar"
+            if scope not in ("avatar", "user"):
+                scope = "avatar"
+            claim_type = str(entry.get("claim_type") or "statement").strip().lower()
+            polarity = str(entry.get("polarity") or "affirmative").strip().lower()
+            certainty = entry.get("certainty")
+            try:
+                certainty = float(certainty) if certainty is not None else None
+            except Exception:
+                certainty = None
+            subject = str(entry.get("subject") or scope).strip().lower()
             facts.append(
                 {
                     "fact_text": text,
                     "confidence": conf,
                     "scope": scope,
                     "source_message_id": source_message_id,
+                    "claim_type": claim_type,
+                    "polarity": polarity,
+                    "certainty": certainty,
+                    "subject": subject,
+                    "extracted_from": "user",
                 }
             )
         if facts:
@@ -693,6 +1054,85 @@ def _extract_chat_facts(
             )
     except Exception as e:
         logger.warning(f"CHAT_FACT_EXTRACT error: {e}")
+    # Heuristischer Fallback: einfache Muster im Nutzertext
+    if not facts and convo_user:
+        try:
+            ut = convo_user
+            # Beziehung: "war X Jahre mit dir verheiratet"
+            m = re.search(r"\bwar\s+(\d{1,3})\s*jahre[n]?\s+mit\s+dir\s+verheiratet\b", ut, flags=re.IGNORECASE)
+            if m:
+                yrs = m.group(1)
+                facts.append({
+                    "fact_text": f"Der Nutzer war {yrs} Jahre mit dem Avatar verheiratet.",
+                    "confidence": 0.8,
+                    "scope": "avatar",
+                    "source_message_id": source_message_id,
+                    "claim_type": "statement",
+                    "polarity": "affirmative",
+                    "certainty": 0.8,
+                    "subject": "avatar",
+                    "extracted_from": "user",
+                })
+            # Vergleich: "mein Penis ist (20) cm länger als deiner"
+            m = re.search(r"\bmein\s+penis\s+ist\s+(?:ca\.?\s*)?(\d{1,3})\s*cm\s*länger\s+als\s+dein(?:er)?\b", ut, flags=re.IGNORECASE)
+            if m:
+                cm = m.group(1)
+                facts.append({
+                    "fact_text": f"Der Nutzer behauptet, sein Penis sei {cm} cm länger als der des Avatars.",
+                    "confidence": 0.6,
+                    "scope": "avatar",
+                    "source_message_id": source_message_id,
+                    "claim_type": "statement",
+                    "polarity": "affirmative",
+                    "certainty": 0.6,
+                    "subject": "avatar",
+                    "extracted_from": "user",
+                })
+            elif re.search(r"\bmein\s+penis\s+ist\s+.*länger\s+als\s+dein(?:er)?\b", ut, flags=re.IGNORECASE):
+                facts.append({
+                    "fact_text": "Der Nutzer behauptet, sein Penis sei länger als der des Avatars.",
+                    "confidence": 0.5,
+                    "scope": "avatar",
+                    "source_message_id": source_message_id,
+                    "claim_type": "assumption",
+                    "polarity": "affirmative",
+                    "certainty": 0.5,
+                    "subject": "avatar",
+                    "extracted_from": "user",
+                })
+
+            # Generisch: "ich bin ..." → Nutzer-Eigenschaft
+            m = re.search(r"\bich bin ([^.?!]{3,80})", ut, flags=re.IGNORECASE)
+            if m:
+                txt = f"Ich bin {m.group(1).strip()}"
+                facts.append({
+                    "fact_text": txt,
+                    "confidence": 0.55,
+                    "scope": "user",
+                    "source_message_id": source_message_id,
+                    "claim_type": "statement",
+                    "polarity": "affirmative",
+                    "certainty": 0.55,
+                    "subject": "user",
+                    "extracted_from": "user",
+                })
+            m = re.search(r"\bich habe (\d{1,3})\s+(hunde|katzen|kinder)\b", ut, flags=re.IGNORECASE)
+            if m:
+                num, what = m.group(1), m.group(2)
+                txt = f"Ich habe {num} {what}"
+                facts.append({
+                    "fact_text": txt,
+                    "confidence": 0.6,
+                    "scope": "user",
+                    "source_message_id": source_message_id,
+                    "claim_type": "statement",
+                    "polarity": "affirmative",
+                    "certainty": 0.6,
+                    "subject": "user",
+                    "extracted_from": "user",
+                })
+        except Exception:
+            pass
     return facts
 
 
@@ -1189,8 +1629,25 @@ def memory_query(payload: QueryRequest) -> QueryResponse:
         vec = emb_list[0]
 
         def _run_query(index_name: str) -> list[dict]:
-            # Query ausführen
-            res = _query_with_timeout(index_name=index_name, namespace=namespace, vec=vec, top_k=payload.top_k, timeout_sec=10)
+            # Query ausführen – bei fehlendem Index einmal automatisch anlegen und erneut versuchen
+            try:
+                res = _query_with_timeout(index_name=index_name, namespace=namespace, vec=vec, top_k=payload.top_k, timeout_sec=10)
+            except Exception as e:
+                try:
+                    # Häufig: 404 Not Found → Index fehlt (per_avatar). Dann auto-create und retry.
+                    ensure_index_exists(
+                        pc=pc,
+                        index_name=index_name,
+                        dimension=EMBEDDING_DIM,
+                        metric="cosine",
+                        cloud=PINECONE_CLOUD,
+                        region=PINECONE_REGION,
+                    )
+                    res = _query_with_timeout(index_name=index_name, namespace=namespace, vec=vec, top_k=payload.top_k, timeout_sec=10)
+                except Exception:
+                    # Letzter Fallback: kein Kontext
+                    logger.warning(f"PINECONE query failed for index='{index_name}': {e}")
+                    return []
             matches = res.get("matches", []) if isinstance(res, dict) else getattr(res, "matches", [])
             out: list[dict] = []
             for m in matches:
@@ -1220,8 +1677,9 @@ def memory_query(payload: QueryRequest) -> QueryResponse:
         # 3) Antwort
         return QueryResponse(namespace=namespace, results=results)
     except Exception as e:
-        logger.exception("Pinecone-Query-Fehler")
-        raise HTTPException(status_code=500, detail=f"Pinecone-Query-Fehler: {e}")
+        # Nicht mehr fehlschlagen lassen – liefere einfach leeren Kontext
+        logger.warning(f"Pinecone-Query-Fehler (toleriert): {e}")
+        return QueryResponse(namespace=f"{payload.user_id}_{payload.avatar_id}", results=[])
 
 
 class ChatRequest(BaseModel):
@@ -1810,7 +2268,17 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
     msg = re.sub(r"\bweisst\b", "weißt", msg, flags=re.IGNORECASE)
     msg = re.sub(r"\bweiss\b", "weiß", msg, flags=re.IGNORECASE)
     payload.message = msg
-    # 1) RAG: relevante Schnipsel holen
+    # 1) Nutzername ggf. erkennen/speichern
+    try:
+        _maybe_update_user_name(payload.user_id, payload.avatar_id, payload.message)
+    except Exception:
+        pass
+    # 2) Daily Summary (gestern) ggf. generieren
+    try:
+        _maybe_generate_yesterday_summary(payload.user_id, payload.avatar_id, payload.target_language)
+    except Exception:
+        pass
+    # 3) RAG: relevante Schnipsel holen
     try:
         client_ip = "?"
         try:
@@ -1868,7 +2336,7 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
     # if champion_q:
     #     context_block = ""
 
-    # 2) Prompt bauen (kurz & menschlich) + Ziel-Sprache (Logik: klare Fremdsprache > user-lang; Mischsätze -> user-lang)
+    # 4) Prompt bauen (kurz & menschlich) + Ziel-Sprache (Logik: klare Fremdsprache > user-lang; Mischsätze -> user-lang)
     system = GPT_SYSTEM_PROMPT
     if effective_avatar_name:
         system = system + f" Dein Name ist {effective_avatar_name}."
@@ -1934,6 +2402,48 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
     if reply_lang:
         system += f" Antworte stets in der Sprache '{reply_lang}'. Übersetze Inhalte falls nötig."
     user_msg = payload.message
+    # Nutzername (wenn bekannt) als Gesprächskontext hinzunehmen, damit Avatar den Nutzer richtig adressiert
+    try:
+        known_user_name = _read_known_user_name(payload.user_id, payload.avatar_id)
+        if known_user_name:
+            system += f" Der Nutzer heißt {known_user_name}. Sprich ihn, wenn sinnvoll, mit seinem Namen an."
+    except Exception:
+        pass
+    # Avatar-Rolle → Leitplanken
+    try:
+        role = _read_avatar_role(payload.user_id, payload.avatar_id) or ""
+        r = role.lower()
+        if r:
+            if r == "explicit":
+                system += (
+                    " Du darfst auf einvernehmliche, erwachsene Sexualthemen eingehen,"
+                    " bleib respektvoll, nicht beleidigend, keine illegalen Themen oder Minderjährigen,"
+                    " keine detaillierten Handlungsanleitungen."
+                )
+            elif r in ("live_coach", "love_coach"):
+                system += " Sprich als Coach: empathisch, konkret, kurze Schritte, eine klare Empfehlung."
+            elif r in ("trauer",):
+                system += " Sprich besonders einfühlsam und validierend (Trauerbegleitung)."
+            elif r in ("verkaeufer", "berater"):
+                system += " Fokussiere auf Bedarfsermittlung und klare Nutzenargumente."
+            elif r in ("freund",):
+                system += " Sprich locker und freundlich, wie ein guter Freund."
+            elif r in ("lehrer_coach",):
+                system += " Erkläre verständlich in kleinen Schritten; max. 1-2 Punkte."
+            elif r in ("pfarrer",):
+                system += " Antworte seelsorgerlich, diskret und ohne Wertung."
+            elif r in ("psychiater", "seelsorger"):
+                system += (
+                    " Sei unterstützend; keine Diagnosen, keine medizinischen Ratschläge,"
+                    " ermutige ggf. professionelle Hilfe."
+                )
+            elif r in ("medizinisch",):
+                system += (
+                    " Du gibst allgemeine medizinische Informationen, aber keine Diagnose/Behandlungsempfehlung;"
+                    " verweise bei Risiko auf Ärztin/Arzt."
+                )
+    except Exception:
+        pass
     if context_block:
         name_hint = (payload.avatar_name or "").strip()
         if not name_hint and effective_avatar_name:
@@ -2035,7 +2545,7 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
 
             chat_id = f"{payload.user_id}_{payload.avatar_id}"
 
-            if os.getenv("CHAT_FACT_SCANNER", "0") == "1":
+            if os.getenv("CHAT_FACT_SCANNER", "1") == "1":
                 try:
                     extracted = _extract_chat_facts(
                         user_id=payload.user_id,
@@ -2045,6 +2555,9 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
                         avatar_text=answer,
                     )
                     for fact in extracted:
+                        if not _should_store_fact(fact):
+                            logger.info("CHAT_FACT_SKIP text='%s'", fact.get('fact_text'))
+                            continue
                         stored = _store_chat_fact(
                             user_id=payload.user_id,
                             avatar_id=payload.avatar_id,
@@ -2204,6 +2717,20 @@ def _read_avatar_name(user_id: str, avatar_id: str) -> str | None:
         return None
 
 
+def _read_avatar_role(user_id: str, avatar_id: str) -> str | None:
+    if not FIREBASE_AVAILABLE or not db:
+        return None
+    try:
+        doc = db.collection("avatars").document(avatar_id).get()
+        data = doc.to_dict() or {}
+        role = data.get("role")
+        if isinstance(role, str) and role.strip():
+            return role.strip().lower()
+        return None
+    except Exception:
+        return None
+
+
 class FactListRequest(BaseModel):
     user_id: str
     avatar_id: str
@@ -2231,6 +2758,13 @@ class FactItem(BaseModel):
     author_display_name: Optional[str] = None
     author_hash: Optional[str] = None
     history: Optional[List[FactHistoryEntry]] = None
+    # NEU: Klassifikation für robuste Review-Entscheidungen
+    claim_type: Optional[str] = None   # statement | assumption | question | joke | quote
+    polarity: Optional[str] = None     # affirmative | negative
+    certainty: Optional[float] = None  # 0..1
+    subject: Optional[str] = None      # avatar | user
+    extracted_from: Optional[str] = None  # user | avatar
+    source_message_id: Optional[str] = None
 
 
 class FactListResponse(BaseModel):
@@ -2264,5 +2798,181 @@ def _fact_doc_to_item(doc: Dict[str, Any]) -> FactItem:
         author_display_name=doc.get("author_display_name"),
         author_hash=doc.get("author_hash"),
         history=[FactHistoryEntry(**entry) for entry in (doc.get("history") or []) if isinstance(entry, dict)],
+        claim_type=doc.get("claim_type"),
+        polarity=doc.get("polarity"),
+        certainty=float(doc.get("certainty", 0.0)) if doc.get("certainty") is not None else None,
+        subject=doc.get("subject"),
+        extracted_from=doc.get("extracted_from"),
+        source_message_id=doc.get("source_message_id"),
     )
+
+
+# Fakten-Review: Liste
+@app.post("/avatar/facts/list", response_model=FactListResponse)
+def list_avatar_facts(payload: FactListRequest) -> FactListResponse:
+    if not FIREBASE_AVAILABLE or not db:
+        # Fallback: leere Liste statt Fehler, damit Frontend nicht crasht
+        return FactListResponse(items=[], has_more=False, next_cursor=None)
+    try:
+        # Versuche Indexierte Query (schnell)
+        try:
+            query = (
+                db.collection("avatarFactsQueue")
+                .where("avatar_id", "==", payload.avatar_id)
+                .where("status", "==", payload.status)
+                .order_by("created_at", direction=firestore.Query.DESCENDING)
+            )
+            if payload.cursor:
+                query = query.where("created_at", "<", payload.cursor)
+            docs = query.limit(payload.limit + 1).get()
+            def _to_items(docs_):
+                items_: list[FactItem] = []
+                for idx, d in enumerate(docs_):
+                    if idx >= payload.limit:
+                        break
+                    data = d.to_dict() or {}
+                    items_.append(_fact_doc_to_item(data))
+                return items_
+            items = _to_items(docs)
+            has_more = len(docs) > payload.limit
+            next_cursor = None
+            if has_more:
+                last_doc = docs[payload.limit - 1]
+                last_data = last_doc.to_dict() or {}
+                next_cursor = int(last_data.get("created_at", 0))
+            return FactListResponse(items=items, has_more=has_more, next_cursor=next_cursor)
+        except Exception as idx_err:
+            # Fallback ohne Composite-Index: nur nach avatar_id filtern und lokal sortieren/filtern
+            if _is_index_missing_error(idx_err):
+                raw_docs = (
+                    db.collection("avatarFactsQueue")
+                    .where("avatar_id", "==", payload.avatar_id)
+                    .limit(500)
+                    .get()
+                )
+                rows = []
+                for d in raw_docs:
+                    data = d.to_dict() or {}
+                    if str(data.get("status", "")).lower() != str(payload.status or "").lower():
+                        continue
+                    rows.append(data)
+                rows.sort(key=lambda x: int(x.get("created_at", 0)), reverse=True)
+                if payload.cursor:
+                    rows = [r for r in rows if int(r.get("created_at", 0)) < int(payload.cursor)]
+                slice_rows = rows[: payload.limit]
+                items = [_fact_doc_to_item(r) for r in slice_rows]
+                has_more = len(rows) > len(slice_rows)
+                next_cursor = int(slice_rows[-1].get("created_at", 0)) if slice_rows else None
+                logger.warning("Fact-List: unindexierter Fallback aktiv – bitte Composite-Index deployen")
+                return FactListResponse(items=items, has_more=has_more, next_cursor=next_cursor)
+            else:
+                raise
+    except Exception as e:
+        # Wenn der Fehler sehr wahrscheinlich "Index fehlt" ist → leere Liste zurückgeben
+        if _is_index_missing_error(e):
+            logger.warning("Fact-List: fehlender Firestore-Index – liefere leere Liste")
+            return FactListResponse(items=[], has_more=False, next_cursor=None)
+        logger.exception("Fact-List Fehler")
+        raise HTTPException(status_code=500, detail=f"Fact-List Fehler: {e}")
+
+
+# Optionaler Alias als GET (zur leichteren Diagnose im Browser)
+@app.get("/avatar/facts/list")
+def list_avatar_facts_get(user_id: str, avatar_id: str, status: str = "pending", limit: int = 20, cursor: Optional[int] = None) -> FactListResponse:
+    return list_avatar_facts(FactListRequest(user_id=user_id, avatar_id=avatar_id, status=status, limit=limit, cursor=cursor))
+
+
+# Fakten-Review: Status ändern
+@app.post("/avatar/facts/update", response_model=FactUpdateResponse)
+def update_avatar_fact(payload: FactUpdateRequest) -> FactUpdateResponse:
+    if not FIREBASE_AVAILABLE or not db:
+        raise HTTPException(status_code=500, detail="Firestore nicht verfügbar")
+    try:
+        fact_ref = db.collection("avatarFactsQueue").document(payload.fact_id)
+        snap = fact_ref.get()
+        if not snap.exists:
+            raise HTTPException(status_code=404, detail="Fact nicht gefunden")
+
+        data = snap.to_dict() or {}
+        if data.get("user_id") != payload.user_id or data.get("avatar_id") != payload.avatar_id:
+            raise HTTPException(status_code=403, detail="Zugriff verweigert")
+
+        ts = int(time.time() * 1000)
+        history = data.get("history") or []
+        if not isinstance(history, list):
+            history = []
+        history.append({
+            "action": payload.new_status,
+            "at": ts,
+            "by": _anonymize_user_id(payload.user_id),
+            "note": payload.note,
+        })
+
+        updates = {
+            "status": payload.new_status,
+            "updated_at": ts,
+            "history": history,
+        }
+        # Aktionen mit Pinecone
+        try:
+            if payload.new_status == "approved":
+                # In Pinecone unter Namespace des Avatars speichern (kein Text-File, spezieller Typ)
+                namespace = f"{payload.user_id}_{payload.avatar_id}"
+                index_name = _pinecone_index_for(payload.user_id, payload.avatar_id)
+                ensure_index_exists(
+                    pc=pc,
+                    index_name=index_name,
+                    dimension=EMBEDDING_DIM,
+                    metric="cosine",
+                    cloud=PINECONE_CLOUD,
+                    region=PINECONE_REGION,
+                )
+                emb_list, real_dim = _create_embeddings_with_timeout([data.get("fact_text", "")], EMBEDDING_MODEL, timeout_sec=10)
+                vec_id = f"fact-{payload.fact_id}"
+                vec = {
+                    "id": vec_id,
+                    "values": emb_list[0],
+                    "metadata": {
+                        "type": "approved_fact",
+                        "fact_id": payload.fact_id,
+                        "user_id": payload.user_id,
+                        "avatar_id": payload.avatar_id,
+                        "text": data.get("fact_text", ""),
+                        "created_at": ts,
+                        "source": "fact_review",
+                    },
+                }
+                upsert_vector(pc, index_name, namespace, vec)
+                updates["vector_id"] = vec_id
+            elif payload.new_status == "deleted":
+                # Entferne den Vektor wieder, falls vorhanden
+                namespace = f"{payload.user_id}_{payload.avatar_id}"
+                index_name = _pinecone_index_for(payload.user_id, payload.avatar_id)
+                try:
+                    # Lösche per Filter auf type & fact_id
+                    delete_by_filter(
+                        pc=pc,
+                        index_name=index_name,
+                        namespace=namespace,
+                        flt={"$and": [
+                            {"type": {"$eq": "approved_fact"}},
+                            {"fact_id": {"$eq": payload.fact_id}},
+                        ]},
+                    )
+                except Exception:
+                    pass
+        except Exception as _px:
+            logger.warning(f"Pinecone-Update beim Fact-Statuswechsel fehlgeschlagen: {_px}")
+
+        fact_ref.update(updates)
+
+        merged = {**data, "status": payload.new_status, "updated_at": ts, "history": history}
+        if "vector_id" in updates:
+            merged["vector_id"] = updates["vector_id"]
+        return FactUpdateResponse(fact=_fact_doc_to_item(merged))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Fact-Update Fehler")
+        raise HTTPException(status_code=500, detail=f"Fact-Update Fehler: {e}")
 
