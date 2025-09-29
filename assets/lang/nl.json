@@ -221,5 +221,6 @@
   "regionApplyLink": "Toepassen",
   "regionHint": "Voer postcode en/of plaats in. We proberen de gegevens automatisch aan te vullen.",
   "regionEditTooltip": "Regio bewerken",
-  "regionSummaryPlaceholder": "Geen regio geselecteerd"
+  "regionSummaryPlaceholder": "Geen regio geselecteerd",
+  "avatars.details.countryDropdownHint": "Kies land"
 }

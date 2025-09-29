@@ -221,5 +221,6 @@
   "regionApplyLink": "Terapkan",
   "regionHint": "Masukkan kode pos dan/atau kota. Kami akan mencoba melengkapi data secara otomatis.",
   "regionEditTooltip": "Edit wilayah",
-  "regionSummaryPlaceholder": "Tidak ada wilayah yang dipilih"
+  "regionSummaryPlaceholder": "Tidak ada wilayah yang dipilih",
+  "avatars.details.countryDropdownHint": "Pilih negara"
 }

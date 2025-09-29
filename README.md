@@ -199,3 +199,32 @@ Bei Fragen oder Problemen:
 ---
 
 **Stand: 04.09.2025** - Optimiert für die neuesten Google Cloud AI-Services
+
+## 🌐 Lokalisierung – Sprachdateien automatisch pflegen
+
+Fehlende Übersetzungen in `assets/lang/*.json` können automatisch aufgefüllt werden.
+
+Skript: `scripts/update_lang_translations.py`
+
+- Quelle wählen: `--source en` oder `--source de`
+- Nur bestimmte Keys (Prefix): `--only-prefix avatars.details.`
+- Englische Fallbacks überschreiben: `--overwrite-english`
+- Trockendurchlauf: `--dry-run`
+
+Beispiele:
+
+```bash
+# Nur Keys unter avatars.details.* anhand EN auffüllen
+python3 scripts/update_lang_translations.py --source en --only-prefix avatars.details.
+
+# Alle fehlenden Werte anhand DE auffüllen, vorhandene EN-Fallbacks neu übersetzen
+python3 scripts/update_lang_translations.py --source de --overwrite-english
+
+# Mit DeepL-Autotranslate (falls verfügbar)
+export DEEPL_API_KEY=your_key
+python3 scripts/update_lang_translations.py --source en --only-prefix avatars.details.
+```
+
+Hinweis:
+- Ohne DeepL-Key werden fehlende Werte mit dem Quelltext befüllt (Fallback).
+- Das Skript korrigiert auch bekannte Tippfehler-Keys (z. B. `ls.regionTitle`).

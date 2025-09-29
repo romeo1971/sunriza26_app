@@ -221,5 +221,6 @@
   "regionApplyLink": "Anvend",
   "regionHint": "Indtast postnummer og/eller by. Vi forsøger at udfylde data automatisk.",
   "regionEditTooltip": "Rediger region",
-  "regionSummaryPlaceholder": "Ingen region valgt"
+  "regionSummaryPlaceholder": "Ingen region valgt",
+  "avatars.details.countryDropdownHint": "Vælg land"
 }

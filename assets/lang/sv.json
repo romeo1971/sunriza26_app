@@ -221,5 +221,6 @@
   "regionApplyLink": "Använd",
   "regionHint": "Ange postnummer och/eller stad. Vi försöker fylla i uppgifterna automatiskt.",
   "regionEditTooltip": "Redigera region",
-  "regionSummaryPlaceholder": "Ingen region vald"
+  "regionSummaryPlaceholder": "Ingen region vald",
+  "avatars.details.countryDropdownHint": "Välj land"
 }

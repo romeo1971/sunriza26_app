@@ -221,5 +221,6 @@
   "regionApplyLink": "Εφαρμογή",
   "regionHint": "Εισάγετε ΤΚ και/ή πόλη. Θα προσπαθήσουμε να συμπληρώσουμε αυτόματα τα δεδομένα.",
   "regionEditTooltip": "Επεξεργασία περιοχής",
-  "regionSummaryPlaceholder": "Δεν έχει επιλεγεί περιοχή"
+  "regionSummaryPlaceholder": "Δεν έχει επιλεγεί περιοχή",
+  "avatars.details.countryDropdownHint": "Επιλέξτε χώρα"
 }

@@ -221,5 +221,6 @@
   "regionApplyLink": "应用",
   "regionHint": "请输入邮编和/或城市。我们将尝试自动补全数据。",
   "regionEditTooltip": "编辑区域",
-  "regionSummaryPlaceholder": "未选择区域"
+  "regionSummaryPlaceholder": "未选择区域",
+  "avatars.details.countryDropdownHint": "选择国家"
 }

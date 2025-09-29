@@ -221,5 +221,6 @@
   "regionApplyLink": "Ilapat",
   "regionHint": "Ipasok ang postal code at/o lungsod. Susubukan naming kumpletuhin ang data nang awtomatiko.",
   "regionEditTooltip": "I-edit ang rehiyon",
-  "regionSummaryPlaceholder": "Walang rehiyong napili"
+  "regionSummaryPlaceholder": "Walang rehiyong napili",
+  "avatars.details.countryDropdownHint": "Pumili ng bansa"
 }

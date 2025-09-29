@@ -227,5 +227,6 @@
   "regionApplyLink": "Apply",
   "regionHint": "Enter postal code and/or city. We'll try to complete the data automatically.",
   "regionEditTooltip": "Edit region",
-  "regionSummaryPlaceholder": "No region selected"
+  "regionSummaryPlaceholder": "No region selected",
+  "avatars.details.countryDropdownHint": "Select country"
 }

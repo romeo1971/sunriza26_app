@@ -221,5 +221,6 @@
   "regionApplyLink": "適用",
   "regionHint": "郵便番号や市区町村を入力してください。自動補完を試みます。",
   "regionEditTooltip": "地域を編集",
-  "regionSummaryPlaceholder": "地域が選択されていません"
+  "regionSummaryPlaceholder": "地域が選択されていません",
+  "avatars.details.countryDropdownHint": "国を選択"
 }

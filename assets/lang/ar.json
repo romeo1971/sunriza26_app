@@ -221,5 +221,6 @@
   "regionApplyLink": "تطبيق",
   "regionHint": "أدخل الرمز البريدي و/أو المدينة. سنحاول إكمال البيانات تلقائيًا.",
   "regionEditTooltip": "تعديل المنطقة",
-  "regionSummaryPlaceholder": "لم يتم تحديد منطقة"
+  "regionSummaryPlaceholder": "لم يتم تحديد منطقة",
+  "avatars.details.countryDropdownHint": "اختر الدولة"
 }

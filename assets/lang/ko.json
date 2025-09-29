@@ -221,5 +221,6 @@
   "regionApplyLink": "적용",
   "regionHint": "우편번호 및/또는 도시를 입력하세요. 데이터를 자동으로 완성하겠습니다.",
   "regionEditTooltip": "지역 편집",
-  "regionSummaryPlaceholder": "선택된 지역 없음"
+  "regionSummaryPlaceholder": "선택된 지역 없음",
+  "avatars.details.countryDropdownHint": "국가 선택"
 }

@@ -221,5 +221,6 @@
   "regionApplyLink": "套用",
   "regionHint": "請輸入郵遞區號及/或城市。我們會嘗試自動完成資料。",
   "regionEditTooltip": "編輯區域",
-  "regionSummaryPlaceholder": "未選擇任何區域"
+  "regionSummaryPlaceholder": "未選擇任何區域",
+  "avatars.details.countryDropdownHint": "選擇國家"
 }

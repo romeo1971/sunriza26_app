@@ -221,5 +221,6 @@
   "regionApplyLink": "Uygula",
   "regionHint": "Posta kodu ve/veya şehir girin. Verileri otomatik tamamlamaya çalışacağız.",
   "regionEditTooltip": "Bölgeyi düzenle",
-  "regionSummaryPlaceholder": "Bölge seçilmedi"
+  "regionSummaryPlaceholder": "Bölge seçilmedi",
+  "avatars.details.countryDropdownHint": "Ülke seçin"
 }

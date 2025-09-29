@@ -221,5 +221,6 @@
   "regionApplyLink": "ใช้",
   "regionHint": "ใส่รหัสไปรษณีย์และ/หรือเมือง เราจะพยายามกรอกข้อมูลให้อัตโนมัติ",
   "regionEditTooltip": "แก้ไขภูมิภาค",
-  "regionSummaryPlaceholder": "ยังไม่ได้เลือกภูมิภาค"
+  "regionSummaryPlaceholder": "ยังไม่ได้เลือกภูมิภาค",
+  "avatars.details.countryDropdownHint": "เลือกประเทศ"
 }

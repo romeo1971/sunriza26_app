@@ -221,5 +221,6 @@
   "regionApplyLink": "প্রয়োগ করুন",
   "regionHint": "পোস্টকোড ও/অথবা শহর লিখুন। আমরা স্বয়ংক্রিয়ভাবে তথ্য পূরণ করার চেষ্টা করব।",
   "regionEditTooltip": "অঞ্চল সম্পাদনা",
-  "regionSummaryPlaceholder": "কোন অঞ্চল নির্বাচিত নয়"
+  "regionSummaryPlaceholder": "কোন অঞ্চল নির্বাচিত নয়",
+  "avatars.details.countryDropdownHint": "দেশ নির্বাচন করুন"
 }

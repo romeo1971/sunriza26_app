@@ -221,5 +221,6 @@
   "regionApplyLink": "వర్తించు",
   "regionHint": "పోస్టల్ కోడ్ మరియు/లేదా నగరాన్ని నమోదు చేయండి. మేము డేటాను ఆటోమేటిగ్గా పూరించడానికి ప్రయత్నిస్తాము.",
   "regionEditTooltip": "ప్రాంతాన్ని సవరించండి",
-  "regionSummaryPlaceholder": "ప్రాంతం ఎంచుకోబడలేదు"
+  "regionSummaryPlaceholder": "ప్రాంతం ఎంచుకోబడలేదు",
+  "avatars.details.countryDropdownHint": "దేశాన్ని ఎంచుకోండి"
 }

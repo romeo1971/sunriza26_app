@@ -221,5 +221,6 @@
   "regionApplyLink": "Käytä",
   "regionHint": "Anna postinumero ja/tai kaupunki. Täydennämme tiedot automaattisesti.",
   "regionEditTooltip": "Muokkaa aluetta",
-  "regionSummaryPlaceholder": "Aluetta ei ole valittu"
+  "regionSummaryPlaceholder": "Aluetta ei ole valittu",
+  "avatars.details.countryDropdownHint": "Valitse maa"
 }

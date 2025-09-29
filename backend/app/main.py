@@ -1,68 +1,4 @@
-@app.post("/avatar/facts/list", response_model=FactListResponse)
-def list_avatar_facts(payload: FactListRequest) -> FactListResponse:
-    if not FIREBASE_AVAILABLE or not db:
-        raise HTTPException(status_code=500, detail="Firestore nicht verfügbar")
-    try:
-        query = db.collection("avatarFactsQueue") \
-            .where("user_id", "==", payload.user_id) \
-            .where("avatar_id", "==", payload.avatar_id) \
-            .where("status", "==", payload.status)
-        query = query.order_by("created_at", direction=firestore.Query.DESCENDING)
-        if payload.cursor:
-            query = query.where("created_at", "<", payload.cursor)
-        docs = query.limit(payload.limit + 1).get()
-        items: list[FactItem] = []
-        for idx, doc in enumerate(docs):
-            if idx >= payload.limit:
-                break
-            data = doc.to_dict() or {}
-            items.append(_fact_doc_to_item(data))
-        has_more = len(docs) > payload.limit
-        next_cursor = None
-        if has_more:
-            last_doc = docs[payload.limit - 1]
-            last_data = last_doc.to_dict() or {}
-            next_cursor = int(last_data.get("created_at", 0))
-        return FactListResponse(items=items, has_more=has_more, next_cursor=next_cursor)
-    except Exception as e:
-        logger.exception("Fact-List Fehler")
-        raise HTTPException(status_code=500, detail=f"Fact-List Fehler: {e}")
-
-
-@app.post("/avatar/facts/update", response_model=FactUpdateResponse)
-def update_avatar_fact(payload: FactUpdateRequest) -> FactUpdateResponse:
-    if not FIREBASE_AVAILABLE or not db:
-        raise HTTPException(status_code=500, detail="Firestore nicht verfügbar")
-    try:
-        fact_ref = db.collection("avatarFactsQueue").document(payload.fact_id)
-        snap = fact_ref.get()
-        if not snap.exists:
-            raise HTTPException(status_code=404, detail="Fact nicht gefunden")
-        data = snap.to_dict() or {}
-        if data.get("user_id") != payload.user_id or data.get("avatar_id") != payload.avatar_id:
-            raise HTTPException(status_code=403, detail="Zugriff verweigert")
-        ts = int(time.time() * 1000)
-        history = data.get("history") or []
-        if not isinstance(history, list):
-            history = []
-        history.append({
-            "action": payload.new_status,
-            "at": ts,
-            "by": _anonymize_user_id(payload.user_id),
-            "note": payload.note,
-        })
-        fact_ref.update({
-            "status": payload.new_status,
-            "updated_at": ts,
-            "history": history,
-        })
-        merged = {**data, "status": payload.new_status, "updated_at": ts, "history": history}
-        return FactUpdateResponse(fact=_fact_doc_to_item(merged))
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception("Fact-Update Fehler")
-        raise HTTPException(status_code=500, detail=f"Fact-Update Fehler: {e}")
+ 
 import os
 import urllib.parse
 from typing import List, Dict, Any, Optional
@@ -379,12 +315,26 @@ def _anonymize_user_id(user_id: str) -> str:
         return user_id
 
 
-def _personalize_context_texts(texts: list[str], avatar_name: str | None) -> list[str]:
-    if not avatar_name:
-        return texts
-    tokens = {avatar_name.strip()}
-    tokens.update(part.strip() for part in avatar_name.replace("-", " ").split() if part.strip())
-    tokens = {t for t in tokens if len(t) >= 2}
+def _personalize_context_texts(texts: list[str], avatar_names) -> list[str]:
+    """Ersetzt Avatar‑Namen im Kontext durch Ich‑Form (für Anzeige an das LLM).
+    avatar_names kann String oder Liste sein (z. B. Vorname, Nachname, Spitzname, "Frau Nachname").
+    """
+    # Namen sammeln
+    names: set[str] = set()
+    try:
+        if isinstance(avatar_names, str) and avatar_names.strip():
+            names.add(avatar_names.strip())
+            parts = avatar_names.replace("-", " ").split()
+            names.update(p.strip() for p in parts if p.strip())
+        elif isinstance(avatar_names, (list, tuple, set)):
+            for n in avatar_names:
+                if isinstance(n, str) and n.strip():
+                    names.add(n.strip())
+                    parts = n.replace("-", " ").split()
+                    names.update(p.strip() for p in parts if p.strip())
+    except Exception:
+        pass
+    tokens = {t for t in names if len(t) >= 2}
     ordered_tokens = sorted(tokens, key=len, reverse=True)
     out: list[str] = []
     for original in texts:
@@ -402,6 +352,54 @@ def _personalize_context_texts(texts: list[str], avatar_name: str | None) -> lis
         modified = re.sub(r"\bIch war\b", "Ich war", modified, flags=re.IGNORECASE)
         out.append(prefix + modified)
     return out
+
+
+def _rewrite_avatar_pronouns(text: str, avatar_names) -> str:
+    """Konservative Nachbearbeitung der Model‑Antwort:
+    - Ersetze Namen des Avatars durch Ich‑Form
+    - Korrigiere häufige Grammatikfälle (Ich hat→Ich habe, von Ich→von mir, ...)
+    """
+    try:
+        names: set[str] = set()
+        if isinstance(avatar_names, str) and avatar_names.strip():
+            names.add(avatar_names.strip())
+            parts = avatar_names.replace("-", " ").split()
+            names.update(p.strip() for p in parts if p.strip())
+        elif isinstance(avatar_names, (list, tuple, set)):
+            for n in avatar_names:
+                if isinstance(n, str) and n.strip():
+                    names.add(n.strip())
+                    parts = n.replace("-", " ").split()
+                    names.update(p.strip() for p in parts if p.strip())
+        if not names:
+            return text
+        tokens = {t for t in names if len(t) >= 2}
+        # Zusätzliche höfliche Formen (Frau/Herr Nachname)
+        try:
+            for n in list(tokens):
+                if " " in n:
+                    last = n.split()[-1]
+                    if len(last) >= 2:
+                        tokens.add(f"Frau {last}")
+                        tokens.add(f"Herr {last}")
+        except Exception:
+            pass
+        ordered = sorted(tokens, key=len, reverse=True)
+        out = text
+        for name in ordered:
+            pattern = re.compile(rf"\b{re.escape(name)}\b", flags=re.IGNORECASE)
+            out = pattern.sub("Ich", out)
+        # Grammatik-Fixes
+        out = re.sub(r"\bIch hat\b", "Ich habe", out, flags=re.IGNORECASE)
+        out = re.sub(r"\bIch ist\b", "Ich bin", out, flags=re.IGNORECASE)
+        out = re.sub(r"\bvon\s+Ich\b", "von mir", out, flags=re.IGNORECASE)
+        out = re.sub(r"\bbei\s+Ich\b", "bei mir", out, flags=re.IGNORECASE)
+        out = re.sub(r"\bfür\s+Ich\b", "für mich", out, flags=re.IGNORECASE)
+        out = re.sub(r"\bmit\s+Ich\b", "mit mir", out, flags=re.IGNORECASE)
+        out = re.sub(r"\büber\s+Ich\b", "über mich", out, flags=re.IGNORECASE)
+        return out
+    except Exception:
+        return text
 
 
 # Einfache Namespace-State-Verwaltung für Rolling-Summaries (lokal auf Filesystem)
@@ -1824,11 +1822,12 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
         )
     except Exception:
         pass
+    _tk = max(10, min(int(payload.top_k or 5), 20))
     qres = memory_query(QueryRequest(
         user_id=payload.user_id,
         avatar_id=payload.avatar_id,
         query=payload.message,
-        top_k=payload.top_k,
+        top_k=_tk,
     ))
     context_items = qres.results
     context_texts = []
@@ -1837,8 +1836,31 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
         t = md.get("text")
         if t:
             context_texts.append(f"- {t}")
+    effective_avatar_name = (payload.avatar_name or "").strip()
+    if not effective_avatar_name:
+        _nm = _read_avatar_name(payload.user_id, payload.avatar_id)
+        if _nm:
+            effective_avatar_name = _nm
     if context_texts:
-        context_texts = _personalize_context_texts(context_texts, payload.avatar_name)
+        # bereite Namensvarianten vor (Vorname, Nachname, Spitzname, Frau <Nachname>)
+        name_variants = []
+        if effective_avatar_name:
+            name_variants.append(effective_avatar_name)
+        av_doc_name = _read_avatar_name(payload.user_id, payload.avatar_id)
+        if av_doc_name and av_doc_name not in name_variants:
+            name_variants.append(av_doc_name)
+        try:
+            # Höflichkeitsform aus Nachname ableiten (nur "Frau <Nachname>")
+            last = None
+            if name_variants:
+                parts = name_variants[0].split()
+                if len(parts) >= 2:
+                    last = parts[-1]
+            if last:
+                name_variants.append(f"Frau {last}")
+        except Exception:
+            pass
+        context_texts = _personalize_context_texts(context_texts, name_variants)
     context_block = "\n".join(context_texts) if context_texts else ""
 
     # PINECONE KONTEXT IMMER NUTZEN - keine Heuristik mehr
@@ -1848,8 +1870,8 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
 
     # 2) Prompt bauen (kurz & menschlich) + Ziel-Sprache (Logik: klare Fremdsprache > user-lang; Mischsätze -> user-lang)
     system = GPT_SYSTEM_PROMPT
-    if payload.avatar_name:
-        system = system + f" Dein Name ist {payload.avatar_name}."
+    if effective_avatar_name:
+        system = system + f" Dein Name ist {effective_avatar_name}."
     # Ohne Kontext: erlaube allgemeines Wissen statt "weiß ich nicht"
     if not context_block:
         system = (
@@ -1914,6 +1936,8 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
     user_msg = payload.message
     if context_block:
         name_hint = (payload.avatar_name or "").strip()
+        if not name_hint and effective_avatar_name:
+            name_hint = effective_avatar_name
         name_clause = f" (dein Name: {name_hint})" if name_hint else ""
         user_msg = (
             f"Kontext:\n{context_block}\n\nFrage: {payload.message}\n"
@@ -1921,6 +1945,7 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
             "Alles, was im Kontext in der dritten Person über dich steht, musst du strikt in Ich-Form umschreiben"
             f"{name_clause}. Erwähne deinen eigenen Namen nicht in der dritten Person."
         )
+        system += " Wenn der Kontext konkrete Zahlen/Daten nennt (z. B. Anzahl, Jahreszahlen), nenne diese explizit."
     # PINECONE KONTEXT IMMER NUTZEN
     # if champion_q:
     #     user_msg += "\nHinweis: Gemeint ist der aktuell amtierende Weltmeister (Herren, sofern nicht 'Frauen' erwähnt). Antworte knapp: Land + Jahr des Titels."
@@ -1937,6 +1962,21 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
             max_tokens=120,
         )
         answer = comp.choices[0].message.content.strip()  # type: ignore
+        # Nachbearbeitung: konsequent Ich‑Form erzwingen (ersetzt Avatar‑Name → Ich)
+        name_variants2 = []
+        if effective_avatar_name:
+            name_variants2.append(effective_avatar_name)
+        av_doc_name2 = _read_avatar_name(payload.user_id, payload.avatar_id)
+        if av_doc_name2 and av_doc_name2 not in name_variants2:
+            name_variants2.append(av_doc_name2)
+        try:
+            parts = (name_variants2[0].split() if name_variants2 else [])
+            if len(parts) >= 2:
+                last = parts[-1]
+                name_variants2.append(f"Frau {last}")
+        except Exception:
+            pass
+        answer = _rewrite_avatar_pronouns(answer, name_variants2)
 
         # TTS: bevorzugt ElevenLabs, sonst Google TTS
         tts_b64 = None
@@ -2142,6 +2182,26 @@ def get_avatar_info(payload: AvatarInfoRequest) -> AvatarInfoResponse:
     except Exception as e:
         logger.warning(f"Avatar Info Fehler: {e}")
         return AvatarInfoResponse(avatar_image_url=None)
+
+
+def _read_avatar_name(user_id: str, avatar_id: str) -> str | None:
+    if not FIREBASE_AVAILABLE or not db:
+        return None
+    try:
+        doc = db.collection("users").document(user_id).collection("avatars").document(avatar_id).get()
+        data = doc.to_dict() or {}
+        first = (data.get("firstName") or "").strip()
+        nick = (data.get("nickname") or "").strip()
+        last = (data.get("lastName") or "").strip()
+        if nick:
+            return nick
+        if first and last:
+            return f"{first} {last}"
+        if first:
+            return first
+        return None
+    except Exception:
+        return None
 
 
 class FactListRequest(BaseModel):

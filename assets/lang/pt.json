@@ -221,5 +221,6 @@
   "regionApplyLink": "Aplicar",
   "regionHint": "Insira CEP e/ou cidade. Tentaremos preencher os dados automaticamente.",
   "regionEditTooltip": "Editar região",
-  "regionSummaryPlaceholder": "Nenhuma região selecionada"
+  "regionSummaryPlaceholder": "Nenhuma região selecionada",
+  "avatars.details.countryDropdownHint": "Selecionar país"
 }

@@ -221,5 +221,6 @@
   "regionApplyLink": "Bruk",
   "regionHint": "Angi postnummer og/eller by. Vi prøver å fylle ut data automatisk.",
   "regionEditTooltip": "Rediger region",
-  "regionSummaryPlaceholder": "Ingen region valgt"
+  "regionSummaryPlaceholder": "Ingen region valgt",
+  "avatars.details.countryDropdownHint": "Velg land"
 }

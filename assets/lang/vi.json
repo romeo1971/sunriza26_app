@@ -221,5 +221,6 @@
   "regionApplyLink": "Áp dụng",
   "regionHint": "Nhập mã bưu chính và/hoặc thành phố. Chúng tôi sẽ cố gắng hoàn tất dữ liệu tự động.",
   "regionEditTooltip": "Chỉnh sửa khu vực",
-  "regionSummaryPlaceholder": "Chưa chọn khu vực"
+  "regionSummaryPlaceholder": "Chưa chọn khu vực",
+  "avatars.details.countryDropdownHint": "Chọn quốc gia"
 }

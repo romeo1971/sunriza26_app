@@ -221,5 +221,6 @@
   "regionApplyLink": "Použít",
   "regionHint": "Zadejte PSČ a/nebo město. Pokusíme se data doplnit automaticky.",
   "regionEditTooltip": "Upravit oblast",
-  "regionSummaryPlaceholder": "Není vybrána žádná oblast"
+  "regionSummaryPlaceholder": "Není vybrána žádná oblast",
+  "avatars.details.countryDropdownHint": "Zvolte zemi"
 }

@@ -221,5 +221,6 @@
   "regionApplyLink": "Применить",
   "regionHint": "Введите индекс и/или город. Мы постараемся заполнить данные автоматически.",
   "regionEditTooltip": "Редактировать регион",
-  "regionSummaryPlaceholder": "Регион не выбран"
+  "regionSummaryPlaceholder": "Регион не выбран",
+  "avatars.details.countryDropdownHint": "Выберите страну"
 }

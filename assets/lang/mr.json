@@ -221,5 +221,6 @@
   "regionApplyLink": "लागू करा",
   "regionHint": "पिनकोड आणि/किंवा शहर टाइप करा. आम्ही डेटा आपोआप भरण्याचा प्रयत्न करू.",
   "regionEditTooltip": "प्रदेश संपादित करा",
-  "regionSummaryPlaceholder": "कोणताही प्रदेश निवडलेला नाही"
+  "regionSummaryPlaceholder": "कोणताही प्रदेश निवडलेला नाही",
+  "avatars.details.countryDropdownHint": "देश निवडा"
 }

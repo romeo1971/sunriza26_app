@@ -221,5 +221,6 @@
   "regionApplyLink": "Applica",
   "regionHint": "Inserisci CAP e/o città. Proveremo a completare automaticamente i dati.",
   "regionEditTooltip": "Modifica regione",
-  "regionSummaryPlaceholder": "Nessuna regione selezionata"
+  "regionSummaryPlaceholder": "Nessuna regione selezionata",
+  "avatars.details.countryDropdownHint": "Seleziona paese"
 }

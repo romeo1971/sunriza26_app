@@ -221,5 +221,6 @@
   "regionApplyLink": "ਲਾਗੂ ਕਰੋ",
   "regionHint": "ਪਿੰਨ ਕੋਡ ਅਤੇ/ਜਾਂ ਸ਼ਹਿਰ ਦਰਜ ਕਰੋ। ਅਸੀਂ ਡਾਟਾ ਆਪੇ ਭਰਨ ਦੀ ਕੋਸ਼ਿਸ਼ ਕਰਾਂਗੇ।",
   "regionEditTooltip": "ਖੇਤਰ ਸੰਪਾਦਿਤ ਕਰੋ",
-  "regionSummaryPlaceholder": "ਕੋਈ ਖੇਤਰ ਚੁਣਿਆ ਨਹੀਂ ਗਿਆ"
+  "regionSummaryPlaceholder": "ਕੋਈ ਖੇਤਰ ਚੁਣਿਆ ਨਹੀਂ ਗਿਆ",
+  "avatars.details.countryDropdownHint": "ਦੇਸ਼ ਚੁਣੋ"
 }

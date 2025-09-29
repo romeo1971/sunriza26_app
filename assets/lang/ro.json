@@ -221,5 +221,6 @@
   "regionApplyLink": "Aplică",
   "regionHint": "Introdu cod poștal și/sau oraș. Vom încerca să completăm automat datele.",
   "regionEditTooltip": "Editează regiunea",
-  "regionSummaryPlaceholder": "Nicio regiune selectată"
+  "regionSummaryPlaceholder": "Nicio regiune selectată",
+  "avatars.details.countryDropdownHint": "Selectați țara"
 }

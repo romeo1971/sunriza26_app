@@ -221,5 +221,6 @@
   "regionApplyLink": "اعمال",
   "regionHint": "کد پستی و/یا شهر را وارد کنید. سعی می‌کنیم داده‌ها را خودکار تکمیل کنیم.",
   "regionEditTooltip": "ویرایش ناحیه",
-  "regionSummaryPlaceholder": "هیچ ناحیه‌ای انتخاب نشده است"
+  "regionSummaryPlaceholder": "هیچ ناحیه‌ای انتخاب نشده است",
+  "avatars.details.countryDropdownHint": "کشور را انتخاب کنید"
 }

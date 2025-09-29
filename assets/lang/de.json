@@ -228,5 +228,6 @@
   "regionApplyLink": "Übernehmen",
   "regionHint": "Gib PLZ und/oder Stadt ein. Wir versuchen, die Daten automatisch zu ergänzen.",
   "regionEditTooltip": "Region bearbeiten",
-  "regionSummaryPlaceholder": "Keine Region ausgewählt"
+  "regionSummaryPlaceholder": "Keine Region ausgewählt",
+  "avatars.details.countryDropdownHint": "Land wählen"
 }
