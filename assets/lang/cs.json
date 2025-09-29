@@ -210,5 +210,16 @@
   "profile.verify": "Ověřit",
   "profile.photoUpdated": "Profilová fotka aktualizována",
   "profile.photoRemoved": "Profilová fotka odebrána",
-  "profile.saved": "Profil uložen"
+  "profile.saved": "Profil uložen",
+  "avatars.details.regionTitle": "Oblast",
+  "avatars.details.regionConfirmTitle": "Potvrdit oblast",
+  "avatars.details.regionConfirmMessage": "Použít výběr: {summary}",
+  "avatars.details.regionNotFound": "Nebylo nalezeno odpovídající místo. Upravte prosím vstup.",
+  "avatars.details.confirmApply": "Použít",
+  "regionSearchLabel": "Město nebo PSČ",
+  "regionSearchHint": "Zadejte PSČ, město nebo obojí",
+  "regionApplyLink": "Použít",
+  "regionHint": "Zadejte PSČ a/nebo město. Pokusíme se data doplnit automaticky.",
+  "regionEditTooltip": "Upravit oblast",
+  "regionSummaryPlaceholder": "Není vybrána žádná oblast"
 }

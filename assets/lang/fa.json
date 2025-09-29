@@ -210,5 +210,16 @@
   "profile.verify": "تأیید",
   "profile.photoUpdated": "عکس پروفایل به‌روزرسانی شد",
   "profile.photoRemoved": "عکس پروفایل حذف شد",
-  "profile.saved": "پروفایل ذخیره شد"
+  "profile.saved": "پروفایل ذخیره شد",
+  "avatars.details.regionTitle": "ناحیه",
+  "avatars.details.regionConfirmTitle": "تأیید ناحیه",
+  "avatars.details.regionConfirmMessage": "استفاده از انتخاب: {summary}",
+  "avatars.details.regionNotFound": "موقعیت مطابقی پیدا نشد. لطفاً ورودی را اصلاح کنید.",
+  "avatars.details.confirmApply": "اعمال",
+  "regionSearchLabel": "شهر یا کد پستی",
+  "regionSearchHint": "کد پستی، شهر یا هر دو را وارد کنید",
+  "regionApplyLink": "اعمال",
+  "regionHint": "کد پستی و/یا شهر را وارد کنید. سعی می‌کنیم داده‌ها را خودکار تکمیل کنیم.",
+  "regionEditTooltip": "ویرایش ناحیه",
+  "regionSummaryPlaceholder": "هیچ ناحیه‌ای انتخاب نشده است"
 }

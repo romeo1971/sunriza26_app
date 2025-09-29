@@ -210,5 +210,16 @@
   "profile.verify": "Xác minh",
   "profile.photoUpdated": "Đã cập nhật ảnh hồ sơ",
   "profile.photoRemoved": "Đã gỡ ảnh hồ sơ",
-  "profile.saved": "Đã lưu hồ sơ"
+  "profile.saved": "Đã lưu hồ sơ",
+  "avatars.details.regionTitle": "Khu vực",
+  "avatars.details.regionConfirmTitle": "Xác nhận khu vực",
+  "avatars.details.regionConfirmMessage": "Sử dụng lựa chọn: {summary}",
+  "avatars.details.regionNotFound": "Không tìm thấy vị trí phù hợp. Vui lòng điều chỉnh đầu vào.",
+  "avatars.details.confirmApply": "Áp dụng",
+  "regionSearchLabel": "Thành phố hoặc mã bưu chính",
+  "regionSearchHint": "Nhập mã bưu chính, thành phố hoặc cả hai",
+  "regionApplyLink": "Áp dụng",
+  "regionHint": "Nhập mã bưu chính và/hoặc thành phố. Chúng tôi sẽ cố gắng hoàn tất dữ liệu tự động.",
+  "regionEditTooltip": "Chỉnh sửa khu vực",
+  "regionSummaryPlaceholder": "Chưa chọn khu vực"
 }

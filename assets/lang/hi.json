@@ -210,5 +210,16 @@
   "profile.verify": "सत्यापित करें",
   "profile.photoUpdated": "प्रोफाइल फ़ोटो अपडेट हुई",
   "profile.photoRemoved": "प्रोफाइल फ़ोटो हटाई गई",
-  "profile.saved": "प्रोफाइल सहेजी गई"
+  "profile.saved": "प्रोफाइल सहेजी गई",
+  "avatars.details.regionTitle": "क्षेत्र",
+  "avatars.details.regionConfirmTitle": "क्षेत्र की पुष्टि करें",
+  "avatars.details.regionConfirmMessage": "चयन का उपयोग करें: {summary}",
+  "avatars.details.regionNotFound": "कोई मेल खाता स्थान नहीं मिला। कृपया इनपुट समायोजित करें।",
+  "avatars.details.confirmApply": "लागू करें",
+  "regionSearchLabel": "शहर या पिनकोड",
+  "regionSearchHint": "पिनकोड, शहर या दोनों दर्ज करें",
+  "regionApplyLink": "लागू करें",
+  "regionHint": "पिनकोড और/या शहर दर्ज करें। हम डेटा स्वतः भरने की कोशिश करेंगे।",
+  "regionEditTooltip": "क्षेत्र संपादित करें",
+  "regionSummaryPlaceholder": "कोई क्षेत्र चयनित नहीं"
 }

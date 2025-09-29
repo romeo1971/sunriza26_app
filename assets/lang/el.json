@@ -210,5 +210,16 @@
   "profile.verify": "Επαλήθευση",
   "profile.photoUpdated": "Η φωτογραφία προφίλ ενημερώθηκε",
   "profile.photoRemoved": "Η φωτογραφία προφίλ αφαιρέθηκε",
-  "profile.saved": "Το προφίλ αποθηκεύτηκε"
+  "profile.saved": "Το προφίλ αποθηκεύτηκε",
+  "avatars.details.regionTitle": "Περιοχή",
+  "avatars.details.regionConfirmTitle": "Επιβεβαίωση περιοχής",
+  "avatars.details.regionConfirmMessage": "Χρήση επιλογής: {summary}",
+  "avatars.details.regionNotFound": "Δεν βρέθηκε αντίστοιχη τοποθεσία. Προσαρμόστε την εισαγωγή.",
+  "avatars.details.confirmApply": "Εφαρμογή",
+  "regionSearchLabel": "Πόλη ή ταχυδρομικός κώδικας",
+  "regionSearchHint": "Εισάγετε ΤΚ, πόλη ή και τα δύο",
+  "regionApplyLink": "Εφαρμογή",
+  "regionHint": "Εισάγετε ΤΚ και/ή πόλη. Θα προσπαθήσουμε να συμπληρώσουμε αυτόματα τα δεδομένα.",
+  "regionEditTooltip": "Επεξεργασία περιοχής",
+  "regionSummaryPlaceholder": "Δεν έχει επιλεγεί περιοχή"
 }

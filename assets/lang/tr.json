@@ -210,5 +210,16 @@
   "profile.verify": "Doğrula",
   "profile.photoUpdated": "Profil fotoğrafı güncellendi",
   "profile.photoRemoved": "Profil fotoğrafı kaldırıldı",
-  "profile.saved": "Profil kaydedildi"
+  "profile.saved": "Profil kaydedildi",
+  "avatars.details.regionTitle": "Bölge",
+  "avatars.details.regionConfirmTitle": "Bölgeyi onayla",
+  "avatars.details.regionConfirmMessage": "Seçimi kullan: {summary}",
+  "avatars.details.regionNotFound": "Uygun konum bulunamadı. Lütfen girdiyi düzeltin.",
+  "avatars.details.confirmApply": "Uygula",
+  "regionSearchLabel": "Şehir veya posta kodu",
+  "regionSearchHint": "Posta kodu, şehir veya her ikisini girin",
+  "regionApplyLink": "Uygula",
+  "regionHint": "Posta kodu ve/veya şehir girin. Verileri otomatik tamamlamaya çalışacağız.",
+  "regionEditTooltip": "Bölgeyi düzenle",
+  "regionSummaryPlaceholder": "Bölge seçilmedi"
 }

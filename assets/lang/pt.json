@@ -210,5 +210,16 @@
   "profile.verify": "Verificar",
   "profile.photoUpdated": "Foto do perfil atualizada",
   "profile.photoRemoved": "Foto do perfil removida",
-  "profile.saved": "Perfil guardado"
+  "profile.saved": "Perfil guardado",
+  "avatars.details.regionTitle": "Região",
+  "avatars.details.regionConfirmTitle": "Confirmar região",
+  "avatars.details.regionConfirmMessage": "Usar seleção: {summary}",
+  "avatars.details.regionNotFound": "Nenhuma localização correspondente encontrada. Ajuste sua entrada.",
+  "avatars.details.confirmApply": "Aplicar",
+  "regionSearchLabel": "Cidade ou CEP",
+  "regionSearchHint": "Insira CEP, cidade ou ambos",
+  "regionApplyLink": "Aplicar",
+  "regionHint": "Insira CEP e/ou cidade. Tentaremos preencher os dados automaticamente.",
+  "regionEditTooltip": "Editar região",
+  "regionSummaryPlaceholder": "Nenhuma região selecionada"
 }

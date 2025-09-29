@@ -210,5 +210,16 @@
   "profile.verify": "Verifiser",
   "profile.photoUpdated": "Profilbilde oppdatert",
   "profile.photoRemoved": "Profilbilde fjernet",
-  "profile.saved": "Profil lagret"
+  "profile.saved": "Profil lagret",
+  "avatars.details.regionTitle": "Region",
+  "avatars.details.regionConfirmTitle": "Bekreft region",
+  "avatars.details.regionConfirmMessage": "Bruk valget: {summary}",
+  "avatars.details.regionNotFound": "Fant ingen samsvarende plassering. Juster inndata.",
+  "avatars.details.confirmApply": "Bruk",
+  "regionSearchLabel": "By eller postnummer",
+  "regionSearchHint": "Angi postnummer, by eller begge",
+  "regionApplyLink": "Bruk",
+  "regionHint": "Angi postnummer og/eller by. Vi prøver å fylle ut data automatisk.",
+  "regionEditTooltip": "Rediger region",
+  "regionSummaryPlaceholder": "Ingen region valgt"
 }

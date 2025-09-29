@@ -210,5 +210,16 @@
   "profile.verify": "যাচাই করুন",
   "profile.photoUpdated": "প্রোফাইল ছবি আপডেট হয়েছে",
   "profile.photoRemoved": "প্রোফাইল ছবি সরানো হয়েছে",
-  "profile.saved": "প্রোফাইল সংরক্ষিত"
+  "profile.saved": "প্রোফাইল সংরক্ষিত",
+  "avatars.details.regionTitle": "অঞ্চল",
+  "avatars.details.regionConfirmTitle": "অঞ্চল নিশ্চিত করুন",
+  "avatars.details.regionConfirmMessage": "নির্বাচন ব্যবহার করুন: {summary}",
+  "avatars.details.regionNotFound": "মিলযুক্ত অবস্থান পাওয়া যায়নি। ইনপুট সংশোধন করুন।",
+  "avatars.details.confirmApply": "প্রয়োগ করুন",
+  "regionSearchLabel": "শহর বা পোস্টকোড",
+  "regionSearchHint": "পোস্টকোড, শহর বা উভয়ই লিখুন",
+  "regionApplyLink": "প্রয়োগ করুন",
+  "regionHint": "পোস্টকোড ও/অথবা শহর লিখুন। আমরা স্বয়ংক্রিয়ভাবে তথ্য পূরণ করার চেষ্টা করব।",
+  "regionEditTooltip": "অঞ্চল সম্পাদনা",
+  "regionSummaryPlaceholder": "কোন অঞ্চল নির্বাচিত নয়"
 }

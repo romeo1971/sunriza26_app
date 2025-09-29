@@ -210,5 +210,16 @@
   "profile.verify": "Verifiera",
   "profile.photoUpdated": "Profilbild uppdaterad",
   "profile.photoRemoved": "Profilbild borttagen",
-  "profile.saved": "Profil sparad"
+  "profile.saved": "Profil sparad",
+  "avatars.details.regionTitle": "Region",
+  "avatars.details.regionConfirmTitle": "Bekräfta region",
+  "avatars.details.regionConfirmMessage": "Använd valet: {summary}",
+  "avatars.details.regionNotFound": "Ingen matchande plats hittades. Justera din inmatning.",
+  "avatars.details.confirmApply": "Använd",
+  "regionSearchLabel": "Stad eller postnummer",
+  "regionSearchHint": "Ange postnummer, stad eller båda",
+  "regionApplyLink": "Använd",
+  "regionHint": "Ange postnummer och/eller stad. Vi försöker fylla i uppgifterna automatiskt.",
+  "regionEditTooltip": "Redigera region",
+  "regionSummaryPlaceholder": "Ingen region vald"
 }

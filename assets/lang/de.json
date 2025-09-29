@@ -222,5 +222,11 @@
   "profile.verify": "Verifizieren",
   "profile.photoUpdated": "Profilfoto aktualisiert",
   "profile.photoRemoved": "Profilfoto entfernt",
-  "profile.saved": "Profil gespeichert"
+  "profile.saved": "Profil gespeichert",
+  "regionSearchLabel": "Stadt oder PLZ",
+  "regionSearchHint": "PLZ, Stadt oder beides eingeben",
+  "regionApplyLink": "Übernehmen",
+  "regionHint": "Gib PLZ und/oder Stadt ein. Wir versuchen, die Daten automatisch zu ergänzen.",
+  "regionEditTooltip": "Region bearbeiten",
+  "regionSummaryPlaceholder": "Keine Region ausgewählt"
 }

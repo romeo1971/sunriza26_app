@@ -210,5 +210,16 @@
   "profile.verify": "Sahkan",
   "profile.photoUpdated": "Foto profil dikemas kini",
   "profile.photoRemoved": "Foto profil dibuang",
-  "profile.saved": "Profil disimpan"
+  "profile.saved": "Profil disimpan",
+  "avatars.details.regionTitle": "Wilayah",
+  "avatars.details.regionConfirmTitle": "Sahkan wilayah",
+  "avatars.details.regionConfirmMessage": "Gunakan pilihan: {summary}",
+  "avatars.details.regionNotFound": "Lokasi yang sepadan tidak ditemui. Sila sesuaikan input.",
+  "avatars.details.confirmApply": "Terapkan",
+  "regionSearchLabel": "Bandar atau poskod",
+  "regionSearchHint": "Masukkan poskod, bandar atau kedua-duanya",
+  "regionApplyLink": "Terapkan",
+  "regionHint": "Masukkan poskod dan/atau bandar. Kami akan cuba melengkapkan data secara automatik.",
+  "regionEditTooltip": "Edit wilayah",
+  "regionSummaryPlaceholder": "Tiada wilayah dipilih"
 }

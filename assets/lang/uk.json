@@ -210,5 +210,16 @@
   "profile.verify": "Підтвердити",
   "profile.photoUpdated": "Фото профілю оновлено",
   "profile.photoRemoved": "Фото профілю видалено",
-  "profile.saved": "Профіль збережено"
+  "profile.saved": "Профіль збережено",
+  "avatars.details.regionTitle": "Регіон",
+  "avatars.details.regionConfirmTitle": "Підтвердити регіон",
+  "avatars.details.regionConfirmMessage": "Використати вибір: {summary}",
+  "avatars.details.regionNotFound": "Відповідне місце не знайдено. Будь ласка, змініть введення.",
+  "avatars.details.confirmApply": "Застосувати",
+  "regionSearchLabel": "Місто або поштовий індекс",
+  "regionSearchHint": "Введіть індекс, місто або обидва",
+  "regionApplyLink": "Застосувати",
+  "regionHint": "Введіть індекс та/або місто. Ми спробуємо автоматично заповнити дані.",
+  "regionEditTooltip": "Редагувати регіон",
+  "regionSummaryPlaceholder": "Регіон не вибрано"
 }

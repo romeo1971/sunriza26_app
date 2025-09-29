@@ -210,5 +210,16 @@
   "profile.verify": "ధృవీకరించు",
   "profile.photoUpdated": "ప్రొఫైల్ ఫోటో నవీకరించబడింది",
   "profile.photoRemoved": "ప్రొఫైల్ ఫోటో తొలగించబడింది",
-  "profile.saved": "ప్రొఫైల్ సేవ్ చేయబడింది"
+  "profile.saved": "ప్రొఫైల్ సేవ్ చేయబడింది",
+  "avatars.details.regionTitle": "ప్రాంతం",
+  "avatars.details.regionConfirmTitle": "ప్రాంతాన్ని నిర్ధారించండి",
+  "avatars.details.regionConfirmMessage": "ఎంపికను ఉపయోగించండి: {summary}",
+  "avatars.details.regionNotFound": "సరిపోలే ప్రదేశం కనబడలేదు. దయచేసి ఇన్‌పుట్ సవరించండి.",
+  "avatars.details.confirmApply": "వర్తించు",
+  "regionSearchLabel": "నగరం లేదా పోస్టల్ కోడ్",
+  "regionSearchHint": "పోస్టల్ కోడ్, నగరం లేదా రెండూ నమోదు చేయండి",
+  "regionApplyLink": "వర్తించు",
+  "regionHint": "పోస్టల్ కోడ్ మరియు/లేదా నగరాన్ని నమోదు చేయండి. మేము డేటాను ఆటోమేటిగ్గా పూరించడానికి ప్రయత్నిస్తాము.",
+  "regionEditTooltip": "ప్రాంతాన్ని సవరించండి",
+  "regionSummaryPlaceholder": "ప్రాంతం ఎంచుకోబడలేదు"
 }

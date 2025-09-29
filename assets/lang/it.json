@@ -210,5 +210,16 @@
   "profile.verify": "Verifica",
   "profile.photoUpdated": "Foto profilo aggiornata",
   "profile.photoRemoved": "Foto profilo rimossa",
-  "profile.saved": "Profilo salvato"
+  "profile.saved": "Profilo salvato",
+  "avatars.details.regionTitle": "Regione",
+  "avatars.details.regionConfirmTitle": "Conferma regione",
+  "avatars.details.regionConfirmMessage": "Usa selezione: {summary}",
+  "avatars.details.regionNotFound": "Nessuna posizione corrispondente trovata. Modifica l'input.",
+  "avatars.details.confirmApply": "Applica",
+  "regionSearchLabel": "Città o CAP",
+  "regionSearchHint": "Inserisci CAP, città o entrambi",
+  "regionApplyLink": "Applica",
+  "regionHint": "Inserisci CAP e/o città. Proveremo a completare automaticamente i dati.",
+  "regionEditTooltip": "Modifica regione",
+  "regionSummaryPlaceholder": "Nessuna regione selezionata"
 }

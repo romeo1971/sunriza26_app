@@ -210,5 +210,16 @@
   "profile.verify": "Vahvista",
   "profile.photoUpdated": "Profiilikuva päivitetty",
   "profile.photoRemoved": "Profiilikuva poistettu",
-  "profile.saved": "Profiili tallennettu"
+  "profile.saved": "Profiili tallennettu",
+  "avatars.details.regionTitle": "Alue",
+  "avatars.details.regionConfirmTitle": "Vahvista alue",
+  "avatars.details.regionConfirmMessage": "Käytä valintaa: {summary}",
+  "avatars.details.regionNotFound": "Sopivaa sijaintia ei löytynyt. Säädä syötettä.",
+  "avatars.details.confirmApply": "Käytä",
+  "regionSearchLabel": "Kaupunki tai postinumero",
+  "regionSearchHint": "Anna postinumero, kaupunki tai molemmat",
+  "regionApplyLink": "Käytä",
+  "regionHint": "Anna postinumero ja/tai kaupunki. Täydennämme tiedot automaattisesti.",
+  "regionEditTooltip": "Muokkaa aluetta",
+  "regionSummaryPlaceholder": "Aluetta ei ole valittu"
 }

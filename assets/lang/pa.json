@@ -210,5 +210,16 @@
   "profile.verify": "ਪ੍ਰਮਾਣਿਤ ਕਰੋ",
   "profile.photoUpdated": "ਪ੍ਰੋਫ਼ਾਈਲ ਫੋਟੋ ਅਪਡੇਟ ਹੋਈ",
   "profile.photoRemoved": "ਪ੍ਰੋਫ਼ਾਈਲ ਫੋਟੋ ਹਟਾਈ ਗਈ",
-  "profile.saved": "ਪ੍ਰੋਫ਼ਾਈਲ ਸੰਭਾਲੀ ਗਈ"
+  "profile.saved": "ਪ੍ਰੋਫ਼ਾਈਲ ਸੰਭਾਲੀ ਗਈ",
+  "avatars.details.regionTitle": "ਖੇਤਰ",
+  "avatars.details.regionConfirmTitle": "ਖੇਤਰ ਦੀ ਪੁਸ਼ਟੀ ਕਰੋ",
+  "avatars.details.regionConfirmMessage": "ਚੋਣ ਵਰਤੋਂ: {summary}",
+  "avatars.details.regionNotFound": "ਮੈਚਿੰਗ ਟਿਕਾਣਾ ਨਹੀਂ ਮਿਲਿਆ। ਕਿਰਪਾ ਕਰਕੇ ਇਨਪੁਟ ਠੀਕ ਕਰੋ।",
+  "avatars.details.confirmApply": "ਲਾਗੂ ਕਰੋ",
+  "regionSearchLabel": "ਸ਼ਹਿਰ ਜਾਂ ਪਿੰਨ ਕੋਡ",
+  "regionSearchHint": "ਪਿੰਨ ਕੋਡ, ਸ਼ਹਿਰ ਜਾਂ ਦੋਵੇਂ ਦਰਜ ਕਰੋ",
+  "regionApplyLink": "ਲਾਗੂ ਕਰੋ",
+  "regionHint": "ਪਿੰਨ ਕੋਡ ਅਤੇ/ਜਾਂ ਸ਼ਹਿਰ ਦਰਜ ਕਰੋ। ਅਸੀਂ ਡਾਟਾ ਆਪੇ ਭਰਨ ਦੀ ਕੋਸ਼ਿਸ਼ ਕਰਾਂਗੇ।",
+  "regionEditTooltip": "ਖੇਤਰ ਸੰਪਾਦਿਤ ਕਰੋ",
+  "regionSummaryPlaceholder": "ਕੋਈ ਖੇਤਰ ਚੁਣਿਆ ਨਹੀਂ ਗਿਆ"
 }

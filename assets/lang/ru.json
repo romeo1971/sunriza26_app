@@ -210,5 +210,16 @@
   "profile.verify": "Подтвердить",
   "profile.photoUpdated": "Фото профиля обновлено",
   "profile.photoRemoved": "Фото профиля удалено",
-  "profile.saved": "Профиль сохранён"
+  "profile.saved": "Профиль сохранён",
+  "avatars.details.regionTitle": "Регион",
+  "avatars.details.regionConfirmTitle": "Подтвердить регион",
+  "avatars.details.regionConfirmMessage": "Использовать выбор: {summary}",
+  "avatars.details.regionNotFound": "Соответствующее местоположение не найдено. Пожалуйста, скорректируйте ввод.",
+  "avatars.details.confirmApply": "Применить",
+  "regionSearchLabel": "Город или почтовый индекс",
+  "regionSearchHint": "Введите индекс, город или оба",
+  "regionApplyLink": "Применить",
+  "regionHint": "Введите индекс и/или город. Мы постараемся заполнить данные автоматически.",
+  "regionEditTooltip": "Редактировать регион",
+  "regionSummaryPlaceholder": "Регион не выбран"
 }

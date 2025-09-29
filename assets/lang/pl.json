@@ -210,5 +210,16 @@
   "profile.verify": "Zweryfikuj",
   "profile.photoUpdated": "Zaktualizowano zdjęcie profilu",
   "profile.photoRemoved": "Usunięto zdjęcie profilu",
-  "profile.saved": "Profil zapisany"
+  "profile.saved": "Profil zapisany",
+  "avatars.details.regionTitle": "Region",
+  "avatars.details.regionConfirmTitle": "Potwierdź region",
+  "avatars.details.regionConfirmMessage": "Użyj wyboru: {summary}",
+  "avatars.details.regionNotFound": "Nie znaleziono pasującej lokalizacji. Dostosuj dane wejściowe.",
+  "avatars.details.confirmApply": "Zastosuj",
+  "regionSearchLabel": "Miasto lub kod pocztowy",
+  "regionSearchHint": "Wpisz kod pocztowy, miasto lub oba",
+  "regionApplyLink": "Zastosuj",
+  "regionHint": "Wpisz kod pocztowy i/lub miasto. Postaramy się uzupełnić dane automatycznie.",
+  "regionEditTooltip": "Edytuj region",
+  "regionSummaryPlaceholder": "Nie wybrano regionu"
 }

@@ -210,5 +210,16 @@
   "avatars.details.uploadVideosTitle": "Uploading videos…",
   "avatars.details.uploadTextsTitle": "Uploading texts…",
   "avatars.details.audioUploadedSingle": "Audio uploaded.",
-  "avatars.details.audioUploadedMulti": "{count} audios uploaded."
+  "avatars.details.audioUploadedMulti": "{count} audios uploaded.",
+  "avatars.details.regionTitle": "Region",
+  "avatars.details.regionConfirmTitle": "Confirm region",
+  "avatars.details.regionConfirmMessage": "Use selection: {summary}",
+  "avatars.details.regionNotFound": "No matching location found. Please adjust your input.",
+  "avatars.details.confirmApply": "Apply",
+  "regionSearchLabel": "City or postal code",
+  "regionSearchHint": "Enter postal code, city, or both",
+  "regionApplyLink": "Apply",
+  "regionHint": "Enter postal code and/or city. We'll try to complete the data automatically.",
+  "regionEditTooltip": "Edit region",
+  "regionSummaryPlaceholder": "No region selected"
 }

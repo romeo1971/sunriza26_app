@@ -210,5 +210,16 @@
   "profile.verify": "Verifică",
   "profile.photoUpdated": "Fotografia de profil a fost actualizată",
   "profile.photoRemoved": "Fotografia de profil a fost eliminată",
-  "profile.saved": "Profil salvat"
+  "profile.saved": "Profil salvat",
+  "avatars.details.regionTitle": "Regiune",
+  "avatars.details.regionConfirmTitle": "Confirmă regiunea",
+  "avatars.details.regionConfirmMessage": "Folosește selecția: {summary}",
+  "avatars.details.regionNotFound": "Nu a fost găsită o locație corespunzătoare. Ajustează introducerea.",
+  "avatars.details.confirmApply": "Aplică",
+  "regionSearchLabel": "Oraș sau cod poștal",
+  "regionSearchHint": "Introdu codul poștal, orașul sau ambele",
+  "regionApplyLink": "Aplică",
+  "regionHint": "Introdu cod poștal și/sau oraș. Vom încerca să completăm automat datele.",
+  "regionEditTooltip": "Editează regiunea",
+  "regionSummaryPlaceholder": "Nicio regiune selectată"
 }

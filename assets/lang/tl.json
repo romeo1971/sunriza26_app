@@ -210,5 +210,16 @@
   "profile.verify": "I-verify",
   "profile.photoUpdated": "Na-update ang larawan ng profile",
   "profile.photoRemoved": "Inalis ang larawan ng profile",
-  "profile.saved": "Na-save ang profile"
+  "profile.saved": "Na-save ang profile",
+  "avatars.details.regionTitle": "Rehiyon",
+  "avatars.details.regionConfirmTitle": "Kumpirmahin ang rehiyon",
+  "avatars.details.regionConfirmMessage": "Gamitin ang napili: {summary}",
+  "avatars.details.regionNotFound": "Walang natagpuang tumutugmang lokasyon. Paki-adjust ang iyong input.",
+  "avatars.details.confirmApply": "Ilapat",
+  "regionSearchLabel": "Lungsod o postal code",
+  "regionSearchHint": "Ilagay ang postal code, lungsod, o pareho",
+  "regionApplyLink": "Ilapat",
+  "regionHint": "Ipasok ang postal code at/o lungsod. Susubukan naming kumpletuhin ang data nang awtomatiko.",
+  "regionEditTooltip": "I-edit ang rehiyon",
+  "regionSummaryPlaceholder": "Walang rehiyong napili"
 }

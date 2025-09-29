@@ -210,5 +210,16 @@
   "profile.verify": "Verificér",
   "profile.photoUpdated": "Profilbillede opdateret",
   "profile.photoRemoved": "Profilbillede fjernet",
-  "profile.saved": "Profil gemt"
+  "profile.saved": "Profil gemt",
+  "avatars.details.regionTitle": "Region",
+  "avatars.details.regionConfirmTitle": "Bekræft region",
+  "avatars.details.regionConfirmMessage": "Brug valget: {summary}",
+  "avatars.details.regionNotFound": "Ingen matchende placering fundet. Juster venligst din indtastning.",
+  "avatars.details.confirmApply": "Anvend",
+  "regionSearchLabel": "By eller postnummer",
+  "regionSearchHint": "Indtast postnummer, by eller begge",
+  "regionApplyLink": "Anvend",
+  "regionHint": "Indtast postnummer og/eller by. Vi forsøger at udfylde data automatisk.",
+  "regionEditTooltip": "Rediger region",
+  "regionSummaryPlaceholder": "Ingen region valgt"
 }

@@ -210,5 +210,16 @@
   "profile.verify": "Verificar",
   "profile.photoUpdated": "Foto de perfil actualizada",
   "profile.photoRemoved": "Foto de perfil eliminada",
-  "profile.saved": "Perfil guardado"
+  "profile.saved": "Perfil guardado",
+  "avatars.details.regionTitle": "Región",
+  "avatars.details.regionConfirmTitle": "Confirmar región",
+  "avatars.details.regionConfirmMessage": "Usar selección: {summary}",
+  "avatars.details.regionNotFound": "No se encontró una ubicación coincidente. Ajusta tu entrada.",
+  "avatars.details.confirmApply": "Aplicar",
+  "regionSearchLabel": "Ciudad o código postal",
+  "regionSearchHint": "Introduce código postal, ciudad o ambos",
+  "regionApplyLink": "Aplicar",
+  "regionHint": "Introduce el código postal y/o la ciudad. Intentaremos completar los datos automáticamente.",
+  "regionEditTooltip": "Editar región",
+  "regionSummaryPlaceholder": "Ninguna región seleccionada"
 }

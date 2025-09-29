@@ -210,5 +210,16 @@
   "profile.verify": "सत्यापित करा",
   "profile.photoUpdated": "प्रोफाइल फोटो अद्यतनित झाला",
   "profile.photoRemoved": "प्रोफाइल फोटो काढला",
-  "profile.saved": "प्रोफाइल जतन केले"
+  "profile.saved": "प्रोफाइल जतन केले",
+  "avatars.details.regionTitle": "प्रदेश",
+  "avatars.details.regionConfirmTitle": "प्रदेशाची पुष्टी करा",
+  "avatars.details.regionConfirmMessage": "निवड वापरा: {summary}",
+  "avatars.details.regionNotFound": "जुळणारे स्थान सापडले नाही. कृपया इनपुट समायोजित करा.",
+  "avatars.details.confirmApply": "लागू करा",
+  "regionSearchLabel": "शहर किंवा पिनकोड",
+  "regionSearchHint": "पिनकोड, शहर किंवा दोन्ही टाइप करा",
+  "regionApplyLink": "लागू करा",
+  "regionHint": "पिनकोड आणि/किंवा शहर टाइप करा. आम्ही डेटा आपोआप भरण्याचा प्रयत्न करू.",
+  "regionEditTooltip": "प्रदेश संपादित करा",
+  "regionSummaryPlaceholder": "कोणताही प्रदेश निवडलेला नाही"
 }

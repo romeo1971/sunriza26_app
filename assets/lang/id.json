@@ -210,5 +210,16 @@
   "profile.verify": "Verifikasi",
   "profile.photoUpdated": "Foto profil diperbarui",
   "profile.photoRemoved": "Foto profil dihapus",
-  "profile.saved": "Profil disimpan"
+  "profile.saved": "Profil disimpan",
+  "avatars.details.regionTitle": "Wilayah",
+  "avatars.details.regionConfirmTitle": "Konfirmasi wilayah",
+  "avatars.details.regionConfirmMessage": "Gunakan pilihan: {summary}",
+  "avatars.details.regionNotFound": "Lokasi yang cocok tidak ditemukan. Harap sesuaikan input.",
+  "avatars.details.confirmApply": "Terapkan",
+  "regionSearchLabel": "Kota atau kode pos",
+  "regionSearchHint": "Masukkan kode pos, kota, atau keduanya",
+  "regionApplyLink": "Terapkan",
+  "regionHint": "Masukkan kode pos dan/atau kota. Kami akan mencoba melengkapi data secara otomatis.",
+  "regionEditTooltip": "Edit wilayah",
+  "regionSummaryPlaceholder": "Tidak ada wilayah yang dipilih"
 }

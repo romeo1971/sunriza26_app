@@ -210,5 +210,16 @@
   "profile.verify": "확인",
   "profile.photoUpdated": "프로필 사진이 업데이트되었습니다",
   "profile.photoRemoved": "프로필 사진이 제거되었습니다",
-  "profile.saved": "프로필이 저장되었습니다"
+  "profile.saved": "프로필이 저장되었습니다",
+  "avatars.details.regionTitle": "지역",
+  "avatars.details.regionConfirmTitle": "지역 확인",
+  "avatars.details.regionConfirmMessage": "선택 사용: {summary}",
+  "avatars.details.regionNotFound": "일치하는 위치를 찾을 수 없습니다. 입력을 조정하세요.",
+  "avatars.details.confirmApply": "적용",
+  "regionSearchLabel": "도시 또는 우편번호",
+  "regionSearchHint": "우편번호, 도시 또는 둘 다 입력",
+  "regionApplyLink": "적용",
+  "regionHint": "우편번호 및/또는 도시를 입력하세요. 데이터를 자동으로 완성하겠습니다.",
+  "regionEditTooltip": "지역 편집",
+  "regionSummaryPlaceholder": "선택된 지역 없음"
 }

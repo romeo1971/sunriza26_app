@@ -210,5 +210,16 @@
   "profile.verify": "אמת",
   "profile.photoUpdated": "תמונת הפרופיל עודכנה",
   "profile.photoRemoved": "תמונת הפרופיל הוסרה",
-  "profile.saved": "הפרופיל נשמר"
+  "profile.saved": "הפרופיל נשמר",
+  "avatars.details.regionTitle": "אזור",
+  "avatars.details.regionConfirmTitle": "אשר אזור",
+  "avatars.details.regionConfirmMessage": "השתמש בבחירה: {summary}",
+  "avatars.details.regionNotFound": "לא נמצאה מיקום תואם. נא להתאים את הקלט.",
+  "avatars.details.confirmApply": "החל",
+  "regionSearchLabel": "עיר או מיקוד",
+  "regionSearchHint": "הזן מיקוד, עיר או שניהם",
+  "regionApplyLink": "החל",
+  "regionHint": "הזן מיקוד ו/או עיר. ננסה להשלים את הנתונים אוטומטית.",
+  "regionEditTooltip": "ערוך אזור",
+  "regionSummaryPlaceholder": "לא נבחר אזור"
 }

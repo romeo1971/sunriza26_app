@@ -210,5 +210,16 @@
   "profile.verify": "Verifiëren",
   "profile.photoUpdated": "Profielfoto bijgewerkt",
   "profile.photoRemoved": "Profielfoto verwijderd",
-  "profile.saved": "Profiel opgeslagen"
+  "profile.saved": "Profiel opgeslagen",
+  "avatars.details.regionTitle": "Regio",
+  "avatars.details.regionConfirmTitle": "Regio bevestigen",
+  "avatars.details.regionConfirmMessage": "Selectie gebruiken: {summary}",
+  "avatars.details.regionNotFound": "Geen overeenkomende locatie gevonden. Pas je invoer aan.",
+  "avatars.details.confirmApply": "Toepassen",
+  "regionSearchLabel": "Plaats of postcode",
+  "regionSearchHint": "Voer postcode, plaats of beide in",
+  "regionApplyLink": "Toepassen",
+  "regionHint": "Voer postcode en/of plaats in. We proberen de gegevens automatisch aan te vullen.",
+  "regionEditTooltip": "Regio bewerken",
+  "regionSummaryPlaceholder": "Geen regio geselecteerd"
 }

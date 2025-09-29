@@ -210,5 +210,16 @@
   "profile.verify": "验证",
   "profile.photoUpdated": "个人资料照片已更新",
   "profile.photoRemoved": "个人资料照片已移除",
-  "profile.saved": "个人资料已保存"
+  "profile.saved": "个人资料已保存",
+  "avatars.details.regionTitle": "区域",
+  "avatars.details.regionConfirmTitle": "确认区域",
+  "avatars.details.regionConfirmMessage": "使用所选：{summary}",
+  "avatars.details.regionNotFound": "未找到匹配的位置。请调整输入。",
+  "avatars.details.confirmApply": "应用",
+  "regionSearchLabel": "城市或邮政编码",
+  "regionSearchHint": "输入邮编、城市或两者",
+  "regionApplyLink": "应用",
+  "regionHint": "请输入邮编和/或城市。我们将尝试自动补全数据。",
+  "regionEditTooltip": "编辑区域",
+  "regionSummaryPlaceholder": "未选择区域"
 }

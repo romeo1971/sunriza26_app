@@ -210,5 +210,16 @@
   "profile.verify": "ยืนยัน",
   "profile.photoUpdated": "อัปเดตรูปโปรไฟล์แล้ว",
   "profile.photoRemoved": "ลบรูปโปรไฟล์แล้ว",
-  "profile.saved": "บันทึกโปรไฟล์แล้ว"
+  "profile.saved": "บันทึกโปรไฟล์แล้ว",
+  "avatars.details.regionTitle": "ภูมิภาค",
+  "avatars.details.regionConfirmTitle": "ยืนยันภูมิภาค",
+  "avatars.details.regionConfirmMessage": "ใช้การเลือก: {summary}",
+  "avatars.details.regionNotFound": "ไม่พบตำแหน่งที่ตรงกัน โปรดปรับอินพุตของคุณ",
+  "avatars.details.confirmApply": "ใช้",
+  "regionSearchLabel": "เมืองหรือรหัสไปรษณีย์",
+  "regionSearchHint": "ใส่รหัสไปรษณีย์ เมือง หรือทั้งสองอย่าง",
+  "regionApplyLink": "ใช้",
+  "regionHint": "ใส่รหัสไปรษณีย์และ/หรือเมือง เราจะพยายามกรอกข้อมูลให้อัตโนมัติ",
+  "regionEditTooltip": "แก้ไขภูมิภาค",
+  "regionSummaryPlaceholder": "ยังไม่ได้เลือกภูมิภาค"
 }

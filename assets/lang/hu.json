@@ -210,5 +210,16 @@
   "profile.verify": "Ellenőrzés",
   "profile.photoUpdated": "Profilkép frissítve",
   "profile.photoRemoved": "Profilkép eltávolítva",
-  "profile.saved": "Profil elmentve"
+  "profile.saved": "Profil elmentve",
+  "avatars.details.regionTitle": "Régió",
+  "avatars.details.regionConfirmTitle": "Régió megerősítése",
+  "avatars.details.regionConfirmMessage": "Kiválasztás használata: {summary}",
+  "avatars.details.regionNotFound": "Nem található megfelelő hely. Kérjük, módosítsa a bevitt adatokat.",
+  "avatars.details.confirmApply": "Alkalmaz",
+  "regionSearchLabel": "Város vagy irányítószám",
+  "regionSearchHint": "Adja meg az irányítószámot, a várost vagy mindkettőt",
+  "regionApplyLink": "Alkalmaz",
+  "regionHint": "Adja meg az irányítószámot és/vagy a várost. Megpróbáljuk automatikusan kitölteni az adatokat.",
+  "regionEditTooltip": "Régió szerkesztése",
+  "regionSummaryPlaceholder": "Nincs kiválasztott régió"
 }

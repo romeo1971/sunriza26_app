@@ -210,5 +210,16 @@
   "profile.verify": "驗證",
   "profile.photoUpdated": "個人檔案照片已更新",
   "profile.photoRemoved": "個人檔案照片已移除",
-  "profile.saved": "個人檔案已儲存"
+  "profile.saved": "個人檔案已儲存",
+  "avatars.details.regionTitle": "區域",
+  "avatars.details.regionConfirmTitle": "確認區域",
+  "avatars.details.regionConfirmMessage": "使用所選：{summary}",
+  "avatars.details.regionNotFound": "找不到相符的位置。請調整輸入。",
+  "avatars.details.confirmApply": "套用",
+  "regionSearchLabel": "城市或郵遞區號",
+  "regionSearchHint": "輸入郵遞區號、城市或兩者",
+  "regionApplyLink": "套用",
+  "regionHint": "請輸入郵遞區號及/或城市。我們會嘗試自動完成資料。",
+  "regionEditTooltip": "編輯區域",
+  "regionSummaryPlaceholder": "未選擇任何區域"
 }

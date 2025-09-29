@@ -210,5 +210,16 @@
   "profile.verify": "تحقق",
   "profile.photoUpdated": "تم تحديث صورة الملف الشخصي",
   "profile.photoRemoved": "تمت إزالة صورة الملف الشخصي",
-  "profile.saved": "تم حفظ الملف الشخصي"
+  "profile.saved": "تم حفظ الملف الشخصي",
+  "avatars.details.regionTitle": "المنطقة",
+  "avatars.details.regionConfirmTitle": "تأكيد المنطقة",
+  "avatars.details.regionConfirmMessage": "استخدام الاختيار: {summary}",
+  "avatars.details.regionNotFound": "لم يتم العثور على موقع مطابق. يرجى تعديل الإدخال.",
+  "avatars.details.confirmApply": "تطبيق",
+  "regionSearchLabel": "مدينة أو رمز بريدي",
+  "regionSearchHint": "أدخل الرمز البريدي أو المدينة أو كليهما",
+  "regionApplyLink": "تطبيق",
+  "regionHint": "أدخل الرمز البريدي و/أو المدينة. سنحاول إكمال البيانات تلقائيًا.",
+  "regionEditTooltip": "تعديل المنطقة",
+  "regionSummaryPlaceholder": "لم يتم تحديد منطقة"
 }

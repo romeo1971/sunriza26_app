@@ -210,5 +210,16 @@
   "profile.verify": "確認",
   "profile.photoUpdated": "プロフィール写真を更新しました",
   "profile.photoRemoved": "プロフィール写真を削除しました",
-  "profile.saved": "プロフィールを保存しました"
+  "profile.saved": "プロフィールを保存しました",
+  "avatars.details.regionTitle": "地域",
+  "avatars.details.regionConfirmTitle": "地域を確認",
+  "avatars.details.regionConfirmMessage": "選択を使用: {summary}",
+  "avatars.details.regionNotFound": "一致する場所が見つかりません。入力を調整してください。",
+  "avatars.details.confirmApply": "適用",
+  "regionSearchLabel": "市区町村または郵便番号",
+  "regionSearchHint": "郵便番号、市区町村、または両方を入力",
+  "regionApplyLink": "適用",
+  "regionHint": "郵便番号や市区町村を入力してください。自動補完を試みます。",
+  "regionEditTooltip": "地域を編集",
+  "regionSummaryPlaceholder": "地域が選択されていません"
 }
