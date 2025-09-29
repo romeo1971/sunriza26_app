@@ -19,7 +19,12 @@ class AvatarListScreen extends StatefulWidget {
 class _AvatarListScreenState extends State<AvatarListScreen> {
   final AvatarService _avatarService = AvatarService();
   List<model.AvatarData> _avatars = [];
+  List<model.AvatarData> _filteredAvatars = [];
   bool _isLoading = true;
+  final TextEditingController _searchController = TextEditingController();
+  String _searchTerm = '';
+  int _currentPage = 0;
+  static const int _avatarsPerPage = 2;
 
   @override
   void initState() {
@@ -38,6 +43,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
         _avatars = avatars;
         _isLoading = false;
       });
+      if (mounted) _applyFilter(resetPage: true);
     } on FirebaseException catch (e) {
       if (mounted) {
         final loc = context.read<LocalizationService>();
@@ -68,6 +74,38 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
         );
       }
     }
+  }
+
+  void _applyFilter({bool resetPage = false}) {
+    final term = _searchTerm.trim().toLowerCase();
+    if (resetPage) _currentPage = 0;
+    List<model.AvatarData> filtered;
+    if (term.isEmpty) {
+      filtered = List.from(_avatars);
+    } else {
+      filtered = _avatars.where((avatar) {
+        final searchable = [
+          avatar.firstName,
+          avatar.nickname ?? '',
+          avatar.lastName ?? '',
+          avatar.city ?? '',
+          avatar.postalCode ?? '',
+          avatar.country ?? '',
+        ].join(' ').toLowerCase();
+        return searchable.contains(term);
+      }).toList();
+    }
+    setState(() {
+      _filteredAvatars = filtered;
+      if (_currentPage >= totalPages && totalPages > 0) {
+        _currentPage = totalPages - 1;
+      }
+    });
+  }
+
+  int get totalPages {
+    if (_filteredAvatars.isEmpty) return 1;
+    return (_filteredAvatars.length / _avatarsPerPage).ceil().clamp(1, 1000000);
   }
 
   @override
@@ -178,13 +216,89 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
   }
 
   Widget _buildAvatarList() {
-    return ListView.builder(
+    final int total = _filteredAvatars.length;
+    final int start = _currentPage * _avatarsPerPage;
+    final int end = (start + _avatarsPerPage).clamp(0, total);
+    final List<model.AvatarData> pageItems = total == 0
+        ? []
+        : _filteredAvatars.sublist(start, end);
+
+    return ListView(
       padding: const EdgeInsets.all(16),
-      itemCount: _avatars.length,
-      itemBuilder: (context, index) {
-        final avatar = _avatars[index];
-        return _buildAvatarCard(avatar);
+      children: [
+        _buildSearchField(),
+        const SizedBox(height: 12),
+        if (pageItems.isEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 48),
+            alignment: Alignment.center,
+            child: Text(
+              context.read<LocalizationService>().t('avatars.noSearchResults'),
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+            ),
+          )
+        else
+          ...pageItems.map(_buildAvatarCard),
+        const SizedBox(height: 12),
+        _buildPagination(total),
+      ],
+    );
+  }
+
+  Widget _buildSearchField() {
+    final loc = context.watch<LocalizationService>();
+    return TextField(
+      controller: _searchController,
+      onChanged: (value) {
+        _searchTerm = value;
+        _applyFilter(resetPage: true);
       },
+      decoration: InputDecoration(
+        prefixIcon: const Icon(Icons.search, color: Colors.white70),
+        suffixIcon: _searchTerm.isNotEmpty
+            ? IconButton(
+                icon: const Icon(Icons.clear, color: Colors.white70),
+                onPressed: () {
+                  _searchController.clear();
+                  _searchTerm = '';
+                  _applyFilter(resetPage: true);
+                },
+              )
+            : null,
+        hintText: loc.t('avatars.searchHint'),
+        filled: true,
+        fillColor: const Color(0x20FFFFFF),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+      ),
+      style: const TextStyle(color: Colors.white),
+    );
+  }
+
+  Widget _buildPagination(int total) {
+    if (total <= _avatarsPerPage) return const SizedBox.shrink();
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.chevron_left, color: Colors.white70),
+          onPressed: _currentPage > 0
+              ? () => setState(() => _currentPage--)
+              : null,
+        ),
+        Text(
+          '${_currentPage + 1} / $totalPages',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        IconButton(
+          icon: const Icon(Icons.chevron_right, color: Colors.white70),
+          onPressed: _currentPage < totalPages - 1
+              ? () => setState(() => _currentPage++)
+              : null,
+        ),
+      ],
     );
   }
 

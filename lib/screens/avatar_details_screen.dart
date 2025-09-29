@@ -1,32 +1,33 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:io';
-import '../theme/app_theme.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:crop_your_image/crop_your_image.dart' as cyi;
-import 'package:firebase_auth/firebase_auth.dart';
-import '../models/avatar_data.dart';
-import '../services/firebase_storage_service.dart';
-import '../services/avatar_service.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:path/path.dart' as p;
-import 'package:file_picker/file_picker.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:video_player/video_player.dart';
-import '../widgets/video_player_widget.dart';
-import 'package:video_thumbnail/video_thumbnail.dart' as vt;
-import '../services/elevenlabs_service.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:crop_your_image/crop_your_image.dart' as cyi;
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import '../services/env_service.dart';
-import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
-import 'package:flutter/painting.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' as vt;
+import '../data/countries.dart';
+import '../models/avatar_data.dart';
+import '../services/avatar_service.dart';
+import '../services/elevenlabs_service.dart';
+import '../services/env_service.dart';
+import '../services/firebase_storage_service.dart';
+import '../services/geo_service.dart';
+import '../services/localization_service.dart';
+import '../theme/app_theme.dart';
+import '../widgets/video_player_widget.dart';
 
 class _NamedItem {
   final String name;
@@ -46,8 +47,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final _firstNameController = TextEditingController();
   final _nicknameController = TextEditingController();
   final _lastNameController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _postalCodeController = TextEditingController();
+  final _countryController = TextEditingController();
   final _birthDateController = TextEditingController();
   final _deathDateController = TextEditingController();
+  final _regionInputController = TextEditingController();
+  bool _regionEditing = true;
 
   DateTime? _birthDate;
   DateTime? _deathDate;
@@ -116,6 +122,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   final Set<String> _refreshingImages = {};
+  late final List<String> _countryOptions;
 
   Widget _buildChunkingControls() {
     // Empfehlungen: target 800–1200, overlap 50–150, minChunk ca. 60–80% target
@@ -232,6 +239,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return w;
   }
 
+  bool get _regionCanApply {
+    final input = _regionInputController.text.trim();
+    if (input.isEmpty) return false;
+
+    final hasDigits = RegExp(r'^\d{4,6}$').hasMatch(input);
+    if (hasDigits && _countryController.text.trim().isEmpty) {
+      _countryController.text = 'Deutschland';
+    }
+
+    return _countryController.text.trim().isNotEmpty;
+  }
+
   void _updateDirty() {
     final current = _avatarData;
     if (current == null) {
@@ -247,6 +266,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       dirty = true;
     }
     if ((_lastNameController.text.trim()) != (current.lastName ?? '')) {
+      dirty = true;
+    }
+    if ((_cityController.text.trim()) != (current.city ?? '')) {
+      dirty = true;
+    }
+    if ((_postalCodeController.text.trim()) != (current.postalCode ?? '')) {
+      dirty = true;
+    }
+    if ((_countryController.text.trim()) != (current.country ?? '')) {
       dirty = true;
     }
     // Begrüßungstext
@@ -282,10 +310,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   @override
   void initState() {
     super.initState();
+    _countryOptions =
+        countries
+            .map((entry) => entry['name'] ?? '')
+            .where((name) => name.isNotEmpty)
+            .toList()
+          ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
     // Empfange AvatarData von der vorherigen Seite
     _firstNameController.addListener(_updateDirty);
     _nicknameController.addListener(_updateDirty);
     _lastNameController.addListener(_updateDirty);
+    _cityController.addListener(_updateDirty);
+    _postalCodeController.addListener(_updateDirty);
+    _countryController.addListener(_updateDirty);
     _textAreaController.addListener(_updateDirty);
     _greetingController.addListener(_updateDirty);
     _textFilterController.addListener(() {
@@ -321,6 +358,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       _firstNameController.text = data.firstName;
       _nicknameController.text = data.nickname ?? '';
       _lastNameController.text = data.lastName ?? '';
+      _cityController.text = data.city ?? '';
+      _postalCodeController.text = data.postalCode ?? '';
+      _countryController.text = data.country ?? '';
       _birthDate = data.birthDate;
       _deathDate = data.deathDate;
       _calculatedAge = data.calculatedAge;
@@ -3900,6 +3940,162 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
         const SizedBox(height: 16),
 
+        Theme(
+          data: Theme.of(context).copyWith(
+            dividerColor: Colors.white24,
+            listTileTheme: const ListTileThemeData(
+              iconColor: AppColors.accentGreenDark,
+            ),
+          ),
+          child: ExpansionTile(
+            initiallyExpanded: false,
+            tilePadding: EdgeInsets.zero,
+            collapsedIconColor: AppColors.accentGreenDark,
+            iconColor: AppColors.accentGreenDark,
+            collapsedBackgroundColor: Colors.white.withValues(alpha: 0.02),
+            backgroundColor: Colors.white.withValues(alpha: 0.04),
+            title: Text(
+              context.read<LocalizationService>().t(
+                'avatars.details.regionTitle',
+              ),
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: AppColors.accentGreenDark,
+              ),
+            ),
+            childrenPadding: const EdgeInsets.symmetric(
+              horizontal: 0,
+              vertical: 8,
+            ),
+            children: _regionEditing
+                ? [
+                    TextField(
+                      controller: _regionInputController,
+                      decoration: InputDecoration(
+                        labelText: context.read<LocalizationService>().t(
+                          'regionSearchLabel',
+                        ),
+                        hintText: context.read<LocalizationService>().t(
+                          'regionSearchHint',
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                            color: AppColors.accentGreenDark,
+                            width: 2,
+                          ),
+                        ),
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildCountryDropdown(),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: _regionCanApply
+                            ? _confirmRegionSelection
+                            : null,
+                        style: TextButton.styleFrom(
+                          foregroundColor: AppColors.accentGreenDark,
+                        ),
+                        child: Text(
+                          context.read<LocalizationService>().t(
+                            'regionApplyLink',
+                          ),
+                          style: TextStyle(
+                            color: _regionCanApply
+                                ? AppColors.accentGreenDark
+                                : Colors.white24,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        context.read<LocalizationService>().t('regionHint'),
+                        style: const TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Text(
+                        _buildRegionSummary(),
+                        style: TextStyle(
+                          color:
+                              (_cityController.text.trim().isEmpty &&
+                                  _postalCodeController.text.trim().isEmpty &&
+                                  _countryController.text.trim().isEmpty)
+                              ? Colors.white24
+                              : Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ]
+                : [
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _buildRegionSummary(),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.edit, color: Colors.white70),
+                            tooltip: context.read<LocalizationService>().t(
+                              'regionEditTooltip',
+                            ),
+                            onPressed: () {
+                              setState(() {
+                                _regionEditing = true;
+                              });
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+          ),
+        ),
+
+        const SizedBox(height: 16),
+
         // Geburtsdatum (optional)
         _buildDateField(
           controller: _birthDateController,
@@ -4420,6 +4616,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           lastName: _lastNameController.text.trim().isEmpty
               ? null
               : _lastNameController.text.trim(),
+          city: _cityController.text.trim().isEmpty
+              ? null
+              : _cityController.text.trim(),
+          postalCode: _postalCodeController.text.trim().isEmpty
+              ? null
+              : _postalCodeController.text.trim(),
+          country: _countryController.text.trim().isEmpty
+              ? null
+              : _countryController.text.trim(),
           birthDate: _birthDate,
           deathDate: _deathDate,
           calculatedAge: _calculatedAge,
@@ -4960,8 +5165,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _firstNameController.dispose();
     _nicknameController.dispose();
     _lastNameController.dispose();
+    _cityController.dispose();
+    _postalCodeController.dispose();
+    _countryController.dispose();
     _birthDateController.dispose();
     _deathDateController.dispose();
+    _regionInputController.dispose();
     _inlineVideoController?.dispose();
     super.dispose();
   }
@@ -5069,6 +5278,186 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     } finally {
       _refreshingImages.remove(url);
     }
+  }
+
+  Widget _buildCountryDropdown() {
+    final loc = context.read<LocalizationService>();
+    final currentValue = _countryController.text.trim();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        border: Border.all(color: Colors.white24),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value:
+              currentValue.isNotEmpty && _countryOptions.contains(currentValue)
+              ? currentValue
+              : null,
+          isExpanded: true,
+          dropdownColor: Colors.black87,
+          hint: Text(
+            loc.t('avatars.details.countryDropdownHint'),
+            style: const TextStyle(color: Colors.white70),
+          ),
+          items: _countryOptions
+              .map(
+                (c) => DropdownMenuItem<String>(
+                  value: c,
+                  child: Text(c, style: const TextStyle(color: Colors.white)),
+                ),
+              )
+              .toList(),
+          onChanged: (value) {
+            setState(() {
+              _countryController.text = value ?? '';
+            });
+            _updateDirty();
+          },
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmRegionSelection() async {
+    final loc = context.read<LocalizationService>();
+    final raw = _regionInputController.text.trim();
+    if (raw.isEmpty) return;
+
+    final result = await _resolveRegion(raw);
+    final city = result['city'] ?? '';
+    final postal = result['postal'] ?? '';
+    final country = result['country'] ?? '';
+    final hasResult = city.isNotEmpty || postal.isNotEmpty;
+
+    final summaryParts = [
+      if (postal.isNotEmpty) postal,
+      if (city.isNotEmpty) city,
+      if (country.isNotEmpty) country,
+    ];
+    final summary = summaryParts.join(', ');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(loc.t('avatars.details.regionConfirmTitle')),
+        content: Text(
+          hasResult
+              ? loc.t(
+                  'avatars.details.regionConfirmMessage',
+                  params: {'summary': summary.isEmpty ? '-' : summary},
+                )
+              : loc.t('avatars.details.regionNotFound'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(loc.t('avatars.details.cancel')),
+          ),
+          if (hasResult)
+            ElevatedButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.accentGreenDark,
+                foregroundColor: Colors.white,
+              ),
+              child: Text(loc.t('avatars.details.confirmApply')),
+            ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && hasResult) {
+      setState(() {
+        _cityController.text = city;
+        _postalCodeController.text = postal;
+        if (country.isNotEmpty) {
+          _countryController.text = country;
+        }
+        _regionInputController.clear();
+        _regionEditing = false;
+      });
+      _updateDirty();
+    }
+  }
+
+  Future<Map<String, String>> _resolveRegion(String rawInput) async {
+    final raw = rawInput.trim();
+    final selectedCountry = _countryController.text.trim();
+    if (raw.isEmpty || selectedCountry.isEmpty) {
+      return {'city': '', 'postal': '', 'country': selectedCountry};
+    }
+
+    String normalizedCountry = selectedCountry;
+    String countryCode = selectedCountry;
+    for (final entry in countries) {
+      final entryName = (entry['name'] ?? '').trim();
+      final entryCode = (entry['code'] ?? '').trim();
+      if (entryName.toLowerCase() == selectedCountry.toLowerCase() ||
+          entryCode.toLowerCase() == selectedCountry.toLowerCase()) {
+        normalizedCountry = entryName;
+        countryCode = entryCode;
+        break;
+      }
+    }
+
+    String postal = '';
+    String city = '';
+
+    final postalCityRegex = RegExp(r'^(\d{3,10})\s+(.+)$');
+    final postalOnlyRegex = RegExp(r'^(\d{3,10})$');
+
+    if (postalCityRegex.hasMatch(raw)) {
+      final match = postalCityRegex.firstMatch(raw);
+      postal = match?.group(1) ?? '';
+      city = match?.group(2) ?? '';
+    } else if (postalOnlyRegex.hasMatch(raw)) {
+      postal = raw;
+    } else {
+      city = raw;
+    }
+
+    if (postal.isNotEmpty && city.isEmpty) {
+      final foundCity = await GeoService.lookupCityForPostal(
+        postal,
+        normalizedCountry,
+      );
+      if (foundCity != null && foundCity.isNotEmpty) {
+        city = foundCity;
+      }
+    } else if (city.isNotEmpty && postal.isEmpty) {
+      final foundPostal = await GeoService.lookupPostalForCity(
+        city,
+        normalizedCountry,
+      );
+      if (foundPostal != null && foundPostal.isNotEmpty) {
+        postal = foundPostal;
+      }
+    }
+
+    return {
+      'city': city.trim(),
+      'postal': postal.trim(),
+      'country': normalizedCountry,
+      'countryCode': countryCode,
+    };
+  }
+
+  String _buildRegionSummary() {
+    final parts = <String>[];
+    if (_postalCodeController.text.trim().isNotEmpty) {
+      parts.add(_postalCodeController.text.trim());
+    }
+    if (_cityController.text.trim().isNotEmpty) {
+      parts.add(_cityController.text.trim());
+    }
+    if (_countryController.text.trim().isNotEmpty) {
+      parts.add(_countryController.text.trim());
+    }
+    return parts.isEmpty
+        ? context.read<LocalizationService>().t('regionSummaryPlaceholder')
+        : parts.join(', ');
   }
 }
 

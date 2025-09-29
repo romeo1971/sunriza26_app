@@ -8,6 +8,9 @@ class AvatarData {
   final DateTime? deathDate;
   final int? calculatedAge;
   final String? avatarImageUrl;
+  final String? city;
+  final String? postalCode;
+  final String? country;
   final List<String> imageUrls;
   final List<String> videoUrls;
   final List<String> textFileUrls;
@@ -30,6 +33,9 @@ class AvatarData {
     this.deathDate,
     this.calculatedAge,
     this.avatarImageUrl,
+    this.city,
+    this.postalCode,
+    this.country,
     this.imageUrls = const [],
     this.videoUrls = const [],
     this.textFileUrls = const [],
@@ -59,6 +65,9 @@ class AvatarData {
           : null,
       calculatedAge: map['calculatedAge'],
       avatarImageUrl: map['avatarImageUrl'],
+      city: map['city'],
+      postalCode: map['postalCode'],
+      country: map['country'],
       imageUrls: List<String>.from(map['imageUrls'] ?? []),
       videoUrls: List<String>.from(map['videoUrls'] ?? []),
       textFileUrls: List<String>.from(map['textFileUrls'] ?? []),
@@ -108,6 +117,11 @@ class AvatarData {
     if (greetingText != null && greetingText!.isNotEmpty) {
       map['greetingText'] = greetingText;
     }
+    if (city != null && city!.isNotEmpty) map['city'] = city;
+    if (postalCode != null && postalCode!.isNotEmpty) {
+      map['postalCode'] = postalCode;
+    }
+    if (country != null && country!.isNotEmpty) map['country'] = country;
 
     return map;
   }
@@ -123,6 +137,9 @@ class AvatarData {
     DateTime? deathDate,
     int? calculatedAge,
     String? avatarImageUrl,
+    String? city,
+    String? postalCode,
+    String? country,
     List<String>? imageUrls,
     List<String>? videoUrls,
     List<String>? textFileUrls,
@@ -148,6 +165,9 @@ class AvatarData {
       avatarImageUrl: clearAvatarImageUrl
           ? null
           : (avatarImageUrl ?? this.avatarImageUrl),
+      city: city ?? this.city,
+      postalCode: postalCode ?? this.postalCode,
+      country: country ?? this.country,
       imageUrls: imageUrls ?? this.imageUrls,
       videoUrls: videoUrls ?? this.videoUrls,
       textFileUrls: textFileUrls ?? this.textFileUrls,
@@ -175,6 +195,14 @@ class AvatarData {
     final parts = <String>[];
     if (firstName.isNotEmpty) parts.add(firstName);
     if (lastName != null && lastName!.isNotEmpty) parts.add(lastName!);
+    return parts.join(' ');
+  }
+
+  String get searchableRegion {
+    final List<String> parts = [];
+    if (city != null && city!.isNotEmpty) parts.add(city!);
+    if (postalCode != null && postalCode!.isNotEmpty) parts.add(postalCode!);
+    if (country != null && country!.isNotEmpty) parts.add(country!);
     return parts.join(' ');
   }
 

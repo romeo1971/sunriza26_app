@@ -35,6 +35,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   bool _isSpeaking = false;
   bool _isMuted =
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
+  bool _isStoppingPlayback = false;
   StreamSubscription<PlayerState>? _playerStateSub;
   String? _partnerName;
   String? _pendingFullName;
@@ -191,6 +192,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
               // Input-Bereich
               _buildInputArea(),
+              const SizedBox(height: 8),
+              if (_player.playing || _isStoppingPlayback)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildStopButton(),
+                ),
             ],
           ),
         ),
@@ -665,6 +672,34 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildStopButton() {
+    return Padding(
+      padding: const EdgeInsets.only(right: 16, bottom: 12),
+      child: ElevatedButton.icon(
+        onPressed: _isStoppingPlayback ? null : _stopPlayback,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.red.shade600,
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+        ),
+        icon: _isStoppingPlayback
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.stop),
+        label: const Text('Stop'),
       ),
     );
   }
@@ -1246,6 +1281,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         final tts = res?['tts_audio_b64'] as String?;
         if (tts != null && tts.isNotEmpty) {
           try {
+            await _stopPlayback();
             final bytes = base64Decode(tts);
             final dir = await getTemporaryDirectory();
             final file = File(
@@ -1363,6 +1399,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       await _player.play();
     } catch (e) {
       _showSystemSnack('Wiedergabefehler: $e');
+    }
+  }
+
+  Future<void> _stopPlayback() async {
+    if (!_player.playing && !_isStoppingPlayback) return;
+    setState(() => _isStoppingPlayback = true);
+    try {
+      await _player.stop();
+    } catch (e) {
+      _showSystemSnack('Stop-Fehler: $e');
+    } finally {
+      if (mounted) setState(() => _isStoppingPlayback = false);
     }
   }
 
@@ -1800,8 +1848,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   void dispose() {
     // _videoService.dispose(); // entfernt – kein lokales Lipsync mehr
     _playerStateSub?.cancel();
+    _stopPlayback();
+    _player.dispose();
     _messageController.dispose();
     _scrollController.dispose();
+    _ampSub?.cancel();
+    _recorder.dispose();
     // LiveKit sauber trennen (no-op wenn Feature deaktiviert)
     unawaited(LiveKitService().leave());
     super.dispose();
