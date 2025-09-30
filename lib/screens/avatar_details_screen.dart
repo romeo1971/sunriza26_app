@@ -1045,17 +1045,25 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           const double minThumbWidth = 120.0;
           const double gridSpacing = 12.0; // zwischen den Thumbs
           const double navBtnH = 40.0; // Höhe der lokalen Navigation / Upload
-          // Rechts mindestens 2 Thumbs: 2 * min + Zwischenabstand
+          // Hero-Image 30% kleiner (Max-Breite von 240 auf 168 reduziert)
+          // MIN wird durch Navigation bestimmt: 3 Buttons (40px) + 2 Spacings (8px) = 136px
+          final double minNavWidth =
+              (navBtnH * 3) + (8 * 2); // 3 Buttons + 2x8px spacing
           final double minRightWidth = (2 * minThumbWidth) + gridSpacing;
           double leftW = cons.maxWidth - spacing - minRightWidth;
-          // Begrenze links sinnvoll
-          if (leftW > 240) leftW = 240;
-          if (leftW < 160) leftW = 160;
-          // Hero-Image im 9:16 Portrait‑Format (mobil)
+          if (leftW > 168) leftW = 168; // MAX 168 statt 240 (30% kleiner)
+          if (leftW < minNavWidth)
+            leftW = minNavWidth; // MIN durch Navigation-Breite
           final double leftH = leftW * (16 / 9);
           final double totalH = navBtnH + 8 + leftH;
+          // Thumbnail-Breite berechnen
+          final double thumbW = leftH / 16 * 9;
+          // Row-Breite = großes Bild + spacing + 2 Thumbnails (breit wie 2 Bilder)
+          final double rowWidth =
+              leftW + spacing + leftW; // Rechts Platz für 2 Thumbnails
 
           return SizedBox(
+            width: rowWidth,
             height: totalH,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1285,9 +1293,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               final isCrown =
                                   _profileImageUrl == url ||
                                   (_profileImageUrl == null && index == 0);
+                              // Thumbnails: gleiche Proportionen wie großes Bild, aber kleinere Höhe
+                              final thumbH = leftH; // gleiche Höhe
+                              final thumbW =
+                                  thumbH / 16 * 9; // Breite aus 9:16 Format
                               return SizedBox(
-                                width: leftW,
-                                height: leftH,
+                                width: thumbW,
+                                height: thumbH,
                                 child: _imageThumbNetwork(url, isCrown),
                               );
                             },
@@ -1367,15 +1379,25 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           const double minThumbWidth = 120.0;
           const double gridSpacing = 12.0;
           const double navBtnH = 40.0;
+          // Video-Preview 30% kleiner (Max-Breite von 240 auf 168 reduziert)
+          // MIN wird durch Navigation bestimmt: 3 Buttons (40px) + 2 Spacings (8px) = 136px
+          final double minNavWidth =
+              (navBtnH * 3) + (8 * 2); // 3 Buttons + 2x8px spacing
           final double minRightWidth = (2 * minThumbWidth) + gridSpacing;
           double leftW = cons.maxWidth - spacing - minRightWidth;
-          if (leftW > 240) leftW = 240;
-          if (leftW < 160) leftW = 160;
-          // Video-Preview ebenfalls im 9:16 Portrait‑Format wie das Hero-Image
+          if (leftW > 168) leftW = 168; // MAX 168 statt 240 (30% kleiner)
+          if (leftW < minNavWidth)
+            leftW = minNavWidth; // MIN durch Navigation-Breite
           final double leftH = leftW * (16 / 9);
           final double totalH = navBtnH + 8 + leftH;
+          // Thumbnail-Breite berechnen
+          final double thumbW = leftH / 16 * 9;
+          // Row-Breite = großes Video + spacing + 2 Thumbnails (breit wie 2 Videos)
+          final double rowWidth =
+              leftW + spacing + leftW; // Rechts Platz für 2 Thumbnails
 
           return SizedBox(
+            width: rowWidth,
             height: totalH,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1582,10 +1604,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 const SizedBox(width: gridSpacing),
                             itemBuilder: (context, index) {
                               final url = remoteFour[index];
+                              // Thumbnails: gleiche Proportionen wie großes Video, aber kleinere Höhe
+                              final thumbH = leftH; // gleiche Höhe
+                              final thumbW =
+                                  thumbH / 16 * 9; // Breite aus 9:16 Format
                               return SizedBox(
-                                width: leftW,
-                                height: leftH,
-                                child: _videoTile(url, leftW, leftH),
+                                width: thumbW,
+                                height: thumbH,
+                                child: _videoTile(url, thumbW, thumbH),
                               );
                             },
                           ),
