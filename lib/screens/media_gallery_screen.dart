@@ -19,7 +19,6 @@ import '../models/playlist_models.dart';
 import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
-import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import '../theme/app_theme.dart';
 import '../widgets/video_player_widget.dart';
 
@@ -59,8 +58,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   bool _showPortrait = true; // true = portrait, false = landscape
   final Map<String, double> _imageAspectRatios =
       {}; // Cache für Bild-Aspekt-Verhältnisse
-  final Map<String, Uint8List> _videoThumbCache =
-      {}; // Cache für Video-Thumbnails
 
   @override
   void initState() {
@@ -81,6 +78,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    // Thumbnail-Controller aufräumen
+    for (final controller in _thumbControllers.values) {
+      controller.dispose();
+    }
+    _thumbControllers.clear();
     super.dispose();
   }
 
@@ -1295,42 +1297,26 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         );
                       },
                     )
-                  : FutureBuilder<Uint8List?>(
-                      future: _thumbnailForRemote(it.url),
+                  : FutureBuilder<VideoPlayerController?>(
+                      future: _videoControllerForThumb(it.url),
                       builder: (context, snapshot) {
-                        if (snapshot.hasData && snapshot.data != null) {
-                          return Image.memory(
-                            snapshot.data!,
-                            fit: BoxFit.cover,
-                          );
+                        if (snapshot.connectionState == ConnectionState.done &&
+                            snapshot.hasData &&
+                            snapshot.data != null) {
+                          final controller = snapshot.data!;
+                          if (controller.value.isInitialized) {
+                            return FittedBox(
+                              fit: BoxFit.cover,
+                              child: SizedBox(
+                                width: controller.value.size.width,
+                                height: controller.value.size.height,
+                                child: VideoPlayer(controller),
+                              ),
+                            );
+                          }
                         }
-                        // Während des Ladens: Spinner + Icon
-                        return Container(
-                          color: Colors.black26,
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (snapshot.connectionState ==
-                                    ConnectionState.waiting)
-                                  const SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white70,
-                                    ),
-                                  ),
-                                const SizedBox(height: 8),
-                                const Icon(
-                                  Icons.videocam,
-                                  color: Colors.white70,
-                                  size: 32,
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
+                        // Während des Ladens: schwarzer Container
+                        return Container(color: Colors.black26);
                       },
                     ),
             ),
@@ -1655,48 +1641,37 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
   }
 
-  /// Video-Thumbnail generieren (1:1 aus avatar_details_screen)
-  Future<Uint8List?> _thumbnailForRemote(String url) async {
+  // Cache für Thumbnail-Controller
+  final Map<String, VideoPlayerController> _thumbControllers = {};
+
+  Future<VideoPlayerController?> _videoControllerForThumb(String url) async {
     try {
-      if (_videoThumbCache.containsKey(url)) return _videoThumbCache[url];
-      var effectiveUrl = url;
-      print('🎬 Thumbnail für: $effectiveUrl');
-      var res = await http.get(Uri.parse(effectiveUrl));
-      print('🎬 Response: ${res.statusCode}');
-      if (res.statusCode != 200) {
-        final fresh = await _refreshDownloadUrl(url);
-        if (fresh != null) {
-          effectiveUrl = fresh;
-          res = await http.get(Uri.parse(effectiveUrl));
-          print('🎬 Fresh Response: ${res.statusCode}');
-          if (res.statusCode != 200) return null;
-        } else {
-          print('🎬 Refresh failed');
-          return null;
+      // Cache-Check
+      if (_thumbControllers.containsKey(url)) {
+        final cached = _thumbControllers[url];
+        if (cached != null && cached.value.isInitialized) {
+          return cached;
         }
       }
-      final tmp = await File(
-        '${Directory.systemTemp.path}/thumb_${DateTime.now().microsecondsSinceEpoch}.mp4',
-      ).create();
-      await tmp.writeAsBytes(res.bodyBytes);
-      final data = await vt.VideoThumbnail.thumbnailData(
-        video: tmp.path,
-        imageFormat: vt.ImageFormat.JPEG,
-        maxWidth: 360,
-        quality: 60,
-      );
-      print('🎬 Thumbnail data: ${data?.length ?? 0} bytes');
-      if (data != null) _videoThumbCache[url] = data;
-      try {
-        // optional: Tempdatei löschen
-        await tmp.delete();
-      } catch (_) {}
-      return data;
+
+      // Frische Download-URL holen
+      final fresh = await _refreshDownloadUrl(url) ?? url;
+      debugPrint('🎬 _videoControllerForThumb url=$url | fresh=$fresh');
+
+      final controller = VideoPlayerController.networkUrl(Uri.parse(fresh));
+      await controller.initialize();
+      await controller.setLooping(false);
+      // Nicht abspielen - nur erstes Frame zeigen
+
+      _thumbControllers[url] = controller;
+      return controller;
     } catch (e) {
-      print('🎬 Thumbnail error: $e');
+      debugPrint('🎬 _videoControllerForThumb error: $e');
       return null;
     }
   }
+
+  /// Video-Thumbnail generieren (1:1 aus avatar_details_screen)
 
   /// Refresh Firebase Storage Download URL (1:1 aus avatar_details_screen)
   Future<String?> _refreshDownloadUrl(String maybeExpiredUrl) async {
@@ -1905,63 +1880,46 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   }
 
   Future<void> _openViewer(AvatarMedia media) async {
-    if (media.type == AvatarMediaType.image) {
-      await showDialog(
-        context: context,
-        builder: (_) => Dialog(
-          insetPadding: const EdgeInsets.all(12),
-          child: Stack(
-            children: [
-              GestureDetector(
-                onLongPress: () {
-                  Navigator.pop(context);
-                  _reopenCrop(media);
-                },
-                child: InteractiveViewer(
-                  child: Image.network(media.url, fit: BoxFit.contain),
-                ),
-              ),
-              // X-Button oben rechts mit Gradient-Hintergrund
-              Positioned(
-                top: 12,
-                right: 12,
-                child: SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      padding: EdgeInsets.zero,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Ink(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFE91E63), AppColors.lightBlue],
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.close, color: Colors.white),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    } else if (media.type == AvatarMediaType.video) {
-      await showDialog(
-        context: context,
-        builder: (_) => _VideoDialog(url: media.url),
-      );
+    // Bestimme Kategorie: Portrait/Landscape + Image/Video
+    final isPortrait = _isPortraitMedia(media);
+    final mediaType = media.type;
+
+    // Filtere nur Medien der gleichen Kategorie
+    final filteredMedia = _items.where((m) {
+      return m.type == mediaType && _isPortraitMedia(m) == isPortrait;
+    }).toList();
+
+    // Finde Index in gefilterter Liste
+    final currentIndex = filteredMedia.indexOf(media);
+
+    await showDialog(
+      context: context,
+      builder: (_) => _MediaViewerDialog(
+        initialMedia: media,
+        allMedia: filteredMedia,
+        initialIndex: currentIndex,
+        onCropRequest: (m) {
+          Navigator.pop(context);
+          _reopenCrop(m);
+        },
+      ),
+    );
+  }
+
+  /// Prüft ob Medium Portrait-Format hat (Höhe > Breite)
+  bool _isPortraitMedia(AvatarMedia media) {
+    // Nutze aspectRatio (width / height)
+    // Portrait: aspectRatio < 1.0 (z.B. 9/16 = 0.5625)
+    // Landscape: aspectRatio > 1.0 (z.B. 16/9 = 1.7778)
+    if (media.aspectRatio != null) {
+      return media.aspectRatio! < 1.0;
     }
+    // Fallback: Prüfe "portrait" in Tags
+    if (media.tags != null && media.tags!.contains('portrait')) {
+      return true;
+    }
+    // Standard: Landscape (wenn keine Info verfügbar)
+    return false;
   }
 
   /// Zeigt Dialog zum Anzeigen und Bearbeiten der Tags
@@ -1971,78 +1929,122 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     await showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(
-          media.type == AvatarMediaType.video ? 'Video-Tags' : 'Bild-Tags',
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Video-Thumbnail oder Bild anzeigen
-            SizedBox(
-              height: 100,
-              child: media.type == AvatarMediaType.video
-                  ? FutureBuilder<Uint8List?>(
-                      future: _thumbnailForRemote(media.url),
-                      builder: (context, snapshot) {
-                        if (snapshot.hasData && snapshot.data != null) {
-                          return Image.memory(
-                            snapshot.data!,
-                            height: 100,
-                            fit: BoxFit.cover,
-                          );
-                        }
-                        return Container(
-                          color: Colors.black26,
-                          child: const Icon(
-                            Icons.videocam,
-                            color: Colors.white70,
-                            size: 48,
-                          ),
-                        );
-                      },
-                    )
-                  : Image.network(media.url, height: 100, fit: BoxFit.cover),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              decoration: InputDecoration(
-                labelText: 'Tags (durch Komma getrennt)',
-                hintText: media.type == AvatarMediaType.video
-                    ? 'z.B. interview, outdoor, talking'
-                    : 'z.B. hund, outdoor, park',
+      barrierDismissible: false,
+      builder: (ctx) => Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 100.0, left: 16.0, right: 16.0),
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: double.infinity, // Full Width
+              decoration: BoxDecoration(
+                color: Theme.of(context).dialogBackgroundColor,
+                borderRadius: BorderRadius.circular(12),
               ),
-              maxLines: 3,
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Titel
+                      Text(
+                        media.type == AvatarMediaType.video
+                            ? 'Video-Tags'
+                            : 'Bild-Tags',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      const SizedBox(height: 16),
+                      // Video-Thumbnail oder Bild anzeigen - 20% kleiner
+                      SizedBox(
+                        height: 320,
+                        child: media.type == AvatarMediaType.video
+                            ? FutureBuilder<VideoPlayerController?>(
+                                future: _videoControllerForThumb(media.url),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState ==
+                                          ConnectionState.done &&
+                                      snapshot.hasData &&
+                                      snapshot.data != null) {
+                                    final controller = snapshot.data!;
+                                    if (controller.value.isInitialized) {
+                                      return AspectRatio(
+                                        aspectRatio:
+                                            controller.value.aspectRatio,
+                                        child: VideoPlayer(controller),
+                                      );
+                                    }
+                                  }
+                                  // Während des Ladens: schwarzer Container
+                                  return Container(color: Colors.black26);
+                                },
+                              )
+                            : Image.network(
+                                media.url,
+                                height: 320,
+                                fit: BoxFit.cover,
+                              ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextField(
+                        controller: controller,
+                        decoration: InputDecoration(
+                          labelText: 'Tags (durch Komma getrennt)',
+                          hintText: media.type == AvatarMediaType.video
+                              ? 'z.B. interview, outdoor, talking'
+                              : 'z.B. hund, outdoor, park',
+                        ),
+                        maxLines: 3,
+                      ),
+                      const SizedBox(height: 16),
+                      // Buttons im Column
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            child: const Text('Abbrechen'),
+                          ),
+                          const SizedBox(width: 12),
+                          ElevatedButton(
+                            onPressed: () async {
+                              final newTags = controller.text
+                                  .split(',')
+                                  .map((tag) => tag.trim())
+                                  .where((tag) => tag.isNotEmpty)
+                                  .toList();
+
+                              await _mediaSvc.update(
+                                widget.avatarId,
+                                media.id,
+                                tags: newTags,
+                              );
+                              await _load();
+                              Navigator.pop(ctx);
+
+                              if (mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      '${newTags.length} Tags gespeichert',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            child: const Text('Speichern'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Abbrechen'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final newTags = controller.text
-                  .split(',')
-                  .map((tag) => tag.trim())
-                  .where((tag) => tag.isNotEmpty)
-                  .toList();
-
-              await _mediaSvc.update(widget.avatarId, media.id, tags: newTags);
-              await _load();
-              Navigator.pop(ctx);
-
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('${newTags.length} Tags gespeichert')),
-                );
-              }
-            },
-            child: const Text('Speichern'),
-          ),
-        ],
       ),
     );
   }
@@ -2111,9 +2113,181 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   }
 }
 
+// Neue Media Viewer Dialog mit Navigation
+class _MediaViewerDialog extends StatefulWidget {
+  final AvatarMedia initialMedia;
+  final List<AvatarMedia> allMedia;
+  final int initialIndex;
+  final void Function(AvatarMedia) onCropRequest;
+
+  const _MediaViewerDialog({
+    required this.initialMedia,
+    required this.allMedia,
+    required this.initialIndex,
+    required this.onCropRequest,
+  });
+
+  @override
+  State<_MediaViewerDialog> createState() => _MediaViewerDialogState();
+}
+
+class _MediaViewerDialogState extends State<_MediaViewerDialog> {
+  late int _currentIndex;
+  late AvatarMedia _currentMedia;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentIndex = widget.initialIndex;
+    _currentMedia = widget.initialMedia;
+  }
+
+  void _goToPrevious() {
+    setState(() {
+      if (_currentIndex > 0) {
+        _currentIndex--;
+      } else {
+        // Am Anfang → zum Ende
+        _currentIndex = widget.allMedia.length - 1;
+      }
+      _currentMedia = widget.allMedia[_currentIndex];
+    });
+  }
+
+  void _goToNext() {
+    setState(() {
+      if (_currentIndex < widget.allMedia.length - 1) {
+        _currentIndex++;
+      } else {
+        // Am Ende → zum Anfang
+        _currentIndex = 0;
+      }
+      _currentMedia = widget.allMedia[_currentIndex];
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Pfeile immer anzeigen (Endlos-Navigation)
+    final hasPrevious = widget.allMedia.length > 1;
+    final hasNext = widget.allMedia.length > 1;
+
+    return Dialog(
+      insetPadding: const EdgeInsets.all(12),
+      child: Stack(
+        children: [
+          // Media Content (Image oder Video)
+          if (_currentMedia.type == AvatarMediaType.image)
+            GestureDetector(
+              onLongPress: () => widget.onCropRequest(_currentMedia),
+              child: InteractiveViewer(
+                child: Image.network(
+                  _currentMedia.url,
+                  key: ValueKey(_currentMedia.id), // Key für Rebuild
+                  fit: BoxFit.contain,
+                ),
+              ),
+            )
+          else
+            _VideoDialog(
+              key: ValueKey(_currentMedia.id), // Key für Rebuild bei Navigation
+              url: _currentMedia.url,
+            ),
+
+          // Left Arrow
+          if (hasPrevious)
+            Positioned(
+              left: 16,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _goToPrevious,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                      padding: EdgeInsets.zero,
+                      shape: const CircleBorder(),
+                    ),
+                    child: const Icon(
+                      Icons.chevron_left,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // Right Arrow
+          if (hasNext)
+            Positioned(
+              right: 16,
+              top: 0,
+              bottom: 0,
+              child: Center(
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: _goToNext,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black54,
+                      padding: EdgeInsets.zero,
+                      shape: const CircleBorder(),
+                    ),
+                    child: const Icon(
+                      Icons.chevron_right,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          // X-Button oben rechts
+          Positioned(
+            top: 12,
+            right: 12,
+            child: SizedBox(
+              width: 40,
+              height: 40,
+              child: ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  padding: EdgeInsets.zero,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFE91E63), AppColors.lightBlue],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.close, color: Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _VideoDialog extends StatefulWidget {
   final String url;
-  const _VideoDialog({required this.url});
+  const _VideoDialog({super.key, required this.url});
   @override
   State<_VideoDialog> createState() => _VideoDialogState();
 }
@@ -2210,37 +2384,6 @@ class _VideoDialogState extends State<_VideoDialog> {
                 const Center(
                   child: CircularProgressIndicator(color: Colors.white),
                 ),
-              // X-Button oben rechts mit Gradient-Hintergrund
-              Positioned(
-                top: 12,
-                right: 12,
-                child: SizedBox(
-                  width: 40,
-                  height: 40,
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      padding: EdgeInsets.zero,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: Ink(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFE91E63), AppColors.lightBlue],
-                        ),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.close, color: Colors.white),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
             ],
           ),
         ),
