@@ -285,7 +285,11 @@ class _LanguageScreenState extends State<LanguageScreen> {
       body: FutureBuilder<String?>(
         future: _userLang(),
         builder: (context, snap) {
-          final current = snap.data;
+          final svcCode = context.read<LanguageService>().languageCode;
+          final current =
+              (snap.data != null && (snap.data as String).isNotEmpty)
+              ? snap.data
+              : svcCode;
           // Anzeige der aktuell/neu gewählten Sprache oberhalb des Grids
           String? selCode = _pendingLang ?? current;
           String? currentLabel;

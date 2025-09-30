@@ -25,11 +25,26 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final items = await _svc.list(widget.avatarId);
-    setState(() {
-      _items = items;
-      _loading = false;
-    });
+    try {
+      final items = await _svc.list(widget.avatarId);
+      if (!mounted) return;
+      setState(() {
+        _items = items;
+      });
+    } catch (e) {
+      if (mounted) {
+        final loc = context.read<LocalizationService>();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              loc.t('avatars.details.error', params: {'msg': e.toString()}),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   Future<void> _create() async {
@@ -75,37 +90,58 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = context.read<LocalizationService>();
     return Scaffold(
       appBar: AppBar(
-        title: Text(context.read<LocalizationService>().t('playlists.title')),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _create,
-        child: const Icon(Icons.add),
+        title: Text(loc.t('playlists.title')),
+        actions: [
+          IconButton(
+            tooltip: loc.t('avatars.refreshTooltip'),
+            onPressed: _load,
+            icon: const Icon(Icons.refresh),
+          ),
+          IconButton(
+            tooltip: loc.t('playlists.new'),
+            onPressed: _create,
+            icon: const Icon(Icons.add),
+          ),
+        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : ListView.separated(
-              itemCount: _items.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, i) {
-                final p = _items[i];
-                return ListTile(
-                  title: Text(p.name),
-                  subtitle: Text(
-                    context.read<LocalizationService>().t(
-                          'playlists.showAfterSecPrefix',
-                        ) +
-                        ' ' +
-                        p.showAfterSec.toString() +
-                        context.read<LocalizationService>().t(
-                          'playlists.secondsSuffix',
+          : RefreshIndicator(
+              onRefresh: _load,
+              child: _items.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
+                        SizedBox(height: 120),
+                        Center(
+                          child: Text(
+                            'Keine Playlists vorhanden',
+                            style: TextStyle(color: Colors.white70),
+                          ),
                         ),
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _openEdit(p),
-                );
-              },
+                      ],
+                    )
+                  : ListView.separated(
+                      itemCount: _items.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, i) {
+                        final p = _items[i];
+                        return ListTile(
+                          title: Text(p.name),
+                          subtitle: Text(
+                            loc.t('playlists.showAfterSecPrefix') +
+                                ' ' +
+                                p.showAfterSec.toString() +
+                                loc.t('playlists.secondsSuffix'),
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () => _openEdit(p),
+                        );
+                      },
+                    ),
             ),
     );
   }

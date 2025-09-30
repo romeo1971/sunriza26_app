@@ -29,13 +29,28 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
 
   Future<void> _load() async {
     setState(() => _loading = true);
-    final list = await _svc.list(widget.avatarId);
-    final medias = await _mediaSvc.list(widget.avatarId);
-    setState(() {
-      _items = list;
-      _media = {for (final m in medias) m.id: m};
-      _loading = false;
-    });
+    try {
+      final list = await _svc.list(widget.avatarId);
+      final medias = await _mediaSvc.list(widget.avatarId);
+      if (!mounted) return;
+      setState(() {
+        _items = list;
+        _media = {for (final m in medias) m.id: m};
+      });
+    } catch (e) {
+      if (mounted) {
+        final loc = context.read<LocalizationService>();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              loc.t('avatars.details.error', params: {'msg': e.toString()}),
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
   }
 
   @override

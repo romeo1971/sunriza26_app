@@ -313,135 +313,190 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
         borderRadius: BorderRadius.circular(16),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Avatar-Bild 9:16 (ca. 2.5x höher)
-              Builder(
-                builder: (context) {
-                  const double h = 150; // ~2.5 * 60
-                  const double w = h * 9 / 16;
-                  return Container(
-                    width: w,
-                    height: h,
-                    decoration: BoxDecoration(
-                      color: const Color(0x1400DFA8),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: AppColors.accentGreenDark,
-                        width: 2,
-                      ),
-                    ),
-                    clipBehavior: Clip.hardEdge,
-                    child: avatar.avatarImageUrl != null
-                        ? Image.network(
-                            avatar.avatarImageUrl!,
-                            width: w,
-                            height: h,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) =>
-                                _buildDefaultAvatar(),
-                          )
-                        : _buildDefaultAvatar(),
-                  );
-                },
-              ),
-
-              const SizedBox(width: 16),
-
-              // Avatar-Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            (avatar.nickname != null &&
-                                    avatar.nickname!.isNotEmpty)
-                                ? avatar.nickname!
-                                : avatar.firstName,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  // Avatar-Bild 9:16 (ca. 2.5x höher)
+                  Builder(
+                    builder: (context) {
+                      const double h = 150; // ~2.5 * 60
+                      const double w = h * 9 / 16;
+                      return Container(
+                        width: w,
+                        height: h,
+                        decoration: BoxDecoration(
+                          color: const Color(0x1400DFA8),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: AppColors.accentGreenDark,
+                            width: 2,
                           ),
                         ),
-                        const SizedBox.shrink(),
+                        clipBehavior: Clip.hardEdge,
+                        child: avatar.avatarImageUrl != null
+                            ? Image.network(
+                                avatar.avatarImageUrl!,
+                                width: w,
+                                height: h,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    _buildDefaultAvatar(),
+                              )
+                            : _buildDefaultAvatar(),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 16),
+                  // Avatar-Info
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          (avatar.nickname != null &&
+                                  avatar.nickname!.isNotEmpty)
+                              ? avatar.nickname!
+                              : avatar.firstName,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (avatar.nickname != null &&
+                            avatar.nickname!.isNotEmpty &&
+                            avatar.nickname != avatar.firstName)
+                          Text(
+                            avatar.firstName,
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey.shade600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        const SizedBox(height: 4),
+                        Text(
+                          avatar.lastMessage ?? loc.t('avatars.noMessages'),
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade400,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
-                    if (avatar.nickname != null &&
-                        avatar.nickname!.isNotEmpty &&
-                        avatar.nickname != avatar.firstName)
-                      Text(
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: BoxDecoration(
+                  color: const Color(0x1400DFA8),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
                         (avatar.nickname != null && avatar.nickname!.isNotEmpty)
-                            ? avatar.firstName
-                            : '',
-                        style: TextStyle(
-                          fontSize: 16,
-                          color: Colors.grey.shade600,
+                            ? avatar.nickname!
+                            : avatar.firstName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                    const SizedBox(height: 4),
-                    Text(
-                      avatar.lastMessage ?? loc.t('avatars.noMessages'),
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.grey.shade400,
+                    ),
+                    IconButton(
+                      tooltip: 'Fakten prüfen',
+                      icon: const Icon(
+                        Icons.fact_check,
+                        size: 18,
+                        color: Colors.white,
                       ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+                      onPressed: () async {
+                        await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                AvatarReviewFactsScreen(avatarId: avatar.id),
+                          ),
+                        );
+                      },
+                    ),
+                    IconButton(
+                      tooltip: loc.t('gallery.title'),
+                      icon: const Icon(
+                        Icons.photo_library_outlined,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                      onPressed: () async {
+                        await Navigator.pushNamed(
+                          context,
+                          '/media-gallery',
+                          arguments: {'avatarId': avatar.id},
+                        );
+                      },
+                    ),
+                    IconButton(
+                      tooltip: loc.t('playlists.title'),
+                      icon: const Icon(
+                        Icons.playlist_play,
+                        size: 20,
+                        color: Colors.white,
+                      ),
+                      onPressed: () async {
+                        await Navigator.pushNamed(
+                          context,
+                          '/playlist-list',
+                          arguments: {'avatarId': avatar.id},
+                        );
+                      },
+                    ),
+                    IconButton(
+                      tooltip: loc.t('sharedMoments.title'),
+                      icon: const Icon(
+                        Icons.collections_bookmark_outlined,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                      onPressed: () async {
+                        await Navigator.pushNamed(
+                          context,
+                          '/shared-moments',
+                          arguments: {'avatarId': avatar.id},
+                        );
+                      },
+                    ),
+                    IconButton(
+                      tooltip: loc.t('avatars.editTooltip'),
+                      icon: const Icon(
+                        Icons.edit,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                      onPressed: () async {
+                        await Navigator.pushNamed(
+                          context,
+                          '/avatar-details',
+                          arguments: avatar,
+                        );
+                        if (!mounted) return;
+                        await _loadAvatars();
+                      },
                     ),
                   ],
                 ),
-              ),
-
-              // Edit und Pfeil
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    tooltip: 'Fakten prüfen',
-                    icon: const Icon(
-                      Icons.fact_check,
-                      size: 18,
-                      color: Colors.white,
-                    ),
-                    onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              AvatarReviewFactsScreen(avatarId: avatar.id),
-                        ),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    tooltip: loc.t('avatars.editTooltip'),
-                    icon: const Icon(Icons.edit, size: 18, color: Colors.white),
-                    onPressed: () async {
-                      await Navigator.pushNamed(
-                        context,
-                        '/avatar-details',
-                        arguments: avatar,
-                      );
-                      if (!mounted) return;
-                      await _loadAvatars();
-                    },
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    Icons.arrow_forward_ios,
-                    size: 16,
-                    color: Colors.grey.shade400,
-                  ),
-                ],
               ),
             ],
           ),

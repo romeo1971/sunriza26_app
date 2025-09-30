@@ -14,6 +14,18 @@ service cloud.firestore {
         exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
+    // Avatar-Besitz prüfen: entweder Root-Avatar-Dokument gehört dem Nutzer
+    // ODER es existiert ein Nutzer-gebundenes Avatar-Dokument unter users/{uid}/avatars/{avatarId}
+    function ownsAvatar(avatarId) {
+      return (
+        // Root-Dokument vorhanden und gehört Nutzer
+        exists(/databases/$(db)/documents/avatars/$(avatarId)) &&
+        isOwner(get(/databases/$(db)/documents/avatars/$(avatarId)).data)
+      ) || (
+        // Oder es existiert ein Mapping unter dem Nutzerpfad
+        signedIn() && exists(/databases/$(db)/documents/users/$(request.auth.uid)/avatars/$(avatarId))
+      );
+    }
     // Video-Provider prüfen
     function allowedVideoProvider(p) {
       return p in ['bithuman'];
@@ -87,6 +99,24 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data);
     }
 
+    // Avatar-Medien (Bilder/Videos)
+    match /avatars/{avatarId}/media/{mediaId} {
+      allow get, list: if ownsAvatar(avatarId);
+      allow create, update, delete: if ownsAvatar(avatarId);
+    }
+
+    // Playlists
+    match /avatars/{avatarId}/playlists/{playlistId} {
+      allow get, list: if ownsAvatar(avatarId);
+      allow create, update, delete: if ownsAvatar(avatarId);
+    }
+
+    // Playlist-Items
+    match /avatars/{avatarId}/playlists/{playlistId}/items/{itemId} {
+      allow get, list: if ownsAvatar(avatarId);
+      allow create, update, delete: if ownsAvatar(avatarId);
+    }
+
     // Nutzergebundene Avatare (aktuelle App-Struktur: users/{uid}/avatars/{avatarId})
     match /users/{uid}/avatars/{avatarId} {
       allow create: if signedIn()
@@ -128,6 +158,12 @@ service cloud.firestore {
         && validTimestamp(request.resource.data.updatedAt);
 
       allow delete: if signedIn() && uid == request.auth.uid;
+    }
+
+    // Shared Moments des Nutzers je Avatar
+    match /users/{uid}/avatars/{avatarId}/sharedMoments/{docId} {
+      allow get, list: if signedIn() && uid == request.auth.uid;
+      allow create, update, delete: if signedIn() && uid == request.auth.uid;
     }
 
     // Avatar Freetexts (Struppi-System)
