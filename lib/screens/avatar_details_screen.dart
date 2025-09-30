@@ -3047,7 +3047,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       return;
     }
     // Falls URL bereits aktiv, nichts tun
-    if (_currentInlineUrl == crown && _inlineVideoController != null) {
+    if (_currentInlineUrl != null &&
+        _sameStorageAsset(_currentInlineUrl!, crown) &&
+        _inlineVideoController != null) {
       return;
     }
     // Frische Download-URL sichern (kann ablaufen)
@@ -3071,7 +3073,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Widget _videoTile(String url, double w, double h) {
     final crownUrl = _getCrownVideoUrl();
-    final isCrown = crownUrl != null && url == crownUrl;
+    final isCrown = crownUrl != null && _sameStorageAsset(url, crownUrl);
     return Stack(
       children: [
         Positioned.fill(child: _imageThumbNetwork(url, isCrown)),
@@ -3096,6 +3098,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
       ],
     );
+  }
+
+  // Vergleicht zwei Download-URLs anhand des echten Storage-Pfades
+  bool _sameStorageAsset(String a, String b) {
+    try {
+      return _storagePathFromUrl(a) == _storagePathFromUrl(b);
+    } catch (_) {
+      return a == b;
+    }
   }
 
   Widget _videoThumbNetwork(String url) {
@@ -3452,6 +3463,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           res = await http.get(Uri.parse(effectiveUrl));
           print('🎬 Fresh Response: ${res.statusCode}');
           if (res.statusCode != 200) return null;
+          // Cache frische URL direkt ablegen, damit Thumbs stabil sind
+          final idx = _videoUrls.indexOf(url);
+          if (idx >= 0) _videoUrls[idx] = fresh;
+          // kein persist hier, damit UI flott bleibt; persist passiert beim Speichern
         } else {
           print('🎬 Refresh failed');
           return null;
