@@ -232,5 +232,20 @@
   "avatars.details.countryDropdownHint": "Land wählen",
   "facts.status.pending": "Ausstehend",
   "facts.status.approved": "Freigegeben",
-  "facts.status.rejected": "Abgelehnt"
+  "facts.status.rejected": "Abgelehnt",
+  "chat.teaser.newMoment": "Neuer Moment",
+  "chat.media.show": "Anzeigen",
+  "chat.media.reject": "Ablehnen",
+  "gallery.title": "Galerie",
+  "playlists.title": "Playlists",
+  "sharedMoments.title": "Geteilte Momente",
+  "sharedMoments.empty": "Keine Einträge",
+  "sharedMoments.shown": "Angezeigt",
+  "sharedMoments.rejected": "Abgelehnt",
+  "playlists.new": "Neue Playlist",
+  "playlists.create": "Anlegen",
+  "playlists.showAfterSecPrefix": "Zeige Inhalte nach",
+  "playlists.secondsSuffix": "s",
+  "common.name": "Name",
+  "buttons.cancel": "Abbrechen"
 }

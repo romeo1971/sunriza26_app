@@ -640,6 +640,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                           _buildTextFilesList(),
                         const SizedBox(height: 16),
                         _buildRoleDropdown(),
+                        const SizedBox(height: 16),
+                        _buildMediaNavRow(),
                       ],
                     ),
                   ),
@@ -756,7 +758,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         const Text('Rolle', style: TextStyle(color: Colors.white70)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _role,
+          initialValue: _role,
           dropdownColor: const Color(0xFF1C1C1E),
           items: items
               .map(
@@ -769,6 +771,52 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             filled: true,
             fillColor: Color(0x22FFFFFF),
             border: OutlineInputBorder(borderSide: BorderSide.none),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMediaNavRow() {
+    final id = _avatarData?.id;
+    if (id == null || id.isEmpty) return const SizedBox.shrink();
+    return Row(
+      children: [
+        ElevatedButton.icon(
+          onPressed: () {
+            Navigator.pushNamed(
+              context,
+              '/media-gallery',
+              arguments: {'avatarId': id},
+            );
+          },
+          icon: const Icon(Icons.photo_library),
+          label: Text(context.read<LocalizationService>().t('gallery.title')),
+        ),
+        const SizedBox(width: 12),
+        ElevatedButton.icon(
+          onPressed: () {
+            Navigator.pushNamed(
+              context,
+              '/playlist-list',
+              arguments: {'avatarId': id},
+            );
+          },
+          icon: const Icon(Icons.queue_music),
+          label: Text(context.read<LocalizationService>().t('playlists.title')),
+        ),
+        const SizedBox(width: 12),
+        ElevatedButton.icon(
+          onPressed: () {
+            Navigator.pushNamed(
+              context,
+              '/shared-moments',
+              arguments: {'avatarId': id},
+            );
+          },
+          icon: const Icon(Icons.collections),
+          label: Text(
+            context.read<LocalizationService>().t('sharedMoments.title'),
           ),
         ),
       ],

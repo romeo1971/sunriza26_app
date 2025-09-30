@@ -18,6 +18,11 @@ import 'package:provider/provider.dart';
 import '../services/localization_service.dart';
 import '../services/livekit_service.dart';
 import 'package:livekit_client/livekit_client.dart' as lk;
+import 'package:video_player/video_player.dart';
+import '../services/playlist_service.dart';
+import '../services/media_service.dart';
+import '../services/shared_moments_service.dart';
+import '../models/media_models.dart';
 
 class AvatarChatScreen extends StatefulWidget {
   const AvatarChatScreen({super.key});
@@ -66,6 +71,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   static const bool kAutoSend = false;
 
   bool _greetedOnce = false;
+
+  // Playlist/Teaser
+  final PlaylistService _playlistSvc = PlaylistService();
+  final MediaService _mediaSvc = MediaService();
+  final SharedMomentsService _momentsSvc = SharedMomentsService();
+  Timer? _teaserTimer;
+  AvatarMedia? _pendingTeaserMedia;
+  OverlayEntry? _teaserEntry;
 
   Future<void> _maybeJoinLiveKit() async {
     try {
@@ -156,6 +169,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                       : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
             _botSay(greet);
           }
+          // Starte Teaser-Scheduling
+          _scheduleTeaser();
         });
       }
     });
@@ -202,6 +217,120 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  void _scheduleTeaser() async {
+    try {
+      if (_avatarData == null) return;
+      final avatarId = _avatarData!.id;
+      final playlists = await _playlistSvc.list(avatarId);
+      if (playlists.isEmpty) return;
+      final today = DateTime.now();
+      final active = playlists
+          .where((p) => _playlistSvc.isActiveToday(p, today))
+          .toList();
+      if (active.isEmpty) return;
+      // Entscheidungen laden, bereits entschiedene Medien überspringen
+      final decided = await _momentsSvc.latestDecisions(avatarId);
+      final allMedia = await _mediaSvc.list(avatarId);
+      final mediaMap = {for (final x in allMedia) x.id: x};
+
+      // Finde erstes anzeigbares Item über alle Playlists
+      AvatarMedia? nextMedia;
+      int delaySec = 0;
+      for (final p in active) {
+        final items = await _playlistSvc.listItems(avatarId, p.id);
+        for (final it in items) {
+          if (decided.containsKey(it.mediaId)) continue; // bereits entschieden
+          final cand = mediaMap[it.mediaId];
+          if (cand != null) {
+            nextMedia = cand;
+            delaySec = p.showAfterSec;
+            break;
+          }
+        }
+        if (nextMedia != null) break;
+      }
+      if (nextMedia == null) return;
+      _teaserTimer?.cancel();
+      _teaserTimer = Timer(Duration(seconds: delaySec.clamp(0, 86400)), () {
+        _pendingTeaserMedia = nextMedia;
+        _showTeaserOverlay();
+      });
+    } catch (_) {}
+  }
+
+  void _showTeaserOverlay() {
+    if (!mounted || _pendingTeaserMedia == null) return;
+    _teaserEntry?.remove();
+    _teaserEntry = OverlayEntry(
+      builder: (ctx) {
+        return Positioned(
+          right: 16,
+          bottom: 90,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: () {
+                _teaserEntry?.remove();
+                _teaserEntry = null;
+                _openMediaDecisionDialog(_pendingTeaserMedia!);
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: const Color(0xCC000000),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.image, color: Colors.white70, size: 18),
+                    const SizedBox(width: 8),
+                    Text(
+                      context.read<LocalizationService>().t(
+                        'chat.teaser.newMoment',
+                      ),
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    Overlay.of(context).insert(_teaserEntry!);
+  }
+
+  Future<void> _openMediaDecisionDialog(AvatarMedia media) async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return _MediaDecisionDialog(
+          avatarId: _avatarData!.id,
+          media: media,
+          onDecision: (d) async {
+            await _momentsSvc.store(_avatarData!.id, media.id, d);
+            // Nächsten Teaser planen
+            _pendingTeaserMedia = null;
+            _teaserEntry?.remove();
+            _teaserEntry = null;
+            _teaserTimer?.cancel();
+            // kleine Pause, dann neu planen
+            Future.delayed(const Duration(milliseconds: 300), _scheduleTeaser);
+          },
+        );
+      },
     );
   }
 
@@ -1300,90 +1429,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     }
   }
 
-  Future<void> _chatViaFunctions(String userText) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        _showSystemSnack('Nicht angemeldet');
-        return;
-      }
-      final uid = user.uid;
-      String cfUrl = (dotenv.env['CF_FUNCTION_URL'] ?? '').trim();
-      if (cfUrl.isEmpty) {
-        cfUrl =
-            'https://us-central1-sunriza26.cloudfunctions.net/generateAvatarResponse';
-      }
-      final uri = Uri.parse(cfUrl);
-      final res = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'userId': uid,
-          'query': userText,
-          'maxTokens': 180,
-          'temperature': 0.6,
-        }),
-      );
-      if (res.statusCode >= 200 && res.statusCode < 300) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final answer = (data['response'] as String?)?.trim();
-        if (answer != null && answer.isNotEmpty) {
-          // TTS über Cloud Function tts
-          String? path;
-          try {
-            final baseTts = EnvService.memoryApiBaseUrl();
-            if (baseTts.isEmpty) return;
-            final ttsUri = Uri.parse('$baseTts/avatar/tts');
-            final String? voiceId = (_avatarData?.training != null)
-                ? (_avatarData?.training?['voice'] != null
-                      ? (_avatarData?.training?['voice']?['elevenVoiceId']
-                            as String?)
-                      : null)
-                : null;
-            if (voiceId == null) {
-              _showSystemSnack('Keine geklonte Stimme verfügbar');
-              return;
-            }
-            final ttsRes = await http
-                .post(
-                  ttsUri,
-                  headers: {'Content-Type': 'application/json'},
-                  body: jsonEncode({'text': answer, 'voice_id': voiceId}),
-                )
-                .timeout(const Duration(seconds: 8));
-            if (ttsRes.statusCode >= 200 && ttsRes.statusCode < 300) {
-              final Map<String, dynamic> j =
-                  jsonDecode(ttsRes.body) as Map<String, dynamic>;
-              final String? b64 = j['audio_b64'] as String?;
-              if (b64 != null && b64.isNotEmpty) {
-                final bytes = base64Decode(b64);
-                final dir = await getTemporaryDirectory();
-                final file = File(
-                  '${dir.path}/avatar_tts_fallback_${DateTime.now().millisecondsSinceEpoch}.mp3',
-                );
-                await file.writeAsBytes(bytes, flush: true);
-                path = file.path;
-              }
-            }
-          } catch (_) {}
-          _addMessage(answer, false, audioPath: path);
-          if (path != null) await _playAudioAtPath(path);
-        }
-      } else {
-        try {
-          // Debug-Ausgabe für CF-Fehler zur schnellen Diagnose
-          // ignore: avoid_print
-          print(
-            'CF ERROR ${res.statusCode}: ${res.body.substring(0, res.body.length > 300 ? 300 : res.body.length)}',
-          );
-        } catch (_) {}
-        _showSystemSnack('Chat-Fehler: ${res.statusCode} (CF)');
-      }
-    } catch (e) {
-      _showSystemSnack('Chat-Fehler (CF): $e');
-    }
-  }
-
   // Future<void> _recordVoice() async {}
 
   // Future<void> _stopAndSave() async {}
@@ -1854,9 +1899,224 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     _scrollController.dispose();
     _ampSub?.cancel();
     _recorder.dispose();
+    // Teaser aufräumen
+    _teaserTimer?.cancel();
+    _teaserEntry?.remove();
     // LiveKit sauber trennen (no-op wenn Feature deaktiviert)
     unawaited(LiveKitService().leave());
     super.dispose();
+  }
+}
+
+class _MediaDecisionDialog extends StatefulWidget {
+  final String avatarId;
+  final AvatarMedia media;
+  final Future<void> Function(String decision)? onDecision;
+  const _MediaDecisionDialog({
+    required this.avatarId,
+    required this.media,
+    this.onDecision,
+  });
+
+  @override
+  State<_MediaDecisionDialog> createState() => _MediaDecisionDialogState();
+}
+
+class _MediaDecisionDialogState extends State<_MediaDecisionDialog> {
+  bool _accepted = false;
+  Timer? _autoHide;
+
+  @override
+  void initState() {
+    super.initState();
+  }
+
+  @override
+  void dispose() {
+    _autoHide?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: const Color(0xFF0A0A0A),
+      contentPadding: EdgeInsets.zero,
+      content: SizedBox(
+        width: 420,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AspectRatio(
+              aspectRatio: 9 / 16,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  if (!_accepted)
+                    Container(
+                      color: Colors.black12,
+                      child: _PixelateOverlay(url: widget.media.url),
+                    ),
+                  if (_accepted)
+                    (widget.media.type == AvatarMediaType.video)
+                        ? _VideoPlayerInline(url: widget.media.url)
+                        : Image.network(widget.media.url, fit: BoxFit.cover),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _accepted
+                        ? null
+                        : () async {
+                            setState(() => _accepted = true);
+                            await widget.onDecision?.call('shown');
+                            // Bilder: nach 45s schließen; Videos: schließen nach Ende (hier simple 60s Fallback)
+                            if (widget.media.type == AvatarMediaType.image) {
+                              _autoHide = Timer(
+                                const Duration(seconds: 45),
+                                () {
+                                  if (mounted) Navigator.pop(context);
+                                },
+                              );
+                            } else {
+                              _autoHide = Timer(
+                                const Duration(seconds: 60),
+                                () {
+                                  if (mounted) Navigator.pop(context);
+                                },
+                              );
+                            }
+                          },
+                    icon: const Icon(Icons.visibility),
+                    label: Text(
+                      context.read<LocalizationService>().t('chat.media.show'),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: () async {
+                      await widget.onDecision?.call('rejected');
+                      if (mounted) Navigator.pop(context);
+                    },
+                    icon: const Icon(Icons.hide_image),
+                    label: Text(
+                      context.read<LocalizationService>().t(
+                        'chat.media.reject',
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PixelateOverlay extends StatelessWidget {
+  final String url;
+  const _PixelateOverlay({required this.url});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.network(
+          url,
+          fit: BoxFit.cover,
+          color: Colors.black,
+          colorBlendMode: BlendMode.srcATop,
+        ),
+        Center(
+          child: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: const Text(
+              'Verpixelt – tippe „Anzeigen“',
+              style: TextStyle(color: Colors.white70),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _VideoPlayerInline extends StatefulWidget {
+  final String url;
+  const _VideoPlayerInline({required this.url});
+
+  @override
+  State<_VideoPlayerInline> createState() => _VideoPlayerInlineState();
+}
+
+class _VideoPlayerInlineState extends State<_VideoPlayerInline> {
+  late final VideoPlayerController _ctrl;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = VideoPlayerController.networkUrl(Uri.parse(widget.url))
+      ..initialize().then((_) {
+        if (mounted) setState(() => _ready = true);
+        _ctrl.play();
+      });
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_ready) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: AspectRatio(
+        aspectRatio: _ctrl.value.aspectRatio == 0
+            ? 9 / 16
+            : _ctrl.value.aspectRatio,
+        child: Stack(
+          children: [
+            Positioned.fill(child: VideoPlayer(_ctrl)),
+            Positioned(
+              bottom: 8,
+              left: 8,
+              right: 8,
+              child: VideoProgressIndicator(
+                _ctrl,
+                allowScrubbing: true,
+                colors: VideoProgressColors(
+                  playedColor: Colors.white,
+                  bufferedColor: Colors.white30,
+                  backgroundColor: Colors.white24,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

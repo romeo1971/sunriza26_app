@@ -15,6 +15,11 @@ import 'screens/avatar_upload_memories_screen.dart';
 import 'screens/avatar_details_screen.dart';
 import 'screens/avatar_chat_screen.dart';
 import 'screens/avatar_list_screen.dart';
+import 'screens/media_gallery_screen.dart';
+import 'screens/playlist_list_screen.dart';
+import 'screens/playlist_edit_screen.dart';
+import 'screens/shared_moments_screen.dart';
+import 'models/playlist_models.dart';
 import 'screens/legal_page_screen.dart';
 import 'screens/firebase_test_screen.dart';
 import 'screens/avatar_creation_screen.dart';
@@ -311,6 +316,25 @@ class SunrizaApp extends StatelessWidget {
             '/avatar-details': (context) => const AvatarDetailsScreen(),
             '/avatar-chat': (context) => const AvatarChatScreen(),
             '/avatar-list': (context) => const AvatarListScreen(),
+            '/media-gallery': (context) {
+              final args = ModalRoute.of(context)!.settings.arguments as Map?;
+              final avatarId = (args?['avatarId'] as String?) ?? '';
+              return MediaGalleryScreen(avatarId: avatarId);
+            },
+            '/playlist-list': (context) {
+              final args = ModalRoute.of(context)!.settings.arguments as Map?;
+              final avatarId = (args?['avatarId'] as String?) ?? '';
+              return PlaylistListScreen(avatarId: avatarId);
+            },
+            '/playlist-edit': (context) {
+              final p = ModalRoute.of(context)!.settings.arguments as Playlist;
+              return PlaylistEditScreen(playlist: p);
+            },
+            '/shared-moments': (context) {
+              final args = ModalRoute.of(context)!.settings.arguments as Map?;
+              final avatarId = (args?['avatarId'] as String?) ?? '';
+              return SharedMomentsScreen(avatarId: avatarId);
+            },
             '/legal-terms': (context) => const LegalPageScreen(type: 'terms'),
             '/legal-imprint': (context) =>
                 const LegalPageScreen(type: 'imprint'),
