@@ -78,24 +78,12 @@ service cloud.firestore {
         && (!('training' in request.resource.data) || request.resource.data.training is map);
 
       allow get, list: if isOwner(resource.data) || (resource.data.isPublic == true);
-      // Allgemeines Update (bestehend)
-      allow update: if (
-          isOwner(resource.data)
+      // Allgemeines Update - erlaubt alle Avatar-Felder inkl. training
+      allow update: if isOwner(resource.data)
           && request.resource.data.userId == resource.data.userId
           && request.resource.data.id == resource.data.id
           && validTimestamp(request.resource.data.updatedAt)
-        )
-        || (
-          // Minimaler Spezialfall: Nur Video-Provider (und optional updatedAt) wird geändert
-          isOwner(resource.data)
-          && request.resource.data.userId == resource.data.userId
-          && request.resource.data.id == resource.data.id
-          && request.resource.data.training is map
-          && request.resource.data.training.videoProvider is string
-          && allowedVideoProvider(request.resource.data.training.videoProvider)
-          && request.resource.data.diff(resource.data).changedKeys().hasOnly(['training','updatedAt'])
-          && (!('updatedAt' in request.resource.data) || validTimestamp(request.resource.data.updatedAt))
-        );
+          && (!('training' in request.resource.data) || request.resource.data.training is map);
       allow delete: if isOwner(resource.data);
     }
 

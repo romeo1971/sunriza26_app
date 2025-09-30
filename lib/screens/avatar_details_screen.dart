@@ -1544,6 +1544,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                                   }
                                                   return Container(
                                                     color: Colors.black26,
+                                                    child: const Icon(
+                                                      Icons.play_circle_outline,
+                                                      color: Colors.white70,
+                                                      size: 64,
+                                                    ),
                                                   );
                                                 },
                                               ),
@@ -2970,22 +2975,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ),
             ),
           ),
-          Positioned(
-            left: 6,
-            bottom: 6,
-            child: InkWell(
-              onTap: () => _reopenCrop(url),
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: const Color(0x30000000),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0x66FFFFFF)),
-                ),
-                child: const Icon(Icons.crop, color: Colors.white, size: 16),
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -3007,11 +2996,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     try {
       final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
       tr['crownVideoUrl'] = url;
+      debugPrint('🎯 _setCrownVideo -> $url');
       final updated = _avatarData!.copyWith(
         training: tr,
         updatedAt: DateTime.now(),
       );
       final ok = await _avatarService.updateAvatar(updated);
+      debugPrint('🎯 updateAvatar returned $ok');
       if (ok) {
         _applyAvatar(updated);
         await _initInlineFromCrown();
@@ -3042,18 +3033,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Future<void> _initInlineFromCrown() async {
     final crown = _getCrownVideoUrl();
+    debugPrint('🎬 _initInlineFromCrown crown=$crown');
     if (crown == null || crown.isEmpty) {
       await _clearInlinePlayer();
       return;
     }
     // Falls URL bereits aktiv, nichts tun
-    if (_currentInlineUrl != null &&
-        _sameStorageAsset(_currentInlineUrl!, crown) &&
-        _inlineVideoController != null) {
+    if (_currentInlineUrl == crown && _inlineVideoController != null) {
       return;
     }
     // Frische Download-URL sichern (kann ablaufen)
     final fresh = await _refreshDownloadUrl(crown) ?? crown;
+    debugPrint('🎬 _initInlineFromCrown fresh=$fresh');
     try {
       await _clearInlinePlayer();
       final ctrl = VideoPlayerController.networkUrl(Uri.parse(fresh));
@@ -3062,9 +3053,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       // nicht auto-play; zeigt erstes Frame
       _inlineVideoController = ctrl;
       _currentInlineUrl = crown;
+      debugPrint('✅ Hero-Video erfolgreich initialisiert');
       if (mounted) setState(() {});
-    } catch (_) {
+    } catch (e) {
       // Bei Fehler: Controller freigeben und auf Thumbnail-Fallback lassen
+      debugPrint('❌ Hero-Video init fehlgeschlagen: $e');
       await _clearInlinePlayer();
     }
   }
@@ -3073,44 +3066,40 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Widget _videoTile(String url, double w, double h) {
     final crownUrl = _getCrownVideoUrl();
-    final isCrown = crownUrl != null && _sameStorageAsset(url, crownUrl);
+    final isCrown = crownUrl != null && url == crownUrl;
+    debugPrint(
+      '🎬 _videoTile url=$url | crownUrl=$crownUrl | isCrown=$isCrown',
+    );
     return Stack(
       children: [
-        Positioned.fill(child: _imageThumbNetwork(url, isCrown)),
-        // Hero-Video-Overlay (star) – 30px Bereich oben links, separate Touch-Zone
-        Positioned(
-          top: 4,
-          left: 6,
-          child: SizedBox(
-            height: 30,
-            width: 30,
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: Text(
-                '⭐',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: isCrown ? const Color(0xFFFFD700) : Colors.white,
+        Positioned.fill(child: _videoThumbNetwork(url)),
+        // Hero-Video-Overlay (star) – nur beim Crown-Video sichtbar
+        if (isCrown)
+          Positioned(
+            top: 4,
+            left: 6,
+            child: SizedBox(
+              height: 30,
+              width: 30,
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: Text(
+                  '⭐',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: const Color(0xFFFFD700),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
 
-  // Vergleicht zwei Download-URLs anhand des echten Storage-Pfades
-  bool _sameStorageAsset(String a, String b) {
-    try {
-      return _storagePathFromUrl(a) == _storagePathFromUrl(b);
-    } catch (_) {
-      return a == b;
-    }
-  }
-
   Widget _videoThumbNetwork(String url) {
     final selected = _selectedRemoteVideos.contains(url);
+    debugPrint('🎬 _videoThumbNetwork -> $url');
     return AspectRatio(
       aspectRatio: 9 / 16,
       child: Container(
@@ -3123,12 +3112,25 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            FutureBuilder<Uint8List?>(
-              future: _thumbnailForRemote(url),
+            FutureBuilder<VideoPlayerController?>(
+              future: _videoControllerForThumb(url),
               builder: (context, snapshot) {
-                if (snapshot.hasData && snapshot.data != null) {
-                  return Image.memory(snapshot.data!, fit: BoxFit.cover);
+                if (snapshot.connectionState == ConnectionState.done &&
+                    snapshot.hasData &&
+                    snapshot.data != null) {
+                  final controller = snapshot.data!;
+                  if (controller.value.isInitialized) {
+                    return FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: controller.value.size.width,
+                        height: controller.value.size.height,
+                        child: VideoPlayer(controller),
+                      ),
+                    );
+                  }
                 }
+                // Während des Ladens: schwarzer Container ohne Icon
                 return Container(color: Colors.black26);
               },
             ),
@@ -3187,6 +3189,36 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   // _videoThumbLocal ungenutzt entfernt
+
+  // Cache für Thumbnail-Controller
+  final Map<String, VideoPlayerController> _thumbControllers = {};
+
+  Future<VideoPlayerController?> _videoControllerForThumb(String url) async {
+    try {
+      // Cache-Check
+      if (_thumbControllers.containsKey(url)) {
+        final cached = _thumbControllers[url];
+        if (cached != null && cached.value.isInitialized) {
+          return cached;
+        }
+      }
+
+      // Frische Download-URL holen
+      final fresh = await _refreshDownloadUrl(url) ?? url;
+      debugPrint('🎬 _videoControllerForThumb url=$url | fresh=$fresh');
+
+      final controller = VideoPlayerController.networkUrl(Uri.parse(fresh));
+      await controller.initialize();
+      await controller.setLooping(false);
+      // Nicht abspielen - nur erstes Frame zeigen
+
+      _thumbControllers[url] = controller;
+      return controller;
+    } catch (e) {
+      debugPrint('🎬 _videoControllerForThumb error: $e');
+      return null;
+    }
+  }
 
   Future<void> _playNetworkInline(String url) async {
     try {
@@ -3451,13 +3483,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Future<Uint8List?> _thumbnailForRemote(String url) async {
     try {
+      debugPrint('🎬 start thumbnail for $url');
       if (_videoThumbCache.containsKey(url)) return _videoThumbCache[url];
+      debugPrint('🎬 cache miss -> $url');
       var effectiveUrl = url;
-      print('🎬 Thumbnail für: $effectiveUrl');
+      debugPrint('🎬 Thumbnail für: $effectiveUrl');
       var res = await http.get(Uri.parse(effectiveUrl));
-      print('🎬 Response: ${res.statusCode}');
+      debugPrint('🎬 Response: ${res.statusCode}');
       if (res.statusCode != 200) {
         final fresh = await _refreshDownloadUrl(url);
+        debugPrint('🎬 refresh download -> $fresh');
         if (fresh != null) {
           effectiveUrl = fresh;
           res = await http.get(Uri.parse(effectiveUrl));
@@ -3482,7 +3517,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         maxWidth: 360,
         quality: 60,
       );
-      print('🎬 Thumbnail data: ${data?.length ?? 0} bytes');
+      debugPrint('🎬 Thumbnail data: ${data?.length ?? 0} bytes');
       if (data != null) _videoThumbCache[url] = data;
       try {
         // optional: Tempdatei löschen
@@ -5248,6 +5283,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 const SizedBox(height: 12),
                 _buildMediaSection(),
 
+                const SizedBox(height: 24),
+
                 // Eingabefelder (aufklappbar)
                 _buildPersonDataTile(),
 
@@ -5274,6 +5311,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _deathDateController.dispose();
     _regionInputController.dispose();
     _inlineVideoController?.dispose();
+    // Thumbnail-Controller aufräumen
+    for (final controller in _thumbControllers.values) {
+      controller.dispose();
+    }
+    _thumbControllers.clear();
     super.dispose();
   }
 
