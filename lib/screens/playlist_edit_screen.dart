@@ -102,7 +102,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _repeat,
+              initialValue: _repeat,
               items: const [
                 DropdownMenuItem(
                   value: 'none',
@@ -117,7 +117,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
             ),
             if (_repeat == 'weekly')
               DropdownButtonFormField<int>(
-                value: _weeklyDay,
+                initialValue: _weeklyDay,
                 items: _weeklyDays
                     .map(
                       (d) => DropdownMenuItem(value: d, child: Text('Tag $d')),

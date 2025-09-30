@@ -2,7 +2,9 @@ import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -17,7 +19,9 @@ import '../models/playlist_models.dart';
 import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import '../theme/app_theme.dart';
+import '../widgets/video_player_widget.dart';
 
 class MediaGalleryScreen extends StatefulWidget {
   final String avatarId;
@@ -55,6 +59,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   bool _showPortrait = true; // true = portrait, false = landscape
   final Map<String, double> _imageAspectRatios =
       {}; // Cache für Bild-Aspekt-Verhältnisse
+  final Map<String, Uint8List> _videoThumbCache =
+      {}; // Cache für Video-Thumbnails
 
   @override
   void initState() {
@@ -82,6 +88,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     setState(() => _loading = true);
     try {
       final list = await _mediaSvc.list(widget.avatarId);
+      print('📦 Medien geladen: ${list.length} Objekte');
+      print(
+        '  - Bilder: ${list.where((m) => m.type == AvatarMediaType.image).length}',
+      );
+      print(
+        '  - Videos: ${list.where((m) => m.type == AvatarMediaType.video).length}',
+      );
       final pls = await _playlistSvc.list(widget.avatarId);
 
       // Für jedes Medium prüfen, in welchen Playlists es vorkommt
@@ -124,10 +137,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
   List<AvatarMedia> get _filteredItems {
     var items = _items.where((it) {
-      if (_mediaTab == 'images' && it.type != AvatarMediaType.image)
+      if (_mediaTab == 'images' && it.type != AvatarMediaType.image) {
         return false;
-      if (_mediaTab == 'videos' && it.type != AvatarMediaType.video)
+      }
+      if (_mediaTab == 'videos' && it.type != AvatarMediaType.video) {
         return false;
+      }
       if (_mediaTab == 'audio') return false; // Audio noch nicht unterstützt
 
       // Orientierungsfilter: IMMER filtern, nie gemischt
@@ -228,21 +243,21 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Videoquelle wählen'),
-        content: const Text('Woher soll das Video kommen?'),
+        content: const Text('Woher sollen die Videos kommen?'),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              _pickVideoFrom(ImageSource.camera);
+              _pickVideoFrom(ImageSource.camera); // Single für Kamera
             },
-            child: const Text('Kamera'),
+            child: const Text('Kamera (1 Video)'),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              _pickVideoFrom(ImageSource.gallery);
+              _pickMultipleVideos(); // Multi für Galerie
             },
-            child: const Text('Galerie'),
+            child: const Text('Galerie (Mehrere)'),
           ),
         ],
       ),
@@ -262,6 +277,46 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     });
 
     await _processUploadQueue();
+  }
+
+  /// Multi-Upload: Mehrere Videos auf einmal auswählen (nur Galerie)
+  Future<void> _pickMultipleVideos() async {
+    try {
+      // FilePicker mit Video-Filter (nur Videos erlaubt)
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.video,
+        allowMultiple: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      // Konvertiere PlatformFile zu File
+      final videos = result.files
+          .where((file) => file.path != null)
+          .map((file) => File(file.path!))
+          .toList();
+
+      if (videos.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Keine Videos ausgewählt')),
+        );
+        return;
+      }
+
+      setState(() {
+        _uploadQueue = videos;
+        _isUploading = true;
+        _uploadProgress = 0;
+        _uploadStatus = 'Videos werden hochgeladen...';
+      });
+
+      await _processVideoUploadQueue();
+    } catch (e) {
+      print('Fehler bei Video-Auswahl: $e');
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Fehler bei Video-Auswahl')));
+    }
   }
 
   /// Verarbeitet die Upload-Queue
@@ -287,9 +342,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         List<String> tags = [];
         try {
           tags = await _visionSvc.analyzeImage(file.path);
-          print('KI-Tags für Bild ${i + 1}: $tags');
+          print('🔍 KI-Tags für Bild ${i + 1}: $tags');
         } catch (e) {
-          print('Fehler bei KI-Analyse für Bild ${i + 1}: $e');
+          print('❌ Fehler bei KI-Analyse für Bild ${i + 1}: $e');
         }
 
         // Upload
@@ -300,15 +355,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         );
 
         if (url != null) {
+          // Berechne Aspect Ratio
+          final aspectRatio = await _calculateAspectRatio(file);
+
           final media = AvatarMedia(
             id: timestamp.toString(),
             avatarId: widget.avatarId,
             type: AvatarMediaType.image,
             url: url,
             createdAt: timestamp,
+            aspectRatio: aspectRatio,
             tags: tags.isNotEmpty ? tags : null,
           );
           await _mediaSvc.add(widget.avatarId, media);
+          print('✅ Bild ${i + 1} hochgeladen mit ${tags.length} Tags');
         }
       } catch (e) {
         print('Fehler beim Upload von Bild ${i + 1}: $e');
@@ -316,6 +376,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
 
     // Upload abgeschlossen
+    final uploadedCount =
+        _uploadQueue.length; // Speichere Anzahl VOR dem Leeren
     setState(() {
       _isUploading = false;
       _uploadQueue.clear();
@@ -328,9 +390,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            '${_uploadQueue.length} Bilder erfolgreich hochgeladen!',
-          ),
+          content: Text('$uploadedCount Bilder erfolgreich hochgeladen!'),
           action: SnackBarAction(
             label: 'Zuschneiden',
             textColor: Colors.white,
@@ -575,6 +635,94 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
   }
 
+  /// Verarbeitet die Video-Upload-Queue
+  Future<void> _processVideoUploadQueue() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    for (int i = 0; i < _uploadQueue.length; i++) {
+      final file = _uploadQueue[i];
+      final ext = p.extension(file.path).toLowerCase();
+
+      setState(() {
+        _uploadProgress = ((i + 1) / _uploadQueue.length * 100).round();
+        _uploadStatus =
+            'Lade Video ${i + 1} von ${_uploadQueue.length} hoch...';
+      });
+
+      try {
+        final timestamp =
+            DateTime.now().millisecondsSinceEpoch + i; // Eindeutige IDs
+
+        // KI-Video-Analyse (aktuell: nur Metadaten, keine echte KI)
+        List<String> tags = ['video']; // Basis-Tag
+        print('📹 Video ${i + 1}: Basis-Tags: $tags');
+
+        // Video-Dimensionen ermitteln
+        double videoAspectRatio = 16 / 9; // Default
+        try {
+          final ctrl = VideoPlayerController.file(file);
+          await ctrl.initialize();
+          if (ctrl.value.aspectRatio != 0) {
+            videoAspectRatio = ctrl.value.aspectRatio;
+            print(
+              '📐 Video ${i + 1} Aspect Ratio: $videoAspectRatio (${videoAspectRatio > 1.0 ? "Landscape" : "Portrait"})',
+            );
+          }
+          await ctrl.dispose();
+        } catch (e) {
+          print('❌ Fehler bei Video-Dimensionen für Video ${i + 1}: $e');
+        }
+
+        // Upload
+        final url = await FirebaseStorageService.uploadVideo(
+          file,
+          customPath:
+              'avatars/$uid/${widget.avatarId}/media/videos/$timestamp$ext',
+        );
+
+        if (url != null) {
+          final media = AvatarMedia(
+            id: timestamp.toString(),
+            avatarId: widget.avatarId,
+            type: AvatarMediaType.video,
+            url: url,
+            createdAt: timestamp,
+            aspectRatio: videoAspectRatio,
+            tags: tags,
+          );
+          await _mediaSvc.add(widget.avatarId, media);
+          print(
+            '✅ Video ${i + 1} gespeichert: ID=${media.id}, URL=$url, AspectRatio=$videoAspectRatio',
+          );
+        } else {
+          print('❌ Video ${i + 1}: Upload fehlgeschlagen - URL ist null');
+        }
+      } catch (e) {
+        print('❌ Fehler beim Upload von Video ${i + 1}: $e');
+      }
+    }
+
+    // Upload abgeschlossen
+    final uploadedCount = _uploadQueue.length;
+    setState(() {
+      _isUploading = false;
+      _uploadQueue.clear();
+      _uploadProgress = 0;
+      _uploadStatus = '';
+    });
+
+    await _load();
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$uploadedCount Videos erfolgreich hochgeladen!'),
+        ),
+      );
+    }
+  }
+
   Future<void> _pickVideoFrom(ImageSource source) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
@@ -582,6 +730,26 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final x = await _picker.pickVideo(source: source);
     if (x == null) return;
     final timestamp = DateTime.now().millisecondsSinceEpoch;
+
+    // KI-Video-Analyse (aktuell: nur Metadaten, keine echte KI)
+    List<String> tags = ['video']; // Basis-Tag
+
+    // Video-Dimensionen ermitteln
+    double videoAspectRatio = 16 / 9; // Default
+    try {
+      final ctrl = VideoPlayerController.file(File(x.path));
+      await ctrl.initialize();
+      if (ctrl.value.aspectRatio != 0) {
+        videoAspectRatio = ctrl.value.aspectRatio;
+        print(
+          '📐 Video Aspect Ratio: $videoAspectRatio (${videoAspectRatio > 1.0 ? "Landscape" : "Portrait"})',
+        );
+      }
+      await ctrl.dispose();
+    } catch (e) {
+      print('❌ Fehler bei Video-Dimensionen: $e');
+    }
+
     final url = await FirebaseStorageService.uploadVideo(
       File(x.path),
       customPath: 'avatars/$uid/${widget.avatarId}/media/videos/$timestamp.mp4',
@@ -600,7 +768,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       type: AvatarMediaType.video,
       url: url,
       createdAt: timestamp,
-      aspectRatio: 16 / 9, // Default landscape für Videos
+      aspectRatio: videoAspectRatio,
+      tags: tags,
     );
     await _mediaSvc.add(widget.avatarId, m);
     await _load();
@@ -624,6 +793,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       appBar: AppBar(
         title: Text(loc.t('gallery.title')),
         actions: [
+          IconButton(
+            tooltip: 'Tags aktualisieren',
+            onPressed: _updateExistingImageTags,
+            icon: const Icon(Icons.auto_awesome),
+          ),
           IconButton(
             tooltip: loc.t('avatars.refreshTooltip'),
             onPressed: _load,
@@ -898,7 +1072,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Grid mit variabler Breite, fixer Höhe
+                // Responsive Grid wie in avatar_details_screen
                 Expanded(
                   child: _pageItems.isEmpty
                       ? Center(
@@ -907,14 +1081,36 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             style: TextStyle(color: Colors.grey.shade500),
                           ),
                         )
-                      : SingleChildScrollView(
+                      : Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: _pageItems.map((it) {
-                              return _buildMediaCard(it);
-                            }).toList(),
+                          child: LayoutBuilder(
+                            builder: (ctx, cons) {
+                              const double spacing = 16.0;
+                              const double minThumbWidth = 120.0;
+                              const double gridSpacing = 12.0;
+                              const double cardHeight = 150.0;
+
+                              // Rechts mindestens 2 Thumbs: 2 * min + Zwischenabstand
+                              final double minRightWidth =
+                                  (2 * minThumbWidth) + gridSpacing;
+                              double leftW =
+                                  cons.maxWidth - spacing - minRightWidth;
+                              // Begrenze links sinnvoll - 25% weniger als avatar_details_screen
+                              if (leftW > 180) leftW = 180; // 240 * 0.75 = 180
+                              if (leftW < 120) leftW = 120; // 160 * 0.75 = 120
+
+                              return Wrap(
+                                spacing: gridSpacing,
+                                runSpacing: gridSpacing,
+                                children: _pageItems.map((it) {
+                                  return _buildResponsiveMediaCard(
+                                    it,
+                                    leftW,
+                                    cardHeight,
+                                  );
+                                }).toList(),
+                              );
+                            },
                           ),
                         ),
                 ),
@@ -1037,21 +1233,30 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     );
   }
 
-  Widget _buildMediaCard(AvatarMedia it) {
-    const double cardHeight = 150.0; // 25% weniger als 200
-    // Berechne Breite basierend auf tatsächlichem Aspect Ratio
-    double aspectRatio =
-        it.aspectRatio ?? (9 / 16); // Default Portrait wenn nicht gesetzt
-
-    // Für Bilder ohne aspectRatio: Cache prüfen
-    if (it.aspectRatio == null && _imageAspectRatios.containsKey(it.url)) {
-      aspectRatio = _imageAspectRatios[it.url]!;
-    }
-
-    final double cardWidth = cardHeight * aspectRatio;
+  /// Responsive Media Card wie in avatar_details_screen
+  Widget _buildResponsiveMediaCard(
+    AvatarMedia it,
+    double cardWidth,
+    double cardHeight,
+  ) {
     final usedInPlaylists = _mediaToPlaylists[it.id] ?? [];
     final isInPlaylist = usedInPlaylists.isNotEmpty;
     final selected = _selectedMediaIds.contains(it.id);
+
+    // Berechne echte Dimensionen basierend auf Crop-Aspekt-Verhältnis
+    // cardWidth ist die responsive Basis-Breite (120-180px)
+    double aspectRatio = it.aspectRatio ?? (9 / 16); // Default Portrait
+
+    // Landscape-Bilder bekommen doppelte Start-Höhe
+    double baseWidth = cardWidth;
+    if (aspectRatio > 1.0) {
+      // Landscape (16:9): Doppelte Basis-Breite für mehr Höhe
+      baseWidth = cardWidth * 2;
+    }
+
+    // Höhe basierend auf responsive Breite
+    double actualHeight = baseWidth / aspectRatio; // Höhe berechnet aus Breite
+    double actualWidth = baseWidth; // Responsive Breite
 
     return GestureDetector(
       onTap: () {
@@ -1067,9 +1272,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           _openViewer(it);
         }
       },
-      child: SizedBox(
-        width: cardWidth,
-        height: cardHeight,
+      child: Container(
+        width: actualWidth,
+        height: actualHeight,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -1090,13 +1295,43 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         );
                       },
                     )
-                  : Container(
-                      color: Colors.grey.shade800,
-                      child: const Icon(
-                        Icons.play_circle_filled,
-                        color: Colors.white,
-                        size: 48,
-                      ),
+                  : FutureBuilder<Uint8List?>(
+                      future: _thumbnailForRemote(it.url),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData && snapshot.data != null) {
+                          return Image.memory(
+                            snapshot.data!,
+                            fit: BoxFit.cover,
+                          );
+                        }
+                        // Während des Ladens: Spinner + Icon
+                        return Container(
+                          color: Colors.black26,
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (snapshot.connectionState ==
+                                    ConnectionState.waiting)
+                                  const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                const SizedBox(height: 8),
+                                const Icon(
+                                  Icons.videocam,
+                                  color: Colors.white70,
+                                  size: 32,
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
             ),
             // Playlist Icon oben links (nur wenn in Playlists verwendet)
@@ -1132,6 +1367,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 bottom: 6,
                 child: InkWell(
                   onTap: () => _reopenCrop(it),
+                  onLongPress: () => _showTagsDialog(it),
                   child: Container(
                     padding: const EdgeInsets.all(6),
                     decoration: BoxDecoration(
@@ -1143,6 +1379,34 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       Icons.crop,
                       color: Colors.white,
                       size: 16,
+                    ),
+                  ),
+                ),
+              ),
+
+            // Tag-Icon unten links (nur für Videos)
+            if (it.type == AvatarMediaType.video && !_isDeleteMode)
+              Positioned(
+                left: 6,
+                bottom: 6,
+                child: InkWell(
+                  onTap: () => _showTagsDialog(it),
+                  child: Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: const Color(0x25FFFFFF), // #ffffff25
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: const Color(0x66FFFFFF)),
+                    ),
+                    child: ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [Color(0xFFE91E63), AppColors.lightBlue],
+                      ).createShader(bounds),
+                      child: const Icon(
+                        Icons.label_outline,
+                        color: Colors.white,
+                        size: 16,
+                      ),
                     ),
                   ),
                 ),
@@ -1351,6 +1615,22 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
   }
 
+  Future<double> _calculateAspectRatio(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+
+      final aspectRatio = image.width / image.height;
+      image.dispose();
+      return aspectRatio;
+    } catch (e) {
+      print('❌ Fehler bei Aspect Ratio Berechnung: $e');
+      return 9 / 16; // Default Portrait
+    }
+  }
+
   Future<void> _loadImageAspectRatio(String url) async {
     if (_imageAspectRatios.containsKey(url)) return;
 
@@ -1372,6 +1652,81 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     } catch (e) {
       // Bei Fehler: Default Portrait
       _imageAspectRatios[url] = 9 / 16;
+    }
+  }
+
+  /// Video-Thumbnail generieren (1:1 aus avatar_details_screen)
+  Future<Uint8List?> _thumbnailForRemote(String url) async {
+    try {
+      if (_videoThumbCache.containsKey(url)) return _videoThumbCache[url];
+      var effectiveUrl = url;
+      print('🎬 Thumbnail für: $effectiveUrl');
+      var res = await http.get(Uri.parse(effectiveUrl));
+      print('🎬 Response: ${res.statusCode}');
+      if (res.statusCode != 200) {
+        final fresh = await _refreshDownloadUrl(url);
+        if (fresh != null) {
+          effectiveUrl = fresh;
+          res = await http.get(Uri.parse(effectiveUrl));
+          print('🎬 Fresh Response: ${res.statusCode}');
+          if (res.statusCode != 200) return null;
+        } else {
+          print('🎬 Refresh failed');
+          return null;
+        }
+      }
+      final tmp = await File(
+        '${Directory.systemTemp.path}/thumb_${DateTime.now().microsecondsSinceEpoch}.mp4',
+      ).create();
+      await tmp.writeAsBytes(res.bodyBytes);
+      final data = await vt.VideoThumbnail.thumbnailData(
+        video: tmp.path,
+        imageFormat: vt.ImageFormat.JPEG,
+        maxWidth: 360,
+        quality: 60,
+      );
+      print('🎬 Thumbnail data: ${data?.length ?? 0} bytes');
+      if (data != null) _videoThumbCache[url] = data;
+      try {
+        // optional: Tempdatei löschen
+        await tmp.delete();
+      } catch (_) {}
+      return data;
+    } catch (e) {
+      print('🎬 Thumbnail error: $e');
+      return null;
+    }
+  }
+
+  /// Refresh Firebase Storage Download URL (1:1 aus avatar_details_screen)
+  Future<String?> _refreshDownloadUrl(String maybeExpiredUrl) async {
+    try {
+      final path = _storagePathFromUrl(maybeExpiredUrl);
+      if (path.isEmpty) return null;
+      final ref = FirebaseStorage.instance.ref().child(path);
+      final fresh = await ref.getDownloadURL();
+      return fresh;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Extrahiert Storage-Pfad aus Download-URL (1:1 aus avatar_details_screen)
+  String _storagePathFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final path = uri.path; // enthält ggf. /o/<ENCODED_PATH>
+      String enc;
+      if (path.contains('/o/')) {
+        enc = path.split('/o/').last;
+      } else {
+        enc = path.startsWith('/') ? path.substring(1) : path;
+      }
+      final decoded = Uri.decodeComponent(enc);
+      final clean = decoded.split('?').first;
+      return clean;
+    } catch (_) {
+      return url;
     }
   }
 
@@ -1555,14 +1910,49 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         context: context,
         builder: (_) => Dialog(
           insetPadding: const EdgeInsets.all(12),
-          child: GestureDetector(
-            onLongPress: () {
-              Navigator.pop(context);
-              _reopenCrop(media);
-            },
-            child: InteractiveViewer(
-              child: Image.network(media.url, fit: BoxFit.contain),
-            ),
+          child: Stack(
+            children: [
+              GestureDetector(
+                onLongPress: () {
+                  Navigator.pop(context);
+                  _reopenCrop(media);
+                },
+                child: InteractiveViewer(
+                  child: Image.network(media.url, fit: BoxFit.contain),
+                ),
+              ),
+              // X-Button oben rechts mit Gradient-Hintergrund
+              Positioned(
+                top: 12,
+                right: 12,
+                child: SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFE91E63), AppColors.lightBlue],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.close, color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -1572,6 +1962,89 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         builder: (_) => _VideoDialog(url: media.url),
       );
     }
+  }
+
+  /// Zeigt Dialog zum Anzeigen und Bearbeiten der Tags
+  Future<void> _showTagsDialog(AvatarMedia media) async {
+    final currentTags = media.tags ?? [];
+    final controller = TextEditingController(text: currentTags.join(', '));
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          media.type == AvatarMediaType.video ? 'Video-Tags' : 'Bild-Tags',
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Video-Thumbnail oder Bild anzeigen
+            SizedBox(
+              height: 100,
+              child: media.type == AvatarMediaType.video
+                  ? FutureBuilder<Uint8List?>(
+                      future: _thumbnailForRemote(media.url),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData && snapshot.data != null) {
+                          return Image.memory(
+                            snapshot.data!,
+                            height: 100,
+                            fit: BoxFit.cover,
+                          );
+                        }
+                        return Container(
+                          color: Colors.black26,
+                          child: const Icon(
+                            Icons.videocam,
+                            color: Colors.white70,
+                            size: 48,
+                          ),
+                        );
+                      },
+                    )
+                  : Image.network(media.url, height: 100, fit: BoxFit.cover),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                labelText: 'Tags (durch Komma getrennt)',
+                hintText: media.type == AvatarMediaType.video
+                    ? 'z.B. interview, outdoor, talking'
+                    : 'z.B. hund, outdoor, park',
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newTags = controller.text
+                  .split(',')
+                  .map((tag) => tag.trim())
+                  .where((tag) => tag.isNotEmpty)
+                  .toList();
+
+              await _mediaSvc.update(widget.avatarId, media.id, tags: newTags);
+              await _load();
+              Navigator.pop(ctx);
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('${newTags.length} Tags gespeichert')),
+                );
+              }
+            },
+            child: const Text('Speichern'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Aktualisiert Tags für bestehende Bilder ohne Tags
@@ -1586,27 +2059,42 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           )
           .toList();
 
-      if (imagesWithoutTags.isEmpty) return;
+      if (imagesWithoutTags.isEmpty) {
+        print('✅ Alle Bilder haben bereits Tags');
+        return;
+      }
 
       print('🔄 Aktualisiere Tags für ${imagesWithoutTags.length} Bilder...');
 
-      for (final image in imagesWithoutTags) {
+      for (int i = 0; i < imagesWithoutTags.length; i++) {
+        final image = imagesWithoutTags[i];
         try {
+          print('📸 Analysiere Bild ${i + 1}/${imagesWithoutTags.length}...');
+
           // Lade Bild herunter für Analyse
           final tempFile = await _downloadToTemp(image.url, suffix: '.jpg');
-          if (tempFile == null) continue;
+          if (tempFile == null) {
+            print('❌ Konnte Bild ${image.id} nicht herunterladen');
+            continue;
+          }
 
           // Analysiere mit Vision API
           final tags = await _visionSvc.analyzeImage(tempFile.path);
+          print('🔍 Gefundene Tags: $tags');
 
           if (tags.isNotEmpty) {
             // Aktualisiere in Firestore
             await _mediaSvc.update(widget.avatarId, image.id, tags: tags);
-            print('✅ Tags für Bild ${image.id}: $tags');
+            print('✅ Tags für Bild ${image.id} gespeichert: $tags');
+          } else {
+            print('⚠️ Keine Tags für Bild ${image.id} gefunden');
           }
 
           // Lösche temporäre Datei
           await tempFile.delete();
+
+          // Kurze Pause zwischen den Bildern
+          await Future.delayed(const Duration(milliseconds: 500));
         } catch (e) {
           print('❌ Fehler bei Tag-Update für Bild ${image.id}: $e');
         }
@@ -1614,7 +2102,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       // Lade Daten neu
       await _load();
-      print('🎉 Tag-Update abgeschlossen!');
+      print(
+        '🎉 Tag-Update abgeschlossen! ${_items.where((i) => i.tags != null && i.tags!.isNotEmpty).length} Bilder haben jetzt Tags',
+      );
     } catch (e) {
       print('❌ Fehler beim Tag-Update: $e');
     }
@@ -1629,23 +2119,72 @@ class _VideoDialog extends StatefulWidget {
 }
 
 class _VideoDialogState extends State<_VideoDialog> {
-  late VideoPlayerController _ctrl;
+  VideoPlayerController? _ctrl;
   bool _ready = false;
 
   @override
   void initState() {
     super.initState();
-    _ctrl = VideoPlayerController.networkUrl(Uri.parse(widget.url))
-      ..initialize().then((_) {
-        if (!mounted) return;
-        setState(() => _ready = true);
-        _ctrl.play();
+    _initializeVideo();
+  }
+
+  Future<void> _initializeVideo() async {
+    try {
+      // Frische URL holen falls abgelaufen (wie in avatar_details_screen)
+      final fresh = await _refreshDownloadUrl(widget.url) ?? widget.url;
+      final ctrl = VideoPlayerController.networkUrl(Uri.parse(fresh));
+      await ctrl.initialize();
+      if (!mounted) {
+        await ctrl.dispose();
+        return;
+      }
+      setState(() {
+        _ctrl = ctrl;
+        _ready = true;
       });
+      // Auto-play wie in avatar_details_screen
+      await ctrl.play();
+    } catch (e) {
+      print('❌ Video-Fehler: $e');
+      if (mounted) {
+        setState(() => _ready = false);
+      }
+    }
+  }
+
+  Future<String?> _refreshDownloadUrl(String maybeExpiredUrl) async {
+    try {
+      final path = _storagePathFromUrl(maybeExpiredUrl);
+      if (path.isEmpty) return null;
+      final ref = FirebaseStorage.instance.ref().child(path);
+      final fresh = await ref.getDownloadURL();
+      return fresh;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String _storagePathFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final path = uri.path;
+      String enc;
+      if (path.contains('/o/')) {
+        enc = path.split('/o/').last;
+      } else {
+        enc = path.startsWith('/') ? path.substring(1) : path;
+      }
+      final decoded = Uri.decodeComponent(enc);
+      final clean = decoded.split('?').first;
+      return clean;
+    } catch (_) {
+      return url;
+    }
   }
 
   @override
   void dispose() {
-    _ctrl.dispose();
+    _ctrl?.dispose();
     super.dispose();
   }
 
@@ -1653,19 +2192,58 @@ class _VideoDialogState extends State<_VideoDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       insetPadding: const EdgeInsets.all(12),
-      child: AspectRatio(
-        aspectRatio: _ready ? _ctrl.value.aspectRatio : 16 / 9,
-        child: _ready
-            ? Stack(
-                children: [
-                  VideoPlayer(_ctrl),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: VideoProgressIndicator(_ctrl, allowScrubbing: true),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: Colors.black,
+        ),
+        clipBehavior: Clip.hardEdge,
+        child: AspectRatio(
+          aspectRatio: _ready && _ctrl != null
+              ? _ctrl!.value.aspectRatio
+              : 16 / 9,
+          child: Stack(
+            children: [
+              if (_ready && _ctrl != null)
+                Positioned.fill(child: VideoPlayerWidget(controller: _ctrl!)),
+              if (!_ready)
+                const Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              // X-Button oben rechts mit Gradient-Hintergrund
+              Positioned(
+                top: 12,
+                right: 12,
+                child: SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [Color(0xFFE91E63), AppColors.lightBlue],
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.close, color: Colors.white),
+                      ),
+                    ),
                   ),
-                ],
-              )
-            : const Center(child: CircularProgressIndicator()),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

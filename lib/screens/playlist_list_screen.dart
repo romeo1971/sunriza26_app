@@ -132,10 +132,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                         return ListTile(
                           title: Text(p.name),
                           subtitle: Text(
-                            loc.t('playlists.showAfterSecPrefix') +
-                                ' ' +
-                                p.showAfterSec.toString() +
-                                loc.t('playlists.secondsSuffix'),
+                            '${loc.t('playlists.showAfterSecPrefix')} ${p.showAfterSec}${loc.t('playlists.secondsSuffix')}',
                           ),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () => _openEdit(p),

@@ -20,7 +20,7 @@ class CloudVisionService {
       // API Key Authentication - VIELEINFACHER!
       final apiKey = "AIzaSyDTYIXhu--VgsH1X14ny8P5rNf98QfMA10";
 
-      final authClient = await clientViaApiKey(apiKey);
+      final authClient = clientViaApiKey(apiKey);
 
       _visionApi = VisionApi(authClient);
       _useCloudAPI = true;
@@ -244,6 +244,36 @@ class CloudVisionService {
         }
       }
 
+      // Manuelle Tag-Ergänzungen basierend auf erkannten Tags
+      if (allTags.any((tag) => tag.contains('person') || tag.contains('face'))) {
+        // Wenn Personen erkannt werden, füge häufige Kleidungs-Tags hinzu
+        if (allTags.any((tag) => tag.contains('jacket') || tag.contains('coat'))) {
+          allTags.add('jacket');
+          allTags.add('outerwear');
+        }
+        if (allTags.any((tag) => tag.contains('shirt') || tag.contains('blouse'))) {
+          allTags.add('shirt');
+          allTags.add('top');
+        }
+        if (allTags.any((tag) => tag.contains('hat') || tag.contains('cap'))) {
+          allTags.add('hat');
+          allTags.add('headwear');
+        }
+        
+        // Zähle Personen
+        final personTags = allTags.where((tag) => 
+          tag.contains('person') || 
+          tag.contains('face') || 
+          tag.contains('woman') || 
+          tag.contains('man')
+        ).toList();
+        
+        if (personTags.length >= 2) {
+          allTags.add('multiple people');
+          allTags.add('group');
+        }
+      }
+
       // Duplikate entfernen und zurückgeben
       final uniqueTags = allTags.toSet().toList();
       print(
@@ -261,6 +291,13 @@ class CloudVisionService {
     if (searchTerm.isEmpty) return true;
 
     final searchLower = searchTerm.toLowerCase();
+    
+    // 1. Direkte Suche nach dem kompletten Suchbegriff (z.B. "black jacket")
+    if (imageTags.any((tag) => tag.contains(searchLower))) {
+      return true;
+    }
+    
+    // 2. Suche nach einzelnen Keywords
     final keywords = searchLower.split(' ');
 
     for (final keyword in keywords) {
@@ -282,6 +319,23 @@ class CloudVisionService {
               tag.contains('person') ||
               tag.contains('face'),
         )) {
+          return true;
+        }
+      }
+
+      // Spezielle Logik für "2 woman" oder "zwei frauen"
+      if (searchLower.contains('2 woman') || 
+          searchLower.contains('zwei frauen') ||
+          searchLower.contains('two women')) {
+        // Zähle wie viele Personen im Bild sind
+        final personCount = imageTags.where((tag) => 
+          tag.contains('person') || 
+          tag.contains('face') || 
+          tag.contains('woman') || 
+          tag.contains('man')
+        ).length;
+        
+        if (personCount >= 2) {
           return true;
         }
       }
@@ -370,16 +424,29 @@ class CloudVisionService {
         }
       }
 
-      if (keyword.contains('gänseblümchen') || keyword.contains('daisy')) {
-        if (imageTags.any(
-          (tag) =>
-              tag.contains('flower') ||
-              tag.contains('daisy') ||
-              tag.contains('plant'),
-        )) {
-          return true;
-        }
-      }
+          if (keyword.contains('hund') || keyword.contains('dog') || keyword.contains('hunde')) {
+            if (imageTags.any(
+              (tag) =>
+                  tag.contains('dog') ||
+                  tag.contains('puppy') ||
+                  tag.contains('canine') ||
+                  tag.contains('pet') ||
+                  tag.contains('animal'),
+            )) {
+              return true;
+            }
+          }
+
+          if (keyword.contains('gänseblümchen') || keyword.contains('daisy')) {
+            if (imageTags.any(
+              (tag) =>
+                  tag.contains('flower') ||
+                  tag.contains('daisy') ||
+                  tag.contains('plant'),
+            )) {
+              return true;
+            }
+          }
 
       if (keyword.contains('auto') || keyword.contains('car')) {
         if (imageTags.any(

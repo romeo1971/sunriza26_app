@@ -3452,10 +3452,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           res = await http.get(Uri.parse(effectiveUrl));
           print('🎬 Fresh Response: ${res.statusCode}');
           if (res.statusCode != 200) return null;
-          // Cache frische URL direkt ablegen, damit Thumbs stabil sind
-          final idx = _videoUrls.indexOf(url);
-          if (idx >= 0) _videoUrls[idx] = fresh;
-          // kein persist hier, damit UI flott bleibt; persist passiert beim Speichern
         } else {
           print('🎬 Refresh failed');
           return null;
