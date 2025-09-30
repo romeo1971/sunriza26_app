@@ -8,6 +8,9 @@ class AvatarMedia {
   final String? thumbUrl;
   final int createdAt;
   final int? durationMs;
+  final double?
+  aspectRatio; // width / height (z.B. 9/16 für Portrait, 16/9 für Landscape)
+  final List<String>? tags; // KI-generierte Tags für Bilderkennung
 
   const AvatarMedia({
     required this.id,
@@ -17,7 +20,12 @@ class AvatarMedia {
     this.thumbUrl,
     required this.createdAt,
     this.durationMs,
+    this.aspectRatio,
+    this.tags,
   });
+
+  bool get isPortrait => aspectRatio != null && aspectRatio! < 1.0;
+  bool get isLandscape => aspectRatio != null && aspectRatio! > 1.0;
 
   factory AvatarMedia.fromMap(Map<String, dynamic> map) {
     return AvatarMedia(
@@ -30,6 +38,8 @@ class AvatarMedia {
       thumbUrl: map['thumbUrl'] as String?,
       createdAt: (map['createdAt'] as num?)?.toInt() ?? 0,
       durationMs: (map['durationMs'] as num?)?.toInt(),
+      aspectRatio: (map['aspectRatio'] as num?)?.toDouble(),
+      tags: (map['tags'] as List<dynamic>?)?.cast<String>(),
     );
   }
 
@@ -41,6 +51,7 @@ class AvatarMedia {
     'thumbUrl': thumbUrl,
     'createdAt': createdAt,
     'durationMs': durationMs,
+    if (aspectRatio != null) 'aspectRatio': aspectRatio,
+    if (tags != null) 'tags': tags,
   };
 }
-

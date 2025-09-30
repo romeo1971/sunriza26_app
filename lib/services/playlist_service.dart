@@ -118,4 +118,12 @@ class PlaylistService {
     }
     await batch.commit();
   }
+
+  Future<void> deleteItem(
+    String avatarId,
+    String playlistId,
+    String itemId,
+  ) async {
+    await _itemsCol(avatarId, playlistId).doc(itemId).delete();
+  }
 }

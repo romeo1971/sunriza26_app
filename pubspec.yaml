@@ -85,6 +85,10 @@ dependencies:
 
   # LiveKit Flutter SDK (Room Join/Leave, Remote Audio/Video)
   livekit_client: ^2.2.6
+  
+  # Google Cloud Vision API für umfassende KI-Bilderkennung
+  googleapis: ^13.0.0
+  googleapis_auth: ^1.6.0
 
 dependency_overrides:
 

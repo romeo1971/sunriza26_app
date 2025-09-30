@@ -20,5 +20,20 @@ class MediaService {
   Future<void> delete(String avatarId, String id) async {
     await _col(avatarId).doc(id).delete();
   }
-}
 
+  Future<void> update(
+    String avatarId,
+    String id, {
+    String? url,
+    double? aspectRatio,
+    List<String>? tags,
+  }) async {
+    final Map<String, dynamic> updates = {};
+    if (url != null) updates['url'] = url;
+    if (aspectRatio != null) updates['aspectRatio'] = aspectRatio;
+    if (tags != null) updates['tags'] = tags;
+    if (updates.isNotEmpty) {
+      await _col(avatarId).doc(id).update(updates);
+    }
+  }
+}
