@@ -402,20 +402,8 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    Expanded(
-                      child: Text(
-                        (avatar.nickname != null && avatar.nickname!.isNotEmpty)
-                            ? avatar.nickname!
-                            : avatar.firstName,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
                     IconButton(
                       tooltip: 'Fakten prüfen',
                       icon: const Icon(

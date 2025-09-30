@@ -5237,8 +5237,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 const SizedBox(height: 12),
                 _buildMediaSection(),
 
-                const SizedBox(height: 24),
-
                 // Eingabefelder (aufklappbar)
                 _buildPersonDataTile(),
 
