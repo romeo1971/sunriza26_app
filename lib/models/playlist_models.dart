@@ -71,6 +71,13 @@ class Playlist {
   final List<SpecialSchedule> specialSchedules;
   final int createdAt;
   final int updatedAt;
+  // Anzeige-Modus: 'weekly' oder 'special'
+  final String? scheduleMode;
+  // Zielgruppenauswahl (schlank, optional)
+  final Map<String, dynamic>?
+  targeting; // z.B. { gender:'female', matchUserDob:true, activeWithinDays:30 }
+  // Priorität bei Kollisionen
+  final int? priority;
 
   const Playlist({
     required this.id,
@@ -83,6 +90,9 @@ class Playlist {
     this.specialSchedules = const [],
     required this.createdAt,
     required this.updatedAt,
+    this.targeting,
+    this.priority,
+    this.scheduleMode,
   });
 
   factory Playlist.fromMap(Map<String, dynamic> map) {
@@ -105,6 +115,9 @@ class Playlist {
               .toList(),
       createdAt: (map['createdAt'] as num?)?.toInt() ?? 0,
       updatedAt: (map['updatedAt'] as num?)?.toInt() ?? 0,
+      targeting: (map['targeting'] as Map<String, dynamic>?),
+      priority: (map['priority'] as num?)?.toInt(),
+      scheduleMode: map['scheduleMode'] as String?,
     );
   }
 
@@ -122,6 +135,9 @@ class Playlist {
       'specialSchedules': specialSchedules.map((s) => s.toMap()).toList(),
       'createdAt': createdAt,
       'updatedAt': updatedAt,
+      if (targeting != null) 'targeting': targeting,
+      if (priority != null) 'priority': priority,
+      if (scheduleMode != null) 'scheduleMode': scheduleMode,
     };
   }
 }

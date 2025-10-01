@@ -47,9 +47,9 @@ class PlaylistService {
 
     // Bestimme aktuelles Zeitfenster
     TimeSlot? currentSlot;
-    if (hour >= 3 && hour < 6)
+    if (hour >= 3 && hour < 6) {
       currentSlot = TimeSlot.earlyMorning;
-    else if (hour >= 6 && hour < 11)
+    } else if (hour >= 6 && hour < 11)
       currentSlot = TimeSlot.morning;
     else if (hour >= 11 && hour < 14)
       currentSlot = TimeSlot.noon;

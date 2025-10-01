@@ -526,10 +526,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(vertical: 14),
                           ).copyWith(
-                            backgroundColor: MaterialStateProperty.all(
+                            backgroundColor: WidgetStateProperty.all(
                               Colors.transparent,
                             ),
-                            overlayColor: MaterialStateProperty.all(
+                            overlayColor: WidgetStateProperty.all(
                               Colors.white.withOpacity(0.1),
                             ),
                           ),
@@ -742,8 +742,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ).copyWith(
-                backgroundColor: MaterialStateProperty.all(Colors.transparent),
-                overlayColor: MaterialStateProperty.all(
+                backgroundColor: WidgetStateProperty.all(Colors.transparent),
+                overlayColor: WidgetStateProperty.all(
                   Colors.white.withOpacity(0.1),
                 ),
               ),

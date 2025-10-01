@@ -1052,8 +1052,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           final double minRightWidth = (2 * minThumbWidth) + gridSpacing;
           double leftW = cons.maxWidth - spacing - minRightWidth;
           if (leftW > 168) leftW = 168; // MAX 168 statt 240 (30% kleiner)
-          if (leftW < minNavWidth)
+          if (leftW < minNavWidth) {
             leftW = minNavWidth; // MIN durch Navigation-Breite
+          }
           final double leftH = leftW * (16 / 9);
           final double totalH = navBtnH + 8 + leftH;
           // Thumbnail-Breite berechnen
@@ -1386,8 +1387,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           final double minRightWidth = (2 * minThumbWidth) + gridSpacing;
           double leftW = cons.maxWidth - spacing - minRightWidth;
           if (leftW > 168) leftW = 168; // MAX 168 statt 240 (30% kleiner)
-          if (leftW < minNavWidth)
+          if (leftW < minNavWidth) {
             leftW = minNavWidth; // MIN durch Navigation-Breite
+          }
           final double leftH = leftW * (16 / 9);
           final double totalH = navBtnH + 8 + leftH;
           // Thumbnail-Breite berechnen

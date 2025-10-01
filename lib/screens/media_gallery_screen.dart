@@ -1274,7 +1274,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           _openViewer(it);
         }
       },
-      child: Container(
+      child: SizedBox(
         width: actualWidth,
         height: actualHeight,
         child: Stack(
