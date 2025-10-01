@@ -16,8 +16,18 @@ service firebase.storage {
     }
 
     // Avatar Files (Struppi-System)
-    match /avatars/{userId}/{allPaths=**} {
-      allow read, write: if isOwner(userId) && isValidFileType() && isValidFileSize();
+    match /avatars/{avatarId}/{allPaths=**} {
+      allow read: if true; // Public read
+      allow write: if signedIn() && 
+                      (
+                        // Root-Avatar gehört dem Nutzer
+                        (firestore.exists(/databases/(default)/documents/avatars/$(avatarId)) &&
+                         firestore.get(/databases/(default)/documents/avatars/$(avatarId)).data.userId == request.auth.uid) ||
+                        // ODER Nutzer hat Avatar-Mapping
+                        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)/avatars/$(avatarId))
+                      ) &&
+                      isValidFileType() && 
+                      isValidFileSize();
     }
 
     // User Photos (Struppi-System)

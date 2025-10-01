@@ -226,9 +226,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       final avatarId = _avatarData!.id;
       final playlists = await _playlistSvc.list(avatarId);
       if (playlists.isEmpty) return;
-      final today = DateTime.now();
+      final now = DateTime.now();
       final active = playlists
-          .where((p) => _playlistSvc.isActiveToday(p, today))
+          .where((p) => _playlistSvc.isActiveNow(p, now))
           .toList();
       if (active.isEmpty) return;
       // Entscheidungen laden, bereits entschiedene Medien überspringen

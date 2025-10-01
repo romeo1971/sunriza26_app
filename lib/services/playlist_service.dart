@@ -40,27 +40,42 @@ class PlaylistService {
     }, SetOptions(merge: true));
   }
 
-  // Hilfsfunktion: Prüfen, ob Playlist heute aktiv ist
-  bool isActiveToday(Playlist p, DateTime now) {
-    if (p.specialDates.isNotEmpty) {
-      final today = _fmt(now);
-      if (p.specialDates.contains(today)) return true;
-    }
-    if (p.repeat == 'daily') return true;
-    if (p.repeat == 'weekly') {
-      final isoDow = (now.weekday); // 1=Mon .. 7=So
-      return (p.weeklyDay != null && p.weeklyDay == isoDow);
-    }
-    if (p.repeat == 'monthly') {
-      final dom = now.day;
-      return (p.monthlyDay != null && p.monthlyDay == dom);
-    }
-    return p.repeat == 'none';
-  }
+  // Hilfsfunktion: Prüfen, ob Playlist jetzt aktiv ist
+  bool isActiveNow(Playlist p, DateTime now) {
+    final weekday = now.weekday; // 1=Mo .. 7=So
+    final hour = now.hour;
 
-  String _fmt(DateTime d) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${d.year}-${two(d.month)}-${two(d.day)}';
+    // Bestimme aktuelles Zeitfenster
+    TimeSlot? currentSlot;
+    if (hour >= 3 && hour < 6)
+      currentSlot = TimeSlot.earlyMorning;
+    else if (hour >= 6 && hour < 11)
+      currentSlot = TimeSlot.morning;
+    else if (hour >= 11 && hour < 14)
+      currentSlot = TimeSlot.noon;
+    else if (hour >= 14 && hour < 18)
+      currentSlot = TimeSlot.afternoon;
+    else if (hour >= 18 && hour < 23)
+      currentSlot = TimeSlot.evening;
+    else
+      currentSlot = TimeSlot.night; // 23-3
+
+    // 1. Prüfe Sondertermine (überschreiben weekly)
+    final nowMs = now.millisecondsSinceEpoch;
+    for (final special in p.specialSchedules) {
+      if (nowMs >= special.startDate && nowMs <= special.endDate) {
+        return special.timeSlots.contains(currentSlot);
+      }
+    }
+
+    // 2. Prüfe wöchentlichen Zeitplan
+    for (final weekly in p.weeklySchedules) {
+      if (weekly.weekday == weekday && weekly.timeSlots.contains(currentSlot)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   Future<void> delete(String avatarId, String id) async {
