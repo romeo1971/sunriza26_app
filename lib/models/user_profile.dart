@@ -2,7 +2,7 @@ class UserProfile {
   final String uid;
   final String? email;
   final String? displayName;
-  final String? photoUrl;
+  final String? profileImageUrl;
   final bool isOnboarded;
   final int createdAt;
   final int updatedAt;
@@ -20,12 +20,14 @@ class UserProfile {
   final String? defaultPaymentMethodId;
   // Appsprache des Users (z. B. 'de', 'en', 'zh-Hans')
   final String? language;
+  // Geburtsdatum (Date of Birth) in Millisekunden seit Epoch
+  final int? dob;
 
   UserProfile({
     required this.uid,
     this.email,
     this.displayName,
-    this.photoUrl,
+    this.profileImageUrl,
     this.isOnboarded = false,
     required this.createdAt,
     required this.updatedAt,
@@ -41,6 +43,7 @@ class UserProfile {
     this.stripeCustomerId,
     this.defaultPaymentMethodId,
     this.language,
+    this.dob,
   });
 
   factory UserProfile.fromMap(Map<String, dynamic> map) {
@@ -48,7 +51,7 @@ class UserProfile {
       uid: map['uid'] as String,
       email: map['email'] as String?,
       displayName: map['displayName'] as String?,
-      photoUrl: map['photoUrl'] as String?,
+      profileImageUrl: map['profileImageUrl'] as String?,
       isOnboarded: (map['isOnboarded'] as bool?) ?? false,
       createdAt: (map['createdAt'] as num).toInt(),
       updatedAt: (map['updatedAt'] as num).toInt(),
@@ -64,6 +67,7 @@ class UserProfile {
       stripeCustomerId: map['stripeCustomerId'] as String?,
       defaultPaymentMethodId: map['defaultPaymentMethodId'] as String?,
       language: map['language'] as String?,
+      dob: map['dob'] as int?,
     );
   }
 
@@ -72,7 +76,7 @@ class UserProfile {
       'uid': uid,
       'email': email,
       'displayName': displayName,
-      'photoUrl': photoUrl,
+      'profileImageUrl': profileImageUrl,
       'isOnboarded': isOnboarded,
       'createdAt': createdAt,
       'updatedAt': updatedAt,
@@ -88,13 +92,14 @@ class UserProfile {
       'stripeCustomerId': stripeCustomerId,
       'defaultPaymentMethodId': defaultPaymentMethodId,
       'language': language,
+      'dob': dob,
     };
   }
 
   UserProfile copyWith({
     String? email,
     String? displayName,
-    String? photoUrl,
+    String? profileImageUrl,
     bool? isOnboarded,
     int? createdAt,
     int? updatedAt,
@@ -109,12 +114,13 @@ class UserProfile {
     String? stripeCustomerId,
     String? defaultPaymentMethodId,
     String? language,
+    int? dob,
   }) {
     return UserProfile(
       uid: uid,
       email: email ?? this.email,
       displayName: displayName ?? this.displayName,
-      photoUrl: photoUrl ?? this.photoUrl,
+      profileImageUrl: profileImageUrl ?? this.profileImageUrl,
       isOnboarded: isOnboarded ?? this.isOnboarded,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -130,6 +136,7 @@ class UserProfile {
       defaultPaymentMethodId:
           defaultPaymentMethodId ?? this.defaultPaymentMethodId,
       language: language ?? this.language,
+      dob: dob ?? this.dob,
     );
   }
 }

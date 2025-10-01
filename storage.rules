@@ -30,9 +30,10 @@ service firebase.storage {
                       isValidFileSize();
     }
 
-    // User Photos (Struppi-System)
-    match /users/{userId}/photos/{allPaths=**} {
-      allow read, write: if isOwner(userId) && isValidFileType() && isValidFileSize();
+    // User Profile Images (Struppi-System)
+    match /users/{userId}/images/profileImage/{allPaths=**} {
+      allow read: if true; // Public read
+      allow write, delete: if signedIn() && request.auth.uid == userId;
     }
 
     // Chat Files (Struppi-System)

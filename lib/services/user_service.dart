@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:path/path.dart' as p;
 import '../models/user_profile.dart';
 
 class UserService {
@@ -19,17 +18,19 @@ class UserService {
     final doc = _col.doc(u.uid);
     final snap = await doc.get();
     if (snap.exists) {
-      await doc.update({
+      final updateData = <String, dynamic>{
         'email': u.email,
-        'displayName': displayName ?? u.displayName,
         'updatedAt': now,
-      });
+      };
+      if (displayName != null) {
+        updateData['displayName'] = displayName;
+      }
+      await doc.update(updateData);
     } else {
       await doc.set({
         'uid': u.uid,
         'email': u.email,
         'displayName': displayName ?? u.displayName,
-        'photoUrl': u.photoURL,
         'isOnboarded': false,
         'createdAt': now,
         'updatedAt': now,
@@ -47,30 +48,52 @@ class UserService {
     return UserProfile.fromMap(snap.data()!);
   }
 
-  Future<String?> uploadUserPhoto(File file) async {
+  Future<String?> uploadProfileImage(File file) async {
     final u = _auth.currentUser!;
-    final name =
-        '${DateTime.now().millisecondsSinceEpoch}_${p.basename(file.path)}';
-    final ref = _st.ref('users/${u.uid}/photos/$name');
+
+    print('🔍 Deleting old photos from: users/${u.uid}/images/profileImage/');
+
+    // 1. Lösche ALLE alten Fotos im profileImage/ Ordner
+    final profileImageDir = _st.ref('users/${u.uid}/images/profileImage/');
+    try {
+      final listResult = await profileImageDir.listAll();
+      print('📋 Found ${listResult.items.length} files to delete');
+
+      for (final item in listResult.items) {
+        print('🗑️ Deleting: ${item.fullPath}');
+        await item.delete();
+        print('✅ Deleted: ${item.name}');
+      }
+    } catch (e) {
+      print('⚠️ Could not delete old photos: $e');
+    }
+
+    // 2. Lade neues Foto hoch
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final ref = _st.ref(
+      'users/${u.uid}/images/profileImage/profile_$timestamp.jpg',
+    );
+    print('📤 Uploading to: ${ref.fullPath}');
+
     final snap = await ref.putFile(file);
     final url = await snap.ref.getDownloadURL();
-    await _col.doc(u.uid).update({
-      'photoUrl': url,
-      'updatedAt': DateTime.now().millisecondsSinceEpoch,
-    });
+    print('✅ New photo uploaded: $url');
+
+    // 3. Update Firestore - wird vom Screen gemacht
+    // (Screen macht das über updateUserProfile mit copyWith)
     return url;
   }
 
-  Future<bool> deleteUserPhoto() async {
+  Future<bool> deleteProfileImage() async {
     final u = _auth.currentUser!;
     final doc = await _col.doc(u.uid).get();
-    final url = (doc.data() ?? {})['photoUrl'] as String?;
+    final url = (doc.data() ?? {})['profileImageUrl'] as String?;
     if (url == null) return true;
     try {
       await _st.refFromURL(url).delete();
     } catch (_) {}
     await _col.doc(u.uid).update({
-      'photoUrl': null,
+      'profileImageUrl': null,
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
     });
     return true;

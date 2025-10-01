@@ -40,9 +40,7 @@ service cloud.firestore {
 
     // User-Dokumente (Struppi-System)
     match /users/{uid} {
-      allow get, create, update, delete: if signedIn() && uid == request.auth.uid
-        // Falls language gesetzt wird, muss sie gültig sein
-        && (!('language' in request.resource.data) || allowedLanguage(request.resource.data.language));
+      allow get, create, update, delete: if signedIn() && uid == request.auth.uid;
     }
 
     // Avatar-Dokumente (Struppi-System)

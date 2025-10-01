@@ -236,12 +236,12 @@ class AuthService {
 
   /// User-Foto hochladen
   Future<String?> uploadUserPhoto(File file) async {
-    return await _userService.uploadUserPhoto(file);
+    return await _userService.uploadProfileImage(file);
   }
 
   /// User-Foto löschen
   Future<bool> deleteUserPhoto() async {
-    return await _userService.deleteUserPhoto();
+    return await _userService.deleteProfileImage();
   }
 
   /// Onboarding-Status setzen

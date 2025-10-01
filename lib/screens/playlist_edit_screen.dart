@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
+import 'package:path_provider/path_provider.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import '../models/playlist_models.dart';
 import '../services/playlist_service.dart';
 import '../services/media_service.dart';
 import '../models/media_models.dart';
+import '../theme/app_theme.dart';
 
 class PlaylistEditScreen extends StatefulWidget {
   final Playlist playlist;
@@ -45,19 +47,119 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
   // UI State: Highlight-Tag Bereich aufgeklappt?
   bool _highlightTagExpanded = false;
   
-  // Vordefinierte Highlight-Tags
-  static const List<String> _predefinedTags = [
-    'Geburtstag',
-    'Namenstag',
-    'Weihnachten',
-    'Ostern',
-    'Neujahr',
-    'Valentinstag',
-    'Muttertag',
-    'Vatertag',
-    'Silvester',
-    'Hochzeitstag',
-  ];
+  // Berechnet Ostersonntag für ein bestimmtes Jahr (Gauss-Algorithmus)
+  static DateTime _calculateEaster(int year) {
+    final a = year % 19;
+    final b = year ~/ 100;
+    final c = year % 100;
+    final d = b ~/ 4;
+    final e = b % 4;
+    final f = (b + 8) ~/ 25;
+    final g = (b - f + 1) ~/ 3;
+    final h = (19 * a + b - d - g + 15) % 30;
+    final i = c ~/ 4;
+    final k = c % 4;
+    final l = (32 + 2 * e + 2 * i - h - k) % 7;
+    final m = (a + 11 * h + 22 * l) ~/ 451;
+    final month = (h + l - 7 * m + 114) ~/ 31;
+    final day = ((h + l - 7 * m + 114) % 31) + 1;
+    return DateTime(year, month, day);
+  }
+
+  // Berechnet Muttertag für ein Land und Jahr
+  static DateTime _calculateMothersDay(int year, String country) {
+    switch (country.toLowerCase()) {
+      case 'de':
+      case 'at':
+      case 'ch':
+      case 'us':
+      case 'ca':
+      case 'au':
+        // 2. Sonntag im Mai
+        int sundayCount = 0;
+        for (int day = 1; day <= 31; day++) {
+          final date = DateTime(year, 5, day);
+          if (date.weekday == DateTime.sunday) {
+            sundayCount++;
+            if (sundayCount == 2) return date;
+          }
+        }
+        return DateTime(year, 5, 8); // Fallback
+      case 'gb':
+        // UK: 4. Sonntag in der Fastenzeit (3 Wochen vor Ostern)
+        final easter = _calculateEaster(year);
+        return easter.subtract(const Duration(days: 21));
+      default:
+        return DateTime(year, 5, 8); // Fallback: 2. Sonntag im Mai
+    }
+  }
+
+  // Berechnet Vatertag für ein Land und Jahr
+  static DateTime _calculateFathersDay(int year, String country) {
+    switch (country.toLowerCase()) {
+      case 'de':
+        // Deutschland: Christi Himmelfahrt (39 Tage nach Ostern)
+        final easter = _calculateEaster(year);
+        return easter.add(const Duration(days: 39));
+      case 'at':
+      case 'ch':
+      case 'us':
+      case 'ca':
+      case 'au':
+        // 3. Sonntag im Juni
+        int sundayCount = 0;
+        for (int day = 1; day <= 30; day++) {
+          final date = DateTime(year, 6, day);
+          if (date.weekday == DateTime.sunday) {
+            sundayCount++;
+            if (sundayCount == 3) return date;
+          }
+        }
+        return DateTime(year, 6, 15); // Fallback
+      default:
+        return DateTime(year, 6, 15); // Fallback: 3. Sonntag im Juni
+    }
+  }
+
+  // Gibt das formatierte Datum für einen Tag zurück
+  String _getDateForTag(String tagName, String userCountry) {
+    final now = DateTime.now();
+    final year = now.year;
+    
+    switch (tagName) {
+      case 'Ostern':
+        final easter = _calculateEaster(year);
+        return '${easter.day}.${easter.month}.';
+      case 'Muttertag':
+        final mothersDay = _calculateMothersDay(year, userCountry);
+        return '${mothersDay.day}.${mothersDay.month}.';
+      case 'Vatertag':
+        final fathersDay = _calculateFathersDay(year, userCountry);
+        return '${fathersDay.day}.${fathersDay.month}.';
+      default:
+        return '';
+    }
+  }
+
+  // Vordefinierte Highlight-Tags mit festen Daten
+  static const Map<String, String?> _predefinedTagsBase = {
+    'Geburtstag': null, // Datum aus Userdaten oder manuell
+    'Namenstag': null, // Datum manuell setzen
+    'Heiligabend': '24.12.',
+    '1. Weihnachtsfeiertag': '25.12.',
+    '2. Weihnachtsfeiertag': '26.12.',
+    'Silvester': '31.12.',
+    'Neujahr': '1.1.',
+    'Heilige Drei Könige': '6.1.',
+    'Valentinstag': '14.2.',
+    'Muttertag': 'dynamic', // Wird berechnet
+    'Vatertag': 'dynamic', // Wird berechnet
+    'Tag der Arbeit': '1.5.',
+    'Ostern': 'dynamic', // Wird berechnet
+    'Tag der Deutschen Einheit': '3.10.',
+    'Allerheiligen': '1.11.',
+    'Hochzeitstag': null, // Datum manuell setzen
+  };
 
   @override
   void initState() {
@@ -100,10 +202,15 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
         context: context,
         barrierDismissible: false,
         builder: (ctx) => Dialog(
-          insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
           backgroundColor: Colors.black,
           clipBehavior: Clip.hardEdge,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: LayoutBuilder(
             builder: (dCtx, _) {
               final sz = MediaQuery.of(dCtx).size;
@@ -131,9 +238,82 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
-                      child: ElevatedButton(
-                        onPressed: () => cropController.crop(),
-                        child: const Text('Zuschneiden'),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                result = null;
+                                Navigator.pop(ctx);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade800,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: Text(
+                                      'Abbrechen',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                cropController.crop();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFFE91E63),
+                                      AppColors.lightBlue,
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: Text(
+                                      'Zuschneiden',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
@@ -145,10 +325,13 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
       );
 
       if (result == null) return null;
-      final tmp = File('${input.path}.cropped.png');
+      final dir = await getTemporaryDirectory();
+      final tmp = await File(
+        '${dir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png',
+      ).create(recursive: true);
       await tmp.writeAsBytes(result!, flush: true);
       return tmp;
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
@@ -159,8 +342,16 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     if (pickedFile == null) return;
 
     File f = File(pickedFile.path);
+    print('🖼️ Original file: ${f.path}');
+    
     final cropped = await _cropToPortrait916(f);
-    if (cropped != null) f = cropped;
+    if (cropped == null) {
+      print('❌ Cropping cancelled or failed');
+      return;
+    }
+    
+    f = cropped;
+    print('✅ Using cropped file: ${f.path}');
 
     setState(() => _uploadingCover = true);
 
@@ -169,14 +360,17 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
           .ref()
           .child('avatars/${widget.playlist.avatarId}/playlists/${widget.playlist.id}/cover.jpg');
       
+      print('📤 Uploading to Firebase...');
       await ref.putFile(f);
       final url = await ref.getDownloadURL();
+      print('✅ Upload complete: $url');
       
       setState(() {
         _coverImageUrl = url;
         _uploadingCover = false;
       });
     } catch (e) {
+      print('❌ Upload error: $e');
       setState(() => _uploadingCover = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -297,50 +491,61 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Cover Image Upload
+            // Cover Image Upload + Name/Anzeigezeit
             const Text('Cover-Bild (9:16)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
-            GestureDetector(
-              onTap: _uploadingCover ? null : _uploadCoverImage,
-              child: Container(
-                width: 120,
-                height: 213, // 9:16 aspect ratio
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade800,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade600),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GestureDetector(
+                  onTap: _uploadingCover ? null : _uploadCoverImage,
+                  child: Container(
+                    width: 120,
+                    height: 213, // 9:16 aspect ratio
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade800,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade600),
+                    ),
+                    child: _uploadingCover
+                        ? const Center(child: CircularProgressIndicator())
+                        : _coverImageUrl != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.network(
+                                  _coverImageUrl!,
+                                  fit: BoxFit.cover,
+                                ),
+                              )
+                            : const Center(
+                                child: Icon(Icons.add_photo_alternate, size: 40, color: Colors.white54),
+                              ),
+                  ),
                 ),
-                child: _uploadingCover
-                    ? const Center(child: CircularProgressIndicator())
-                    : _coverImageUrl != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              _coverImageUrl!,
-                              fit: BoxFit.cover,
-                            ),
-                          )
-                        : const Center(
-                            child: Icon(Icons.add_photo_alternate, size: 40, color: Colors.white54),
-                          ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            
-            // Name
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Name
             TextField(
               controller: _name,
               decoration: const InputDecoration(labelText: 'Name'),
             ),
             const SizedBox(height: 12),
-            
-            // Show After
+                      
+                      // Show After
             TextField(
               controller: _showAfter,
               decoration: const InputDecoration(
-                labelText: 'Allgemeine Anzeigezeit (Sekunden) nach Chat-Beginn',
+                          labelText: 'Anzeigezeit (Sek.) nach Chat-Beginn',
               ),
               keyboardType: TextInputType.number,
+            ),
+                    ],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             
@@ -395,8 +600,35 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
-                children: _predefinedTags.map((tag) {
-                  final isSelected = _highlightTag.text == tag;
+                children: _predefinedTagsBase.entries.where((entry) {
+                  // Filtere "Geburtstag" und "Namenstag" aus, wenn kein dob vorhanden
+                  // TODO: User dob aus Context/Provider holen
+                  final userDob = null; // Placeholder: später aus UserProfile holen
+                  if ((entry.key == 'Geburtstag' || entry.key == 'Namenstag') && userDob == null) {
+                    return false;
+                  }
+                  return true;
+                }).map((entry) {
+                  final tagName = entry.key;
+                  final tagDateBase = entry.value;
+                  final isSelected = _highlightTag.text == tagName;
+                  
+                  // Bestimme das anzuzeigende Datum
+                  String? displayDate;
+                  if (tagDateBase == 'dynamic') {
+                    // Berechne dynamisches Datum basierend auf User-Land (fallback: 'de')
+                    displayDate = _getDateForTag(tagName, 'de'); // TODO: User-Land aus Context holen
+                  } else if (tagName == 'Geburtstag') {
+                    // TODO: Datum aus user.dob anzeigen
+                    final userDob = null; // Placeholder
+                    if (userDob != null) {
+                      final birthDate = DateTime.fromMillisecondsSinceEpoch(userDob);
+                      displayDate = '${birthDate.day}.${birthDate.month}.';
+                    }
+                  } else {
+                    displayDate = tagDateBase;
+                  }
+                  
                   return MouseRegion(
                     cursor: SystemMouseCursors.click,
                     child: GestureDetector(
@@ -405,7 +637,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                           if (isSelected) {
                             _highlightTag.clear();
                           } else {
-                            _highlightTag.text = tag;
+                            _highlightTag.text = tagName;
                           }
                         });
                       },
@@ -419,13 +651,26 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                             width: isSelected ? 2 : 1,
                           ),
                         ),
-                        child: Text(
-                          tag,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: isSelected ? Colors.amber : Colors.white70,
-                            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                          ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              tagName,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: isSelected ? Colors.amber : Colors.white70,
+                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                              ),
+                            ),
+                            if (displayDate != null && displayDate.isNotEmpty)
+                              Text(
+                                displayDate,
+                                style: TextStyle(
+                                  fontSize: 9,
+                                  color: isSelected ? Colors.amber.shade300 : Colors.white54,
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                     ),
@@ -525,8 +770,8 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                     leading: media == null
                         ? const Icon(Icons.broken_image)
                         : (media.type == AvatarMediaType.video
-                            ? const Icon(Icons.videocam)
-                            : const Icon(Icons.photo)),
+                              ? const Icon(Icons.videocam)
+                              : const Icon(Icons.photo)),
                     title: Text(media?.url.split('/').last ?? it.mediaId),
                     trailing: const Icon(Icons.drag_handle),
                   );
