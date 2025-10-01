@@ -10,6 +10,9 @@ import '../services/playlist_service.dart';
 import '../services/media_service.dart';
 import '../models/media_models.dart';
 import '../theme/app_theme.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../services/language_service.dart';
 
 class PlaylistEditScreen extends StatefulWidget {
   final Playlist playlist;
@@ -40,12 +43,23 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
   
   // UI State: aktuell gewählter Wochentag für Zeitfenster-Auswahl
   int? _selectedWeekday;
+  // UI State: Sondertermine – ausgewählter Wochentag
+  int? _selectedSpecialWeekday;
   
   // UI State: Wöchentlicher Zeitplan aufgeklappt?
   bool _weeklyScheduleExpanded = true;
   
-  // UI State: Highlight-Tag Bereich aufgeklappt?
-  bool _highlightTagExpanded = false;
+  // UI State: Ist "Eigener Tag" ausgewählt?
+  bool _isCustomTag = false;
+
+  // UI State: Playlist-Typ (weekly oder special)
+  String _playlistType = 'weekly'; // 'weekly' oder 'special'
+
+  // UI State: Sondertermin Erstellung
+  String _specialAnlass = '';
+  DateTime? _specialStartDate;
+  DateTime? _specialEndDate;
+  Map<DateTime, Set<TimeSlot>> _specialDaySlots = {};
   
   // Berechnet Ostersonntag für ein bestimmtes Jahr (Gauss-Algorithmus)
   static DateTime _calculateEaster(int year) {
@@ -168,7 +182,9 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     _showAfter = TextEditingController(
       text: widget.playlist.showAfterSec.toString(),
     );
-    _highlightTag = TextEditingController(text: widget.playlist.highlightTag ?? '');
+    _highlightTag = TextEditingController(
+      text: widget.playlist.highlightTag ?? '',
+    );
     _coverImageUrl = widget.playlist.coverImageUrl;
     
     // Initialize weekly schedule from playlist
@@ -177,6 +193,21 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     }
     
     _specialSchedules = List.from(widget.playlist.specialSchedules);
+
+    // Bestimme den Playlist-Typ basierend auf vorhandenen Daten
+    if (widget.playlist.specialSchedules.isNotEmpty &&
+        widget.playlist.weeklySchedules.isEmpty) {
+      _playlistType = 'special';
+    } else {
+      _playlistType = 'weekly';
+    }
+
+    // Bestimme, ob eigener Tag oder vordefiniert
+    if (_highlightTag.text.isNotEmpty &&
+        !_predefinedTagsBase.containsKey(_highlightTag.text)) {
+      _isCustomTag = true;
+    }
+
     _load();
   }
 
@@ -356,9 +387,9 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     setState(() => _uploadingCover = true);
 
     try {
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('avatars/${widget.playlist.avatarId}/playlists/${widget.playlist.id}/cover.jpg');
+      final ref = FirebaseStorage.instance.ref().child(
+        'avatars/${widget.playlist.avatarId}/playlists/${widget.playlist.id}/cover.jpg',
+      );
       
       print('📤 Uploading to Firebase...');
       await ref.putFile(f);
@@ -373,9 +404,9 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
       print('❌ Upload error: $e');
       setState(() => _uploadingCover = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler beim Upload: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Fehler beim Upload: $e')));
       }
     }
   }
@@ -385,15 +416,23 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     
     // Convert Map to List<WeeklySchedule>, FILTER OUT empty timeslots
     final weeklySchedules = _weeklySchedule.entries
-        .where((e) => e.value.isNotEmpty) // NUR Wochentage mit mind. 1 Zeitfenster
+        .where(
+          (e) => e.value.isNotEmpty,
+        ) // NUR Wochentage mit mind. 1 Zeitfenster
         .map((e) => WeeklySchedule(weekday: e.key, timeSlots: e.value.toList()))
         .toList();
     
-    print('🔍 DEBUG: Saving weeklySchedules: ${weeklySchedules.length} entries');
+    print(
+      '🔍 DEBUG: Saving weeklySchedules: ${weeklySchedules.length} entries',
+    );
     for (final ws in weeklySchedules) {
-      print('   - Weekday ${ws.weekday}: ${ws.timeSlots.map((t) => t.index).toList()}');
+      print(
+        '   - Weekday ${ws.weekday}: ${ws.timeSlots.map((t) => t.index).toList()}',
+      );
     }
-    print('🔍 DEBUG: Saving specialSchedules: ${_specialSchedules.length} entries');
+    print(
+      '🔍 DEBUG: Saving specialSchedules: ${_specialSchedules.length} entries',
+    );
     
     final p = Playlist(
       id: widget.playlist.id,
@@ -464,7 +503,15 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
   }
 
   String _weekdayLabel(int weekday) {
-    const labels = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+    const labels = [
+      'Montag',
+      'Dienstag',
+      'Mittwoch',
+      'Donnerstag',
+      'Freitag',
+      'Samstag',
+      'Sonntag',
+    ];
     return labels[weekday - 1];
   }
   
@@ -484,7 +531,12 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Playlist bearbeiten'),
-        actions: [IconButton(onPressed: _save, icon: const Icon(Icons.save))],
+        actions: [
+          IconButton(
+            onPressed: _save,
+            icon: const Icon(Icons.save_outlined, color: Colors.white),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
@@ -492,8 +544,6 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Cover Image Upload + Name/Anzeigezeit
-            const Text('Cover-Bild (9:16)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 8),
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -518,7 +568,11 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                                 ),
                               )
                             : const Center(
-                                child: Icon(Icons.add_photo_alternate, size: 40, color: Colors.white54),
+                            child: Icon(
+                              Icons.add_photo_alternate,
+                              size: 40,
+                              color: Colors.white54,
+                            ),
                               ),
                   ),
                 ),
@@ -542,6 +596,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
               ),
               keyboardType: TextInputType.number,
             ),
+                      // Hinweis: Highlight/Anlass wird jetzt in "Sondertermine" gesetzt (kein Feld mehr neben dem Bild)
                     ],
                   ),
                 ),
@@ -549,197 +604,88 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
             ),
             const SizedBox(height: 24),
             
-            // Highlight Tag Section (Collapsible)
-            InkWell(
-              onTap: () {
-                setState(() {
-                  _highlightTagExpanded = !_highlightTagExpanded;
-                });
-              },
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      const Text(
-                        'Highlight-Tag',
-                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                      ),
-                      if (_highlightTag.text.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            // Zeitplan / Sondertermine Section
+            // Dropdown für Typ-Auswahl
+            Container(
+              height: 40,
                             decoration: BoxDecoration(
-                              color: Colors.amber.withOpacity(0.3),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: Colors.amber),
-                            ),
-                            child: Text(
-                              _highlightTag.text,
-                              style: const TextStyle(fontSize: 11, color: Colors.amber),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                  Icon(
-                    _highlightTagExpanded ? Icons.expand_less : Icons.expand_more,
-                    size: 28,
-                  ),
-                ],
+                gradient: Theme.of(
+                  context,
+                ).extension<AppGradients>()?.magentaBlue,
+                borderRadius: BorderRadius.circular(8),
               ),
-            ),
-            if (_highlightTagExpanded) ...[
-              const SizedBox(height: 12),
-              const Text(
-                'Vordefinierte Anlässe',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _predefinedTagsBase.entries.where((entry) {
-                  // Filtere "Geburtstag" und "Namenstag" aus, wenn kein dob vorhanden
-                  // TODO: User dob aus Context/Provider holen
-                  final userDob = null; // Placeholder: später aus UserProfile holen
-                  if ((entry.key == 'Geburtstag' || entry.key == 'Namenstag') && userDob == null) {
-                    return false;
-                  }
-                  return true;
-                }).map((entry) {
-                  final tagName = entry.key;
-                  final tagDateBase = entry.value;
-                  final isSelected = _highlightTag.text == tagName;
-                  
-                  // Bestimme das anzuzeigende Datum
-                  String? displayDate;
-                  if (tagDateBase == 'dynamic') {
-                    // Berechne dynamisches Datum basierend auf User-Land (fallback: 'de')
-                    displayDate = _getDateForTag(tagName, 'de'); // TODO: User-Land aus Context holen
-                  } else if (tagName == 'Geburtstag') {
-                    // TODO: Datum aus user.dob anzeigen
-                    final userDob = null; // Placeholder
-                    if (userDob != null) {
-                      final birthDate = DateTime.fromMillisecondsSinceEpoch(userDob);
-                      displayDate = '${birthDate.day}.${birthDate.month}.';
-                    }
-                  } else {
-                    displayDate = tagDateBase;
-                  }
-                  
-                  return MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          if (isSelected) {
-                            _highlightTag.clear();
-                          } else {
-                            _highlightTag.text = tagName;
-                          }
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: isSelected ? Colors.amber.withOpacity(0.3) : Colors.grey.shade800,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color: isSelected ? Colors.amber : Colors.grey.shade600,
-                            width: isSelected ? 2 : 1,
-                          ),
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              tagName,
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isSelected ? Colors.amber : Colors.white70,
-                                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                              ),
-                            ),
-                            if (displayDate != null && displayDate.isNotEmpty)
-                              Text(
-                                displayDate,
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  color: isSelected ? Colors.amber.shade300 : Colors.white54,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<String>(
+                  value: _playlistType,
+                  isExpanded: true,
+                  dropdownColor: Colors.grey.shade800,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  icon: const Icon(
+                    Icons.arrow_drop_down,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  items: const [
+                    DropdownMenuItem(value: 'weekly', child: Text('Zeitplan')),
+                    DropdownMenuItem(
+                      value: 'special',
+                      child: Text('Sondertermine'),
                     ),
-                  );
-                }).toList(),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                        setState(() {
+                        _playlistType = value;
+                      });
+                    }
+                  },
+                ),
               ),
-              const SizedBox(height: 16),
-              const Text(
-                'Eigenes Tag',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 8),
-              TextField(
-                controller: _highlightTag,
-                decoration: const InputDecoration(
-                  labelText: 'Eigener Anlass',
-                  hintText: 'z.B. Firmenjubiläum, Abschlussfeier...',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => setState(() {}), // Update chip display
-              ),
-            ],
-            const SizedBox(height: 24),
-            
-            // Weekly Schedule Section (Collapsible)
-            InkWell(
+
+            // Klappbarer Bereich Header
+            GestureDetector(
               onTap: () {
                 setState(() {
                   _weeklyScheduleExpanded = !_weeklyScheduleExpanded;
                 });
               },
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Text(
-                    'Wöchentlicher Zeitplan',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  Text(
+                    _playlistType == 'weekly'
+                        ? 'Wochentage wählen'
+                        : 'Anlass wählen',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
+                  const SizedBox(width: 8),
                   Icon(
-                    _weeklyScheduleExpanded ? Icons.expand_less : Icons.expand_more,
-                    size: 28,
+                    _weeklyScheduleExpanded
+                        ? Icons.expand_less
+                        : Icons.expand_more,
+                    size: 24,
                   ),
                 ],
               ),
             ),
             if (_weeklyScheduleExpanded) ...[
-              const SizedBox(height: 8),
-              _buildWeeklyScheduleMatrix(),
+              const SizedBox(height: 16),
+              if (_playlistType == 'weekly')
+                _buildWeeklyScheduleMatrix()
+              else
+                _buildSpecialScheduleEditor(),
+            const SizedBox(height: 24),
             ],
-            const SizedBox(height: 24),
-            
-            // Special Schedules Section
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Sondertermine',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _addSpecialSchedule,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Neu'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            _buildSpecialSchedulesList(),
-            const SizedBox(height: 24),
             
             // Media Items Section
             const Text(
@@ -793,8 +739,6 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // 1. Stufe: Wochentags-Buttons
-            const Text('Wochentage wählen:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-            const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -817,7 +761,10 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                                 // Selektieren für Bearbeitung
                                 _selectedWeekday = weekday;
                                 // Auto-create empty set if not exists
-                                _weeklySchedule.putIfAbsent(weekday, () => <TimeSlot>{});
+                                _weeklySchedule.putIfAbsent(
+                                  weekday,
+                                  () => <TimeSlot>{},
+                                );
                               }
                             });
                           }
@@ -838,8 +785,12 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                             decoration: BoxDecoration(
                               gradient: LinearGradient(
                                 colors: [
-                                  Color(0xFFE91E63).withValues(alpha: isSelected ? 1.0 : 0.75),
-                                  Color(0xFF8AB4F8).withValues(alpha: isSelected ? 1.0 : 0.75),
+                                  Color(
+                                    0xFFE91E63,
+                                  ).withValues(alpha: isSelected ? 1.0 : 0.75),
+                                  Color(
+                                    0xFF8AB4F8,
+                                  ).withValues(alpha: isSelected ? 1.0 : 0.75),
                                 ],
                               ),
                               borderRadius: BorderRadius.circular(8),
@@ -883,10 +834,14 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
           Row(
             children: [
               SizedBox(
-                width: 200, // Feste Breite für längsten Wochentag ("Zeitfenster für Donnerstag")
+                    width:
+                        200, // Feste Breite für längsten Wochentag ("Zeitfenster für Donnerstag")
                 child: Text(
                   'Zeitfenster für ${_weekdayLabel(_selectedWeekday!)}',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -902,7 +857,10 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.red.shade700,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
                 ),
                 icon: const Icon(Icons.remove_circle_outline, size: 16),
                 label: Text(
@@ -917,7 +875,9 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
               spacing: 8,
               runSpacing: 8,
               children: TimeSlot.values.map((slot) {
-                final isActive = _weeklySchedule[_selectedWeekday]?.contains(slot) ?? false;
+                  final isActive =
+                      _weeklySchedule[_selectedWeekday]?.contains(slot) ??
+                      false;
                 final slotWidth = ((cons.maxWidth - 32) / 3) - 6;
                 
                 return GestureDetector(
@@ -929,8 +889,12 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                       gradient: isActive
                           ? LinearGradient(
                               colors: [
-                                const Color(0xFFE91E63).withValues(alpha: 0.6),
-                                const Color(0xFF8AB4F8).withValues(alpha: 0.6),
+                                  const Color(
+                                    0xFFE91E63,
+                                  ).withValues(alpha: 0.6),
+                                  const Color(
+                                    0xFF8AB4F8,
+                                  ).withValues(alpha: 0.6),
                               ],
                             )
                           : null,
@@ -949,7 +913,9 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                           _timeSlotIcon(slot),
                           style: TextStyle(
                             fontSize: 28,
-                            color: isActive ? Colors.white : Colors.grey.shade500,
+                              color: isActive
+                                  ? Colors.white
+                                  : Colors.grey.shade500,
                           ),
                         ),
                         const SizedBox(height: 4),
@@ -957,7 +923,9 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                           _timeSlotLabel(slot),
                           style: TextStyle(
                             fontSize: 9,
-                            color: isActive ? Colors.white : Colors.grey.shade500,
+                              color: isActive
+                                  ? Colors.white
+                                  : Colors.grey.shade500,
                           ),
                           textAlign: TextAlign.center,
                         ),
@@ -974,13 +942,16 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
               child: GestureDetector(
                 onTap: () {
                   setState(() {
-                    final allSelected = _weeklySchedule[_selectedWeekday]?.length == 6;
+                      final allSelected =
+                          _weeklySchedule[_selectedWeekday]?.length == 6;
                     if (allSelected) {
                       // Alle abwählen
                       _weeklySchedule[_selectedWeekday!]?.clear();
                     } else {
                       // Alle 6 Zeitfenster auswählen
-                      _weeklySchedule[_selectedWeekday!] = Set.from(TimeSlot.values);
+                        _weeklySchedule[_selectedWeekday!] = Set.from(
+                          TimeSlot.values,
+                        );
                     }
                   });
                 },
@@ -994,7 +965,9 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                         setState(() {
                           if (val == true) {
                             // Alle 6 Zeitfenster auswählen
-                            _weeklySchedule[_selectedWeekday!] = Set.from(TimeSlot.values);
+                              _weeklySchedule[_selectedWeekday!] = Set.from(
+                                TimeSlot.values,
+                              );
                           } else {
                             // Alle abwählen
                             _weeklySchedule[_selectedWeekday!]?.clear();
@@ -1002,7 +975,10 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                         });
                       },
                     ),
-                    const Text('Alle Tageszeiten', style: TextStyle(fontSize: 13)),
+                      const Text(
+                        'Alle Tageszeiten',
+                        style: TextStyle(fontSize: 13),
+                      ),
                   ],
                 ),
               ),
@@ -1010,164 +986,543 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
           ],
         ],
       );
-    });
-  }
-
-  Widget _buildSpecialSchedulesList() {
-    if (_specialSchedules.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.all(16.0),
-        child: Text('Keine Sondertermine', style: TextStyle(color: Colors.grey)),
-      );
-    }
-    
-    return Column(
-      children: _specialSchedules.asMap().entries.map((entry) {
-        final index = entry.key;
-        final special = entry.value;
-        final start = DateTime.fromMillisecondsSinceEpoch(special.startDate);
-        final end = DateTime.fromMillisecondsSinceEpoch(special.endDate);
-        final slotsText = special.timeSlots.map((s) => _timeSlotLabel(s).split(' ')[0]).join(', ');
-        
-        return Card(
-          child: ListTile(
-            leading: const Icon(Icons.event_note, color: Colors.red),
-            title: Text('${_fmt(start)} - ${_fmt(end)}'),
-            subtitle: Text('Zeitfenster: $slotsText'),
-            trailing: IconButton(
-              icon: const Icon(Icons.delete, color: Colors.red),
-              onPressed: () => _deleteSpecialSchedule(index),
-            ),
-            onTap: () => _editSpecialSchedule(index),
-          ),
-        );
-      }).toList(),
+      },
     );
   }
 
-  String _fmt(DateTime d) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${d.year}-${two(d.month)}-${two(d.day)}';
+  Widget _buildSpecialScheduleEditor() {
+    DateTime? _selectedPredefinedDateTime() {
+      if (_specialAnlass.isEmpty) return null;
+      final base = _predefinedTagsBase[_specialAnlass];
+      final now = DateTime.now();
+      if (base == null) return null;
+      if (base == 'dynamic') {
+        if (_specialAnlass == 'Muttertag') {
+          return _calculateMothersDay(now.year, 'de');
+        } else if (_specialAnlass == 'Vatertag') {
+          return _calculateFathersDay(now.year, 'de');
+        } else if (_specialAnlass == 'Ostern') {
+          return _calculateEaster(now.year);
+        }
+        return null;
+      }
+      try {
+        final parts = base.replaceAll('.', ' ').trim().split(' ');
+        final day = int.parse(parts[0]);
+        final month = int.parse(parts[1]);
+        return DateTime(now.year, month, day);
+      } catch (_) {
+        return null;
+      }
+    }
+    final predefinedDateTime = _selectedPredefinedDateTime();
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // GMBC Button: Anlass wählen / anzeigen + Edit-Stift, triggert Popup
+        Row(
+          children: [
+            SizedBox(
+              height: 36,
+              child: ElevatedButton(
+                onPressed: () async {
+                  await _showHighlightTagDialog();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(150, 36),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Ink(
+                  decoration: BoxDecoration(
+                    gradient: Theme.of(context)
+                        .extension<AppGradients>()
+                        ?.magentaBlue,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _specialAnlass.isEmpty
+                              ? 'Anlass wählen'
+                              : _specialAnlass,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(width: 32),
+                        const Icon(Icons.edit, size: 16, color: Colors.white),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 16),
+            if (predefinedDateTime != null)
+              Text(
+                _fmt(predefinedDateTime),
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+
+        // Ergebniszeile entfällt: Anzeige erfolgt im Button
+
+        // Datum-Anzeige oder Eingabe
+        if (predefinedDateTime != null) ...[
+          Row(
+              children: [
+              const Text('Datum:',
+                  style: TextStyle(fontSize: 13, color: Colors.white54)),
+              const SizedBox(width: 8),
+              Text(_fmt(predefinedDateTime),
+                  style: const TextStyle(fontSize: 14)),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ] else ...[
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _specialStartDate ?? DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(2030),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        _specialStartDate = picked;
+                        if (_specialEndDate == null ||
+                            _specialEndDate!.isBefore(picked)) {
+                          _specialEndDate = picked;
+                        }
+                      });
+                    }
+                  },
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today,
+                          size: 16, color: Colors.white70),
+                      const SizedBox(width: 6),
+                      Text(
+                        _specialStartDate != null
+                            ? _fmt(_specialStartDate!)
+                            : 'Startdatum',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _specialStartDate != null
+                              ? Colors.white
+                              : Colors.white54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _specialEndDate ??
+                          _specialStartDate ??
+                          DateTime.now(),
+                      firstDate: _specialStartDate ?? DateTime(2020),
+                      lastDate: DateTime(2030),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        _specialEndDate = picked;
+                      });
+                    }
+                  },
+                  child: Row(
+                    children: [
+                      const Icon(Icons.event, size: 16, color: Colors.white70),
+                      const SizedBox(width: 6),
+                      Text(
+                        _specialEndDate != null
+                            ? _fmt(_specialEndDate!)
+                            : 'Enddatum',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: _specialEndDate != null
+                              ? Colors.white
+                              : Colors.white54,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
+
+        // Wochentage-Matrix wie im Zeitplan, aber basierend auf gewähltem Zeitraum
+        if (_specialStartDate != null && _specialEndDate != null)
+          _buildSpecialWeekdayMatrix(),
+      ],
+    );
   }
 
-  void _addSpecialSchedule() {
-    // Open dialog to add new special schedule
-    _showSpecialScheduleDialog(null);
-  }
+  // Sondertermine: Wochentage-Ansicht nach Zeitraum
+  Widget _buildSpecialWeekdayMatrix() {
+    final start = _specialStartDate!;
+    final end = _specialEndDate!;
+    final days = <DateTime>[];
+    DateTime c = DateTime(start.year, start.month, start.day);
+    while (!c.isAfter(DateTime(end.year, end.month, end.day))) {
+      days.add(c);
+      c = c.add(const Duration(days: 1));
+    }
 
-  void _editSpecialSchedule(int index) {
-    _showSpecialScheduleDialog(index);
-  }
+    final ordered = <int>[]; // eindeutige Wochentage in Reihenfolge
+    for (final d in days) {
+      if (!ordered.contains(d.weekday)) ordered.add(d.weekday);
+    }
 
-  void _deleteSpecialSchedule(int index) {
+    String shortLabel(int weekday) {
+      const labels = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
+      return labels[weekday - 1];
+    }
+
+    bool isActiveForAllDates(int weekday, TimeSlot slot) {
+      final rel = days.where((d) => d.weekday == weekday);
+      if (rel.isEmpty) return false;
+      for (final d in rel) {
+        final key = DateTime(d.year, d.month, d.day);
+        final set = _specialDaySlots[key] ?? <TimeSlot>{};
+        if (!set.contains(slot)) return false;
+      }
+      return true;
+    }
+
+    void toggleForAllDates(int weekday, TimeSlot slot) {
+      final rel = days.where((d) => d.weekday == weekday);
+      final makeActive = !isActiveForAllDates(weekday, slot);
     setState(() {
-      _specialSchedules.removeAt(index);
+        for (final d in rel) {
+          final key = DateTime(d.year, d.month, d.day);
+          _specialDaySlots.putIfAbsent(key, () => <TimeSlot>{});
+          if (makeActive) {
+            _specialDaySlots[key]!.add(slot);
+          } else {
+            _specialDaySlots[key]!.remove(slot);
+          }
+        }
+      });
+    }
+
+    return LayoutBuilder(builder: (context, cons) {
+      // Zeige IMMER alle 7 Wochentage; Tage außerhalb des Bereichs sind disabled
+      final buttonWidth = ((cons.maxWidth - 32) / 7) - 6;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Wochentage wählen',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: List.generate(7, (i) {
+              final weekday = i + 1;
+              final isPresent = ordered.contains(weekday);
+              final isSelected = _selectedSpecialWeekday == weekday;
+              return SizedBox(
+                width: buttonWidth,
+                child: ElevatedButton(
+                  onPressed: isPresent
+                      ? () {
+                          setState(() {
+                            _selectedSpecialWeekday =
+                                isSelected ? null : weekday;
+                          });
+                        }
+                      : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: isPresent
+                        ? (isSelected
+                            ? Colors.transparent
+                            : Colors.grey.shade800)
+                        : null,
+                    disabledBackgroundColor: Colors.grey.shade900,
+                    disabledForegroundColor: Colors.grey.shade600,
+                    shadowColor: Colors.transparent,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.zero,
+                    minimumSize: const Size(0, 48),
+                  ),
+                  child: isPresent
+                      ? (isSelected
+                          ? Ink(
+                              decoration: BoxDecoration(
+                                gradient: Theme.of(context)
+                                    .extension<AppGradients>()
+                                    ?.magentaBlue,
+                                borderRadius: BorderRadius.circular(8),
+                                border:
+                                    Border.all(color: Colors.white, width: 2),
+                              ),
+                              child: Container(
+                                alignment: Alignment.center,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 4, vertical: 12),
+                                child: Text(shortLabel(weekday)),
+                              ),
+                            )
+                          : Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 4, vertical: 12),
+                              child: Text(shortLabel(weekday)),
+                            ))
+                      : Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 12),
+                          child: Text(shortLabel(weekday)),
+                        ),
+                ),
+              );
+            }),
+          ),
+          if (_selectedSpecialWeekday != null) ...[
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: TimeSlot.values.map((slot) {
+                final active =
+                    isActiveForAllDates(_selectedSpecialWeekday!, slot);
+                final slotWidth = ((cons.maxWidth - 32) / 3) - 6;
+                return GestureDetector(
+                  onTap: () => toggleForAllDates(_selectedSpecialWeekday!, slot),
+                  child: Container(
+                    width: slotWidth,
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      gradient: active
+                          ? LinearGradient(colors: [
+                              const Color(0xFFE91E63).withOpacity(0.6),
+                              const Color(0xFF8AB4F8).withOpacity(0.6),
+                            ])
+                          : null,
+                      color: active ? null : Colors.grey.shade800,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: active
+                            ? const Color(0xFFE91E63).withOpacity(0.8)
+                            : Colors.grey.shade600,
+                        width: 2,
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Text(
+                          _timeSlotIcon(slot),
+                          style: TextStyle(
+                            fontSize: 28,
+                            color: active ? Colors.white : Colors.grey.shade500,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _timeSlotLabel(slot),
+                          style: TextStyle(
+                            fontSize: 9,
+                            color: active ? Colors.white : Colors.grey.shade500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+      );
     });
   }
 
-  Future<void> _showSpecialScheduleDialog(int? editIndex) async {
-    final isEdit = editIndex != null;
-    final existing = isEdit ? _specialSchedules[editIndex] : null;
-    
-    DateTime? startDate = existing != null
-        ? DateTime.fromMillisecondsSinceEpoch(existing.startDate)
-        : null;
-    DateTime? endDate = existing != null
-        ? DateTime.fromMillisecondsSinceEpoch(existing.endDate)
-        : null;
-    Set<TimeSlot> selectedSlots = existing != null
-        ? Set.from(existing.timeSlots)
-        : <TimeSlot>{};
+  String _fmt(DateTime d) {
+    // Format nach Nutzer-Sprache
+    try {
+      final lang = context.read<LanguageService>().languageCode ?? 'de';
+      // Fallback: deutsches Format, z.B. 24.12.2025
+      final df = DateFormat.yMMMd(lang);
+      return df.format(d);
+    } catch (_) {
+      String two(int n) => n.toString().padLeft(2, '0');
+      return '${d.year}-${two(d.month)}-${two(d.day)}';
+    }
+  }
+
+  Future<void> _showHighlightTagDialog() async {
+    final customController = TextEditingController(
+      text: _isCustomTag ? _highlightTag.text : '',
+    );
 
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDialogState) => AlertDialog(
-          title: Text(isEdit ? 'Sondertermin bearbeiten' : 'Sondertermin hinzufügen'),
+          title: const Text('Anlass'),
           content: SizedBox(
             width: double.maxFinite,
             child: Column(
               mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Start Date
-                ListTile(
-                  leading: const Icon(Icons.calendar_today),
-                  title: Text(startDate != null ? _fmt(startDate!) : 'Startdatum wählen'),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: startDate ?? DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2030),
-                    );
-                    if (picked != null) {
-                      setDialogState(() => startDate = picked);
-                    }
-                  },
+                // Eigener Anlass Input
+                TextField(
+                  controller: customController,
+                  decoration: const InputDecoration(
+                    labelText: 'Eigener Anlass',
+                    hintText: 'z.B. Firmenjubiläum, Abschlussfeier...',
+                    border: OutlineInputBorder(),
+                  ),
                 ),
-                // End Date
-                ListTile(
-                  leading: const Icon(Icons.event),
-                  title: Text(endDate != null ? _fmt(endDate!) : 'Enddatum wählen'),
-                  onTap: () async {
-                    final picked = await showDatePicker(
-                      context: ctx,
-                      initialDate: endDate ?? startDate ?? DateTime.now(),
-                      firstDate: startDate ?? DateTime(2020),
-                      lastDate: DateTime(2030),
-                    );
-                    if (picked != null) {
-                      setDialogState(() => endDate = picked);
-                    }
-                  },
-                ),
-                const Divider(),
-                const Text('Zeitfenster:', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                // Time Slots
-                ...TimeSlot.values.map((slot) => CheckboxListTile(
-                      title: Text(_timeSlotLabel(slot)),
-                      value: selectedSlots.contains(slot),
-                      onChanged: (val) {
-                        setDialogState(() {
-                          if (val == true) {
-                            selectedSlots.add(slot);
-                          } else {
-                            selectedSlots.remove(slot);
-                          }
-                        });
-                      },
-                    )),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Abbrechen'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (startDate != null && endDate != null && selectedSlots.isNotEmpty) {
-                  final newSpecial = SpecialSchedule(
-                    startDate: startDate!.millisecondsSinceEpoch,
-                    endDate: endDate!.millisecondsSinceEpoch,
-                    timeSlots: selectedSlots.toList(),
-                  );
-                  
+                const SizedBox(height: 12),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      final custom = customController.text.trim();
+                      if (custom.isNotEmpty) {
                   setState(() {
-                    if (isEdit) {
-                      _specialSchedules[editIndex] = newSpecial;
+                          _highlightTag.text = custom;
+                          _isCustomTag = true;
+                        });
+                        Navigator.pop(ctx);
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      padding: EdgeInsets.zero,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: Ink(
+                      decoration: BoxDecoration(
+                        gradient: Theme.of(
+                          context,
+                        ).extension<AppGradients>()?.magentaBlue,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          'Übernehmen',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Vordefinierte Tags (scrollbar)
+                const Text(
+                  'Oder wählen Sie einen vordefinierten Anlass:',
+                  style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  height: 300,
+                  child: ListView(
+                    children: _predefinedTagsBase.entries.map((entry) {
+                      final tagName = entry.key;
+                      final tagDateBase = entry.value;
+
+                      // Bestimme Datum
+                      String? displayDate;
+                      if (tagDateBase == 'dynamic') {
+                        displayDate = _getDateForTag(tagName, 'de');
                     } else {
-                      _specialSchedules.add(newSpecial);
-                    }
+                        displayDate = tagDateBase;
+                      }
+
+                      return ListTile(
+                        title: Text(tagName),
+                        trailing: displayDate != null
+                            ? Text(
+                                displayDate,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white54,
+                                ),
+                              )
+                            : null,
+                        onTap: () {
+                          setState(() {
+                            _highlightTag.text = tagName;
+                            _isCustomTag = false;
+                            // Für vordefinierte Anlässe: Start/Ende automatisch auf das Datum setzen
+                            final dt = (() {
+                              final base = _predefinedTagsBase[tagName];
+                              final now = DateTime.now();
+                              if (base == null) return null;
+                              if (base == 'dynamic') {
+                                if (tagName == 'Muttertag') {
+                                  return _calculateMothersDay(now.year, 'de');
+                                } else if (tagName == 'Vatertag') {
+                                  return _calculateFathersDay(now.year, 'de');
+                                } else if (tagName == 'Ostern') {
+                                  return _calculateEaster(now.year);
+                                }
+                                return null;
+                              }
+                              try {
+                                final parts = base.replaceAll('.', ' ').trim().split(' ');
+                                final day = int.parse(parts[0]);
+                                final month = int.parse(parts[1]);
+                                return DateTime(now.year, month, day);
+                              } catch (_) {
+                                return null;
+                              }
+                            })();
+                            if (dt != null) {
+                              _specialStartDate = dt;
+                              _specialEndDate = dt;
+                              _selectedSpecialWeekday = dt.weekday;
+                            }
                   });
                   Navigator.pop(ctx);
-                }
               },
-              child: Text(isEdit ? 'Speichern' : 'Hinzufügen'),
+                      );
+                    }).toList(),
+                  ),
             ),
           ],
+            ),
+          ),
         ),
       ),
     );

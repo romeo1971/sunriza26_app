@@ -24,12 +24,14 @@ class AppGradients extends ThemeExtension<AppGradients> {
   final Gradient surface; // Card/Container
   final Gradient buttonPrimary; // primärer CTA
   final Gradient buttonSecondary; // sekundärer CTA
+  final Gradient magentaBlue; // Magenta → Blau
 
   const AppGradients({
     required this.background,
     required this.surface,
     required this.buttonPrimary,
     required this.buttonSecondary,
+    required this.magentaBlue,
   });
 
   factory AppGradients.defaultDark() {
@@ -58,6 +60,10 @@ class AppGradients extends ThemeExtension<AppGradients> {
         end: Alignment.bottomRight,
         colors: [AppColors.primaryGreen, AppColors.greenBlue],
       ),
+      // Magenta → Blau
+      magentaBlue: LinearGradient(
+        colors: [Color(0xFFE91E63), AppColors.lightBlue],
+      ),
     );
   }
 
@@ -67,12 +73,14 @@ class AppGradients extends ThemeExtension<AppGradients> {
     Gradient? surface,
     Gradient? buttonPrimary,
     Gradient? buttonSecondary,
+    Gradient? magentaBlue,
   }) {
     return AppGradients(
       background: background ?? this.background,
       surface: surface ?? this.surface,
       buttonPrimary: buttonPrimary ?? this.buttonPrimary,
       buttonSecondary: buttonSecondary ?? this.buttonSecondary,
+      magentaBlue: magentaBlue ?? this.magentaBlue,
     );
   }
 
