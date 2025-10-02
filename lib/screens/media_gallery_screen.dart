@@ -21,10 +21,18 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import '../theme/app_theme.dart';
 import '../widgets/video_player_widget.dart';
+import '../widgets/avatar_nav_bar.dart';
+import '../services/avatar_service.dart';
+import '../widgets/custom_text_field.dart';
 
 class MediaGalleryScreen extends StatefulWidget {
   final String avatarId;
-  const MediaGalleryScreen({super.key, required this.avatarId});
+  final String? fromScreen; // 'avatar-list' oder null
+  const MediaGalleryScreen({
+    super.key,
+    required this.avatarId,
+    this.fromScreen,
+  });
 
   @override
   State<MediaGalleryScreen> createState() => _MediaGalleryScreenState();
@@ -352,8 +360,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         // Upload
         final url = await FirebaseStorageService.uploadImage(
           file,
-          customPath:
-              'avatars/$uid/${widget.avatarId}/media/images/$timestamp$ext',
+          customPath: 'avatars/${widget.avatarId}/images/$timestamp$ext',
         );
 
         if (url != null) {
@@ -393,11 +400,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('$uploadedCount Bilder erfolgreich hochgeladen!'),
-          action: SnackBarAction(
-            label: 'Zuschneiden',
-            textColor: Colors.white,
-            onPressed: () => _showBatchCropDialog(),
-          ),
         ),
       );
     }
@@ -493,8 +495,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     double currentAspect = _cropAspect;
     final cropController =
         cyi.CropController(); // Neuer Controller für jeden Dialog
+    bool isCropping = false; // Loading-State
+
     await showDialog(
       context: context,
+      barrierDismissible: false, // Nicht während Upload schließbar
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setLocal) => AlertDialog(
@@ -502,73 +507,113 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             content: SizedBox(
               width: 380,
               height: 560,
-              child: Column(
+              child: Stack(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.crop, color: Colors.white70),
-                        const SizedBox(width: 8),
-                        ChoiceChip(
-                          label: const Text('9:16'),
-                          selected: currentAspect == 9 / 16,
-                          onSelected: (_) {
-                            setLocal(() => currentAspect = 9 / 16);
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                        ChoiceChip(
-                          label: const Text('16:9'),
-                          selected: currentAspect == 16 / 9,
-                          onSelected: (_) {
-                            setLocal(() => currentAspect = 16 / 9);
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  Expanded(
-                    child: cyi.Crop(
-                      key: ValueKey(currentAspect),
-                      controller: cropController,
-                      image: imageBytes,
-                      aspectRatio: currentAspect,
-                      withCircleUi: false,
-                      onCropped: (croppedBytes) async {
-                        if (!mounted) return;
-                        _cropAspect = currentAspect;
-                        Navigator.of(context).pop();
-                        await _uploadImage(croppedBytes, ext);
-                      },
-                    ),
-                  ),
-                  Row(
+                  Column(
                     children: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(ctx),
-                        child: const Text('Abbrechen'),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.crop, color: Colors.white70),
+                            const SizedBox(width: 8),
+                            ChoiceChip(
+                              label: const Text('9:16'),
+                              selected: currentAspect == 9 / 16,
+                              onSelected: isCropping
+                                  ? null
+                                  : (_) {
+                                      setLocal(() => currentAspect = 9 / 16);
+                                    },
+                            ),
+                            const SizedBox(width: 8),
+                            ChoiceChip(
+                              label: const Text('16:9'),
+                              selected: currentAspect == 16 / 9,
+                              onSelected: isCropping
+                                  ? null
+                                  : (_) {
+                                      setLocal(() => currentAspect = 16 / 9);
+                                    },
+                            ),
+                          ],
+                        ),
                       ),
-                      const Spacer(),
-                      ElevatedButton(
-                        onPressed: () {
-                          // Force crop auch wenn nicht bewegt wurde
-                          try {
-                            cropController.crop();
-                          } catch (e) {
-                            // Fallback: Croppe das ganze Bild
-                            final image = imageBytes;
-                            Navigator.of(context).pop();
-                            _uploadImage(image, ext);
-                          }
-                        },
-                        child: const Text('Zuschneiden'),
+                      Expanded(
+                        child: cyi.Crop(
+                          key: ValueKey(currentAspect),
+                          controller: cropController,
+                          image: imageBytes,
+                          aspectRatio: currentAspect,
+                          withCircleUi: false,
+                          onCropped: (cropResult) async {
+                            if (!mounted) return;
+                            if (cropResult is cyi.CropSuccess) {
+                              _cropAspect = currentAspect;
+
+                              // SOFORT Loading anzeigen
+                              setLocal(() => isCropping = true);
+
+                              // Upload durchführen
+                              await _uploadImage(cropResult.croppedImage, ext);
+
+                              // Dialog schließen
+                              if (mounted) Navigator.of(context).pop();
+                            }
+                          },
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          TextButton(
+                            onPressed: isCropping
+                                ? null
+                                : () => Navigator.pop(ctx),
+                            child: const Text('Abbrechen'),
+                          ),
+                          const Spacer(),
+                          ElevatedButton(
+                            onPressed: isCropping
+                                ? null
+                                : () {
+                                    // Force crop auch wenn nicht bewegt wurde
+                                    try {
+                                      cropController.crop();
+                                    } catch (e) {
+                                      // Fallback: Croppe das ganze Bild
+                                      setLocal(() => isCropping = true);
+                                      _uploadImage(imageBytes, ext).then((_) {
+                                        if (mounted) Navigator.of(ctx).pop();
+                                      });
+                                    }
+                                  },
+                            child: const Text('Zuschneiden'),
+                          ),
+                        ],
                       ),
                     ],
                   ),
+                  // Loading Overlay
+                  if (isCropping)
+                    Container(
+                      color: Colors.black87,
+                      child: const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(),
+                            SizedBox(height: 16),
+                            Text(
+                              'Bild wird hochgeladen...',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -603,7 +648,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final url = await FirebaseStorageService.uploadImage(
       f,
       customPath:
-          'avatars/$uid/${widget.avatarId}/media/images/$timestamp${ext.isNotEmpty ? ext : '.jpg'}',
+          'avatars/${widget.avatarId}/images/$timestamp${ext.isNotEmpty ? ext : '.jpg'}',
     );
     if (url == null) {
       if (mounted) {
@@ -679,8 +724,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         // Upload
         final url = await FirebaseStorageService.uploadVideo(
           file,
-          customPath:
-              'avatars/$uid/${widget.avatarId}/media/videos/$timestamp$ext',
+          customPath: 'avatars/${widget.avatarId}/videos/$timestamp$ext',
         );
 
         if (url != null) {
@@ -754,7 +798,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     final url = await FirebaseStorageService.uploadVideo(
       File(x.path),
-      customPath: 'avatars/$uid/${widget.avatarId}/media/videos/$timestamp.mp4',
+      customPath: 'avatars/${widget.avatarId}/videos/$timestamp.mp4',
     );
     if (url == null) {
       if (mounted) {
@@ -782,10 +826,115 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
   }
 
+  void _handleBackNavigation(BuildContext context) async {
+    if (widget.fromScreen == 'avatar-list') {
+      // Von "Meine Avatare" → zurück zu "Meine Avatare" (ALLE Screens schließen)
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/avatar-list',
+        (route) => false,
+      );
+    } else {
+      // Von anderen Screens → zurück zu Avatar Details
+      final avatarService = AvatarService();
+      final avatar = await avatarService.getAvatar(widget.avatarId);
+      if (avatar != null && context.mounted) {
+        Navigator.pushReplacementNamed(
+          context,
+          '/avatar-details',
+          arguments: avatar,
+        );
+      } else {
+        Navigator.pop(context);
+      }
+    }
+  }
+
   Future<void> _pickAudio() async {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Audio Upload kommt bald')));
+    try {
+      // File Picker für Audio-Dateien
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.audio,
+        allowMultiple: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      setState(() {
+        _isUploading = true;
+        _uploadProgress = 0;
+        _uploadStatus = 'Audio-Dateien werden hochgeladen...';
+      });
+
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        throw Exception('Benutzer nicht angemeldet');
+      }
+
+      int uploaded = 0;
+      for (int i = 0; i < result.files.length; i++) {
+        final file = result.files[i];
+        if (file.path == null) continue;
+
+        setState(() {
+          _uploadProgress = ((i / result.files.length) * 100).toInt();
+          _uploadStatus =
+              'Audio ${i + 1}/${result.files.length} wird hochgeladen...';
+        });
+
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final fileExtension = file.extension ?? 'mp3';
+
+        // Firebase Storage Upload
+        final url = await FirebaseStorageService.uploadAudio(
+          File(file.path!),
+          customPath:
+              'avatars/${widget.avatarId}/audio/${timestamp}_$i.$fileExtension',
+        );
+
+        if (url != null) {
+          // Firestore speichern
+          final m = AvatarMedia(
+            id: '${timestamp}_$i',
+            avatarId: widget.avatarId,
+            type: AvatarMediaType.audio,
+            url: url,
+            createdAt: timestamp,
+            tags: ['audio', file.name],
+          );
+          await _mediaSvc.add(widget.avatarId, m);
+          uploaded++;
+        }
+      }
+
+      setState(() {
+        _isUploading = false;
+        _uploadProgress = 0;
+        _uploadStatus = '';
+      });
+
+      await _load();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$uploaded Audio-Dateien erfolgreich hochgeladen!'),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isUploading = false;
+        _uploadProgress = 0;
+        _uploadStatus = '';
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Fehler beim Audio-Upload: $e')));
+      }
+    }
   }
 
   @override
@@ -794,6 +943,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(loc.t('gallery.title')),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _handleBackNavigation(context),
+        ),
         actions: [
           IconButton(
             tooltip: 'Tags aktualisieren',
@@ -811,6 +964,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                // Globale Navigation
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: AvatarNavBar(
+                    avatarId: widget.avatarId,
+                    currentScreen: 'media',
+                  ),
+                ),
                 // Suchfeld oder Intro-Text (Toggle via Lupen-Button) - FIXE HÖHE
                 Container(
                   width: double.infinity,
@@ -823,22 +984,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       ? Container(
                           color: Colors.white.withValues(alpha: 0.05),
                           padding: const EdgeInsets.all(12),
-                          child: TextField(
+                          child: CustomTextField(
+                            label: 'Suche nach Medien...',
                             controller: _searchController,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: InputDecoration(
-                              hintText: 'Suche nach Medien...',
-                              hintStyle: const TextStyle(color: Colors.white54),
-                              prefixIcon: const Icon(
-                                Icons.search,
-                                color: Colors.white70,
-                              ),
-                              filled: true,
-                              fillColor: Colors.white.withValues(alpha: 0.06),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(8),
-                                borderSide: BorderSide.none,
-                              ),
+                            prefixIcon: const Icon(
+                              Icons.search,
+                              color: Colors.white70,
                             ),
                             onChanged: (value) {
                               setState(() {
@@ -1083,7 +1234,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             style: TextStyle(color: Colors.grey.shade500),
                           ),
                         )
-                      : Padding(
+                      : SingleChildScrollView(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: LayoutBuilder(
                             builder: (ctx, cons) {
@@ -1297,7 +1448,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         );
                       },
                     )
-                  : FutureBuilder<VideoPlayerController?>(
+                  : it.type == AvatarMediaType.video
+                  ? FutureBuilder<VideoPlayerController?>(
                       future: _videoControllerForThumb(it.url),
                       builder: (context, snapshot) {
                         if (snapshot.connectionState == ConnectionState.done &&
@@ -1318,6 +1470,29 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         // Während des Ladens: schwarzer Container
                         return Container(color: Colors.black26);
                       },
+                    )
+                  : Container(
+                      color: Colors.black87,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.audiotrack,
+                              size: 48,
+                              color: Colors.white.withValues(alpha: 0.8),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Audio',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.7),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
             ),
             // Playlist Icon oben links (nur wenn in Playlists verwendet)
@@ -1370,8 +1545,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 ),
               ),
 
-            // Tag-Icon unten links (nur für Videos)
-            if (it.type == AvatarMediaType.video && !_isDeleteMode)
+            // Tag-Icon unten links (für Videos und Audio)
+            if ((it.type == AvatarMediaType.video ||
+                    it.type == AvatarMediaType.audio) &&
+                !_isDeleteMode)
               Positioned(
                 left: 6,
                 bottom: 6,
@@ -1772,8 +1949,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         image: bytes,
                         aspectRatio: currentAspect,
                         withCircleUi: false,
-                        onCropped: (cropped) async {
-                          croppedBytes = cropped;
+                        onCropped: (cropResult) async {
+                          if (cropResult is cyi.CropSuccess) {
+                            croppedBytes = cropResult.croppedImage;
+                          }
                           if (!mounted) return;
                           _cropAspect = currentAspect;
                           Navigator.of(ctx).pop();
@@ -1926,125 +2105,174 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   Future<void> _showTagsDialog(AvatarMedia media) async {
     final currentTags = media.tags ?? [];
     final controller = TextEditingController(text: currentTags.join(', '));
+    final initialText = controller.text;
 
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => Align(
-        alignment: Alignment.topCenter,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 100.0, left: 16.0, right: 16.0),
-          child: Material(
-            color: Colors.transparent,
-            child: Container(
-              width: double.infinity, // Full Width
-              decoration: BoxDecoration(
-                color: Theme.of(context).dialogBackgroundColor,
-                borderRadius: BorderRadius.circular(12),
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final hasChanged = controller.text != initialText;
+
+          return Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(
+                top: 100.0,
+                left: 16.0,
+                right: 16.0,
               ),
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.all(24.0),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Titel
-                      Text(
-                        media.type == AvatarMediaType.video
-                            ? 'Video-Tags'
-                            : 'Bild-Tags',
-                        style: Theme.of(context).textTheme.headlineSmall,
-                      ),
-                      const SizedBox(height: 16),
-                      // Video-Thumbnail oder Bild anzeigen - 20% kleiner
-                      SizedBox(
-                        height: 320,
-                        child: media.type == AvatarMediaType.video
-                            ? FutureBuilder<VideoPlayerController?>(
-                                future: _videoControllerForThumb(media.url),
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState ==
-                                          ConnectionState.done &&
-                                      snapshot.hasData &&
-                                      snapshot.data != null) {
-                                    final controller = snapshot.data!;
-                                    if (controller.value.isInitialized) {
-                                      return AspectRatio(
-                                        aspectRatio:
-                                            controller.value.aspectRatio,
-                                        child: VideoPlayer(controller),
-                                      );
-                                    }
-                                  }
-                                  // Während des Ladens: schwarzer Container
-                                  return Container(color: Colors.black26);
-                                },
-                              )
-                            : Image.network(
-                                media.url,
-                                height: 320,
-                                fit: BoxFit.cover,
-                              ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextField(
-                        controller: controller,
-                        decoration: InputDecoration(
-                          labelText: 'Tags (durch Komma getrennt)',
-                          hintText: media.type == AvatarMediaType.video
-                              ? 'z.B. interview, outdoor, talking'
-                              : 'z.B. hund, outdoor, park',
-                        ),
-                        maxLines: 3,
-                      ),
-                      const SizedBox(height: 16),
-                      // Buttons im Column
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).dialogBackgroundColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24.0),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            child: const Text('Abbrechen'),
+                          // Action Buttons OBEN (über dem Bild)
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx),
+                                child: const Text('Abbrechen'),
+                              ),
+                              ElevatedButton(
+                                onPressed: hasChanged
+                                    ? () async {
+                                        final newTags = controller.text
+                                            .split(',')
+                                            .map((tag) => tag.trim())
+                                            .where((tag) => tag.isNotEmpty)
+                                            .toList();
+
+                                        await _mediaSvc.update(
+                                          widget.avatarId,
+                                          media.id,
+                                          tags: newTags,
+                                        );
+                                        await _load();
+                                        Navigator.pop(ctx);
+
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                '${newTags.length} Tags gespeichert',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    : null, // Disabled wenn keine Änderung
+                                child: const Text('Speichern'),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 12),
-                          ElevatedButton(
-                            onPressed: () async {
-                              final newTags = controller.text
-                                  .split(',')
-                                  .map((tag) => tag.trim())
-                                  .where((tag) => tag.isNotEmpty)
-                                  .toList();
-
-                              await _mediaSvc.update(
-                                widget.avatarId,
-                                media.id,
-                                tags: newTags,
-                              );
-                              await _load();
-                              Navigator.pop(ctx);
-
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text(
-                                      '${newTags.length} Tags gespeichert',
+                          const SizedBox(height: 16),
+                          // Media Preview (Video/Bild/Audio)
+                          SizedBox(
+                            height: 320,
+                            child: media.type == AvatarMediaType.video
+                                ? FutureBuilder<VideoPlayerController?>(
+                                    future: _videoControllerForThumb(media.url),
+                                    builder: (context, snapshot) {
+                                      if (snapshot.connectionState ==
+                                              ConnectionState.done &&
+                                          snapshot.hasData &&
+                                          snapshot.data != null) {
+                                        final controller = snapshot.data!;
+                                        if (controller.value.isInitialized) {
+                                          return AspectRatio(
+                                            aspectRatio:
+                                                controller.value.aspectRatio,
+                                            child: VideoPlayer(controller),
+                                          );
+                                        }
+                                      }
+                                      return Container(color: Colors.black26);
+                                    },
+                                  )
+                                : media.type == AvatarMediaType.audio
+                                ? Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.black26,
+                                      borderRadius: BorderRadius.circular(12),
                                     ),
+                                    child: Center(
+                                      child: Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.audiotrack,
+                                            size: 80,
+                                            color: Colors.white.withValues(
+                                              alpha: 0.7,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 16),
+                                          Text(
+                                            'Audio-Datei',
+                                            style: TextStyle(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.7,
+                                              ),
+                                              fontSize: 18,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                : Image.network(
+                                    media.url,
+                                    height: 320,
+                                    fit: BoxFit.cover,
                                   ),
-                                );
-                              }
-                            },
-                            child: const Text('Speichern'),
+                          ),
+                          const SizedBox(height: 16),
+                          // Header ÜBER Input-Box
+                          Text(
+                            media.type == AvatarMediaType.video
+                                ? 'Video-Tags'
+                                : media.type == AvatarMediaType.audio
+                                ? 'Audio-Tags'
+                                : 'Bild-Tags',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: controller,
+                            decoration: InputDecoration(
+                              labelText: 'Tags (durch Komma getrennt)',
+                              hintText: media.type == AvatarMediaType.video
+                                  ? 'z.B. interview, outdoor, talking'
+                                  : media.type == AvatarMediaType.audio
+                                  ? 'z.B. musik, podcast, interview'
+                                  : 'z.B. hund, outdoor, park',
+                            ),
+                            maxLines: 3,
+                            onChanged: (_) => setDialogState(() {}),
                           ),
                         ],
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

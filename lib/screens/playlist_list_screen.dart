@@ -4,10 +4,19 @@ import '../models/playlist_models.dart';
 import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import '../utils/playlist_time_utils.dart';
+import '../widgets/avatar_nav_bar.dart';
+import '../services/avatar_service.dart';
+import '../widgets/custom_text_field.dart';
 
 class PlaylistListScreen extends StatefulWidget {
   final String avatarId;
-  const PlaylistListScreen({super.key, required this.avatarId});
+  final String? fromScreen; // 'avatar-list' oder null
+  const PlaylistListScreen({
+    super.key,
+    required this.avatarId,
+    this.fromScreen,
+  });
 
   @override
   State<PlaylistListScreen> createState() => _PlaylistListScreenState();
@@ -21,11 +30,14 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    // Lade erst nach dem ersten Frame, damit die Seite sicher rendert
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _load();
+    });
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    if (mounted) setState(() => _loading = true);
     try {
       final items = await _svc.list(widget.avatarId);
       if (!mounted) return;
@@ -61,11 +73,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(context.read<LocalizationService>().t('playlists.new')),
-        content: TextField(
+        content: CustomTextField(
+          label: context.read<LocalizationService>().t('common.name'),
           controller: c,
-          decoration: InputDecoration(
-            hintText: context.read<LocalizationService>().t('common.name'),
-          ),
         ),
         actions: [
           TextButton(
@@ -117,7 +127,13 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     } else {
       // Aggregiere SpecialSchedules zu Wochentagen (Infoansicht)
       for (final sp in p.specialSchedules) {
-        final d = DateTime.fromMillisecondsSinceEpoch(sp.startDate);
+        // Guard: ungültige Epochenwerte abfangen
+        DateTime d;
+        try {
+          d = DateTime.fromMillisecondsSinceEpoch(sp.startDate);
+        } catch (_) {
+          continue; // überspringen
+        }
         final wd = d.weekday;
         weekdaySlots.putIfAbsent(wd, () => []);
         for (final t in sp.timeSlots) {
@@ -131,68 +147,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
 
     final dayWidgets = <Widget>[];
 
-    String mergeSlotsLabel(List<int> slots) {
-      if (slots.isEmpty) return '';
-      if (slots.length == 6) return 'Ganztägig';
-      // Circular merge über 6 Slots (0..5)
-      final present = List<bool>.filled(6, false);
-      for (final s in slots) {
-        if (s >= 0 && s < 6) present[s] = true;
-      }
-      // finde Runs in zirkulärer Liste
-      final rangesIdx = <List<int>>[];
-      int i = 0;
-      while (i < 6) {
-        if (!present[i]) {
-          i++;
-          continue;
-        }
-        int start = i;
-        int j = (i + 1) % 6;
-        while (present[j] && j != start) {
-          i = j;
-          j = (j + 1) % 6;
-          if (i == 5 && !present[0]) break; // Stop, wenn Wrap und 0 nicht aktiv
-          if (!present[i]) break;
-          if (!present[j]) break;
-        }
-        int end = i;
-        rangesIdx.add([start, end]);
-        i++;
-        // Überspringe innerhalb des Runs
-        while (i < 6 && present[i]) {
-          i++;
-        }
-      }
-      // Spezialfall: slots enthalten 5 und 0 → als ein zusammenhängender Run werten
-      if (present[5] && present[0]) {
-        // mergen: ersten und letzten Run zusammenführen
-        if (rangesIdx.length >= 2) {
-          final first = rangesIdx.first;
-          final last = rangesIdx.last;
-          rangesIdx
-            ..clear()
-            ..add([last[0], first[1]]);
-        }
-      }
-      final startTimes = [3, 6, 11, 14, 18, 23];
-      final endTimes = [6, 11, 14, 18, 23, 27];
-      final out = rangesIdx.map((run) {
-        int s = run[0];
-        int e = run[1];
-        int startHour = startTimes[s];
-        int endHour = endTimes[e];
-        if (e >= s) {
-          // normaler Bereich
-        } else {
-          // Wrap: über Mitternacht – EndHour ggf. -24
-          if (endHour >= 24) endHour -= 24;
-        }
-        if (endHour >= 24) endHour -= 24;
-        return '$startHour–$endHour Uhr';
-      }).toList();
-      return out.join(', ');
-    }
+    String mergeSlotsLabel(List<int> slots) => buildSlotSummaryLabel(slots);
 
     // Erstelle Spalte für jeden Wochentag (1-7)
     for (int wd = 1; wd <= 7; wd++) {
@@ -241,9 +196,17 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       final specials = List<SpecialSchedule>.from(p.specialSchedules)
         ..sort((a, b) => a.startDate.compareTo(b.startDate));
       final first = specials.first;
-      final start = DateTime.fromMillisecondsSinceEpoch(first.startDate);
+      // Guard: ungültige Epochenwerte abfangen
+      DateTime? start;
+      try {
+        start = DateTime.fromMillisecondsSinceEpoch(first.startDate);
+      } catch (_) {
+        start = null;
+      }
       final locale = Localizations.localeOf(context).toLanguageTag();
-      final label = DateFormat('EEEE, d. MMM. y', locale).format(start);
+      final label = start != null
+          ? DateFormat('EEEE, d. MMM. y', locale).format(start)
+          : 'Sondertermin';
       final ranges = mergeSlotsLabel(
         first.timeSlots.map((e) => e.index).toList(),
       );
@@ -272,13 +235,227 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     return summary;
   }
 
+  // Failsafe: Verhindert, dass UI crasht, falls die Zusammenfassung
+  // in Edgecases (z. B. ungewöhnliche Slot-Kombinationen) wirft
+  Widget _buildSafeSummary(Playlist p) {
+    try {
+      return _buildScheduleSummary(p);
+    } catch (_) {
+      return const Text(
+        'Zeitplan kann nicht angezeigt werden',
+        style: TextStyle(fontSize: 11, color: Colors.amber),
+      );
+    }
+  }
+
+  void _handleBackNavigation(BuildContext context) async {
+    if (widget.fromScreen == 'avatar-list') {
+      // Von "Meine Avatare" → zurück zu "Meine Avatare" (ALLE Screens schließen)
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/avatar-list',
+        (route) => false,
+      );
+    } else {
+      // Von anderen Screens → zurück zu Avatar Details
+      final avatarService = AvatarService();
+      final avatar = await avatarService.getAvatar(widget.avatarId);
+      if (avatar != null && context.mounted) {
+        Navigator.pushReplacementNamed(
+          context,
+          '/avatar-details',
+          arguments: avatar,
+        );
+      } else {
+        Navigator.pop(context);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final loc = context.read<LocalizationService>();
     return Scaffold(
       appBar: AppBar(
         title: Text(loc.t('playlists.title')),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _handleBackNavigation(context),
+        ),
         actions: [
+          IconButton(
+            tooltip: 'Diagnose',
+            onPressed: () async {
+              try {
+                final issues = await _svc.validate(widget.avatarId);
+                if (!mounted) return;
+                if (issues.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Keine Probleme gefunden')),
+                  );
+                  return;
+                }
+                showDialog(
+                  context: context,
+                  builder: (ctx) => AlertDialog(
+                    title: const Text('Playlist-Diagnose'),
+                    content: SizedBox(
+                      width: 480,
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: issues.map((e) {
+                            final id = e['id'];
+                            final docId = e['docId'] ?? id;
+                            final List problems =
+                                (e['problems'] as List?) ?? [];
+                            return Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'ID: $id',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Doc: $docId',
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.white70,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  ...problems
+                                      .map((p) => Text('• $p'))
+                                      .cast<Widget>(),
+                                  const SizedBox(height: 8),
+                                  Row(
+                                    children: [
+                                      ElevatedButton.icon(
+                                        onPressed: () async {
+                                          try {
+                                            final res = await _svc.repair(
+                                              widget.avatarId,
+                                              docId,
+                                            );
+                                            if (!mounted) return;
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Repariert: ${res['status']}',
+                                                ),
+                                              ),
+                                            );
+                                            Navigator.pop(ctx);
+                                            await _load();
+                                          } catch (e) {
+                                            if (!mounted) return;
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  'Repair-Fehler: $e',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        },
+                                        icon: const Icon(Icons.build),
+                                        label: const Text('Fixen'),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      OutlinedButton.icon(
+                                        onPressed: () async {
+                                          final confirm = await showDialog<bool>(
+                                            context: context,
+                                            builder: (c2) => AlertDialog(
+                                              title: const Text(
+                                                'Löschen bestätigen',
+                                              ),
+                                              content: Text(
+                                                'Playlist "$id" wirklich löschen?',
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(c2, false),
+                                                  child: const Text(
+                                                    'Abbrechen',
+                                                  ),
+                                                ),
+                                                ElevatedButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(c2, true),
+                                                  child: const Text('Löschen'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm == true) {
+                                            try {
+                                              await _svc.delete(
+                                                widget.avatarId,
+                                                docId,
+                                              );
+                                              if (!mounted) return;
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text('Gelöscht.'),
+                                                ),
+                                              );
+                                              Navigator.pop(ctx);
+                                              await _load();
+                                            } catch (e) {
+                                              if (!mounted) return;
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                SnackBar(
+                                                  content: Text(
+                                                    'Lösch-Fehler: $e',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          }
+                                        },
+                                        icon: const Icon(Icons.delete_outline),
+                                        label: const Text('Löschen'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Schließen'),
+                      ),
+                    ],
+                  ),
+                );
+              } catch (e) {
+                if (!mounted) return;
+                ScaffoldMessenger.of(
+                  context,
+                ).showSnackBar(SnackBar(content: Text('Diagnosefehler: $e')));
+              }
+            },
+            icon: const Icon(Icons.rule_folder),
+          ),
           IconButton(
             tooltip: loc.t('avatars.refreshTooltip'),
             onPressed: _load,
@@ -293,120 +470,135 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : RefreshIndicator(
-              onRefresh: _load,
-              child: _items.isEmpty
-                  ? ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: const [
-                        SizedBox(height: 120),
-                        Center(
-                          child: Text(
-                            'Keine Playlists vorhanden',
-                            style: TextStyle(color: Colors.white70),
-                          ),
-                        ),
-                      ],
-                    )
-                  : ListView.separated(
-                      itemCount: _items.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (context, i) {
-                        final p = _items[i];
-                        return InkWell(
-                          onTap: () => _openEdit(p),
-                          child: Padding(
-                            padding: const EdgeInsets.all(8.0),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Cover Image
-                                p.coverImageUrl != null
-                                    ? ClipRRect(
-                                        borderRadius: BorderRadius.circular(8),
-                                        child: Image.network(
-                                          p.coverImageUrl!,
-                                          width: 100,
-                                          height: 178,
-                                          fit: BoxFit.cover,
-                                        ),
-                                      )
-                                    : Container(
-                                        width: 100,
-                                        height: 178,
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey.shade800,
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                        child: const Icon(
-                                          Icons.playlist_play,
-                                          size: 60,
-                                          color: Colors.white54,
-                                        ),
-                                      ),
-                                const SizedBox(width: 16),
-                                // Content
-                                Expanded(
-                                  child: Column(
+          : Column(
+              children: [
+                // Globale Navigation
+                Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: AvatarNavBar(
+                    avatarId: widget.avatarId,
+                    currentScreen: 'playlists',
+                  ),
+                ),
+                Expanded(
+                  child: RefreshIndicator(
+                    onRefresh: _load,
+                    child: _items.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: const [
+                              SizedBox(height: 120),
+                              Center(
+                                child: Text(
+                                  'Keine Playlists vorhanden',
+                                  style: TextStyle(color: Colors.white70),
+                                ),
+                              ),
+                            ],
+                          )
+                        : ListView.separated(
+                            itemCount: _items.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
+                            itemBuilder: (context, i) {
+                              final p = _items[i];
+                              return InkWell(
+                                onTap: () => _openEdit(p),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8.0),
+                                  child: Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        p.name,
-                                        style: const TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w500,
+                                      // Cover Image
+                                      p.coverImageUrl != null
+                                          ? ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              child: Image.network(
+                                                p.coverImageUrl!,
+                                                width: 100,
+                                                height: 178,
+                                                fit: BoxFit.cover,
+                                              ),
+                                            )
+                                          : Container(
+                                              width: 100,
+                                              height: 178,
+                                              decoration: BoxDecoration(
+                                                color: Colors.grey.shade800,
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                              ),
+                                              child: const Icon(
+                                                Icons.playlist_play,
+                                                size: 60,
+                                                color: Colors.white54,
+                                              ),
+                                            ),
+                                      const SizedBox(width: 16),
+                                      // Content
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              p.name,
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                            if (p.highlightTag != null) ...[
+                                              const SizedBox(height: 6),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 2,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.amber
+                                                      .withOpacity(0.3),
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                  border: Border.all(
+                                                    color: Colors.amber,
+                                                  ),
+                                                ),
+                                                child: Text(
+                                                  p.highlightTag!,
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.amber,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                            const SizedBox(height: 8),
+                                            Text(
+                                              'Anzeigezeit: ${p.showAfterSec}s nach Chat-Beginn',
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.white70,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            _buildSafeSummary(p),
+                                          ],
                                         ),
                                       ),
-                                      if (p.highlightTag != null) ...[
-                                        const SizedBox(height: 6),
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: Colors.amber.withOpacity(
-                                              0.3,
-                                            ),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.amber,
-                                            ),
-                                          ),
-                                          child: Text(
-                                            p.highlightTag!,
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.amber,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Anzeigezeit: ${p.showAfterSec}s nach Chat-Beginn',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.white70,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      _buildScheduleSummary(p),
+                                      const Icon(Icons.chevron_right),
                                     ],
                                   ),
                                 ),
-                                const Icon(Icons.chevron_right),
-                              ],
-                            ),
+                              );
+                            },
                           ),
-                        );
-                      },
-                    ),
+                  ),
+                ),
+              ],
             ),
     );
   }

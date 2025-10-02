@@ -36,4 +36,3 @@ Ziel: Zwei parallele Pläne pro Playlist unterstützen, plus einfache Zielgruppe
 - Frequency Capping: `maxImpressionsPerUser`
 - A/B Auswahlstrategie
 
-

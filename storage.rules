@@ -36,6 +36,12 @@ service firebase.storage {
       allow write, delete: if signedIn() && request.auth.uid == userId;
     }
 
+    // User Uploads (Legacy-Fallback ohne avatarId)
+    match /users/{userId}/uploads/{allPaths=**} {
+      allow read: if true; // Public read
+      allow write, delete: if isOwner(userId) && isValidFileType() && isValidFileSize();
+    }
+
     // Chat Files (Struppi-System)
     match /chats/{chatId}/files/{allPaths=**} {
       allow read, write: if signedIn() && isValidFileType() && isValidFileSize();

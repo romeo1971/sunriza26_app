@@ -32,6 +32,7 @@ import 'l10n/app_localizations.dart';
 import 'package:flutter_localized_locales/flutter_localized_locales.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'boot/engineering_notes.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -107,6 +108,9 @@ void main() async {
 
   // Debug: Base-URL ausgeben
   // print('BASE=${EnvService.memoryApiBaseUrl()}');
+
+  // Engineering-Anker: Log nur bei Fehlern, optional beim Boot in Debug
+  registerEngineeringAnchors(alwaysLogOnBoot: false);
 
   runApp(SunrizaApp(initialLanguageCode: initialLang));
 }
@@ -376,12 +380,20 @@ class SunrizaApp extends StatelessWidget {
             '/media-gallery': (context) {
               final args = ModalRoute.of(context)!.settings.arguments as Map?;
               final avatarId = (args?['avatarId'] as String?) ?? '';
-              return MediaGalleryScreen(avatarId: avatarId);
+              final fromScreen = args?['fromScreen'] as String?;
+              return MediaGalleryScreen(
+                avatarId: avatarId,
+                fromScreen: fromScreen,
+              );
             },
             '/playlist-list': (context) {
               final args = ModalRoute.of(context)!.settings.arguments as Map?;
               final avatarId = (args?['avatarId'] as String?) ?? '';
-              return PlaylistListScreen(avatarId: avatarId);
+              final fromScreen = args?['fromScreen'] as String?;
+              return PlaylistListScreen(
+                avatarId: avatarId,
+                fromScreen: fromScreen,
+              );
             },
             '/playlist-edit': (context) {
               final p = ModalRoute.of(context)!.settings.arguments as Playlist;
@@ -390,7 +402,11 @@ class SunrizaApp extends StatelessWidget {
             '/shared-moments': (context) {
               final args = ModalRoute.of(context)!.settings.arguments as Map?;
               final avatarId = (args?['avatarId'] as String?) ?? '';
-              return SharedMomentsScreen(avatarId: avatarId);
+              final fromScreen = args?['fromScreen'] as String?;
+              return SharedMomentsScreen(
+                avatarId: avatarId,
+                fromScreen: fromScreen,
+              );
             },
             '/legal-terms': (context) => const LegalPageScreen(type: 'terms'),
             '/legal-imprint': (context) =>
@@ -402,6 +418,7 @@ class SunrizaApp extends StatelessWidget {
             '/language': (context) => const LanguageScreen(),
             // Avatar Editor wird jetzt über Avatar Details aufgerufen
           },
+          navigatorObservers: <NavigatorObserver>[engineeringNavigatorObserver],
         );
       },
     );

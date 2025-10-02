@@ -8,6 +8,7 @@ import '../services/localization_service.dart';
 // import '../services/fact_review_service.dart';
 import 'avatar_review_facts_screen.dart';
 import 'package:provider/provider.dart';
+import '../widgets/custom_text_field.dart';
 
 class AvatarListScreen extends StatefulWidget {
   const AvatarListScreen({super.key});
@@ -247,33 +248,24 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
 
   Widget _buildSearchField() {
     final loc = context.watch<LocalizationService>();
-    return TextField(
+    return CustomTextField(
+      label: loc.t('avatars.searchHint'),
       controller: _searchController,
+      prefixIcon: const Icon(Icons.search, color: Colors.white70),
+      suffixIcon: _searchTerm.isNotEmpty
+          ? IconButton(
+              icon: const Icon(Icons.clear, color: Colors.white70),
+              onPressed: () {
+                _searchController.clear();
+                _searchTerm = '';
+                _applyFilter(resetPage: true);
+              },
+            )
+          : null,
       onChanged: (value) {
         _searchTerm = value;
         _applyFilter(resetPage: true);
       },
-      decoration: InputDecoration(
-        prefixIcon: const Icon(Icons.search, color: Colors.white70),
-        suffixIcon: _searchTerm.isNotEmpty
-            ? IconButton(
-                icon: const Icon(Icons.clear, color: Colors.white70),
-                onPressed: () {
-                  _searchController.clear();
-                  _searchTerm = '';
-                  _applyFilter(resetPage: true);
-                },
-              )
-            : null,
-        hintText: loc.t('avatars.searchHint'),
-        filled: true,
-        fillColor: const Color(0x20FFFFFF),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-      ),
-      style: const TextStyle(color: Colors.white),
     );
   }
 
@@ -415,8 +407,10 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (_) =>
-                                AvatarReviewFactsScreen(avatarId: avatar.id),
+                            builder: (_) => AvatarReviewFactsScreen(
+                              avatarId: avatar.id,
+                              fromScreen: 'avatar-list',
+                            ),
                           ),
                         );
                       },
@@ -432,7 +426,10 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                         await Navigator.pushNamed(
                           context,
                           '/media-gallery',
-                          arguments: {'avatarId': avatar.id},
+                          arguments: {
+                            'avatarId': avatar.id,
+                            'fromScreen': 'avatar-list',
+                          },
                         );
                       },
                     ),
@@ -447,7 +444,10 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                         await Navigator.pushNamed(
                           context,
                           '/playlist-list',
-                          arguments: {'avatarId': avatar.id},
+                          arguments: {
+                            'avatarId': avatar.id,
+                            'fromScreen': 'avatar-list',
+                          },
                         );
                       },
                     ),
@@ -462,7 +462,10 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                         await Navigator.pushNamed(
                           context,
                           '/shared-moments',
-                          arguments: {'avatarId': avatar.id},
+                          arguments: {
+                            'avatarId': avatar.id,
+                            'fromScreen': 'avatar-list',
+                          },
                         );
                       },
                     ),

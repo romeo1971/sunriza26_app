@@ -64,16 +64,16 @@ dependencies:
   path_provider: ^2.1.4
   path: ^1.9.1
   permission_handler: ^12.0.1
-  record: ^4.4.4
+  record: ^6.1.1
   just_audio: ^0.10.5
   shared_preferences: ^2.3.2
   
   # File Upload und Media
   file_picker: ^10.3.2
   image_picker: ^1.0.7
-  image_cropper: ^8.0.2
+  image_cropper: ^11.0.0
   firebase_storage: ^13.0.1
-  crop_your_image: ^1.0.6
+  crop_your_image: ^2.0.0
   
   # Image/Video Processing (für BitHuman SDK)
   image: ^4.1.7
@@ -81,15 +81,15 @@ dependencies:
   flutter_inappwebview: ^6.1.5
   url_launcher: ^6.2.5
   flutter_dotenv: ^6.0.0  # Für BitHuman API Key
-  extended_image: ^8.2.0
+  extended_image: ^10.0.1
   # extended_image_library: ^4.0.6
 
   # LiveKit Flutter SDK (Room Join/Leave, Remote Audio/Video)
   livekit_client: ^2.2.6
   
   # Google Cloud Vision API für umfassende KI-Bilderkennung
-  googleapis: ^13.0.0
-  googleapis_auth: ^1.6.0
+  googleapis: ^15.0.0
+  googleapis_auth: ^2.0.0
 
 dependency_overrides:
 

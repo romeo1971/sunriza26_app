@@ -10,6 +10,8 @@ import '../services/user_service.dart';
 import '../models/user_profile.dart';
 import '../services/localization_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/custom_text_field.dart';
+import '../widgets/custom_date_field.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -59,6 +61,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _postalCodeController.addListener(() => setState(() => _hasChanges = true));
     _countryController.addListener(() => setState(() => _hasChanges = true));
     _phoneController.addListener(() => setState(() => _hasChanges = true));
+  }
+
+  void _markChanged() {
+    setState(() => _hasChanges = true);
   }
 
   Future<void> _load() async {
@@ -148,7 +154,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         baseColor: Colors.black,
                         maskColor: Colors.black38,
                         onCropped: (cropped) {
-                          result = cropped;
+                          if (cropped is cyi.CropSuccess) {
+                            result = cropped.croppedImage;
+                          }
                           Navigator.pop(ctx);
                         },
                       ),
@@ -422,25 +430,41 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                       'profile.personalData',
                     ),
                     [
-                      _buildTextField(
-                        _displayNameController,
-                        context.read<LocalizationService>().t(
+                      CustomTextField(
+                        label: context.read<LocalizationService>().t(
                           'profile.displayName',
                         ),
+                        controller: _displayNameController,
+                        onChanged: (_) => _markChanged(),
                       ),
-                      _buildTextField(
-                        _firstNameController,
-                        context.read<LocalizationService>().t(
+                      CustomTextField(
+                        label: context.read<LocalizationService>().t(
                           'avatars.details.firstNameLabel',
                         ),
+                        controller: _firstNameController,
+                        onChanged: (_) => _markChanged(),
                       ),
-                      _buildTextField(
-                        _lastNameController,
-                        context.read<LocalizationService>().t(
+                      CustomTextField(
+                        label: context.read<LocalizationService>().t(
                           'avatars.details.lastNameLabel',
                         ),
+                        controller: _lastNameController,
+                        onChanged: (_) => _markChanged(),
                       ),
-                      _buildDobField(),
+                      CustomDateField(
+                        label: context.read<LocalizationService>().t(
+                          'profile.dateOfBirth',
+                        ),
+                        selectedDate: _selectedDob,
+                        onDateSelected: (date) {
+                          setState(() {
+                            _selectedDob = date;
+                            _hasChanges = true;
+                          });
+                        },
+                        firstDate: DateTime(1900),
+                        lastDate: DateTime.now(),
+                      ),
                     ],
                   ),
 
@@ -450,40 +474,45 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                   _buildSection(
                     context.read<LocalizationService>().t('profile.address'),
                     [
-                      _buildTextField(
-                        _streetController,
-                        context.read<LocalizationService>().t(
+                      CustomTextField(
+                        label: context.read<LocalizationService>().t(
                           'profile.streetAndNumber',
                         ),
+                        controller: _streetController,
+                        onChanged: (_) => _markChanged(),
                       ),
                       Row(
                         children: [
                           Expanded(
                             flex: 1,
-                            child: _buildTextField(
-                              _postalCodeController,
-                              context.read<LocalizationService>().t(
+                            child: CustomTextField(
+                              label: context.read<LocalizationService>().t(
                                 'profile.postalCode',
                               ),
+                              controller: _postalCodeController,
+                              keyboardType: TextInputType.number,
+                              onChanged: (_) => _markChanged(),
                             ),
                           ),
                           const SizedBox(width: 16),
                           Expanded(
                             flex: 2,
-                            child: _buildTextField(
-                              _cityController,
-                              context.read<LocalizationService>().t(
+                            child: CustomTextField(
+                              label: context.read<LocalizationService>().t(
                                 'profile.city',
                               ),
+                              controller: _cityController,
+                              onChanged: (_) => _markChanged(),
                             ),
                           ),
                         ],
                       ),
-                      _buildTextField(
-                        _countryController,
-                        context.read<LocalizationService>().t(
+                      CustomTextField(
+                        label: context.read<LocalizationService>().t(
                           'profile.country',
                         ),
+                        controller: _countryController,
+                        onChanged: (_) => _markChanged(),
                       ),
                     ],
                   ),
@@ -492,10 +521,11 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
                   // Telefonnummer
                   _buildSection('Telefonnummer', [
-                    _buildTextField(
-                      _phoneController,
-                      'Telefonnummer',
+                    CustomTextField(
+                      label: 'Telefonnummer',
+                      controller: _phoneController,
                       keyboardType: TextInputType.phone,
+                      onChanged: (_) => _markChanged(),
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -626,79 +656,6 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTextField(
-    TextEditingController controller,
-    String label, {
-    TextInputType? keyboardType,
-    bool readOnly = false,
-  }) {
-    return TextField(
-      controller: controller,
-      keyboardType: keyboardType,
-      readOnly: readOnly,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: Colors.grey.shade400),
-        border: OutlineInputBorder(
-          borderSide: BorderSide(color: Colors.grey.shade600),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: Colors.grey.shade600),
-        ),
-        focusedBorder: const OutlineInputBorder(
-          borderSide: BorderSide(color: Colors.deepPurple),
-        ),
-        filled: true,
-        fillColor: Colors.grey.shade700,
-      ),
-    );
-  }
-
-  Widget _buildDobField() {
-    return GestureDetector(
-      onTap: () async {
-        final picked = await showDatePicker(
-          context: context,
-          initialDate: _selectedDob ?? DateTime(1990),
-          firstDate: DateTime(1900),
-          lastDate: DateTime.now(),
-        );
-        if (picked != null) {
-          setState(() {
-            _selectedDob = picked;
-            _hasChanges = true;
-          });
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
-        decoration: BoxDecoration(
-          color: Colors.grey.shade700,
-          border: Border.all(color: Colors.grey.shade600),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              _selectedDob != null
-                  ? '${_selectedDob!.day}.${_selectedDob!.month}.${_selectedDob!.year}'
-                  : 'Geburtsdatum',
-              style: TextStyle(
-                color: _selectedDob != null
-                    ? Colors.white
-                    : Colors.grey.shade400,
-                fontSize: 16,
-              ),
-            ),
-            const Icon(Icons.calendar_today, color: Colors.white70, size: 20),
-          ],
-        ),
       ),
     );
   }

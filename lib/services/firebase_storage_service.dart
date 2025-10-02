@@ -14,24 +14,53 @@ class FirebaseStorageService {
     String? customPath,
   }) async {
     try {
+      debugPrint('📤 uploadImage START: ${imageFile.path}');
+
       final user = _auth.currentUser;
-      if (user == null) throw Exception('Benutzer nicht angemeldet');
+      if (user == null) {
+        debugPrint('❌ uploadImage FEHLER: Benutzer nicht angemeldet');
+        throw Exception('Benutzer nicht angemeldet');
+      }
+      debugPrint('✅ User authenticated: ${user.uid}');
+
+      // Prüfe ob Datei existiert
+      if (!await imageFile.exists()) {
+        debugPrint(
+          '❌ uploadImage FEHLER: Datei existiert nicht: ${imageFile.path}',
+        );
+        throw Exception('Bild-Datei nicht gefunden');
+      }
+      final fileSize = await imageFile.length();
+      debugPrint('✅ Bild-Datei gefunden: ${fileSize / 1024} KB');
 
       final fileName = path.basename(imageFile.path);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
+      // WARNUNG: Fallback-Pfad ohne avatarId - nur für Legacy-Zwecke
       final filePath =
-          customPath ?? 'avatars/${user.uid}/images/${timestamp}_$fileName';
+          customPath ??
+          'users/${user.uid}/uploads/images/${timestamp}_$fileName';
+      debugPrint('📁 Upload-Pfad: $filePath');
 
       final ref = _storage.ref().child(filePath);
+      debugPrint('⏳ Starte Firebase Upload...');
       final uploadTask = ref.putFile(imageFile);
 
-      final snapshot = await uploadTask;
-      final downloadUrl = await snapshot.ref.getDownloadURL();
+      // Progress Monitoring
+      uploadTask.snapshotEvents.listen((snapshot) {
+        final progress = (snapshot.bytesTransferred / snapshot.totalBytes * 100)
+            .toStringAsFixed(1);
+        debugPrint('📊 Upload-Fortschritt: $progress%');
+      });
 
-      debugPrint('uploadImage OK → $downloadUrl');
+      final snapshot = await uploadTask;
+      debugPrint('✅ Upload abgeschlossen, hole Download-URL...');
+
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      debugPrint('✅ uploadImage OK → $downloadUrl');
       return downloadUrl;
-    } catch (e) {
-      debugPrint('Fehler beim Upload des Bildes: $e');
+    } catch (e, stack) {
+      debugPrint('❌ FEHLER beim Upload des Bildes: $e');
+      debugPrint('Stack: $stack');
       return null;
     }
   }
@@ -51,13 +80,32 @@ class FirebaseStorageService {
     String? customPath,
   }) async {
     try {
+      debugPrint('📤 uploadVideo START: ${videoFile.path}');
+
       final user = _auth.currentUser;
-      if (user == null) throw Exception('Benutzer nicht angemeldet');
+      if (user == null) {
+        debugPrint('❌ uploadVideo FEHLER: Benutzer nicht angemeldet');
+        throw Exception('Benutzer nicht angemeldet');
+      }
+      debugPrint('✅ User authenticated: ${user.uid}');
+
+      // Prüfe ob Datei existiert
+      if (!await videoFile.exists()) {
+        debugPrint(
+          '❌ uploadVideo FEHLER: Datei existiert nicht: ${videoFile.path}',
+        );
+        throw Exception('Video-Datei nicht gefunden');
+      }
+      final fileSize = await videoFile.length();
+      debugPrint('✅ Video-Datei gefunden: ${fileSize / 1024 / 1024} MB');
 
       final fileName = path.basename(videoFile.path);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
+      // WARNUNG: Fallback-Pfad ohne avatarId - nur für Legacy-Zwecke
       final filePath =
-          customPath ?? 'avatars/${user.uid}/videos/${timestamp}_$fileName';
+          customPath ??
+          'users/${user.uid}/uploads/videos/${timestamp}_$fileName';
+      debugPrint('📁 Upload-Pfad: $filePath');
 
       final ref = _storage.ref().child(filePath);
       // Content-Type setzen, wichtig für mp4-Abspielbarkeit
@@ -65,18 +113,30 @@ class FirebaseStorageService {
       String contentType = 'video/mp4';
       if (ext == '.mov') contentType = 'video/quicktime';
       if (ext == '.m4v') contentType = 'video/x-m4v';
+      debugPrint('📹 Content-Type: $contentType (Extension: $ext)');
+
+      debugPrint('⏳ Starte Firebase Upload...');
       final uploadTask = ref.putFile(
         videoFile,
         SettableMetadata(contentType: contentType),
       );
 
-      final snapshot = await uploadTask;
-      final downloadUrl = await snapshot.ref.getDownloadURL();
+      // Progress Monitoring
+      uploadTask.snapshotEvents.listen((snapshot) {
+        final progress = (snapshot.bytesTransferred / snapshot.totalBytes * 100)
+            .toStringAsFixed(1);
+        debugPrint('📊 Upload-Fortschritt: $progress%');
+      });
 
-      debugPrint('uploadVideo OK → $downloadUrl');
+      final snapshot = await uploadTask;
+      debugPrint('✅ Upload abgeschlossen, hole Download-URL...');
+
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      debugPrint('✅ uploadVideo OK → $downloadUrl');
       return downloadUrl;
-    } catch (e) {
-      debugPrint('Fehler beim Upload des Videos: $e');
+    } catch (e, stack) {
+      debugPrint('❌ FEHLER beim Upload des Videos: $e');
+      debugPrint('Stack: $stack');
       return null;
     }
   }
@@ -92,8 +152,10 @@ class FirebaseStorageService {
 
       final fileName = path.basename(audioFile.path);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
+      // WARNUNG: Fallback-Pfad ohne avatarId - nur für Legacy-Zwecke
       final filePath =
-          customPath ?? 'avatars/${user.uid}/audio/${timestamp}_$fileName';
+          customPath ??
+          'users/${user.uid}/uploads/audio/${timestamp}_$fileName';
 
       // Content-Type anhand der Dateiendung setzen
       final ext = path.extension(audioFile.path).toLowerCase();
@@ -131,8 +193,10 @@ class FirebaseStorageService {
 
       final fileName = path.basename(textFile.path);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
+      // WARNUNG: Fallback-Pfad ohne avatarId - nur für Legacy-Zwecke
       final filePath =
-          customPath ?? 'avatars/${user.uid}/texts/${timestamp}_$fileName';
+          customPath ??
+          'users/${user.uid}/uploads/texts/${timestamp}_$fileName';
 
       final ref = _storage.ref().child(filePath);
       final uploadTask = ref.putFile(
@@ -177,7 +241,7 @@ class FirebaseStorageService {
     if (user == null) return downloadUrls;
     for (int i = 0; i < imageFiles.length; i++) {
       final ts = DateTime.now().millisecondsSinceEpoch;
-      final path = 'avatars/${user.uid}/$avatarId/images/${ts}_$i.jpg';
+      final path = 'avatars/$avatarId/images/${ts}_$i.jpg';
       final url = await uploadImage(imageFiles[i], customPath: path);
       if (url != null) downloadUrls.add(url);
     }
@@ -211,7 +275,7 @@ class FirebaseStorageService {
     if (user == null) return downloadUrls;
     for (int i = 0; i < videoFiles.length; i++) {
       final ts = DateTime.now().millisecondsSinceEpoch;
-      final path = 'avatars/${user.uid}/$avatarId/videos/${ts}_$i.mp4';
+      final path = 'avatars/$avatarId/videos/${ts}_$i.mp4';
       final url = await uploadVideo(videoFiles[i], customPath: path);
       if (url != null) downloadUrls.add(url);
     }
@@ -245,7 +309,7 @@ class FirebaseStorageService {
     if (user == null) return downloadUrls;
     for (int i = 0; i < textFiles.length; i++) {
       final ts = DateTime.now().millisecondsSinceEpoch;
-      final path = 'avatars/${user.uid}/$avatarId/texts/${ts}_$i.txt';
+      final path = 'avatars/$avatarId/texts/${ts}_$i.txt';
       final url = await uploadTextFile(textFiles[i], customPath: path);
       if (url != null) downloadUrls.add(url);
     }
@@ -266,9 +330,9 @@ class FirebaseStorageService {
   }
 
   /// Lösche alle Dateien eines Avatars
-  static Future<bool> deleteAvatarFiles(String userId) async {
+  static Future<bool> deleteAvatarFiles(String avatarId) async {
     try {
-      final ref = _storage.ref().child('avatars/$userId');
+      final ref = _storage.ref().child('avatars/$avatarId');
       final listResult = await ref.listAll();
 
       for (final item in listResult.items) {
@@ -291,9 +355,9 @@ class FirebaseStorageService {
   }
 
   /// Erhalte alle Dateien eines Avatars
-  static Future<List<Reference>> getAvatarFiles(String userId) async {
+  static Future<List<Reference>> getAvatarFiles(String avatarId) async {
     try {
-      final ref = _storage.ref().child('avatars/$userId');
+      final ref = _storage.ref().child('avatars/$avatarId');
       final listResult = await ref.listAll();
 
       final List<Reference> allFiles = [];
@@ -325,8 +389,10 @@ class FirebaseStorageService {
 
       final fileName = path.basename(file.path);
       final timestamp = DateTime.now().millisecondsSinceEpoch;
+      // WARNUNG: Fallback-Pfad ohne avatarId - nur für Legacy-Zwecke
       final filePath =
-          customPath ?? 'avatars/${user.uid}/$fileType/${timestamp}_$fileName';
+          customPath ??
+          'users/${user.uid}/uploads/$fileType/${timestamp}_$fileName';
 
       final ref = _storage.ref().child(filePath);
       final uploadTask = ref.putFile(file);

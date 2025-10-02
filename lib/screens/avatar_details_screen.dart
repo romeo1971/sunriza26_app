@@ -27,7 +27,38 @@ import '../services/firebase_storage_service.dart';
 import '../services/geo_service.dart';
 import '../services/localization_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/avatar_nav_bar.dart';
 import '../widgets/video_player_widget.dart';
+import '../widgets/custom_text_field.dart';
+import '../widgets/custom_date_field.dart';
+import '../widgets/custom_dropdown.dart';
+
+// Sticky Navigation Bar Delegate
+class _StickyNavBarDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+
+  _StickyNavBarDelegate({required this.child});
+
+  @override
+  double get minExtent => 60;
+
+  @override
+  double get maxExtent => 60;
+
+  @override
+  Widget build(
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
+    return child;
+  }
+
+  @override
+  bool shouldRebuild(_StickyNavBarDelegate oldDelegate) {
+    return false;
+  }
+}
 
 class _NamedItem {
   final String name;
@@ -365,6 +396,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       _birthDate = data.birthDate;
       _deathDate = data.deathDate;
       _calculatedAge = data.calculatedAge;
+      _role = data.role;
 
       _birthDateController.text = _birthDate != null
           ? _formatDate(_birthDate!)
@@ -464,7 +496,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         Theme(
           data: Theme.of(context).copyWith(
             dividerColor: Colors.white24,
-            listTileTheme: const ListTileThemeData(iconColor: Colors.white70),
+            listTileTheme: const ListTileThemeData(
+              iconColor: AppColors.accentGreenDark,
+            ),
           ),
           child: Column(
             children: [
@@ -501,23 +535,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0,
-                      vertical: 12.0,
+                      horizontal: 8.0,
+                      vertical: 6.0,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        TextField(
-                          controller: _greetingController,
-                          maxLines: 3,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: InputDecoration(
-                            hintText: context.read<LocalizationService>().t(
-                              'avatars.details.greetingHint',
-                            ),
+                        CustomTextArea(
+                          label: context.read<LocalizationService>().t(
+                            'avatars.details.greetingLabel',
                           ),
+                          controller: _greetingController,
+                          hintText: context.read<LocalizationService>().t(
+                            'avatars.details.greetingHint',
+                          ),
+                          minLines: 3,
+                          maxLines: 6,
                           onChanged: (_) => _updateDirty(),
                         ),
+                        const SizedBox(height: 16),
+                        _buildRoleDropdown(),
                       ],
                     ),
                   ),
@@ -536,8 +573,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                      horizontal: 8,
+                      vertical: 6,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -551,8 +588,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               backgroundColor: AppColors.accentGreenDark,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
+                                horizontal: 8,
+                                vertical: 7,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -586,40 +623,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                           ),
                         ),
                         const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            context.read<LocalizationService>().t(
-                              'avatars.details.freeTextLabel',
-                            ),
-                            style: const TextStyle(color: Colors.white70),
+                        CustomTextArea(
+                          label: context.read<LocalizationService>().t(
+                            'avatars.details.freeTextLabel',
                           ),
-                        ),
-                        const SizedBox(height: 8),
-                        TextField(
                           controller: _textAreaController,
-                          maxLines: 4,
-                          decoration: InputDecoration(
-                            hintText: context.read<LocalizationService>().t(
-                              'avatars.details.freeTextHint',
-                            ),
-                            hintStyle: const TextStyle(color: Colors.white54),
-                            filled: true,
-                            fillColor: Colors.white.withValues(alpha: 0.06),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(
-                                color: Colors.white.withValues(alpha: 0.3),
-                              ),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: const BorderSide(
-                                color: AppColors.accentGreenDark,
-                              ),
-                            ),
+                          hintText: context.read<LocalizationService>().t(
+                            'avatars.details.freeTextHint',
                           ),
-                          style: const TextStyle(color: Colors.white),
+                          minLines: 4,
+                          maxLines: 8,
+                          onChanged: (_) => _updateDirty(),
                         ),
                         const SizedBox(height: 12),
                         // Chunking Parameter
@@ -638,10 +652,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         if (_textFileUrls.isNotEmpty ||
                             _newTextFiles.isNotEmpty)
                           _buildTextFilesList(),
-                        const SizedBox(height: 16),
-                        _buildRoleDropdown(),
-                        const SizedBox(height: 16),
-                        _buildMediaNavRow(),
                       ],
                     ),
                   ),
@@ -660,8 +670,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
+                      horizontal: 8,
+                      vertical: 6,
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -678,8 +688,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               backgroundColor: AppColors.accentGreenDark,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 14,
+                                horizontal: 8,
+                                vertical: 7,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -752,74 +762,130 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       {'key': 'seelsorger', 'label': 'Seelsorger'},
       {'key': 'medizinisch', 'label': 'Medizinischer Berater'},
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Rolle', style: TextStyle(color: Colors.white70)),
-        const SizedBox(height: 8),
-        DropdownButtonFormField<String>(
-          initialValue: _role,
-          dropdownColor: const Color(0xFF1C1C1E),
-          items: items
-              .map(
-                (e) =>
-                    DropdownMenuItem(value: e['key'], child: Text(e['label']!)),
-              )
-              .toList(),
-          onChanged: (v) => setState(() => _role = v),
-          decoration: const InputDecoration(
-            filled: true,
-            fillColor: Color(0x22FFFFFF),
-            border: OutlineInputBorder(borderSide: BorderSide.none),
-          ),
-        ),
-      ],
+    return CustomDropdown<String>(
+      label: 'Rolle',
+      value: _role,
+      items: items
+          .map(
+            (e) => DropdownMenuItem(
+              value: e['key'],
+              child: Text(
+                e['label']!,
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+          )
+          .toList(),
+      onChanged: (v) async {
+        setState(() => _role = v);
+        await _saveRoleImmediately(v);
+      },
     );
   }
 
   Widget _buildMediaNavRow() {
     final id = _avatarData?.id;
     if (id == null || id.isEmpty) return const SizedBox.shrink();
-    return Row(
-      children: [
-        ElevatedButton.icon(
-          onPressed: () {
-            Navigator.pushNamed(
-              context,
-              '/media-gallery',
-              arguments: {'avatarId': id},
-            );
-          },
-          icon: const Icon(Icons.photo_library),
-          label: Text(context.read<LocalizationService>().t('gallery.title')),
-        ),
-        const SizedBox(width: 12),
-        ElevatedButton.icon(
-          onPressed: () {
-            Navigator.pushNamed(
-              context,
-              '/playlist-list',
-              arguments: {'avatarId': id},
-            );
-          },
-          icon: const Icon(Icons.queue_music),
-          label: Text(context.read<LocalizationService>().t('playlists.title')),
-        ),
-        const SizedBox(width: 12),
-        ElevatedButton.icon(
-          onPressed: () {
-            Navigator.pushNamed(
-              context,
-              '/shared-moments',
-              arguments: {'avatarId': id},
-            );
-          },
-          icon: const Icon(Icons.collections),
-          label: Text(
-            context.read<LocalizationService>().t('sharedMoments.title'),
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildNavIconButton(
+            icon: Icons.photo_library,
+            label: context.read<LocalizationService>().t('gallery.title'),
+            onTap: () {
+              Navigator.pushNamed(
+                context,
+                '/media-gallery',
+                arguments: {'avatarId': id},
+              );
+            },
+          ),
+          Container(
+            width: 1,
+            height: 48,
+            color: Colors.white.withValues(alpha: 0.1),
+          ),
+          _buildNavIconButton(
+            icon: Icons.queue_music,
+            label: context.read<LocalizationService>().t('playlists.title'),
+            onTap: () {
+              Navigator.pushNamed(
+                context,
+                '/playlist-list',
+                arguments: {'avatarId': id},
+              );
+            },
+          ),
+          Container(
+            width: 1,
+            height: 48,
+            color: Colors.white.withValues(alpha: 0.1),
+          ),
+          _buildNavIconButton(
+            icon: Icons.collections,
+            label: context.read<LocalizationService>().t('sharedMoments.title'),
+            onTap: () {
+              Navigator.pushNamed(
+                context,
+                '/shared-moments',
+                arguments: {'avatarId': id},
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNavIconButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          hoverColor: Colors.white.withValues(alpha: 0.15),
+          splashColor: Colors.white.withValues(alpha: 0.25),
+          highlightColor: Colors.white.withValues(alpha: 0.1),
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  icon,
+                  color: Colors.white.withValues(alpha: 0.9),
+                  size: 24,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  label,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ),
-      ],
+      ),
     );
   }
 
@@ -832,80 +898,64 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          context.read<LocalizationService>().t(
-            'avatars.details.elevenVoiceSelectTitle',
-          ),
-          style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
-        ),
+        // Text(
+        //   context.read<LocalizationService>().t(
+        //     'avatars.details.elevenVoiceSelectTitle',
+        //   ),
+        //   style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+        // ),
         const SizedBox(height: 6),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.white24),
-            borderRadius: BorderRadius.circular(12),
+        CustomDropdown<String>(
+          label: context.read<LocalizationService>().t(
+            'avatars.details.voiceSelectLabel',
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              dropdownColor: Colors.black87,
-              value: _selectedVoiceId,
-              hint: Text(
-                context.read<LocalizationService>().t(
-                  'avatars.details.voiceSelectLabel',
-                ),
-                style: TextStyle(color: Colors.white70),
-              ),
-              items: () {
-                final String? cloneId =
-                    (_avatarData?.training?['voice']?['elevenVoiceId']
-                            as String?)
-                        ?.trim();
-                final List<DropdownMenuItem<String>> items = [];
-                // Erste Option: MEIN VOICE KLON (nur als explizite Auswahl)
-                items.add(
-                  DropdownMenuItem<String>(
-                    value: '__CLONE__',
-                    child: Text(
-                      context.read<LocalizationService>().t(
-                        'avatars.details.myVoiceCloneLabel',
-                      ),
-                      style: TextStyle(color: Colors.white),
-                    ),
+          value: _selectedVoiceId,
+          items: () {
+            final String? cloneId =
+                (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
+                    ?.trim();
+            final List<DropdownMenuItem<String>> items = [];
+            // Erste Option: MEIN VOICE KLON (nur als explizite Auswahl)
+            items.add(
+              DropdownMenuItem<String>(
+                value: '__CLONE__',
+                child: Text(
+                  context.read<LocalizationService>().t(
+                    'avatars.details.myVoiceCloneLabel',
                   ),
-                );
-                // Danach Standardstimmen, ohne Duplikat zur Clone-ID
-                for (final v in _elevenVoices) {
-                  final id = (v['voice_id'] ?? v['voiceId'] ?? '') as String;
-                  if (cloneId != null && cloneId.isNotEmpty && id == cloneId) {
-                    continue; // Duplikat vermeiden
-                  }
-                  items.add(
-                    DropdownMenuItem<String>(
-                      value: id,
-                      child: Text(
-                        (v['name'] ??
-                                context.read<LocalizationService>().t(
-                                  'avatars.details.voiceFallbackName',
-                                ))
-                            as String,
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                  );
-                }
-                return items;
-              }(),
-              onChanged: (val) {
-                if (val == '__CLONE__') {
-                  // Nur Auswahl markieren – tatsächliche ID bleibt die gespeicherte Clone-ID
-                  _onSelectVoice('__CLONE__');
-                } else {
-                  _onSelectVoice(val); // setzt _isDirty = true
-                }
-              },
-            ),
-          ),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            );
+            // Danach Standardstimmen, ohne Duplikat zur Clone-ID
+            for (final v in _elevenVoices) {
+              final id = (v['voice_id'] ?? v['voiceId'] ?? '') as String;
+              if (cloneId != null && cloneId.isNotEmpty && id == cloneId) {
+                continue; // Duplikat vermeiden
+              }
+              items.add(
+                DropdownMenuItem<String>(
+                  value: id,
+                  child: Text(
+                    (v['name'] ??
+                            context.read<LocalizationService>().t(
+                              'avatars.details.voiceFallbackName',
+                            ))
+                        as String,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+              );
+            }
+            return items;
+          }(),
+          onChanged: (val) {
+            if (val == '__CLONE__') {
+              _onSelectVoice('__CLONE__');
+            } else {
+              _onSelectVoice(val);
+            }
+          },
         ),
         const SizedBox(height: 8),
         Align(
@@ -1853,33 +1903,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ],
         ),
         const SizedBox(height: 8),
-        TextField(
-          controller: _textFilterController,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            isDense: true,
-            hintText: context.read<LocalizationService>().t(
-              'avatars.details.textFileFilterHint',
-            ),
-            hintStyle: const TextStyle(color: Colors.white54),
-            filled: true,
-            fillColor: Colors.white.withValues(alpha: 0.06),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(
-                color: Colors.white.withValues(alpha: 0.2),
-              ),
-            ),
-            suffixIcon: (_textFilter.isNotEmpty)
-                ? IconButton(
-                    icon: const Icon(Icons.clear, color: Colors.white54),
-                    onPressed: () {
-                      _textFilterController.clear();
-                      FocusScope.of(context).unfocus();
-                    },
-                  )
-                : null,
+        CustomTextField(
+          label: context.read<LocalizationService>().t(
+            'avatars.details.textFileFilterLabel',
           ),
+          controller: _textFilterController,
+          hintText: context.read<LocalizationService>().t(
+            'avatars.details.textFileFilterHint',
+          ),
+          suffixIcon: (_textFilter.isNotEmpty)
+              ? IconButton(
+                  icon: const Icon(Icons.clear, color: Colors.white54),
+                  onPressed: () {
+                    _textFilterController.clear();
+                    FocusScope.of(context).unfocus();
+                  },
+                )
+              : null,
         ),
         const SizedBox(height: 6),
         if (_textFilesExpanded) ...pageTiles,
@@ -2188,77 +2228,63 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
 
         const SizedBox(height: 8),
-        Row(
-          children: [
-            SizedBox(
-              width: 90,
+        CustomDropdown<String>(
+          label: context.read<LocalizationService>().t(
+            'avatars.details.dialect',
+          ),
+          value: _voiceDialect,
+          items: [
+            DropdownMenuItem(
+              value: 'de-DE',
               child: Text(
                 context.read<LocalizationService>().t(
-                  'avatars.details.dialect',
+                  'avatars.details.dialect.de-DE',
                 ),
-                style: const TextStyle(color: Colors.white70),
+                style: const TextStyle(color: Colors.white),
               ),
             ),
-            Expanded(
-              child: DropdownButtonFormField<String>(
-                initialValue: _voiceDialect,
-                dropdownColor: Colors.black,
-                items: [
-                  DropdownMenuItem(
-                    value: 'de-DE',
-                    child: Text(
-                      context.read<LocalizationService>().t(
-                        'avatars.details.dialect.de-DE',
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  DropdownMenuItem(
-                    value: 'de-AT',
-                    child: Text(
-                      context.read<LocalizationService>().t(
-                        'avatars.details.dialect.de-AT',
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  DropdownMenuItem(
-                    value: 'de-CH',
-                    child: Text(
-                      context.read<LocalizationService>().t(
-                        'avatars.details.dialect.de-CH',
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  DropdownMenuItem(
-                    value: 'en-US',
-                    child: Text(
-                      context.read<LocalizationService>().t(
-                        'avatars.details.dialect.en-US',
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  DropdownMenuItem(
-                    value: 'en-GB',
-                    child: Text(
-                      context.read<LocalizationService>().t(
-                        'avatars.details.dialect.en-GB',
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                ],
-                onChanged: (v) {
-                  if (v == null) return;
-                  setState(() => _voiceDialect = v);
-                  _saveVoiceParams();
-                },
-                iconEnabledColor: Colors.white70,
+            DropdownMenuItem(
+              value: 'de-AT',
+              child: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.dialect.de-AT',
+                ),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+            DropdownMenuItem(
+              value: 'de-CH',
+              child: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.dialect.de-CH',
+                ),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+            DropdownMenuItem(
+              value: 'en-US',
+              child: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.dialect.en-US',
+                ),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+            DropdownMenuItem(
+              value: 'en-GB',
+              child: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.dialect.en-GB',
+                ),
+                style: const TextStyle(color: Colors.white),
               ),
             ),
           ],
+          onChanged: (v) {
+            if (v == null) return;
+            setState(() => _voiceDialect = v);
+            _saveVoiceParams();
+          },
         ),
 
         const SizedBox.shrink(),
@@ -2288,6 +2314,35 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           'avatars.details.voiceSettingsSaved',
         ),
       );
+    }
+  }
+
+  Future<void> _saveRoleImmediately(String? newRole) async {
+    if (_avatarData == null) return;
+
+    try {
+      // 1. Firestore Update (role wird in training.needsRetrain berücksichtigt)
+      final existing = Map<String, dynamic>.from(_avatarData!.training ?? {});
+      existing['needsRetrain'] =
+          true; // ← Wichtig! Triggert Re-Training mit neuer Rolle
+
+      final updated = _avatarData!.copyWith(
+        role: newRole,
+        training: existing,
+        updatedAt: DateTime.now(),
+      );
+      final ok = await _avatarService.updateAvatar(updated);
+
+      if (ok && mounted) {
+        _applyAvatar(updated);
+        _showSystemSnack(
+          'Rolle gespeichert - wird beim nächsten Training berücksichtigt',
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSystemSnack('Fehler beim Speichern der Rolle: $e');
+      }
     }
   }
 
@@ -2965,6 +3020,25 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               left: 4,
               child: Text('⭐', style: TextStyle(fontSize: 16)),
             ),
+          // Crop-Icon unten links (nur wenn nicht im Delete-Modus)
+          if (!_isDeleteMode)
+            Positioned(
+              left: 6,
+              bottom: 6,
+              child: InkWell(
+                onTap: () => _reopenCrop(url),
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: const Color(0x30000000),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0x66FFFFFF)),
+                  ),
+                  child: const Icon(Icons.crop, color: Colors.white, size: 16),
+                ),
+              ),
+            ),
+          // Delete-Icon unten rechts
           Positioned(
             right: 6,
             bottom: 6,
@@ -3441,9 +3515,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             // Sofort lokal anzeigen
             await _playLocalInline(out);
             // Hochladen
-            final uid = FirebaseAuth.instance.currentUser!.uid;
             final path =
-                'avatars/$uid/${_avatarData!.id}/videos/${DateTime.now().millisecondsSinceEpoch}_gen.mp4';
+                'avatars/${_avatarData!.id}/videos/${DateTime.now().millisecondsSinceEpoch}_gen.mp4';
             final url = await FirebaseStorageService.uploadVideo(
               out,
               customPath: path,
@@ -3612,7 +3685,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         baseColor: Colors.black,
                         maskColor: Colors.black38,
                         onCropped: (cropped) {
-                          result = cropped;
+                          if (cropped is cyi.CropSuccess) {
+                            result = cropped.croppedImage;
+                          }
                           Navigator.pop(ctx);
                         },
                       ),
@@ -3719,28 +3794,42 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Future<void> _onAddImages() async {
+    debugPrint('🖼️ _onAddImages START');
     ImageSource? source;
     if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
       source = ImageSource.gallery; // Kamera nicht unterstützen auf Desktop
+      debugPrint('🖼️ Platform: Desktop → Galerie');
     } else {
       source = await _chooseSource(
         context.read<LocalizationService>().t(
           'avatars.details.chooseImageSourceTitle',
         ),
       );
-      if (source == null) return;
+      debugPrint('🖼️ Mobile source gewählt: $source');
+      if (source == null) {
+        debugPrint('🖼️ Keine Quelle gewählt → Abbruch');
+        return;
+      }
     }
     if (source == ImageSource.gallery) {
+      debugPrint('🖼️ Öffne Galerie-Picker (Multi)...');
       final files = await _picker.pickMultiImage(
         maxWidth: 2048,
         maxHeight: 2048,
         imageQuality: 90,
       );
+      debugPrint('🖼️ ${files.length} Bilder ausgewählt');
+
       if (files.isNotEmpty && _avatarData != null) {
         setState(() => _isDirty = true);
         final String uid = FirebaseAuth.instance.currentUser!.uid;
         final String avatarId = _avatarData!.id;
+        debugPrint('🖼️ Starte Upload von ${files.length} Bildern...');
+
         for (int i = 0; i < files.length; i++) {
+          debugPrint(
+            '🖼️ Verarbeite Bild ${i + 1}/${files.length}: ${files[i].path}',
+          );
           File f = File(files[i].path);
           // Interaktives Cropping 9:16
           final cropped = await _cropToPortrait916(f);
@@ -3799,11 +3888,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ext = '.jpg';
           }
           final String path =
-              'avatars/$uid/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_$i$ext';
+              'avatars/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_$i$ext';
+          debugPrint('🖼️ Starte Upload Bild ${i + 1}: $path');
           final url = await FirebaseStorageService.uploadImage(
             f,
             customPath: path,
           );
+          debugPrint('🖼️ Upload Bild ${i + 1} Ergebnis: $url');
+
           if (url != null) {
             if (!mounted) return;
             setState(() {
@@ -3813,10 +3905,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               }
               _profileLocalPath = null; // nach Upload auf Remote wechseln
             });
+            debugPrint(
+              '🖼️ Bild ${i + 1} zu Liste hinzugefügt, persistiere...',
+            );
             // Sofort persistieren (Firestore aktualisieren)
             await _persistTextFileUrls();
+            debugPrint('🖼️ Bild ${i + 1} erfolgreich gespeichert!');
+          } else {
+            debugPrint('❌ Bild ${i + 1} Upload fehlgeschlagen!');
           }
         }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('${files.length} Bilder erfolgreich hochgeladen'),
+            ),
+          );
+        }
+      } else {
+        debugPrint('🖼️ Keine Bilder ausgewählt oder Avatar-Daten fehlen');
       }
     } else {
       final x = await _picker.pickImage(
@@ -3845,7 +3953,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ext = '.jpg';
         }
         final String path =
-            'avatars/$uid/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_cam$ext';
+            'avatars/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_cam$ext';
         final url = await FirebaseStorageService.uploadImage(
           f,
           customPath: path,
@@ -3867,62 +3975,127 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Future<void> _onAddVideos() async {
+    debugPrint('🎬 _onAddVideos START');
     ImageSource? source;
     if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
       source = ImageSource.gallery;
+      debugPrint('🎬 Platform: Desktop → Galerie');
     } else {
       source = await _chooseSource('Videoquelle wählen');
-      if (source == null) return;
+      debugPrint('🎬 Mobile source gewählt: $source');
+      if (source == null) {
+        debugPrint('🎬 Keine Quelle gewählt → Abbruch');
+        return;
+      }
     }
-    if (source == ImageSource.gallery) {
-      final x = await _picker.pickVideo(
-        source: ImageSource.gallery,
-        maxDuration: const Duration(minutes: 5),
-      );
-      if (x != null && _avatarData != null) {
-        setState(() => _isDirty = true);
-        final String uid = FirebaseAuth.instance.currentUser!.uid;
-        final String avatarId = _avatarData!.id;
-        final File f = File(x.path);
-        final String path =
-            'avatars/$uid/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_gal.mp4';
-        final url = await FirebaseStorageService.uploadVideo(
-          f,
-          customPath: path,
+
+    try {
+      if (source == ImageSource.gallery) {
+        debugPrint('🎬 Öffne Galerie-Picker...');
+        final x = await _picker.pickVideo(
+          source: ImageSource.gallery,
+          maxDuration: const Duration(minutes: 5),
         );
-        if (url != null) {
-          if (!mounted) return;
-          setState(() {
-            _videoUrls.add(url);
-          });
-          // Sofort persistieren (Firestore aktualisieren)
-          await _persistTextFileUrls();
+        debugPrint('🎬 Video ausgewählt: ${x?.path}');
+
+        if (x != null && _avatarData != null) {
+          setState(() => _isDirty = true);
+          final String uid = FirebaseAuth.instance.currentUser!.uid;
+          final String avatarId = _avatarData!.id;
+          final File f = File(x.path);
+          final String path =
+              'avatars/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_gal.mp4';
+
+          debugPrint('🎬 Starte Upload: $path');
+          final url = await FirebaseStorageService.uploadVideo(
+            f,
+            customPath: path,
+          );
+          debugPrint('🎬 Upload abgeschlossen: $url');
+
+          if (url != null) {
+            if (!mounted) return;
+            setState(() {
+              _videoUrls.add(url);
+            });
+            debugPrint('🎬 Video zu Liste hinzugefügt, persistiere...');
+            // Sofort persistieren (Firestore aktualisieren)
+            await _persistTextFileUrls();
+            debugPrint('🎬 Video erfolgreich gespeichert!');
+
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Video erfolgreich hochgeladen')),
+              );
+            }
+          } else {
+            debugPrint('❌ Upload fehlgeschlagen: url ist null');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Video-Upload fehlgeschlagen')),
+              );
+            }
+          }
+        } else {
+          debugPrint('🎬 Kein Video ausgewählt oder Avatar-Daten fehlen');
+        }
+      } else {
+        debugPrint('🎬 Öffne Kamera...');
+        final x = await _picker.pickVideo(
+          source: ImageSource.camera,
+          maxDuration: const Duration(minutes: 5),
+        );
+        debugPrint('🎬 Video aufgenommen: ${x?.path}');
+
+        if (x != null && _avatarData != null) {
+          setState(() => _isDirty = true);
+          final String uid = FirebaseAuth.instance.currentUser!.uid;
+          final String avatarId = _avatarData!.id;
+          final File f = File(x.path);
+          final String path =
+              'avatars/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_cam.mp4';
+
+          debugPrint('🎬 Starte Upload: $path');
+          final url = await FirebaseStorageService.uploadVideo(
+            f,
+            customPath: path,
+          );
+          debugPrint('🎬 Upload abgeschlossen: $url');
+
+          if (url != null) {
+            if (!mounted) return;
+            setState(() {
+              _videoUrls.add(url);
+            });
+            debugPrint('🎬 Video zu Liste hinzugefügt, persistiere...');
+            // Sofort persistieren (Firestore aktualisieren)
+            await _persistTextFileUrls();
+            debugPrint('🎬 Video erfolgreich gespeichert!');
+
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Video erfolgreich hochgeladen')),
+              );
+            }
+          } else {
+            debugPrint('❌ Upload fehlgeschlagen: url ist null');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Video-Upload fehlgeschlagen')),
+              );
+            }
+          }
+        } else {
+          debugPrint('🎬 Kein Video aufgenommen oder Avatar-Daten fehlen');
         }
       }
-    } else {
-      final x = await _picker.pickVideo(
-        source: ImageSource.camera,
-        maxDuration: const Duration(minutes: 5),
-      );
-      if (x != null && _avatarData != null) {
-        setState(() => _isDirty = true);
-        final String uid = FirebaseAuth.instance.currentUser!.uid;
-        final String avatarId = _avatarData!.id;
-        final File f = File(x.path);
-        final String path =
-            'avatars/$uid/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_cam.mp4';
-        final url = await FirebaseStorageService.uploadVideo(
-          f,
-          customPath: path,
-        );
-        if (url != null) {
-          if (!mounted) return;
-          setState(() {
-            _videoUrls.add(url);
-          });
-          // Sofort persistieren (Firestore aktualisieren)
-          await _persistTextFileUrls();
-        }
+    } catch (e, stack) {
+      debugPrint('❌ FEHLER bei Video-Upload: $e');
+      debugPrint('Stack: $stack');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Fehler beim Video-Upload: $e')));
       }
     }
   }
@@ -3976,7 +4149,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             final file = File(sel.path!);
             final String base = p.basename(file.path);
             final String audioPath =
-                'avatars/$uid/$avatarId/audio/${DateTime.now().millisecondsSinceEpoch}_$i$base';
+                'avatars/$avatarId/audio/${DateTime.now().millisecondsSinceEpoch}_$i$base';
             final url = await FirebaseStorageService.uploadWithProgress(
               file,
               'audio',
@@ -4061,12 +4234,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Vorname (Pflichtfeld)
-        _buildTextField(
-          controller: _firstNameController,
+        CustomTextField(
           label: context.read<LocalizationService>().t(
             'avatars.details.firstNameLabel',
           ),
-          hint: context.read<LocalizationService>().t(
+          controller: _firstNameController,
+          hintText: context.read<LocalizationService>().t(
             'avatars.details.firstNameHint',
           ),
           validator: (value) {
@@ -4077,216 +4250,195 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             }
             return null;
           },
+          onChanged: (_) => _updateDirty(),
         ),
 
         const SizedBox(height: 16),
 
         // Spitzname (optional)
-        _buildTextField(
-          controller: _nicknameController,
+        CustomTextField(
           label: context.read<LocalizationService>().t(
             'avatars.details.nicknameLabel',
           ),
-          hint: context.read<LocalizationService>().t(
+          controller: _nicknameController,
+          hintText: context.read<LocalizationService>().t(
             'avatars.details.nicknameHint',
           ),
+          onChanged: (_) => _updateDirty(),
         ),
 
         const SizedBox(height: 16),
 
         // Nachname (optional)
-        _buildTextField(
-          controller: _lastNameController,
+        CustomTextField(
           label: context.read<LocalizationService>().t(
             'avatars.details.lastNameLabel',
           ),
-          hint: context.read<LocalizationService>().t(
+          controller: _lastNameController,
+          hintText: context.read<LocalizationService>().t(
             'avatars.details.lastNameHint',
           ),
+          onChanged: (_) => _updateDirty(),
         ),
 
         const SizedBox(height: 16),
 
-        Theme(
-          data: Theme.of(context).copyWith(
-            dividerColor: Colors.white24,
-            listTileTheme: const ListTileThemeData(
-              iconColor: AppColors.accentGreenDark,
-            ),
-          ),
-          child: ExpansionTile(
-            initiallyExpanded: false,
-            tilePadding: EdgeInsets.zero,
-            collapsedIconColor: AppColors.accentGreenDark,
-            iconColor: AppColors.accentGreenDark,
-            collapsedBackgroundColor: Colors.white.withValues(alpha: 0.02),
-            backgroundColor: Colors.white.withValues(alpha: 0.04),
-            title: Text(
-              context.read<LocalizationService>().t(
-                'avatars.details.regionTitle',
-              ),
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.accentGreenDark,
-              ),
-            ),
-            childrenPadding: const EdgeInsets.symmetric(
-              horizontal: 0,
-              vertical: 8,
-            ),
-            children: _regionEditing
-                ? [
-                    TextField(
-                      controller: _regionInputController,
-                      decoration: InputDecoration(
-                        labelText: context.read<LocalizationService>().t(
-                          'regionSearchLabel',
-                        ),
-                        hintText: context.read<LocalizationService>().t(
-                          'regionSearchHint',
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: const BorderSide(
-                            color: AppColors.accentGreenDark,
-                            width: 2,
-                          ),
-                        ),
-                      ),
-                      onChanged: (_) => setState(() {}),
+        // Adresse - immer sichtbar
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: _regionEditing
+              ? [
+                  CustomTextField(
+                    label: context.read<LocalizationService>().t(
+                      'regionSearchLabel',
                     ),
-                    const SizedBox(height: 12),
-                    _buildCountryDropdown(),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton(
-                        onPressed: _regionCanApply
-                            ? _confirmRegionSelection
-                            : null,
-                        style: TextButton.styleFrom(
-                          foregroundColor: AppColors.accentGreenDark,
-                        ),
-                        child: Text(
-                          context.read<LocalizationService>().t(
-                            'regionApplyLink',
-                          ),
-                          style: TextStyle(
-                            color: _regionCanApply
-                                ? AppColors.accentGreenDark
-                                : Colors.white24,
-                          ),
-                        ),
-                      ),
+                    controller: _regionInputController,
+                    hintText: context.read<LocalizationService>().t(
+                      'regionSearchHint',
                     ),
-                    const SizedBox(height: 4),
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        context.read<LocalizationService>().t('regionHint'),
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white24),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildCountryDropdown(),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: _regionCanApply
+                          ? _confirmRegionSelection
+                          : null,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.accentGreenDark,
                       ),
                       child: Text(
-                        _buildRegionSummary(),
+                        context.read<LocalizationService>().t(
+                          'regionApplyLink',
+                        ),
                         style: TextStyle(
-                          color:
-                              (_cityController.text.trim().isEmpty &&
-                                  _postalCodeController.text.trim().isEmpty &&
-                                  _countryController.text.trim().isEmpty)
-                              ? Colors.white24
-                              : Colors.white,
-                          fontSize: 14,
+                          color: _regionCanApply
+                              ? AppColors.accentGreenDark
+                              : Colors.white24,
                         ),
                       ),
                     ),
-                  ]
-                : [
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.06),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white24),
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _buildRegionSummary(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.edit, color: Colors.white70),
-                            tooltip: context.read<LocalizationService>().t(
-                              'regionEditTooltip',
-                            ),
-                            onPressed: () {
-                              setState(() {
-                                _regionEditing = true;
-                              });
-                            },
-                          ),
-                        ],
+                  ),
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      context.read<LocalizationService>().t('regionHint'),
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
                       ),
                     ),
-                  ],
-          ),
+                  ),
+                  // Alte Adresse NICHT anzeigen im Editing-Modus
+                ]
+              : [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.06),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            (_cityController.text.trim().isEmpty &&
+                                    _postalCodeController.text.trim().isEmpty &&
+                                    _countryController.text.trim().isEmpty)
+                                ? 'Deine Adresse'
+                                : _buildRegionSummary(),
+                            style: TextStyle(
+                              color:
+                                  (_cityController.text.trim().isEmpty &&
+                                      _postalCodeController.text
+                                          .trim()
+                                          .isEmpty &&
+                                      _countryController.text.trim().isEmpty)
+                                  ? Colors.white38
+                                  : Colors.white,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.white70),
+                          tooltip: context.read<LocalizationService>().t(
+                            'regionEditTooltip',
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _regionEditing = true;
+                              // Vorauswahl: Gespeicherte Werte in Input-Feld laden
+                              final parts = <String>[];
+                              if (_postalCodeController.text
+                                  .trim()
+                                  .isNotEmpty) {
+                                parts.add(_postalCodeController.text.trim());
+                              }
+                              if (_cityController.text.trim().isNotEmpty) {
+                                parts.add(_cityController.text.trim());
+                              }
+                              _regionInputController.text = parts.join(', ');
+                              // Land bleibt in _countryController
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
         ),
 
         const SizedBox(height: 16),
 
         // Geburtsdatum (optional)
-        _buildDateField(
-          controller: _birthDateController,
+        CustomDateField(
           label: context.read<LocalizationService>().t(
             'avatars.details.birthDateLabel',
           ),
-          hint: context.read<LocalizationService>().t(
-            'avatars.details.birthDateHint',
-          ),
-          onTap: () => _selectBirthDate(),
+          selectedDate: _birthDate,
+          onDateSelected: (date) {
+            setState(() {
+              _birthDate = date;
+              _birthDateController.text = date != null
+                  ? '${date.day}.${date.month}.${date.year}'
+                  : '';
+              _calculateAge();
+            });
+            _updateDirty();
+          },
+          lastDate: DateTime.now(),
         ),
 
         const SizedBox(height: 16),
 
         // Sterbedatum (optional)
-        _buildDateField(
-          controller: _deathDateController,
+        CustomDateField(
           label: context.read<LocalizationService>().t(
             'avatars.details.deathDateLabel',
           ),
-          hint: context.read<LocalizationService>().t(
-            'avatars.details.deathDateHint',
-          ),
-          onTap: () => _selectDeathDate(),
+          selectedDate: _deathDate,
+          onDateSelected: (date) {
+            setState(() {
+              _deathDate = date;
+              _deathDateController.text = date != null
+                  ? '${date.day}.${date.month}.${date.year}'
+                  : '';
+              _calculateAge();
+            });
+            _updateDirty();
+          },
+          firstDate: _birthDate,
+          lastDate: DateTime.now(),
         ),
 
         const SizedBox(height: 16),
@@ -4315,105 +4467,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16.0,
-              vertical: 12.0,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
             child: _buildInputFields(),
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildTextField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    String? Function(String?)? validator,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: AppColors.accentGreenDark,
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller,
-          validator: validator,
-          decoration: InputDecoration(
-            hintText: hint,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.grey.shade300),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: AppColors.accentGreenDark,
-                width: 2,
-              ),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 12,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDateField({
-    required TextEditingController controller,
-    required String label,
-    required String hint,
-    required VoidCallback onTap,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 8),
-        GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.white30),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    controller.text.isEmpty ? hint : controller.text,
-                    style: TextStyle(
-                      color: controller.text.isEmpty
-                          ? Colors.white70
-                          : Colors.white,
-                    ),
-                  ),
-                ),
-                const Icon(Icons.calendar_today, color: Colors.white70),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -4449,40 +4507,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   // Speichern-Button entfernt – Save via Diskette in der AppBar
-
-  Future<void> _selectBirthDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: DateTime.now().subtract(const Duration(days: 365 * 25)),
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
-    );
-
-    if (picked != null) {
-      setState(() {
-        _birthDate = picked;
-        _birthDateController.text = _formatDate(picked);
-        _calculateAge();
-      });
-    }
-  }
-
-  Future<void> _selectDeathDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _birthDate ?? DateTime.now(),
-      firstDate: _birthDate ?? DateTime(1900),
-      lastDate: DateTime.now(),
-    );
-
-    if (picked != null) {
-      setState(() {
-        _deathDate = picked;
-        _deathDateController.text = _formatDate(picked);
-        _calculateAge();
-      });
-    }
-  }
 
   void _calculateAge() {
     if (_birthDate != null) {
@@ -4558,7 +4582,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   f,
                   'images',
                   customPath:
-                      'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_$i.jpg',
+                      'avatars/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_$i.jpg',
                   onProgress: (v) {
                     final perFile = 1.0 / _newImageFiles.length;
                     imgProgress.value = (i * perFile) + (v * perFile);
@@ -4594,7 +4618,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   f,
                   'videos',
                   customPath:
-                      'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_$i.mp4',
+                      'avatars/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_$i.mp4',
                   onProgress: (v) {
                     final perFile = 1.0 / _newVideoFiles.length;
                     vidProgress.value = (i * perFile) + (v * perFile);
@@ -4617,7 +4641,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         String? freeTextUploadedName;
         // a) profile.txt mit Basisdaten immer aktualisieren (nicht in Liste)
         final String uid = FirebaseAuth.instance.currentUser!.uid;
-        final String profilePath = 'avatars/$uid/$avatarId/texts/profile.txt';
+        final String profilePath = 'avatars/$avatarId/texts/profile.txt';
         final String profileContent = _buildProfileTextContent(
           firstName: _firstNameController.text.trim(),
           lastName: _lastNameController.text.trim().isEmpty
@@ -4642,7 +4666,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         // b) Freitext als sichtbare Datei hochladen (in Liste aufnehmen)
         if (freeTextLocalFile != null && freeTextLocalFileName != null) {
           final storageCopyPath =
-              'avatars/$uid/$avatarId/texts/$freeTextLocalFileName';
+              'avatars/$avatarId/texts/$freeTextLocalFileName';
           final copyUrl = await FirebaseStorageService.uploadTextFile(
             freeTextLocalFile,
             customPath: storageCopyPath,
@@ -4673,8 +4697,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 final safeName = baseName.endsWith('.txt')
                     ? baseName
                     : '$baseName.txt';
-                final storagePath =
-                    'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/texts/$safeName';
+                final storagePath = 'avatars/$avatarId/texts/$safeName';
                 final url = await FirebaseStorageService.uploadWithProgress(
                   _newTextFiles[i],
                   'texts',
@@ -4702,7 +4725,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         for (int i = 0; i < _newAudioFiles.length; i++) {
           final String base = p.basename(_newAudioFiles[i].path);
           final String audioPath =
-              'avatars/${FirebaseAuth.instance.currentUser!.uid}/$avatarId/audio/${DateTime.now().millisecondsSinceEpoch}_$i$base';
+              'avatars/$avatarId/audio/${DateTime.now().millisecondsSinceEpoch}_$i$base';
           final url = await FirebaseStorageService.uploadAudio(
             _newAudioFiles[i],
             customPath: audioPath,
@@ -4775,6 +4798,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         };
 
         // 4) Avatar updaten
+        debugPrint('💾 SAVING ADDRESS:');
+        debugPrint('  City: "${_cityController.text.trim()}"');
+        debugPrint('  PostalCode: "${_postalCodeController.text.trim()}"');
+        debugPrint('  Country: "${_countryController.text.trim()}"');
+
         final updated = _avatarData!.copyWith(
           firstName: _firstNameController.text.trim(),
           nickname: _nicknameController.text.trim().isEmpty
@@ -4803,6 +4831,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           avatarImageUrl: avatarImageUrl,
           training: training,
           greetingText: _greetingController.text.trim(),
+          role: _role,
         );
 
         bool ok = false;
@@ -4814,7 +4843,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             'avatars.details.savingData',
           ),
           task: () async {
+            debugPrint('💾 Updated object city: "${updated.city}"');
+            debugPrint('💾 Updated object postalCode: "${updated.postalCode}"');
+            debugPrint('💾 Updated object country: "${updated.country}"');
+            debugPrint('💾 Calling avatarService.updateAvatar...');
             ok = await _avatarService.updateAvatar(updated);
+            debugPrint('💾 updateAvatar returned: $ok');
           },
         );
         if (!mounted) return;
@@ -5271,6 +5305,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            // Zurück zu "Meine Avatare"
+            Navigator.pushNamedAndRemoveUntil(
+              context,
+              '/avatar-list',
+              (route) => false,
+            );
+          },
+        ),
         actions: [
           if (_isDirty)
             IconButton(
@@ -5300,28 +5345,40 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ),
           ),
         ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Rundes Avatar-Bild entfernt (vollflächiger Hintergrund aktiv)
-                const SizedBox(height: 12),
-                _buildMediaSection(),
-
-                const SizedBox(height: 24),
-
-                // Eingabefelder (aufklappbar)
-                _buildPersonDataTile(),
-
-                const SizedBox(height: 32),
-
-                // Speichern-Button entfernt – Diskette in AppBar
-              ],
+        child: Column(
+          children: [
+            // Sticky Navigation Bar
+            if (_avatarData?.id != null)
+              Container(
+                color: Colors.black,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: AvatarNavBar(
+                  avatarId: _avatarData!.id,
+                  currentScreen: 'details',
+                ),
+              ),
+            // Scrollable Content
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildMediaSection(),
+                      const SizedBox(height: 24),
+                      _buildPersonDataTile(),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+                ),
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -5455,103 +5512,95 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Widget _buildCountryDropdown() {
     final loc = context.read<LocalizationService>();
     final currentValue = _countryController.text.trim();
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.white24),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value:
-              currentValue.isNotEmpty && _countryOptions.contains(currentValue)
-              ? currentValue
-              : null,
-          isExpanded: true,
-          dropdownColor: Colors.black87,
-          hint: Text(
-            loc.t('avatars.details.countryDropdownHint'),
-            style: const TextStyle(color: Colors.white70),
-          ),
-          items: _countryOptions
-              .map(
-                (c) => DropdownMenuItem<String>(
-                  value: c,
-                  child: Text(c, style: const TextStyle(color: Colors.white)),
-                ),
-              )
-              .toList(),
-          onChanged: (value) {
-            setState(() {
-              _countryController.text = value ?? '';
-            });
-            _updateDirty();
-          },
-        ),
-      ),
+
+    return CustomDropdown<String>(
+      label: loc.t('avatars.details.countryLabel'),
+      value: currentValue.isNotEmpty && _countryOptions.contains(currentValue)
+          ? currentValue
+          : null,
+      items: _countryOptions
+          .map(
+            (c) => DropdownMenuItem<String>(
+              value: c,
+              child: Text(c, style: const TextStyle(color: Colors.white)),
+            ),
+          )
+          .toList(),
+      onChanged: (value) {
+        setState(() {
+          _countryController.text = value ?? '';
+        });
+        _updateDirty();
+      },
+      hint: loc.t('avatars.details.countryDropdownHint'),
     );
   }
 
   Future<void> _confirmRegionSelection() async {
-    final loc = context.read<LocalizationService>();
     final raw = _regionInputController.text.trim();
     if (raw.isEmpty) return;
 
+    // Prüfe ob Land bereits gesetzt ist
+    final selectedCountry = _countryController.text.trim();
+
+    // WENN kein Land → Popup mit Aufforderung
+    if (selectedCountry.isEmpty) {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Land fehlt'),
+          content: const Text(
+            'Bitte gib das zugehörige Land ein (z.B. Deutschland).',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    // Versuche Adresse aufzulösen
     final result = await _resolveRegion(raw);
     final city = result['city'] ?? '';
     final postal = result['postal'] ?? '';
     final country = result['country'] ?? '';
     final hasResult = city.isNotEmpty || postal.isNotEmpty;
 
-    final summaryParts = [
-      if (postal.isNotEmpty) postal,
-      if (city.isNotEmpty) city,
-      if (country.isNotEmpty) country,
-    ];
-    final summary = summaryParts.join(', ');
-
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(loc.t('avatars.details.regionConfirmTitle')),
-        content: Text(
-          hasResult
-              ? loc.t(
-                  'avatars.details.regionConfirmMessage',
-                  params: {'summary': summary.isEmpty ? '-' : summary},
-                )
-              : loc.t('avatars.details.regionNotFound'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(loc.t('avatars.details.cancel')),
+    // WENN kein Match → Popup mit Fehlermeldung
+    if (!hasResult) {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Keine Adresse gefunden'),
+          content: const Text(
+            'Zu den eingegebenen Werten gibt es leider keine Adresse. Bitte überprüfe deine Eingabe.',
           ),
-          if (hasResult)
-            ElevatedButton(
-              onPressed: () => Navigator.pop(ctx, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accentGreenDark,
-                foregroundColor: Colors.white,
-              ),
-              child: Text(loc.t('avatars.details.confirmApply')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
             ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && hasResult) {
-      setState(() {
-        _cityController.text = city;
-        _postalCodeController.text = postal;
-        if (country.isNotEmpty) {
-          _countryController.text = country;
-        }
-        _regionInputController.clear();
-        _regionEditing = false;
-      });
-      _updateDirty();
+          ],
+        ),
+      );
+      return;
     }
+
+    // WENN Match gefunden → DIREKT SPEICHERN ohne Bestätigungs-Dialog
+    setState(() {
+      _cityController.text = city;
+      _postalCodeController.text = postal;
+      if (country.isNotEmpty) {
+        _countryController.text = country;
+      }
+      _regionInputController.clear();
+      _regionEditing = false;
+    });
+    _updateDirty();
   }
 
   Future<Map<String, String>> _resolveRegion(String rawInput) async {

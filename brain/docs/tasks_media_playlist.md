@@ -43,4 +43,3 @@ Ziel: Für jeden Avatar eine Medien-Galerie, planbare Playlists und eine an den 
 - Optional serverseitiger Scheduler; aktuell clientseitig beim Chat aktiv.
 - Tests (Widget/Service) für Playlist-Reordering und Overlay-Timing.
 
-

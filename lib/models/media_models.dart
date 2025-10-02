@@ -1,4 +1,4 @@
-enum AvatarMediaType { image, video }
+enum AvatarMediaType { image, video, audio }
 
 class AvatarMedia {
   final String id;
@@ -28,12 +28,23 @@ class AvatarMedia {
   bool get isLandscape => aspectRatio != null && aspectRatio! > 1.0;
 
   factory AvatarMedia.fromMap(Map<String, dynamic> map) {
+    final typeStr = (map['type'] as String?) ?? 'image';
+    final AvatarMediaType mediaType;
+    switch (typeStr) {
+      case 'video':
+        mediaType = AvatarMediaType.video;
+        break;
+      case 'audio':
+        mediaType = AvatarMediaType.audio;
+        break;
+      default:
+        mediaType = AvatarMediaType.image;
+    }
+
     return AvatarMedia(
       id: (map['id'] as String?) ?? '',
       avatarId: (map['avatarId'] as String?) ?? '',
-      type: ((map['type'] as String?) ?? 'image') == 'video'
-          ? AvatarMediaType.video
-          : AvatarMediaType.image,
+      type: mediaType,
       url: (map['url'] as String?) ?? '',
       thumbUrl: map['thumbUrl'] as String?,
       createdAt: (map['createdAt'] as num?)?.toInt() ?? 0,
@@ -43,15 +54,29 @@ class AvatarMedia {
     );
   }
 
-  Map<String, dynamic> toMap() => {
-    'id': id,
-    'avatarId': avatarId,
-    'type': type == AvatarMediaType.video ? 'video' : 'image',
-    'url': url,
-    'thumbUrl': thumbUrl,
-    'createdAt': createdAt,
-    'durationMs': durationMs,
-    if (aspectRatio != null) 'aspectRatio': aspectRatio,
-    if (tags != null) 'tags': tags,
-  };
+  Map<String, dynamic> toMap() {
+    String typeStr;
+    switch (type) {
+      case AvatarMediaType.video:
+        typeStr = 'video';
+        break;
+      case AvatarMediaType.audio:
+        typeStr = 'audio';
+        break;
+      case AvatarMediaType.image:
+        typeStr = 'image';
+    }
+
+    return {
+      'id': id,
+      'avatarId': avatarId,
+      'type': typeStr,
+      'url': url,
+      'thumbUrl': thumbUrl,
+      'createdAt': createdAt,
+      'durationMs': durationMs,
+      if (aspectRatio != null) 'aspectRatio': aspectRatio,
+      if (tags != null) 'tags': tags,
+    };
+  }
 }

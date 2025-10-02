@@ -55,4 +55,3 @@
 ## DoD Ausschnitte
 - Chat über `/avatar/chat` speichert in Firestore; p95 < 250 ms für Pinecone‑Query; TTS‑Start < 2s.
 
-

@@ -10,9 +10,10 @@ import '../services/playlist_service.dart';
 import '../services/media_service.dart';
 import '../models/media_models.dart';
 import '../theme/app_theme.dart';
+import '../widgets/custom_text_field.dart';
+import '../widgets/custom_dropdown.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
-import '../services/language_service.dart';
+// removed provider/language_service dependency from this screen
 
 class PlaylistEditScreen extends StatefulWidget {
   final Playlist playlist;
@@ -30,6 +31,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
   final _mediaSvc = MediaService();
   List<PlaylistItem> _items = [];
   Map<String, AvatarMedia> _mediaMap = {};
+  bool _saving = false; // verhindert doppelte Saves/Races beim Navigieren
 
   // Cover Image State
   String? _coverImageUrl;
@@ -60,6 +62,56 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
   DateTime? _specialStartDate;
   DateTime? _specialEndDate;
   final Map<DateTime, Set<TimeSlot>> _specialDaySlots = {};
+
+  // Normalisiert Sondertermine auf "pro Kalendertag ein Eintrag",
+  // dedupliziert TimeSlots und sortiert sie stabil (0..5).
+  List<SpecialSchedule> _normalizeSpecials(List<SpecialSchedule> input) {
+    if (input.isEmpty) return const <SpecialSchedule>[];
+    DateTime endOfDay(DateTime d) =>
+        DateTime(d.year, d.month, d.day, 23, 59, 59, 999);
+    final Map<DateTime, Set<TimeSlot>> dayToSlots = {};
+    for (final sp in input) {
+      DateTime s;
+      DateTime e;
+      try {
+        s = DateTime.fromMillisecondsSinceEpoch(sp.startDate);
+        e = DateTime.fromMillisecondsSinceEpoch(sp.endDate);
+      } catch (_) {
+        continue;
+      }
+      if (e.isBefore(s)) {
+        final tmp = s;
+        s = e;
+        e = tmp;
+      }
+      DateTime c = DateTime(s.year, s.month, s.day);
+      final last = DateTime(e.year, e.month, e.day);
+      while (!c.isAfter(last)) {
+        final key = DateTime(c.year, c.month, c.day);
+        dayToSlots.putIfAbsent(key, () => <TimeSlot>{});
+        dayToSlots[key]!.addAll(sp.timeSlots);
+        c = c.add(const Duration(days: 1));
+      }
+    }
+    final out = <SpecialSchedule>[];
+    final keys = dayToSlots.keys.toList()..sort();
+    for (final day in keys) {
+      final slots = dayToSlots[day]!.toList()
+        ..sort((a, b) => a.index.compareTo(b.index));
+      out.add(
+        SpecialSchedule(
+          startDate: DateTime(
+            day.year,
+            day.month,
+            day.day,
+          ).millisecondsSinceEpoch,
+          endDate: endOfDay(day).millisecondsSinceEpoch,
+          timeSlots: slots,
+        ),
+      );
+    }
+    return out;
+  }
 
   // Berechnet Ostersonntag für ein bestimmtes Jahr (Gauss-Algorithmus)
   static DateTime _calculateEaster(int year) {
@@ -122,36 +174,30 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
         Row(
           children: [
             Expanded(
-              child: TextField(
+              child: CustomTextField(
+                label: 'Aktiv in X Tagen',
                 controller: _tgActiveDays,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Aktiv in X Tagen',
-                  hintText: 'z. B. 30',
-                ),
+                hintText: 'z. B. 30',
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: TextField(
+              child: CustomTextField(
+                label: 'Neu registriert in X Tagen',
                 controller: _tgNewUserDays,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Neu registriert in X Tagen',
-                  hintText: 'z. B. 7',
-                ),
+                hintText: 'z. B. 7',
               ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        TextField(
+        CustomTextField(
+          label: 'Priorität (höher gewinnt)',
           controller: _tgPriority,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Priorität (höher gewinnt)',
-            hintText: 'z. B. 10',
-          ),
+          hintText: 'z. B. 10',
         ),
       ],
     );
@@ -286,7 +332,12 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     if (_specialSchedules.isNotEmpty) {
       // Fülle _specialDaySlots
       for (final sp in _specialSchedules) {
-        final d = DateTime.fromMillisecondsSinceEpoch(sp.startDate);
+        DateTime d;
+        try {
+          d = DateTime.fromMillisecondsSinceEpoch(sp.startDate);
+        } catch (_) {
+          continue;
+        }
         final key = DateTime(d.year, d.month, d.day);
         _specialDaySlots.putIfAbsent(key, () => <TimeSlot>{});
         _specialDaySlots[key]!.addAll(sp.timeSlots);
@@ -294,11 +345,20 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
       // Setze Start/Ende aus min/max
       final dates =
           _specialSchedules
-              .map((s) => DateTime.fromMillisecondsSinceEpoch(s.startDate))
+              .map((s) {
+                try {
+                  return DateTime.fromMillisecondsSinceEpoch(s.startDate);
+                } catch (_) {
+                  return null;
+                }
+              })
+              .whereType<DateTime>()
               .toList()
             ..sort();
-      _specialStartDate = dates.first;
-      _specialEndDate = dates.last;
+      if (dates.isNotEmpty) {
+        _specialStartDate = dates.first;
+        _specialEndDate = dates.last;
+      }
       // Wähle initial den ersten aktiven Wochentag
       _selectedSpecialWeekday = _specialStartDate!.weekday;
     } else {
@@ -373,8 +433,10 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                         withCircleUi: false,
                         baseColor: Colors.black,
                         maskColor: Colors.black38,
-                        onCropped: (cropped) {
-                          result = cropped;
+                        onCropped: (cropResult) {
+                          if (cropResult is cyi.CropSuccess) {
+                            result = cropResult.croppedImage;
+                          }
                           Navigator.pop(ctx);
                         },
                       ),
@@ -529,10 +591,12 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
 
     // Convert Map to List<WeeklySchedule>, FILTER OUT empty timeslots
     final weeklySchedules = _weeklySchedule.entries
-        .where(
-          (e) => e.value.isNotEmpty,
-        ) // NUR Wochentage mit mind. 1 Zeitfenster
-        .map((e) => WeeklySchedule(weekday: e.key, timeSlots: e.value.toList()))
+        .where((e) => e.value.isNotEmpty)
+        .map((e) {
+          final sorted = e.value.toList()
+            ..sort((a, b) => a.index.compareTo(b.index));
+          return WeeklySchedule(weekday: e.key, timeSlots: sorted);
+        })
         .toList();
 
     print(
@@ -551,6 +615,8 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
       for (final entry in _specialDaySlots.entries) {
         if (entry.value.isEmpty) continue;
         final day = entry.key;
+        final slots = entry.value.toList()
+          ..sort((a, b) => a.index.compareTo(b.index));
         specialFromInline.add(
           SpecialSchedule(
             startDate: DateTime(
@@ -559,7 +625,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
               day.day,
             ).millisecondsSinceEpoch,
             endDate: endOfDay(day).millisecondsSinceEpoch,
-            timeSlots: entry.value.toList(),
+            timeSlots: slots,
           ),
         );
       }
@@ -568,6 +634,10 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     final specialSchedules = specialFromInline.isNotEmpty
         ? specialFromInline
         : _specialSchedules; // Fallback auf bestehende Liste
+    // Specials robust normalisieren (keine Duplikate, pro Tag 1 Eintrag)
+    final ssOut = _normalizeSpecials(specialSchedules);
+    final wsOut =
+        weeklySchedules; // Weekly immer mit-speichern (keine Löschung)
 
     print(
       '🔍 DEBUG: Saving specialSchedules: ${specialSchedules.length} entries',
@@ -580,8 +650,8 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
       showAfterSec: int.tryParse(_showAfter.text.trim()) ?? 0,
       highlightTag: highlightText.isNotEmpty ? highlightText : null,
       coverImageUrl: _coverImageUrl,
-      weeklySchedules: weeklySchedules,
-      specialSchedules: specialSchedules,
+      weeklySchedules: wsOut,
+      specialSchedules: ssOut,
       targeting: _targetingEnabled
           ? {
               if (_tgGender != 'any') 'gender': _tgGender,
@@ -603,8 +673,21 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     print('🔍 DEBUG: Playlist.toMap() keys: ${p.toMap().keys}');
     print('🔍 DEBUG: weeklySchedules in map: ${p.toMap()['weeklySchedules']}');
 
-    await _svc.update(p);
-    if (mounted) Navigator.pop(context, true); // Return true to trigger refresh
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _svc.update(p);
+      if (mounted)
+        Navigator.pop(context, true); // Return true to trigger refresh
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Speichern fehlgeschlagen: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   void _toggleTimeSlot(int weekday, TimeSlot slot) {
@@ -735,18 +818,13 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Name
-                      TextField(
-                        controller: _name,
-                        decoration: const InputDecoration(labelText: 'Name'),
-                      ),
+                      CustomTextField(label: 'Name', controller: _name),
                       const SizedBox(height: 12),
 
                       // Show After
-                      TextField(
+                      CustomTextField(
+                        label: 'Anzeigezeit (Sek.) nach Chat-Beginn',
                         controller: _showAfter,
-                        decoration: const InputDecoration(
-                          labelText: 'Anzeigezeit (Sek.) nach Chat-Beginn',
-                        ),
                         keyboardType: TextInputType.number,
                       ),
                       // Hinweis: Highlight/Anlass wird jetzt in "Sondertermine" gesetzt (kein Feld mehr neben dem Bild)
@@ -759,46 +837,32 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
 
             // Zeitplan / Sondertermine Section
             // Dropdown für Typ-Auswahl
-            Container(
-              height: 40,
-              decoration: BoxDecoration(
-                gradient: Theme.of(
-                  context,
-                ).extension<AppGradients>()?.magentaBlue,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: DropdownButtonHideUnderline(
-                child: DropdownButton<String>(
-                  value: _playlistType,
-                  isExpanded: true,
-                  dropdownColor: Colors.grey.shade800,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+            CustomDropdown<String>(
+              label: 'Typ',
+              value: _playlistType,
+              items: const [
+                DropdownMenuItem(
+                  value: 'weekly',
+                  child: Text(
+                    'Zeitplan',
+                    style: TextStyle(color: Colors.white),
                   ),
-                  icon: const Icon(
-                    Icons.arrow_drop_down,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                  items: const [
-                    DropdownMenuItem(value: 'weekly', child: Text('Zeitplan')),
-                    DropdownMenuItem(
-                      value: 'special',
-                      child: Text('Sondertermine'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setState(() {
-                        _playlistType = value;
-                      });
-                    }
-                  },
                 ),
-              ),
+                DropdownMenuItem(
+                  value: 'special',
+                  child: Text(
+                    'Sondertermine',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() {
+                    _playlistType = value;
+                  });
+                }
+              },
             ),
             const SizedBox(height: 8),
 
@@ -1060,7 +1124,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                     ),
                     icon: const Icon(Icons.remove_circle_outline, size: 16),
                     label: Text(
-                      '${_weekdayShort(_selectedWeekday!)} entfernen',
+                      _weekdayShort(_selectedWeekday!),
                       style: const TextStyle(fontSize: 12),
                     ),
                   ),
@@ -1560,8 +1624,12 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                         gradient: active
                             ? LinearGradient(
                                 colors: [
-                                  const Color(0xFFE91E63).withOpacity(0.6),
-                                  const Color(0xFF8AB4F8).withOpacity(0.6),
+                                  const Color(
+                                    0xFFE91E63,
+                                  ).withValues(alpha: 0.6),
+                                  const Color(
+                                    0xFF8AB4F8,
+                                  ).withValues(alpha: 0.6),
                                 ],
                               )
                             : null,
@@ -1569,7 +1637,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
                           color: active
-                              ? const Color(0xFFE91E63).withOpacity(0.8)
+                              ? const Color(0xFFE91E63).withValues(alpha: 0.8)
                               : Colors.grey.shade600,
                           width: 2,
                         ),
@@ -1629,7 +1697,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                   ),
                   icon: const Icon(Icons.remove_circle_outline, size: 16),
                   label: Text(
-                    '${_weekdayShort(_selectedSpecialWeekday!)} entfernen',
+                    _weekdayShort(_selectedSpecialWeekday!),
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),
@@ -1642,12 +1710,10 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
   }
 
   String _fmt(DateTime d) {
-    // Format nach Nutzer-Sprache
+    // Format nach UI-Locale (sicher, ohne Provider-Abhängigkeit)
     try {
-      final lang = context.read<LanguageService>().languageCode ?? 'de';
-      // Fallback: deutsches Format, z.B. 24.12.2025
-      final df = DateFormat.yMMMd(lang);
-      return df.format(d);
+      final locale = Localizations.localeOf(context).toLanguageTag();
+      return DateFormat.yMMMd(locale).format(d);
     } catch (_) {
       String two(int n) => n.toString().padLeft(2, '0');
       return '${d.year}-${two(d.month)}-${two(d.day)}';
@@ -1720,13 +1786,10 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Eigener Anlass Input
-                TextField(
+                CustomTextField(
+                  label: 'Eigener Anlass',
                   controller: customController,
-                  decoration: const InputDecoration(
-                    labelText: 'Eigener Anlass',
-                    hintText: 'z.B. Firmenjubiläum, Abschlussfeier...',
-                    border: OutlineInputBorder(),
-                  ),
+                  hintText: 'z.B. Firmenjubiläum, Abschlussfeier...',
                 ),
                 const SizedBox(height: 12),
                 Align(

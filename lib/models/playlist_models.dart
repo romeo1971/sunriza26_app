@@ -20,12 +20,36 @@ class WeeklySchedule {
     'timeSlots': timeSlots.map((t) => t.index).toList(),
   };
 
-  factory WeeklySchedule.fromMap(Map<String, dynamic> map) => WeeklySchedule(
-    weekday: (map['weekday'] as num?)?.toInt() ?? 1,
-    timeSlots: ((map['timeSlots'] as List?)?.cast<num>() ?? [])
-        .map((i) => TimeSlot.values[i.toInt()])
-        .toList(),
-  );
+  factory WeeklySchedule.fromMap(Map<String, dynamic> map) {
+    // weekday robust parsen und auf 1..7 begrenzen
+    int parsedWeekday;
+    final rawWeekday = map['weekday'];
+    if (rawWeekday is num) {
+      parsedWeekday = rawWeekday.toInt();
+    } else if (rawWeekday is String) {
+      parsedWeekday = int.tryParse(rawWeekday) ?? 1;
+    } else {
+      parsedWeekday = 1;
+    }
+    if (parsedWeekday < 1 || parsedWeekday > 7) parsedWeekday = 1;
+
+    // timeSlots robust parsen und auf gültige Indizes (0..5) filtern
+    final rawList = map['timeSlots'];
+    final List<TimeSlot> slots = [];
+    if (rawList is List) {
+      for (final v in rawList) {
+        int? idx;
+        if (v is num) idx = v.toInt();
+        if (v is String) idx = int.tryParse(v);
+        if (idx != null && idx >= 0 && idx < TimeSlot.values.length) {
+          final ts = TimeSlot.values[idx];
+          if (!slots.contains(ts)) slots.add(ts);
+        }
+      }
+    }
+
+    return WeeklySchedule(weekday: parsedWeekday, timeSlots: slots);
+  }
 }
 
 // Sondertermin: Datumsspanne + Zeitfenster
@@ -46,13 +70,38 @@ class SpecialSchedule {
     'timeSlots': timeSlots.map((t) => t.index).toList(),
   };
 
-  factory SpecialSchedule.fromMap(Map<String, dynamic> map) => SpecialSchedule(
-    startDate: (map['startDate'] as num?)?.toInt() ?? 0,
-    endDate: (map['endDate'] as num?)?.toInt() ?? 0,
-    timeSlots: ((map['timeSlots'] as List?)?.cast<num>() ?? [])
-        .map((i) => TimeSlot.values[i.toInt()])
-        .toList(),
-  );
+  factory SpecialSchedule.fromMap(Map<String, dynamic> map) {
+    int parseInt(dynamic v) {
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v) ?? 0;
+      return 0;
+    }
+
+    int start = parseInt(map['startDate']);
+    int end = parseInt(map['endDate']);
+    if (start > 0 && end > 0 && end < start) {
+      // vertauschte Werte korrigieren
+      final tmp = start;
+      start = end;
+      end = tmp;
+    }
+
+    final rawList = map['timeSlots'];
+    final List<TimeSlot> slots = [];
+    if (rawList is List) {
+      for (final v in rawList) {
+        int? idx;
+        if (v is num) idx = v.toInt();
+        if (v is String) idx = int.tryParse(v);
+        if (idx != null && idx >= 0 && idx < TimeSlot.values.length) {
+          final ts = TimeSlot.values[idx];
+          if (!slots.contains(ts)) slots.add(ts);
+        }
+      }
+    }
+
+    return SpecialSchedule(startDate: start, endDate: end, timeSlots: slots);
+  }
 }
 
 class Playlist {
@@ -96,28 +145,75 @@ class Playlist {
   });
 
   factory Playlist.fromMap(Map<String, dynamic> map) {
+    int parseInt(dynamic v) {
+      if (v is num) return v.toInt();
+      if (v is String) return int.tryParse(v) ?? 0;
+      return 0;
+    }
+
+    String? parseString(dynamic v) => v is String ? v : null;
+
+    // weeklySchedules robust lesen
+    final List<WeeklySchedule> weekly = [];
+    final rawWeekly = map['weeklySchedules'];
+    if (rawWeekly is List) {
+      for (final e in rawWeekly) {
+        if (e is Map<String, dynamic>) {
+          try {
+            weekly.add(WeeklySchedule.fromMap(e));
+          } catch (_) {
+            // skip invalid entry
+          }
+        }
+      }
+    }
+
+    // specialSchedules robust lesen
+    final List<SpecialSchedule> specials = [];
+    final rawSpecials = map['specialSchedules'];
+    if (rawSpecials is List) {
+      for (final e in rawSpecials) {
+        if (e is Map<String, dynamic>) {
+          try {
+            specials.add(SpecialSchedule.fromMap(e));
+          } catch (_) {
+            // skip invalid entry
+          }
+        }
+      }
+    }
+
+    // targeting als Map<String, dynamic> absichern
+    Map<String, dynamic>? targeting;
+    final rawTargeting = map['targeting'];
+    if (rawTargeting is Map) {
+      targeting = rawTargeting.map((key, value) => MapEntry('$key', value));
+    }
+
+    // scheduleMode nur erlaubte Werte
+    final rawMode = parseString(map['scheduleMode']);
+    final String? scheduleMode = (rawMode == 'weekly' || rawMode == 'special')
+        ? rawMode
+        : null;
+
     return Playlist(
-      id: (map['id'] as String?) ?? '',
-      avatarId: (map['avatarId'] as String?) ?? '',
-      name: (map['name'] as String?) ?? '',
-      showAfterSec: (map['showAfterSec'] as num?)?.toInt() ?? 0,
-      highlightTag: map['highlightTag'] as String?,
-      coverImageUrl: map['coverImageUrl'] as String?,
-      weeklySchedules:
-          ((map['weeklySchedules'] as List?)?.cast<Map<String, dynamic>>() ??
-                  [])
-              .map((m) => WeeklySchedule.fromMap(m))
-              .toList(),
-      specialSchedules:
-          ((map['specialSchedules'] as List?)?.cast<Map<String, dynamic>>() ??
-                  [])
-              .map((m) => SpecialSchedule.fromMap(m))
-              .toList(),
-      createdAt: (map['createdAt'] as num?)?.toInt() ?? 0,
-      updatedAt: (map['updatedAt'] as num?)?.toInt() ?? 0,
-      targeting: (map['targeting'] as Map<String, dynamic>?),
-      priority: (map['priority'] as num?)?.toInt(),
-      scheduleMode: map['scheduleMode'] as String?,
+      id: parseString(map['id']) ?? '',
+      avatarId: parseString(map['avatarId']) ?? '',
+      name: parseString(map['name']) ?? '',
+      showAfterSec: parseInt(map['showAfterSec']),
+      highlightTag: parseString(map['highlightTag']),
+      coverImageUrl: parseString(map['coverImageUrl']),
+      weeklySchedules: weekly,
+      specialSchedules: specials,
+      createdAt: parseInt(map['createdAt']),
+      updatedAt: parseInt(map['updatedAt']),
+      targeting: targeting,
+      priority: (map['priority'] is num)
+          ? (map['priority'] as num).toInt()
+          : (map['priority'] is String
+                ? int.tryParse(map['priority'] as String)
+                : null),
+      scheduleMode: scheduleMode,
     );
   }
 

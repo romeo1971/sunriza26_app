@@ -48,9 +48,11 @@ class FirebaseDiagnostics {
       result['rtdb'] = {'ok': false, 'error': e.toString()};
     }
 
-    // Storage list (avatars/uid)
+    // Storage list - zählt ALLE Avatare des Users (Legacy-Path-Struktur)
+    // HINWEIS: Neue Architektur verwendet avatars/{avatarId}/..., nicht avatars/{userId}/
     try {
       if (user != null) {
+        // Diagnostischer Zugriff auf Legacy-Struktur (falls vorhanden)
         final list = await _st.ref('avatars/${user.uid}').listAll();
         result['storage'] = {'ok': true, 'files': list.items.length};
       } else {

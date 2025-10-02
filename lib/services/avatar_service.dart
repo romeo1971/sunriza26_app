@@ -38,7 +38,7 @@ class AvatarService {
         avatarImageUrl = await FirebaseStorageService.uploadImage(
           avatarImage,
           customPath:
-              'avatars/${user.uid}/avatar_${avatarId}_${now.millisecondsSinceEpoch}.jpg',
+              'avatars/$avatarId/avatar_${now.millisecondsSinceEpoch}.jpg',
         );
       }
 
@@ -49,7 +49,7 @@ class AvatarService {
           final url = await FirebaseStorageService.uploadImage(
             images[i],
             customPath:
-                'avatars/${user.uid}/images/${avatarId}_${now.millisecondsSinceEpoch}_$i.jpg',
+                'avatars/$avatarId/images/${now.millisecondsSinceEpoch}_$i.jpg',
           );
           if (url != null) imageUrls.add(url);
         }
@@ -62,7 +62,7 @@ class AvatarService {
           final url = await FirebaseStorageService.uploadVideo(
             videos[i],
             customPath:
-                'avatars/${user.uid}/videos/${avatarId}_${now.millisecondsSinceEpoch}_$i.mp4',
+                'avatars/$avatarId/videos/${now.millisecondsSinceEpoch}_$i.mp4',
           );
           if (url != null) videoUrls.add(url);
         }
@@ -75,7 +75,7 @@ class AvatarService {
           final url = await FirebaseStorageService.uploadTextFile(
             textFiles[i],
             customPath:
-                'avatars/${user.uid}/texts/${avatarId}_${now.millisecondsSinceEpoch}_$i.txt',
+                'avatars/$avatarId/texts/${now.millisecondsSinceEpoch}_$i.txt',
           );
           if (url != null) textFileUrls.add(url);
         }
@@ -263,7 +263,7 @@ class AvatarService {
           final url = await FirebaseStorageService.uploadImage(
             images[i],
             customPath:
-                'avatars/${user.uid}/images/${avatarId}_${now.millisecondsSinceEpoch}_$i.jpg',
+                'avatars/$avatarId/images/${now.millisecondsSinceEpoch}_$i.jpg',
           );
           if (url != null) newImageUrls.add(url);
         }
@@ -275,7 +275,7 @@ class AvatarService {
           final url = await FirebaseStorageService.uploadVideo(
             videos[i],
             customPath:
-                'avatars/${user.uid}/videos/${avatarId}_${now.millisecondsSinceEpoch}_$i.mp4',
+                'avatars/$avatarId/videos/${now.millisecondsSinceEpoch}_$i.mp4',
           );
           if (url != null) newVideoUrls.add(url);
         }
@@ -287,7 +287,7 @@ class AvatarService {
           final url = await FirebaseStorageService.uploadTextFile(
             textFiles[i],
             customPath:
-                'avatars/${user.uid}/texts/${avatarId}_${now.millisecondsSinceEpoch}_$i.txt',
+                'avatars/$avatarId/texts/${now.millisecondsSinceEpoch}_$i.txt',
           );
           if (url != null) newTextFileUrls.add(url);
         }

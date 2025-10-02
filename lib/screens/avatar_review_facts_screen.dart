@@ -2,11 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:sunriza26/services/fact_review_service.dart';
 import 'package:provider/provider.dart';
 import 'package:sunriza26/services/localization_service.dart';
+import '../widgets/avatar_nav_bar.dart';
+import '../services/avatar_service.dart';
 
 class AvatarReviewFactsScreen extends StatefulWidget {
   final String avatarId;
+  final String? fromScreen; // 'avatar-list' oder null
 
-  const AvatarReviewFactsScreen({super.key, required this.avatarId});
+  const AvatarReviewFactsScreen({
+    super.key,
+    required this.avatarId,
+    this.fromScreen,
+  });
 
   @override
   State<AvatarReviewFactsScreen> createState() =>
@@ -24,12 +31,16 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
   int? _cursor;
   String _statusFilter = 'pending';
   final Set<String> _processing = {};
+  double _scrollOffset = 0.0;
 
   @override
   void initState() {
     super.initState();
     _fetchFacts(reset: true);
-    _scrollController.addListener(_onScroll);
+    _scrollController.addListener(() {
+      _onScroll();
+      setState(() => _scrollOffset = _scrollController.offset);
+    });
   }
 
   @override
@@ -138,16 +149,55 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
     await _fetchFacts(reset: true);
   }
 
+  void _handleBackNavigation(BuildContext context) async {
+    if (widget.fromScreen == 'avatar-list') {
+      // Von "Meine Avatare" → zurück zu "Meine Avatare" (ALLE Screens schließen)
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        '/avatar-list',
+        (route) => false,
+      );
+    } else {
+      // Von anderen Screens → zurück zu Avatar Details
+      final avatarService = AvatarService();
+      final avatar = await avatarService.getAvatar(widget.avatarId);
+      if (avatar != null && context.mounted) {
+        Navigator.pushReplacementNamed(
+          context,
+          '/avatar-details',
+          arguments: avatar,
+        );
+      } else {
+        Navigator.pop(context);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final opacity = (_scrollOffset / 150.0).clamp(0.0, 1.0);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Faktenfreigabe'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => _handleBackNavigation(context),
+        ),
       ),
       body: Column(
         children: [
+          // Sticky Navigation mit dynamischem Hintergrund
+          Container(
+            color: Colors.black.withValues(alpha: opacity),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: AvatarNavBar(
+              avatarId: widget.avatarId,
+              currentScreen: 'facts',
+            ),
+          ),
           _buildFilterBar(),
           Expanded(
             child: RefreshIndicator(

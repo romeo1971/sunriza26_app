@@ -58,7 +58,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   AvatarData? _avatarData;
   final AudioPlayer _player = AudioPlayer();
   String? _lastRecordingPath;
-  final Record _recorder = Record();
+  final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Amplitude>? _ampSub;
   DateTime? _segmentStartAt;
   int _silenceMs = 0;
@@ -869,8 +869,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   Future<void> _startNewSegment() async {
-    // macOS/iOS: kein eigener Pfad übergeben → Plugin erzeugt gültige File-URL
-    await _recorder.start(encoder: AudioEncoder.wav, samplingRate: 16000);
+    // Temporären Pfad für Aufnahme generieren
+    final dir = await getTemporaryDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final path = '${dir.path}/segment_$timestamp.wav';
+    
+    await _recorder.start(
+      RecordConfig(
+        encoder: AudioEncoder.wav,
+        sampleRate: 16000,
+      ),
+      path: path,
+    );
     _segmentStartAt = DateTime.now();
     _ampSub?.cancel();
     try {
