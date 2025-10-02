@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -1597,34 +1598,21 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // cardWidth ist die responsive Basis-Breite (120-180px)
     double aspectRatio = it.aspectRatio ?? (9 / 16); // Default Portrait
 
-    // Audio: Breite wie 7 Navi-Buttons (40px * 7 + 8px * 6 = 328px), Höhe 30% mehr
+    // Audio: Breite wie 7 Navi-Buttons (40px * 7 + 8px * 6 = 328px), Höhe mit Platz für Tags
     if (it.type == AvatarMediaType.audio) {
       const double audioCardWidth =
           328.0; // 7 Buttons (40px) + 6 Abstände (8px)
-      const double audioCardHeight = 104.0; // 80px * 1.3 = 104px
+      const double audioCardHeight =
+          128.0; // 104px + 24px für Tags (Name + 8px + Tags)
 
-      return GestureDetector(
-        onTap: () {
-          if (_isDeleteMode) {
-            setState(() {
-              if (selected) {
-                _selectedMediaIds.remove(it.id);
-              } else {
-                _selectedMediaIds.add(it.id);
-              }
-            });
-          } else {
-            _openViewer(it);
-          }
-        },
-        child: _buildAudioCard(
-          it,
-          audioCardWidth,
-          audioCardHeight,
-          isInPlaylist,
-          usedInPlaylists,
-          selected,
-        ),
+      // KEIN GestureDetector mehr - alle Interaktionen sind in _buildAudioCard!
+      return _buildAudioCard(
+        it,
+        audioCardWidth,
+        audioCardHeight,
+        isInPlaylist,
+        usedInPlaylists,
+        selected,
       );
     }
 
@@ -2393,221 +2381,476 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     return false;
   }
 
+  /// Audio-Preview für Tags-Dialog im Audio-Card-Style
+  Widget _buildAudioPreviewForDialog(AvatarMedia media) {
+    final isPlaying = _playingAudioUrl == media.url;
+    final progress = _audioProgress[media.url] ?? 0.0;
+    final currentTime = _audioCurrentTime[media.url] ?? Duration.zero;
+    final totalTime = _audioTotalTime[media.url] ?? Duration.zero;
+    final fileName =
+        media.originalFileName ??
+        Uri.parse(media.url).pathSegments.last.split('?').first;
+
+    return Container(
+      height: 180,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
+        ),
+      ),
+      child: Stack(
+        children: [
+          // Waveform - volle Breite, VERTIKAL MITTIG (ZUERST, damit Buttons darüber liegen)
+          Positioned(
+            left: 20,
+            right: 20,
+            top: 0,
+            bottom: 32, // Minimaler Platz für Name/Zeit unten (32px total)
+            child: GestureDetector(
+              onTap: () {
+                _toggleAudioPlayback(media);
+                // Dialog neu bauen, damit Play/Pause Icon aktualisiert wird
+                if (mounted) setState(() {});
+              },
+              child: Center(
+                child: ClipRect(
+                  clipBehavior: Clip.hardEdge,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return _buildCompactWaveform(
+                        availableWidth: constraints.maxWidth,
+                        progress: progress,
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // Play/Pause + Restart Buttons ÜBER der Waveform, VERTIKAL MITTIG (höherer Z-Index)
+          Positioned(
+            left: 0,
+            right: 0,
+            top: 0,
+            bottom: 32, // Minimaler Platz für Name/Zeit unten (32px total)
+            child: Center(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Play/Pause Button
+                  GestureDetector(
+                    onTap: () {
+                      _toggleAudioPlayback(media);
+                      // Timer wird Dialog automatisch aktualisieren
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFFE91E63), // Magenta
+                            AppColors.lightBlue, // Blau
+                            Color(0xFF00E5FF), // Cyan
+                          ],
+                          stops: [0.0, 0.6, 1.0],
+                        ),
+                      ),
+                      child: Icon(
+                        isPlaying ? Icons.pause : Icons.play_arrow,
+                        size: 32,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                  // Restart Button (nur wenn Audio läuft oder pausiert)
+                  if (progress > 0.0 || isPlaying)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 12),
+                      child: GestureDetector(
+                        onTap: () {
+                          _restartAudio(media);
+                          // Timer wird Dialog automatisch aktualisieren
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: const Color(0x60FFFFFF),
+                          ),
+                          child: const Icon(
+                            Icons.replay,
+                            size: 22,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          // NAME und ZEIT - ABSTAND REDUZIERT (roter Kasten!)
+          Positioned(
+            left: 20,
+            right: 20,
+            bottom: 25, // 25% nach oben - nicht zu viel!
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Dateiname OBEN
+                Text(
+                  fileName,
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w400,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 1),
+                // Zeit UNTEN
+                Text(
+                  '${_formatDuration(currentTime)} / ${_formatDuration(totalTime)}',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Generiere intelligente Tag-Vorschläge aus Dateinamen
+  List<String> _generateSmartTags(AvatarMedia media) {
+    // Dateiname extrahieren
+    final fileName =
+        media.originalFileName ??
+        Uri.parse(media.url).pathSegments.last.split('?').first;
+
+    // Stopp-Wörter Liste (case-insensitive)
+    final stopWords = [
+      'audio',
+      'the',
+      'track',
+      'song',
+      'music',
+      'file',
+      'recording',
+      'mix',
+      'version',
+      'edit',
+      'final',
+      'mp3',
+      'wav',
+      'flac',
+      'm4a',
+      'aac',
+      'ogg',
+    ];
+
+    // Dateiendung entfernen und bereinigen
+    String cleaned = fileName
+        .replaceAll(
+          RegExp(
+            r'\.(mp3|wav|m4a|flac|aac|ogg|mp4|mov|avi)$',
+            caseSensitive: false,
+          ),
+          '',
+        )
+        .replaceAll(RegExp(r'\s*[Pp]t\.?\s*\d+'), '') // "Pt.2", "pt2" entfernen
+        .replaceAll(RegExp(r'\s*[Tt]eil\s*\d+'), '') // "Teil 2" entfernen
+        .replaceAll(
+          RegExp(r'[_\-]+'),
+          ' ',
+        ) // Unterstriche/Bindestriche → Leerzeichen
+        .replaceAll(RegExp(r'[\(\)\[\]{}]'), '') // Klammern entfernen
+        .replaceAll(RegExp(r'\d+'), '') // Zahlen entfernen
+        .replaceAll(RegExp(r'\s+'), ' ') // Mehrfache Leerzeichen
+        .trim();
+
+    // In Wörter splitten
+    final words = cleaned.split(' ');
+
+    // Filtere und bereinige Tags
+    final tags = words
+        .where((word) => word.length >= 3) // Mindestens 3 Zeichen
+        .where(
+          (word) => !stopWords.contains(word.toLowerCase()),
+        ) // Stopp-Wörter raus
+        .map((word) => word.trim().toLowerCase())
+        .where((word) => word.isNotEmpty)
+        .toSet() // Duplikate entfernen
+        .toList();
+
+    // Falls keine Tags übrig: Verwende ersten Teil des Dateinamens
+    if (tags.isEmpty && fileName.isNotEmpty) {
+      final fallback = fileName.split(RegExp(r'[_\-\.\s]')).first.toLowerCase();
+      if (fallback.length >= 3 && !stopWords.contains(fallback)) {
+        tags.add(fallback);
+      }
+    }
+
+    // Falls IMMER NOCH leer: Nimm "audio" als Fallback
+    if (tags.isEmpty) {
+      tags.add('audio');
+    }
+
+    return tags;
+  }
+
   /// Zeigt Dialog zum Anzeigen und Bearbeiten der Tags
   Future<void> _showTagsDialog(AvatarMedia media) async {
-    final currentTags = media.tags ?? [];
-    final controller = TextEditingController(text: currentTags.join(', '));
+    // Ursprüngliche Tags (falls vorhanden) oder intelligente Vorschläge
+    final originalTags = media.tags ?? [];
+    final smartTags = _generateSmartTags(media);
+
+    // Start mit den ursprünglichen Tags (oder Smart Tags wenn keine vorhanden)
+    final controller = TextEditingController(
+      text: originalTags.isNotEmpty
+          ? originalTags.join(', ')
+          : smartTags.join(', '),
+    );
     final initialText = controller.text;
+
+    // State für Vorschläge/Verwerfen Toggle
+    bool showingSuggestions = false;
+    String? savedText; // Text vor dem Wechsel zu Vorschlägen
+
+    // Timer für Live-Update des Play/Pause Icons
+    Timer? updateTimer;
 
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          final hasChanged = controller.text != initialText;
+      builder: (ctx) {
+        // Timer starten für kontinuierliche Updates
+        updateTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+          if (ctx is StatefulElement && ctx.mounted) {
+            ctx.markNeedsBuild();
+          }
+        });
 
-          return Align(
-            alignment: Alignment.topCenter,
-            child: Padding(
-              padding: const EdgeInsets.only(
-                top: 100.0,
-                left: 16.0,
-                right: 16.0,
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).dialogBackgroundColor,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: SingleChildScrollView(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Action Buttons OBEN (über dem Bild)
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx),
-                                child: const Text('Abbrechen'),
-                              ),
-                              ElevatedButton(
-                                onPressed: hasChanged
-                                    ? () async {
-                                        final newTags = controller.text
-                                            .split(',')
-                                            .map((tag) => tag.trim())
-                                            .where((tag) => tag.isNotEmpty)
-                                            .toList();
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final hasChanged = controller.text != initialText;
 
-                                        await _mediaSvc.update(
-                                          widget.avatarId,
-                                          media.id,
-                                          tags: newTags,
-                                        );
-                                        await _load();
-                                        Navigator.pop(ctx);
+            return Align(
+              alignment: Alignment.topCenter,
+              child: Padding(
+                padding: const EdgeInsets.only(
+                  top: 100.0,
+                  left: 16.0,
+                  right: 16.0,
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: Container(
+                    width: 400, // Maximal 400px Breite
+                    constraints: const BoxConstraints(maxWidth: 400),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).dialogBackgroundColor,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: SingleChildScrollView(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Action Buttons OBEN (über dem Bild)
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx),
+                                  child: const Text('Abbrechen'),
+                                ),
+                                ElevatedButton(
+                                  onPressed: hasChanged
+                                      ? () async {
+                                          final newTags = controller.text
+                                              .split(',')
+                                              .map((tag) => tag.trim())
+                                              .where((tag) => tag.isNotEmpty)
+                                              .toList();
 
-                                        if (mounted) {
-                                          ScaffoldMessenger.of(
-                                            context,
-                                          ).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                '${newTags.length} Tags gespeichert',
+                                          await _mediaSvc.update(
+                                            widget.avatarId,
+                                            media.id,
+                                            tags: newTags,
+                                          );
+                                          await _load();
+                                          Navigator.pop(ctx);
+
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  '${newTags.length} Tags gespeichert',
+                                                ),
                                               ),
-                                            ),
-                                          );
+                                            );
+                                          }
                                         }
-                                      }
-                                    : null, // Disabled wenn keine Änderung
-                                child: const Text('Speichern'),
+                                      : null, // Disabled wenn keine Änderung
+                                  child: const Text('Speichern'),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 16),
+                            // Media Preview - Audio im Audio-Card-Style
+                            if (media.type == AvatarMediaType.audio)
+                              _buildAudioPreviewForDialog(media)
+                            else
+                              SizedBox(
+                                height: 320,
+                                child: media.type == AvatarMediaType.video
+                                    ? FutureBuilder<VideoPlayerController?>(
+                                        future: _videoControllerForThumb(
+                                          media.url,
+                                        ),
+                                        builder: (context, snapshot) {
+                                          if (snapshot.connectionState ==
+                                                  ConnectionState.done &&
+                                              snapshot.hasData &&
+                                              snapshot.data != null) {
+                                            final controller = snapshot.data!;
+                                            if (controller
+                                                .value
+                                                .isInitialized) {
+                                              return AspectRatio(
+                                                aspectRatio: controller
+                                                    .value
+                                                    .aspectRatio,
+                                                child: VideoPlayer(controller),
+                                              );
+                                            }
+                                          }
+                                          return Container(
+                                            color: Colors.black26,
+                                          );
+                                        },
+                                      )
+                                    : Image.network(
+                                        media.url,
+                                        height: 320,
+                                        fit: BoxFit.cover,
+                                      ),
                               ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          // Media Preview (Video/Bild/Audio)
-                          SizedBox(
-                            height: 320,
-                            child: media.type == AvatarMediaType.video
-                                ? FutureBuilder<VideoPlayerController?>(
-                                    future: _videoControllerForThumb(media.url),
-                                    builder: (context, snapshot) {
-                                      if (snapshot.connectionState ==
-                                              ConnectionState.done &&
-                                          snapshot.hasData &&
-                                          snapshot.data != null) {
-                                        final controller = snapshot.data!;
-                                        if (controller.value.isInitialized) {
-                                          return AspectRatio(
-                                            aspectRatio:
-                                                controller.value.aspectRatio,
-                                            child: VideoPlayer(controller),
-                                          );
-                                        }
-                                      }
-                                      return Container(color: Colors.black26);
-                                    },
-                                  )
-                                : media.type == AvatarMediaType.audio
-                                ? Container(
+                            const SizedBox(height: 16),
+                            // Header mit Vorschläge/Verwerfen Icon-Button RECHTS neben Text
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                // "Audio-Tags" Text LINKS
+                                Text(
+                                  media.type == AvatarMediaType.video
+                                      ? 'Video-Tags'
+                                      : media.type == AvatarMediaType.audio
+                                      ? 'Audio-Tags'
+                                      : 'Bild-Tags',
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                // Vorschläge/Verwerfen Icon-Button RECHTS (wie Navi-Buttons)
+                                Tooltip(
+                                  message: showingSuggestions
+                                      ? 'Verwerfen'
+                                      : 'Vorschläge',
+                                  child: Container(
+                                    width: 36,
+                                    height: 36,
                                     decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(12),
+                                      shape: BoxShape.circle,
                                       gradient: const LinearGradient(
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                         colors: [
-                                          Color(0xFF1A1A1A),
-                                          Color(0xFF0A0A0A),
+                                          Color(0xFF00E676), // Green
+                                          Color(0xFFE91E63), // Magenta
+                                          AppColors.lightBlue, // Blue
+                                          Color(0xFF00E5FF), // Cyan
                                         ],
+                                        stops: [0.0, 0.33, 0.66, 1.0],
                                       ),
                                     ),
-                                    child: Stack(
-                                      children: [
-                                        // Waveform Hintergrund
-                                        Center(child: _buildWaveform()),
-                                        // Audio Icon mit Gradient
-                                        Center(
-                                          child: Column(
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Container(
-                                                padding: const EdgeInsets.all(
-                                                  20,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  shape: BoxShape.circle,
-                                                  gradient:
-                                                      const LinearGradient(
-                                                        colors: [
-                                                          Color(0xFFE91E63),
-                                                          Color(0xFF00E676),
-                                                        ],
-                                                      ),
-                                                ),
-                                                child: const Icon(
-                                                  Icons.music_note,
-                                                  size: 48,
-                                                  color: Colors.white,
-                                                ),
-                                              ),
-                                              const SizedBox(height: 16),
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 16,
-                                                      vertical: 8,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.black
-                                                      .withValues(alpha: 0.5),
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                ),
-                                                child: Text(
-                                                  media.tags?.isNotEmpty == true
-                                                      ? media.tags!.first
-                                                      : 'Audio-Datei',
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 16,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                      ],
+                                    child: IconButton(
+                                      padding: EdgeInsets.zero,
+                                      iconSize: 18,
+                                      icon: Icon(
+                                        showingSuggestions
+                                            ? Icons.close
+                                            : Icons.auto_awesome,
+                                        color: Colors.white,
+                                      ),
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          if (!showingSuggestions) {
+                                            // Zu Vorschlägen wechseln
+                                            savedText = controller.text;
+                                            controller.text = smartTags.join(
+                                              ', ',
+                                            );
+                                            showingSuggestions = true;
+                                          } else {
+                                            // Vorschläge verwerfen → zurück zum gespeicherten Text
+                                            controller.text = savedText ?? '';
+                                            showingSuggestions = false;
+                                            savedText = null;
+                                          }
+                                        });
+                                      },
                                     ),
-                                  )
-                                : Image.network(
-                                    media.url,
-                                    height: 320,
-                                    fit: BoxFit.cover,
                                   ),
-                          ),
-                          const SizedBox(height: 16),
-                          // Header ÜBER Input-Box
-                          Text(
-                            media.type == AvatarMediaType.video
-                                ? 'Video-Tags'
-                                : media.type == AvatarMediaType.audio
-                                ? 'Audio-Tags'
-                                : 'Bild-Tags',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                          const SizedBox(height: 8),
-                          TextField(
-                            controller: controller,
-                            decoration: InputDecoration(
-                              labelText: 'Tags (durch Komma getrennt)',
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            CustomTextArea(
+                              label: 'Tags (durch Komma getrennt)',
+                              controller: controller,
                               hintText: media.type == AvatarMediaType.video
                                   ? 'z.B. interview, outdoor, talking'
                                   : media.type == AvatarMediaType.audio
                                   ? 'z.B. musik, podcast, interview'
                                   : 'z.B. hund, outdoor, park',
+                              onChanged: (_) => setDialogState(() {}),
+                              minLines: 3,
+                              maxLines: 5,
                             ),
-                            maxLines: 3,
-                            onChanged: (_) => setDialogState(() {}),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-          );
-        },
-      ),
+            );
+          },
+        );
+      },
     );
+
+    // Timer stoppen nach Dialog-Schließung
+    updateTimer?.cancel();
   }
 
   /// Audio Card - schmale Darstellung
@@ -2633,48 +2876,251 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     return SizedBox(
       width: width,
       height: height,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
-                ),
-              ),
-              child: Stack(
-                children: [
-                  // Waveform fast volle Breite - VERTIKAL MITTIG
-                  Positioned(
-                    left: 35, // Kurz nach Play-Button
-                    right: 75, // Kurz vor Tag/Delete Icons
-                    top: 15, // Mittig
-                    bottom: 15, // Mittig
-                    child: GestureDetector(
-                      onTap: () => _toggleAudioPlayback(it),
-                      child: ClipRect(
-                        clipBehavior: Clip.hardEdge,
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            return _buildCompactWaveform(
-                              availableWidth: constraints.maxWidth,
-                              progress: progress,
-                            );
-                          },
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(8),
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0x80E91E63), // Magenta 50% opacity
+              Color(0x8000B0FF), // Blue 50% opacity
+              Color(0x8000E5FF), // Cyan 50% opacity
+            ],
+            stops: [0.0, 0.5, 1.0],
+          ),
+        ),
+        child: Container(
+          margin: const EdgeInsets.all(1), // 1px für Border
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(7), // 8 - 1 = 7
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
+            ),
+          ),
+          child: Column(
+            children: [
+              // OBERER CONTAINER: Play, Waveform, Icons
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 8), // 0.5rem
+                  child: Stack(
+                    children: [
+                      // Waveform - ZENTRIERT (5px nach links)
+                      Positioned(
+                        left: 30, // 35 - 5 = 30px
+                        right: 80, // 75 + 5 = 80px (bleibt gleich breit)
+                        top: 0,
+                        bottom: 0,
+                        child: Center(
+                          child: GestureDetector(
+                            onTap: () => _toggleAudioPlayback(it),
+                            child: ClipRect(
+                              clipBehavior: Clip.hardEdge,
+                              child: LayoutBuilder(
+                                builder: (context, constraints) {
+                                  return _buildCompactWaveform(
+                                    availableWidth: constraints.maxWidth,
+                                    progress: progress,
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      // Play-Button ÜBER Waveform - LINKS (5px nach rechts)
+                      Positioned(
+                        left: 13, // 8 + 5 = 13px
+                        top: 0,
+                        bottom: 0,
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Play/Pause Button
+                              GestureDetector(
+                                onTap: () => _toggleAudioPlayback(it),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFFE91E63), // Magenta
+                                        Color(0xFFE91E63), // Mehr Magenta
+                                        AppColors.lightBlue, // Blau
+                                        Color(0xFF00E5FF), // Cyan
+                                      ],
+                                      stops: [0.0, 0.4, 0.7, 1.0],
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    isPlaying ? Icons.pause : Icons.play_arrow,
+                                    size: 24,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              // Restart Button (nur anzeigen wenn Audio läuft oder pausiert)
+                              if (progress > 0.0 || isPlaying)
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 4),
+                                  child: GestureDetector(
+                                    onTap: () => _restartAudio(it),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: const Color(0x40FFFFFF),
+                                      ),
+                                      child: const Icon(
+                                        Icons.replay,
+                                        size: 16,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // Tag + Delete Icons RECHTS (10px nach links)
+                      Positioned(
+                        right: 13, // 3 + 10 = 13px
+                        top: 0,
+                        bottom: 0,
+                        child: Align(
+                          alignment: Alignment.center,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Tag Icon
+                              if (!_isDeleteMode)
+                                InkWell(
+                                  onTap: () => _showTagsDialog(it),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: const Color(0x25FFFFFF),
+                                      border: Border.all(
+                                        color: const Color(0x66FFFFFF),
+                                      ),
+                                    ),
+                                    child: ShaderMask(
+                                      shaderCallback: (bounds) =>
+                                          const LinearGradient(
+                                            colors: [
+                                              Color(0xFFE91E63),
+                                              AppColors.lightBlue,
+                                            ],
+                                          ).createShader(bounds),
+                                      child: const Icon(
+                                        Icons.label_outline,
+                                        color: Colors.white,
+                                        size: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              if (!_isDeleteMode) const SizedBox(width: 4),
+                              // Delete Icon
+                              InkWell(
+                                onTap: () {
+                                  setState(() {
+                                    _isDeleteMode = true;
+                                    if (selected) {
+                                      _selectedMediaIds.remove(it.id);
+                                    } else {
+                                      _selectedMediaIds.add(it.id);
+                                    }
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: selected
+                                        ? null
+                                        : const Color(0x30000000),
+                                    gradient: selected
+                                        ? const LinearGradient(
+                                            colors: [
+                                              AppColors.magenta,
+                                              AppColors.lightBlue,
+                                            ],
+                                          )
+                                        : null,
+                                    border: Border.all(
+                                      color: selected
+                                          ? AppColors.lightBlue.withValues(
+                                              alpha: 0.7,
+                                            )
+                                          : const Color(0x66FFFFFF),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.delete_outline,
+                                    color: Colors.white,
+                                    size: 14,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      // Playlist Icon oben links (5px nach links)
+                      if (isInPlaylist && !_isDeleteMode)
+                        Positioned(
+                          left: 1, // 6 - 5 = 1px
+                          top: 6,
+                          child: Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: AppColors.accentGreenDark,
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.7),
+                              ),
+                            ),
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              icon: const Icon(
+                                Icons.playlist_play,
+                                color: Colors.white,
+                                size: 12,
+                              ),
+                              onPressed: () =>
+                                  _showPlaylistsDialog(it, usedInPlaylists),
+                            ),
+                          ),
+                        ),
+                    ],
                   ),
-                  // Dateiname UNTEN (absolute position)
-                  Positioned(
-                    left: 35,
-                    right: 80,
-                    bottom: 5,
-                    child: Text(
+                ),
+              ),
+              // UNTERER CONTAINER: Name, Zeit, Tags
+              Container(
+                padding: const EdgeInsets.only(
+                  left: 8,
+                  right: 8,
+                  bottom: 8,
+                  top: 5,
+                ), // top reduziert um 40%
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Dateiname
+                    Text(
                       fileName,
                       style: const TextStyle(
                         color: Colors.white54,
@@ -2683,236 +3129,58 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                  // Zeitanzeige OBEN RECHTS (über Waveform)
-                  Positioned(
-                    right: 80,
-                    top: 5,
-                    child: Text(
+                    const SizedBox(height: 2),
+                    // Zeit
+                    Text(
                       '${_formatDuration(currentTime)} / ${_formatDuration(totalTime)}',
                       style: const TextStyle(
                         color: Colors.white70,
                         fontSize: 12,
                         fontWeight: FontWeight.w500,
                       ),
+                      textAlign: TextAlign.center,
                     ),
-                  ),
-                  // Play-Button ÜBER Waveform - KLICKBAR
-                  Positioned(
-                    left: 8,
-                    top: 0,
-                    bottom: 0,
-                    child: Align(
-                      alignment: Alignment.center,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // Play/Pause Button
-                          GestureDetector(
-                            onTap: () => _toggleAudioPlayback(it),
-                            child: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: const LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    Color(0xFFE91E63), // Magenta
-                                    Color(0xFFE91E63), // Mehr Magenta
-                                    AppColors.lightBlue, // Blau
-                                    Color(0xFF00E5FF), // Cyan
-                                  ],
-                                  stops: [0.0, 0.4, 0.7, 1.0],
-                                ),
-                              ),
-                              child: Icon(
-                                isPlaying ? Icons.pause : Icons.play_arrow,
-                                size: 24,
-                                color: Colors.white,
-                              ),
-                            ),
+                    // Tags (wenn vorhanden) - mit MBC Gradient (OHNE Grün!)
+                    if (it.tags != null && it.tags!.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                          colors: [
+                            Color(0xFFE91E63), // Magenta
+                            AppColors.lightBlue, // Blue
+                            Color(0xFF00E5FF), // Cyan
+                          ],
+                          stops: [0.0, 0.5, 1.0],
+                        ).createShader(bounds),
+                        child: Text(
+                          it.tags!.join(', '),
+                          style: const TextStyle(
+                            color: Colors
+                                .white, // Wird durch Gradient überschrieben
+                            fontSize: 10,
+                            fontWeight: FontWeight.w300,
                           ),
-                          // Restart Button (nur anzeigen wenn Audio läuft oder pausiert)
-                          if (progress > 0.0 || isPlaying)
-                            Padding(
-                              padding: const EdgeInsets.only(left: 4),
-                              child: GestureDetector(
-                                onTap: () => _restartAudio(it),
-                                child: Container(
-                                  padding: const EdgeInsets.all(6),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    color: const Color(0x40FFFFFF),
-                                  ),
-                                  child: const Icon(
-                                    Icons.replay,
-                                    size: 16,
-                                    color: Colors.white70,
-                                  ),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  // Tag + Delete Icons RECHTS AUSSEN
-                  Positioned(
-                    right: 8,
-                    top: 0,
-                    bottom: 0,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Tag Icon
-                        if (!_isDeleteMode)
-                          InkWell(
-                            onTap: () => _showTagsDialog(it),
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: const Color(0x25FFFFFF),
-                                border: Border.all(
-                                  color: const Color(0x66FFFFFF),
-                                ),
-                              ),
-                              child: ShaderMask(
-                                shaderCallback: (bounds) =>
-                                    const LinearGradient(
-                                      colors: [
-                                        Color(0xFFE91E63),
-                                        AppColors.lightBlue,
-                                      ],
-                                    ).createShader(bounds),
-                                child: const Icon(
-                                  Icons.label_outline,
-                                  color: Colors.white,
-                                  size: 14,
-                                ),
-                              ),
-                            ),
-                          ),
-                        if (!_isDeleteMode) const SizedBox(width: 4),
-                        // Delete Icon
-                        InkWell(
-                          onTap: () {
-                            setState(() {
-                              _isDeleteMode = true;
-                              if (selected) {
-                                _selectedMediaIds.remove(it.id);
-                              } else {
-                                _selectedMediaIds.add(it.id);
-                              }
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(6),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: selected ? null : const Color(0x30000000),
-                              gradient: selected
-                                  ? const LinearGradient(
-                                      colors: [
-                                        AppColors.magenta,
-                                        AppColors.lightBlue,
-                                      ],
-                                    )
-                                  : null,
-                              border: Border.all(
-                                color: selected
-                                    ? AppColors.lightBlue.withValues(alpha: 0.7)
-                                    : const Color(0x66FFFFFF),
-                              ),
-                            ),
-                            child: const Icon(
-                              Icons.delete_outline,
-                              color: Colors.white,
-                              size: 14,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Playlist Icon oben links
-                  if (isInPlaylist && !_isDeleteMode)
-                    Positioned(
-                      left: 6,
-                      top: 6,
-                      child: Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: AppColors.accentGreenDark,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.7),
-                          ),
-                        ),
-                        child: IconButton(
-                          padding: EdgeInsets.zero,
-                          icon: const Icon(
-                            Icons.playlist_play,
-                            color: Colors.white,
-                            size: 12,
-                          ),
-                          onPressed: () =>
-                              _showPlaylistsDialog(it, usedInPlaylists),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
                         ),
                       ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          // KEINE weiteren Icons hier - alle sind jetzt oben im Stack
-          Positioned(
-            right: -1000, // Versteckt
-            bottom: -1000,
-            child: InkWell(
-              onTap: () {
-                setState(() {
-                  _isDeleteMode = true;
-                  if (selected) {
-                    _selectedMediaIds.remove(it.id);
-                  } else {
-                    _selectedMediaIds.add(it.id);
-                  }
-                });
-              },
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: selected ? null : const Color(0x30000000),
-                  gradient: selected
-                      ? const LinearGradient(
-                          colors: [AppColors.magenta, AppColors.lightBlue],
-                        )
-                      : null,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(
-                    color: selected
-                        ? AppColors.lightBlue.withValues(alpha: 0.7)
-                        : const Color(0x66FFFFFF),
-                  ),
-                ),
-                child: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.white,
-                  size: 12,
+                    ],
+                  ],
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
 
-  /// Kompakte Waveform für schmale Audio-Cards
+  /// Kompakte Waveform für Audio-Cards
   Widget _buildCompactWaveform({
     required double availableWidth,
     double progress = 0.0,

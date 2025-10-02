@@ -57,7 +57,7 @@ class AvatarNavBar extends StatelessWidget {
                 final avatarService = AvatarService();
                 final avatar = await avatarService.getAvatar(avatarId);
                 if (avatar != null && context.mounted) {
-                  await Navigator.pushNamed(
+                  await Navigator.pushReplacementNamed(
                     context,
                     '/avatar-details',
                     arguments: avatar,
