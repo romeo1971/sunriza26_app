@@ -2638,15 +2638,17 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        // Timer starten für kontinuierliche Updates
-        updateTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-          if (ctx is StatefulElement && ctx.mounted) {
-            ctx.markNeedsBuild();
-          }
-        });
-
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // Timer starten für kontinuierliche Updates (mit setDialogState)
+            updateTimer?.cancel();
+            updateTimer = Timer.periodic(const Duration(milliseconds: 100), (
+              _,
+            ) {
+              if (context.mounted) {
+                setDialogState(() {});
+              }
+            });
             final hasChanged = controller.text != initialText;
 
             return Align(
