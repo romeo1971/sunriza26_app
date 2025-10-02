@@ -141,6 +141,19 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   }
 
   Future<void> _load() async {
+    // Audio-Player stoppen bei Screen-Refresh
+    _audioPlayer?.stop();
+    _audioPlayer?.dispose();
+    _audioPlayer = null;
+    if (mounted) {
+      setState(() {
+        _playingAudioUrl = null;
+        _audioProgress.clear();
+        _audioCurrentTime.clear();
+        _audioTotalTime.clear();
+      });
+    }
+
     setState(() => _loading = true);
     try {
       final list = await _mediaSvc.list(widget.avatarId);
