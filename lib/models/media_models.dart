@@ -11,6 +11,7 @@ class AvatarMedia {
   final double?
   aspectRatio; // width / height (z.B. 9/16 für Portrait, 16/9 für Landscape)
   final List<String>? tags; // KI-generierte Tags für Bilderkennung
+  final String? originalFileName; // Originaler Dateiname für Anzeige
 
   const AvatarMedia({
     required this.id,
@@ -22,6 +23,7 @@ class AvatarMedia {
     this.durationMs,
     this.aspectRatio,
     this.tags,
+    this.originalFileName,
   });
 
   bool get isPortrait => aspectRatio != null && aspectRatio! < 1.0;
@@ -51,6 +53,7 @@ class AvatarMedia {
       durationMs: (map['durationMs'] as num?)?.toInt(),
       aspectRatio: (map['aspectRatio'] as num?)?.toDouble(),
       tags: (map['tags'] as List<dynamic>?)?.cast<String>(),
+      originalFileName: map['originalFileName'] as String?,
     );
   }
 
@@ -77,6 +80,7 @@ class AvatarMedia {
       'durationMs': durationMs,
       if (aspectRatio != null) 'aspectRatio': aspectRatio,
       if (tags != null) 'tags': tags,
+      if (originalFileName != null) 'originalFileName': originalFileName,
     };
   }
 }

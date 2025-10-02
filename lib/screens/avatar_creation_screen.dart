@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/avatar_service.dart';
 import '../services/localization_service.dart';
+import '../widgets/custom_text_field.dart';
+import '../widgets/custom_date_field.dart';
 
 class AvatarCreationScreen extends StatefulWidget {
   const AvatarCreationScreen({super.key});
@@ -89,14 +91,11 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _firstNameController,
-          decoration: InputDecoration(
-            labelText: context.read<LocalizationService>().t(
-              'avatars.details.firstNameLabel',
-            ),
-            border: const OutlineInputBorder(),
+        CustomTextField(
+          label: context.read<LocalizationService>().t(
+            'avatars.details.firstNameLabel',
           ),
+          controller: _firstNameController,
           validator: (value) {
             if (value == null || value.isEmpty) {
               return context.read<LocalizationService>().t(
@@ -107,27 +106,21 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
           },
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _nicknameController,
-          decoration: InputDecoration(
-            labelText: context.read<LocalizationService>().t(
-              'avatars.details.nicknameLabel',
-            ),
-            border: const OutlineInputBorder(),
-            hintText: context.read<LocalizationService>().t(
-              'avatars.details.nicknameHint',
-            ),
+        CustomTextField(
+          label: context.read<LocalizationService>().t(
+            'avatars.details.nicknameLabel',
           ),
+          hintText: context.read<LocalizationService>().t(
+            'avatars.details.nicknameHint',
+          ),
+          controller: _nicknameController,
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _lastNameController,
-          decoration: InputDecoration(
-            labelText: context.read<LocalizationService>().t(
-              'avatars.details.lastNameLabel',
-            ),
-            border: const OutlineInputBorder(),
+        CustomTextField(
+          label: context.read<LocalizationService>().t(
+            'avatars.details.lastNameLabel',
           ),
+          controller: _lastNameController,
         ),
       ],
     );
@@ -144,74 +137,39 @@ class _AvatarCreationScreenState extends State<AvatarCreationScreen> {
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _birthDateController,
-          decoration: InputDecoration(
-            labelText: context.read<LocalizationService>().t(
-              'avatars.details.birthDateLabel',
-            ),
-            hintText: context.read<LocalizationService>().t(
-              'avatars.details.birthDateHint',
-            ),
-            border: const OutlineInputBorder(),
-            suffixIcon: const Icon(Icons.calendar_today),
+        CustomDateField(
+          label: context.read<LocalizationService>().t(
+            'avatars.details.birthDateLabel',
           ),
-          readOnly: true,
-          onTap: () => _selectDate(context, true),
+          selectedDate: _birthDate,
+          onDateSelected: (date) {
+            setState(() {
+              _birthDate = date;
+              if (date != null) {
+                _birthDateController.text =
+                    '${date.day}.${date.month}.${date.year}';
+              }
+            });
+          },
         ),
         const SizedBox(height: 16),
-        TextFormField(
-          controller: _deathDateController,
-          decoration: InputDecoration(
-            labelText: context.read<LocalizationService>().t(
-              'avatars.details.deathDateLabel',
-            ),
-            hintText: context.read<LocalizationService>().t(
-              'avatars.details.deathDateHint',
-            ),
-            border: const OutlineInputBorder(),
-            suffixIcon: const Icon(Icons.calendar_today),
+        CustomDateField(
+          label: context.read<LocalizationService>().t(
+            'avatars.details.deathDateLabel',
           ),
-          readOnly: true,
-          onTap: () => _selectDate(context, false),
+          selectedDate: _deathDate,
+          onDateSelected: (date) {
+            setState(() {
+              _deathDate = date;
+              if (date != null) {
+                _deathDateController.text =
+                    '${date.day}.${date.month}.${date.year}';
+              }
+            });
+          },
         ),
       ],
     );
-  }
-
-  Future<void> _selectDate(BuildContext context, bool isBirthDate) async {
-    final loc = context.read<LocalizationService>();
-    final String cancel = loc.t('avatars.details.cancel');
-    final String ok = loc.t('avatars.details.ok');
-    final String help = loc.t(
-      isBirthDate
-          ? 'avatars.details.birthDateHint'
-          : 'avatars.details.deathDateHint',
-    );
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: isBirthDate
-          ? DateTime.now().subtract(const Duration(days: 365 * 30))
-          : DateTime.now(),
-      firstDate: DateTime(1900),
-      lastDate: DateTime.now(),
-      cancelText: cancel,
-      confirmText: ok,
-      helpText: help,
-    );
-    if (picked != null) {
-      setState(() {
-        if (isBirthDate) {
-          _birthDate = picked;
-          _birthDateController.text =
-              '${picked.day}.${picked.month}.${picked.year}';
-        } else {
-          _deathDate = picked;
-          _deathDateController.text =
-              '${picked.day}.${picked.month}.${picked.year}';
-        }
-      });
-    }
   }
 
   Future<void> _createAvatar() async {

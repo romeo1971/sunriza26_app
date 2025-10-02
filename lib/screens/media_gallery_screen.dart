@@ -19,10 +19,12 @@ import '../models/playlist_models.dart';
 import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../theme/app_theme.dart';
 import '../widgets/video_player_widget.dart';
 import '../widgets/avatar_nav_bar.dart';
 import '../services/avatar_service.dart';
+import '../services/audio_player_service.dart';
 import '../widgets/custom_text_field.dart';
 
 class MediaGalleryScreen extends StatefulWidget {
@@ -67,9 +69,23 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   final Map<String, double> _imageAspectRatios =
       {}; // Cache für Bild-Aspekt-Verhältnisse
 
+  // Audio Player State
+  String? _playingAudioUrl;
+  final Map<String, double> _audioProgress = {}; // url -> progress (0.0 - 1.0)
+  final Map<String, Duration> _audioCurrentTime = {}; // url -> current time
+  final Map<String, Duration> _audioTotalTime = {}; // url -> total time
+  AudioPlayer? _audioPlayer;
+
+  // Statische Referenz um Player über Hot-Reload hinweg zu tracken
+  static AudioPlayer? _globalAudioPlayer;
+
   @override
   void initState() {
     super.initState();
+
+    // WICHTIG: Stoppe evtl. laufenden Player (Hot-Restart)
+    _stopAllPlayers();
+
     _load();
     _searchController.addListener(() {
       setState(() {
@@ -84,6 +100,29 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   }
 
   @override
+  void reassemble() {
+    super.reassemble();
+    // WIRD BEI HOT-RELOAD AUFGERUFEN - Stoppe Player!
+    print('🔄 HOT RELOAD: Stoppe Audio Player');
+    _stopAllPlayers();
+  }
+
+  /// Zentrale Methode zum Stoppen aller Player
+  void _stopAllPlayers() {
+    _audioPlayer?.stop();
+    _audioPlayer?.dispose();
+    _audioPlayer = null;
+    _globalAudioPlayer?.stop();
+    _globalAudioPlayer?.dispose();
+    _globalAudioPlayer = null;
+    AudioPlayerService().stopAll();
+    _playingAudioUrl = null;
+    _audioProgress.clear();
+    _audioCurrentTime.clear();
+    _audioTotalTime.clear();
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
     // Thumbnail-Controller aufräumen
@@ -91,6 +130,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       controller.dispose();
     }
     _thumbControllers.clear();
+    // Audio Player STOPPEN und aufräumen
+    _audioPlayer?.stop();
+    _audioPlayer?.dispose();
+    _audioPlayer = null;
+    _globalAudioPlayer?.stop();
+    _globalAudioPlayer?.dispose();
+    _globalAudioPlayer = null;
     super.dispose();
   }
 
@@ -153,30 +199,34 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       if (_mediaTab == 'videos' && it.type != AvatarMediaType.video) {
         return false;
       }
-      if (_mediaTab == 'audio') return false; // Audio noch nicht unterstützt
-
-      // Orientierungsfilter: IMMER filtern, nie gemischt
-      // Für Bilder ohne aspectRatio: tatsächliche Bildgröße ermitteln
-      bool itemIsPortrait = it.isPortrait;
-      bool itemIsLandscape = it.isLandscape;
-
-      if (it.aspectRatio == null && it.type == AvatarMediaType.image) {
-        // Prüfe Cache für bereits ermittelte Aspect Ratios
-        final cachedAspectRatio = _imageAspectRatios[it.url];
-        if (cachedAspectRatio != null) {
-          itemIsPortrait = cachedAspectRatio < 1.0;
-          itemIsLandscape = cachedAspectRatio > 1.0;
-        } else {
-          // Asynchron Aspect Ratio ermitteln (lädt im Hintergrund)
-          _loadImageAspectRatio(it.url);
-          // Default: Portrait für unbekannte Bilder (wird später korrigiert)
-          itemIsPortrait = true;
-          itemIsLandscape = false;
-        }
+      if (_mediaTab == 'audio' && it.type != AvatarMediaType.audio) {
+        return false;
       }
 
-      if (_showPortrait && !itemIsPortrait) return false;
-      if (!_showPortrait && !itemIsLandscape) return false;
+      // Orientierungsfilter: IMMER filtern, nie gemischt (außer Audio)
+      if (it.type != AvatarMediaType.audio) {
+        // Für Bilder ohne aspectRatio: tatsächliche Bildgröße ermitteln
+        bool itemIsPortrait = it.isPortrait;
+        bool itemIsLandscape = it.isLandscape;
+
+        if (it.aspectRatio == null && it.type == AvatarMediaType.image) {
+          // Prüfe Cache für bereits ermittelte Aspect Ratios
+          final cachedAspectRatio = _imageAspectRatios[it.url];
+          if (cachedAspectRatio != null) {
+            itemIsPortrait = cachedAspectRatio < 1.0;
+            itemIsLandscape = cachedAspectRatio > 1.0;
+          } else {
+            // Asynchron Aspect Ratio ermitteln (lädt im Hintergrund)
+            _loadImageAspectRatio(it.url);
+            // Default: Portrait für unbekannte Bilder (wird später korrigiert)
+            itemIsPortrait = true;
+            itemIsLandscape = false;
+          }
+        }
+
+        if (_showPortrait && !itemIsPortrait) return false;
+        if (!_showPortrait && !itemIsLandscape) return false;
+      }
 
       // KI-Such-Filter
       if (_searchTerm.isNotEmpty) {
@@ -217,7 +267,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final x = await _picker.pickImage(source: source, imageQuality: 95);
     if (x == null) return;
     final bytes = await x.readAsBytes();
-    await _openCrop(bytes, p.extension(x.path));
+    final originalName = p.basename(x.path);
+    await _openCrop(bytes, p.extension(x.path), originalName);
   }
 
   /// Zeigt Dialog für Kamera/Galerie Auswahl
@@ -467,8 +518,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
         final bytes = await source.readAsBytes();
 
+        // Verwende originalen Dateinamen oder generiere einen
+        final originalName = image.originalFileName ?? 'image_${image.id}.png';
+
         // Zeige Cropping-Dialog
-        await _openCrop(bytes, p.extension(image.url));
+        await _openCrop(bytes, p.extension(image.url), originalName);
 
         // Kurze Pause zwischen den Bildern
         await Future.delayed(const Duration(milliseconds: 500));
@@ -491,7 +545,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
   }
 
-  Future<void> _openCrop(Uint8List imageBytes, String ext) async {
+  Future<void> _openCrop(
+    Uint8List imageBytes,
+    String ext,
+    String originalFileName,
+  ) async {
     double currentAspect = _cropAspect;
     final cropController =
         cyi.CropController(); // Neuer Controller für jeden Dialog
@@ -827,6 +885,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   }
 
   void _handleBackNavigation(BuildContext context) async {
+    // WICHTIG: Audio Player STOPPEN beim Verlassen des Screens
+    await _audioPlayer?.stop();
+    _audioPlayer?.dispose();
+    _audioPlayer = null;
+    await _globalAudioPlayer?.stop();
+    _globalAudioPlayer?.dispose();
+    _globalAudioPlayer = null;
+    setState(() {
+      _playingAudioUrl = null;
+      _audioProgress.clear();
+      _audioCurrentTime.clear();
+      _audioTotalTime.clear();
+    });
+
     if (widget.fromScreen == 'avatar-list') {
       // Von "Meine Avatare" → zurück zu "Meine Avatare" (ALLE Screens schließen)
       Navigator.pushNamedAndRemoveUntil(
@@ -848,6 +920,101 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         Navigator.pop(context);
       }
     }
+  }
+
+  /// Audio abspielen / pausieren
+  Future<void> _toggleAudioPlayback(AvatarMedia media) async {
+    // Wenn dasselbe Audio bereits spielt → Pause
+    if (_playingAudioUrl == media.url && _audioPlayer != null) {
+      await _audioPlayer!.pause();
+      setState(() => _playingAudioUrl = null);
+      return;
+    }
+
+    // Wenn dasselbe Audio pausiert ist → Resume
+    if (_playingAudioUrl == null &&
+        _audioPlayer != null &&
+        (_audioCurrentTime[media.url]?.inMilliseconds ?? 0) > 0) {
+      try {
+        await _audioPlayer!.resume();
+        setState(() => _playingAudioUrl = media.url);
+        return;
+      } catch (e) {
+        // Fallback: Neuen Player erstellen
+      }
+    }
+
+    // Anderes Audio → Stop aktuelles und starte neues
+    await _audioPlayer?.stop();
+    _audioPlayer?.dispose();
+    _audioPlayer = AudioPlayer();
+    _globalAudioPlayer = _audioPlayer; // Lokale Referenz setzen
+    AudioPlayerService().setCurrentPlayer(
+      _audioPlayer!,
+    ); // Service für Hot-Restart
+
+    // Listener für Fortschritt
+    _audioPlayer!.onPositionChanged.listen((position) {
+      if (mounted) {
+        setState(() {
+          _audioCurrentTime[media.url] = position;
+          final total = _audioTotalTime[media.url];
+          if (total != null && total.inMilliseconds > 0) {
+            _audioProgress[media.url] =
+                position.inMilliseconds / total.inMilliseconds;
+          }
+        });
+      }
+    });
+
+    // Listener für Ende
+    _audioPlayer!.onPlayerComplete.listen((_) {
+      if (mounted) {
+        setState(() {
+          _playingAudioUrl = null;
+          _audioProgress[media.url] = 0.0;
+          _audioCurrentTime[media.url] = Duration.zero;
+        });
+      }
+    });
+
+    // Listener für Dauer
+    _audioPlayer!.onDurationChanged.listen((duration) {
+      if (mounted) {
+        setState(() => _audioTotalTime[media.url] = duration);
+      }
+    });
+
+    try {
+      await _audioPlayer!.play(UrlSource(media.url));
+      setState(() => _playingAudioUrl = media.url);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Fehler beim Abspielen: $e')));
+      }
+    }
+  }
+
+  /// Audio von Anfang an starten
+  Future<void> _restartAudio(AvatarMedia media) async {
+    await _audioPlayer?.stop();
+    setState(() {
+      _audioProgress[media.url] = 0.0;
+      _audioCurrentTime[media.url] = Duration.zero;
+      _playingAudioUrl = null;
+    });
+
+    // Neu starten
+    await _toggleAudioPlayback(media);
+  }
+
+  /// Formatiere Duration für Anzeige
+  String _formatDuration(Duration duration) {
+    final minutes = duration.inMinutes.toString().padLeft(2, '0');
+    final seconds = (duration.inSeconds % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
   }
 
   Future<void> _pickAudio() async {
@@ -901,6 +1068,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             url: url,
             createdAt: timestamp,
             tags: ['audio', file.name],
+            originalFileName: file.name, // Originaler Dateiname
           );
           await _mediaSvc.add(widget.avatarId, m);
           uploaded++;
@@ -1234,6 +1402,22 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             style: TextStyle(color: Colors.grey.shade500),
                           ),
                         )
+                      : _mediaTab == 'audio'
+                      ? SingleChildScrollView(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Wrap(
+                            alignment: WrapAlignment.start,
+                            spacing: 12.0,
+                            runSpacing: 12.0,
+                            children: _pageItems.map((it) {
+                              return _buildResponsiveMediaCard(
+                                it,
+                                0, // Unused for audio
+                                0, // Unused for audio
+                              );
+                            }).toList(),
+                          ),
+                        )
                       : SingleChildScrollView(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
                           child: LayoutBuilder(
@@ -1400,6 +1584,37 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // cardWidth ist die responsive Basis-Breite (120-180px)
     double aspectRatio = it.aspectRatio ?? (9 / 16); // Default Portrait
 
+    // Audio: Breite wie 7 Navi-Buttons (40px * 7 + 8px * 6 = 328px), Höhe 30% mehr
+    if (it.type == AvatarMediaType.audio) {
+      const double audioCardWidth =
+          328.0; // 7 Buttons (40px) + 6 Abstände (8px)
+      const double audioCardHeight = 104.0; // 80px * 1.3 = 104px
+
+      return GestureDetector(
+        onTap: () {
+          if (_isDeleteMode) {
+            setState(() {
+              if (selected) {
+                _selectedMediaIds.remove(it.id);
+              } else {
+                _selectedMediaIds.add(it.id);
+              }
+            });
+          } else {
+            _openViewer(it);
+          }
+        },
+        child: _buildAudioCard(
+          it,
+          audioCardWidth,
+          audioCardHeight,
+          isInPlaylist,
+          usedInPlaylists,
+          selected,
+        ),
+      );
+    }
+
     // Landscape-Bilder bekommen doppelte Start-Höhe
     double baseWidth = cardWidth;
     if (aspectRatio > 1.0) {
@@ -1472,26 +1687,66 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       },
                     )
                   : Container(
-                      color: Colors.black87,
-                      child: Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.audiotrack,
-                              size: 48,
-                              color: Colors.white.withValues(alpha: 0.8),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Audio',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.7),
-                                fontSize: 12,
-                              ),
-                            ),
-                          ],
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
                         ),
+                      ),
+                      child: Stack(
+                        children: [
+                          // Moderne Waveform-Visualisierung
+                          Center(child: _buildWaveform()),
+                          // Audio Icon mit Gradient
+                          Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFFE91E63),
+                                        Color(0xFF00E676),
+                                      ],
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.music_note,
+                                    size: 32,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    it.tags?.isNotEmpty == true
+                                        ? it.tags!.first
+                                        : 'Audio',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
                     ),
             ),
@@ -1739,6 +1994,24 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     try {
       // Lösche alle selected Medien
       for (final mediaId in _selectedMediaIds.toList()) {
+        // Prüfe ob dieses Medium gerade abgespielt wird
+        final media = _items.firstWhere(
+          (m) => m.id == mediaId,
+          orElse: () => _items.first,
+        );
+        if (_playingAudioUrl == media.url) {
+          // Stoppe Audio Player
+          await _audioPlayer?.stop();
+          _audioPlayer?.dispose();
+          _audioPlayer = null;
+          setState(() {
+            _playingAudioUrl = null;
+            _audioProgress.remove(media.url);
+            _audioCurrentTime.remove(media.url);
+            _audioTotalTime.remove(media.url);
+          });
+        }
+
         await _mediaSvc.delete(widget.avatarId, mediaId);
       }
       setState(() {
@@ -2059,6 +2332,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   }
 
   Future<void> _openViewer(AvatarMedia media) async {
+    // Audio hat keinen Viewer, nur Tag-Dialog
+    if (media.type == AvatarMediaType.audio) {
+      await _showTagsDialog(media);
+      return;
+    }
+
     // Bestimme Kategorie: Portrait/Landscape + Image/Video
     final isPortrait = _isPortraitMedia(media);
     final mediaType = media.type;
@@ -2206,32 +2485,73 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                 : media.type == AvatarMediaType.audio
                                 ? Container(
                                     decoration: BoxDecoration(
-                                      color: Colors.black26,
                                       borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Center(
-                                      child: Column(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.audiotrack,
-                                            size: 80,
-                                            color: Colors.white.withValues(
-                                              alpha: 0.7,
-                                            ),
-                                          ),
-                                          const SizedBox(height: 16),
-                                          Text(
-                                            'Audio-Datei',
-                                            style: TextStyle(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.7,
-                                              ),
-                                              fontSize: 18,
-                                            ),
-                                          ),
+                                      gradient: const LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Color(0xFF1A1A1A),
+                                          Color(0xFF0A0A0A),
                                         ],
                                       ),
+                                    ),
+                                    child: Stack(
+                                      children: [
+                                        // Waveform Hintergrund
+                                        Center(child: _buildWaveform()),
+                                        // Audio Icon mit Gradient
+                                        Center(
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              Container(
+                                                padding: const EdgeInsets.all(
+                                                  20,
+                                                ),
+                                                decoration: BoxDecoration(
+                                                  shape: BoxShape.circle,
+                                                  gradient:
+                                                      const LinearGradient(
+                                                        colors: [
+                                                          Color(0xFFE91E63),
+                                                          Color(0xFF00E676),
+                                                        ],
+                                                      ),
+                                                ),
+                                                child: const Icon(
+                                                  Icons.music_note,
+                                                  size: 48,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                              const SizedBox(height: 16),
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 16,
+                                                      vertical: 8,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.5),
+                                                  borderRadius:
+                                                      BorderRadius.circular(12),
+                                                ),
+                                                child: Text(
+                                                  media.tags?.isNotEmpty == true
+                                                      ? media.tags!.first
+                                                      : 'Audio-Datei',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   )
                                 : Image.network(
@@ -2274,6 +2594,459 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           );
         },
       ),
+    );
+  }
+
+  /// Audio Card - schmale Darstellung
+  Widget _buildAudioCard(
+    AvatarMedia it,
+    double width,
+    double height,
+    bool isInPlaylist,
+    List<Playlist> usedInPlaylists,
+    bool selected,
+  ) {
+    // Audio Player State für diese Card
+    final isPlaying = _playingAudioUrl == it.url;
+    final progress = _audioProgress[it.url] ?? 0.0;
+    final currentTime = _audioCurrentTime[it.url] ?? Duration.zero;
+    final totalTime = _audioTotalTime[it.url] ?? Duration.zero;
+
+    // Verwende originalen Dateinamen (OHNE Pfad) oder Fallback aus URL
+    final fileName =
+        it.originalFileName ??
+        Uri.parse(it.url).pathSegments.last.split('?').first;
+
+    return SizedBox(
+      width: width,
+      height: height,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
+                ),
+              ),
+              child: Stack(
+                children: [
+                  // Waveform fast volle Breite - VERTIKAL MITTIG
+                  Positioned(
+                    left: 35, // Kurz nach Play-Button
+                    right: 75, // Kurz vor Tag/Delete Icons
+                    top: 15, // Mittig
+                    bottom: 15, // Mittig
+                    child: GestureDetector(
+                      onTap: () => _toggleAudioPlayback(it),
+                      child: ClipRect(
+                        clipBehavior: Clip.hardEdge,
+                        child: LayoutBuilder(
+                          builder: (context, constraints) {
+                            return _buildCompactWaveform(
+                              availableWidth: constraints.maxWidth,
+                              progress: progress,
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Dateiname UNTEN (absolute position)
+                  Positioned(
+                    left: 35,
+                    right: 80,
+                    bottom: 5,
+                    child: Text(
+                      fileName,
+                      style: const TextStyle(
+                        color: Colors.white54,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w400,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  // Zeitanzeige OBEN RECHTS (über Waveform)
+                  Positioned(
+                    right: 80,
+                    top: 5,
+                    child: Text(
+                      '${_formatDuration(currentTime)} / ${_formatDuration(totalTime)}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  // Play-Button ÜBER Waveform - KLICKBAR
+                  Positioned(
+                    left: 8,
+                    top: 0,
+                    bottom: 0,
+                    child: Align(
+                      alignment: Alignment.center,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Play/Pause Button
+                          GestureDetector(
+                            onTap: () => _toggleAudioPlayback(it),
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Color(0xFFE91E63), // Magenta
+                                    Color(0xFFE91E63), // Mehr Magenta
+                                    AppColors.lightBlue, // Blau
+                                    Color(0xFF00E5FF), // Cyan
+                                  ],
+                                  stops: [0.0, 0.4, 0.7, 1.0],
+                                ),
+                              ),
+                              child: Icon(
+                                isPlaying ? Icons.pause : Icons.play_arrow,
+                                size: 24,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          // Restart Button (nur anzeigen wenn Audio läuft oder pausiert)
+                          if (progress > 0.0 || isPlaying)
+                            Padding(
+                              padding: const EdgeInsets.only(left: 4),
+                              child: GestureDetector(
+                                onTap: () => _restartAudio(it),
+                                child: Container(
+                                  padding: const EdgeInsets.all(6),
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: const Color(0x40FFFFFF),
+                                  ),
+                                  child: const Icon(
+                                    Icons.replay,
+                                    size: 16,
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  // Tag + Delete Icons RECHTS AUSSEN
+                  Positioned(
+                    right: 8,
+                    top: 0,
+                    bottom: 0,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Tag Icon
+                        if (!_isDeleteMode)
+                          InkWell(
+                            onTap: () => _showTagsDialog(it),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: const Color(0x25FFFFFF),
+                                border: Border.all(
+                                  color: const Color(0x66FFFFFF),
+                                ),
+                              ),
+                              child: ShaderMask(
+                                shaderCallback: (bounds) =>
+                                    const LinearGradient(
+                                      colors: [
+                                        Color(0xFFE91E63),
+                                        AppColors.lightBlue,
+                                      ],
+                                    ).createShader(bounds),
+                                child: const Icon(
+                                  Icons.label_outline,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (!_isDeleteMode) const SizedBox(width: 4),
+                        // Delete Icon
+                        InkWell(
+                          onTap: () {
+                            setState(() {
+                              _isDeleteMode = true;
+                              if (selected) {
+                                _selectedMediaIds.remove(it.id);
+                              } else {
+                                _selectedMediaIds.add(it.id);
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(6),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: selected ? null : const Color(0x30000000),
+                              gradient: selected
+                                  ? const LinearGradient(
+                                      colors: [
+                                        AppColors.magenta,
+                                        AppColors.lightBlue,
+                                      ],
+                                    )
+                                  : null,
+                              border: Border.all(
+                                color: selected
+                                    ? AppColors.lightBlue.withValues(alpha: 0.7)
+                                    : const Color(0x66FFFFFF),
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.delete_outline,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Playlist Icon oben links
+                  if (isInPlaylist && !_isDeleteMode)
+                    Positioned(
+                      left: 6,
+                      top: 6,
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.accentGreenDark,
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.7),
+                          ),
+                        ),
+                        child: IconButton(
+                          padding: EdgeInsets.zero,
+                          icon: const Icon(
+                            Icons.playlist_play,
+                            color: Colors.white,
+                            size: 12,
+                          ),
+                          onPressed: () =>
+                              _showPlaylistsDialog(it, usedInPlaylists),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          // KEINE weiteren Icons hier - alle sind jetzt oben im Stack
+          Positioned(
+            right: -1000, // Versteckt
+            bottom: -1000,
+            child: InkWell(
+              onTap: () {
+                setState(() {
+                  _isDeleteMode = true;
+                  if (selected) {
+                    _selectedMediaIds.remove(it.id);
+                  } else {
+                    _selectedMediaIds.add(it.id);
+                  }
+                });
+              },
+              child: Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: selected ? null : const Color(0x30000000),
+                  gradient: selected
+                      ? const LinearGradient(
+                          colors: [AppColors.magenta, AppColors.lightBlue],
+                        )
+                      : null,
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: selected
+                        ? AppColors.lightBlue.withValues(alpha: 0.7)
+                        : const Color(0x66FFFFFF),
+                  ),
+                ),
+                child: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.white,
+                  size: 12,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Kompakte Waveform für schmale Audio-Cards
+  Widget _buildCompactWaveform({
+    required double availableWidth,
+    double progress = 0.0,
+  }) {
+    // Berechne Anzahl der Striche basierend auf verfügbarer Breite
+    // Jeder Strich: 1.2px breit, kein Abstand (spaceBetween verteilt automatisch)
+    final barCount = (availableWidth / 1.4).floor().clamp(50, 300);
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: List.generate(barCount, (index) {
+        final heights = [
+          0.3,
+          0.5,
+          0.7,
+          0.9,
+          0.6,
+          0.4,
+          0.8,
+          0.5,
+          0.7,
+          0.3,
+          0.6,
+          0.8,
+          0.4,
+          0.9,
+          0.5,
+          0.7,
+          0.3,
+          0.6,
+          0.4,
+          0.8,
+          0.5,
+          0.7,
+          0.6,
+          0.9,
+          0.4,
+          0.8,
+          0.5,
+          0.6,
+          0.3,
+          0.7,
+          0.4,
+          0.6,
+          0.8,
+          0.5,
+          0.9,
+          0.3,
+          0.7,
+          0.6,
+          0.4,
+          0.8,
+          0.5,
+          0.7,
+          0.4,
+          0.6,
+          0.9,
+          0.3,
+          0.8,
+          0.5,
+          0.7,
+          0.4,
+        ];
+        final height = heights[index % heights.length];
+
+        // Berechne ob dieser Strich schon abgespielt wurde
+        final barPosition = index / barCount;
+        final isPlayed = barPosition <= progress;
+
+        return Container(
+          width: 1.2,
+          height: 54.43 * height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(0.6),
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: isPlayed
+                  ? [
+                      // Hellblau (Cyan) für abgespielte Striche
+                      const Color(0xFF00E5FF).withValues(alpha: 0.4),
+                      const Color(0xFF00E5FF).withValues(alpha: 0.7),
+                      const Color(0xFF00E5FF).withValues(alpha: 0.9),
+                    ]
+                  : [
+                      // Weiß für noch nicht abgespielte Striche
+                      Colors.white.withValues(alpha: 0.2),
+                      Colors.white.withValues(alpha: 0.5),
+                      Colors.white.withValues(alpha: 0.7),
+                    ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  /// Waveform-Visualisierung für Audio-Karten (Tag-Dialog)
+  Widget _buildWaveform() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: List.generate(20, (index) {
+        // Pseudo-zufällige Höhen für Waveform-Effekt
+        final heights = [
+          0.3,
+          0.5,
+          0.7,
+          0.9,
+          0.6,
+          0.4,
+          0.8,
+          0.5,
+          0.7,
+          0.3,
+          0.6,
+          0.8,
+          0.4,
+          0.9,
+          0.5,
+          0.7,
+          0.3,
+          0.6,
+          0.4,
+          0.8,
+        ];
+        final height = heights[index % heights.length];
+
+        return Container(
+          width: 3,
+          height: 60 * height,
+          margin: const EdgeInsets.symmetric(horizontal: 1.5),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(2),
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: [
+                Color(0xFFE91E63).withValues(alpha: 0.3),
+                Color(0xFF00E676).withValues(alpha: 0.3),
+              ],
+            ),
+          ),
+        );
+      }),
     );
   }
 
