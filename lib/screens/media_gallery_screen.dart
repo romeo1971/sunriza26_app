@@ -4,6 +4,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
@@ -1602,14 +1603,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     if (it.type == AvatarMediaType.audio) {
       const double audioCardWidth =
           328.0; // 7 Buttons (40px) + 6 Abstände (8px)
-      const double audioCardHeight =
-          128.0; // 104px + 24px für Tags (Name + 8px + Tags)
 
       // KEIN GestureDetector mehr - alle Interaktionen sind in _buildAudioCard!
       return _buildAudioCard(
         it,
         audioCardWidth,
-        audioCardHeight,
+        null, // Auto-Height!
         isInPlaylist,
         usedInPlaylists,
         selected,
@@ -1710,9 +1709,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                     shape: BoxShape.circle,
                                     gradient: const LinearGradient(
                                       colors: [
-                                        Color(0xFFE91E63),
-                                        Color(0xFF00E676),
+                                        Color(0xFFE91E63), // Magenta
+                                        AppColors.lightBlue, // Blue
+                                        Color(0xFF00E5FF), // Cyan
                                       ],
+                                      stops: [0.0, 0.5, 1.0],
                                     ),
                                   ),
                                   child: const Icon(
@@ -2786,12 +2787,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                         colors: [
-                                          Color(0xFF00E676), // Green
                                           Color(0xFFE91E63), // Magenta
                                           AppColors.lightBlue, // Blue
                                           Color(0xFF00E5FF), // Cyan
                                         ],
-                                        stops: [0.0, 0.33, 0.66, 1.0],
+                                        stops: [0.0, 0.5, 1.0],
                                       ),
                                     ),
                                     child: IconButton(
@@ -2859,7 +2859,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   Widget _buildAudioCard(
     AvatarMedia it,
     double width,
-    double height,
+    double? height, // Nullable für Auto-Height
     bool isInPlaylist,
     List<Playlist> usedInPlaylists,
     bool selected,
@@ -2877,7 +2877,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     return SizedBox(
       width: width,
-      height: height,
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
@@ -2902,10 +2901,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
             ),
           ),
+          clipBehavior: Clip.hardEdge, // Verhindert Overflow
           child: Column(
+            mainAxisSize: MainAxisSize.min, // Auto-Height!
             children: [
               // OBERER CONTAINER: Play, Waveform, Icons
-              Expanded(
+              SizedBox(
+                height: 78, // Feste Höhe für Waveform-Bereich
                 child: Padding(
                   padding: const EdgeInsets.only(top: 8), // 0.5rem
                   child: Stack(
@@ -3110,12 +3112,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   ),
                 ),
               ),
-              // UNTERER CONTAINER: Name, Zeit, Tags
+              // MITTLERER CONTAINER: Name, Zeit, Tags
               Container(
                 padding: const EdgeInsets.only(
                   left: 8,
                   right: 8,
-                  bottom: 8,
+                  bottom: 0, // Kein bottom padding, da Setup-Container folgt
                   top: 5,
                 ), // top reduziert um 40%
                 child: Column(
@@ -3172,6 +3174,241 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         ),
                       ),
                     ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 15), // Abstand nach oben
+              // PREIS-SETUP CONTAINER: Unten, volle Breite, GMBC Gradient
+              Container(
+                height: 40,
+                decoration: const BoxDecoration(
+                  borderRadius: BorderRadius.only(
+                    bottomLeft: Radius.circular(7), // Wie innere Kachel
+                    bottomRight: Radius.circular(7),
+                  ),
+                  gradient: LinearGradient(
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                    colors: [
+                      Color(0xFFE91E63), // Magenta
+                      AppColors.lightBlue, // Blue
+                      Color(0xFF00E5FF), // Cyan
+                    ],
+                    stops: [0.0, 0.5, 1.0],
+                  ),
+                ),
+                padding: EdgeInsets.zero,
+                child: Row(
+                  children: [
+                    // Radio: Kostenlos (klickbar, volle Höhe, Hover) - FESTE BREITE
+                    SizedBox(
+                      width: 100, // Feste Breite für konsistentes Layout
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () async {
+                            await _updateMediaPrice(it, isFree: true);
+                          },
+                          child: Container(
+                            height: 40, // Volle Container-Höhe
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: (it.isFree ?? true)
+                                  ? const Color(0x75FFFFFF) // Selektiert
+                                  : Colors.transparent,
+                              borderRadius: const BorderRadius.only(
+                                bottomLeft: Radius.circular(7),
+                              ),
+                            ),
+                            child: const Text(
+                              'kostenlos',
+                              style: TextStyle(color: Colors.white, fontSize: 11),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    // Preis-Input (volle Höhe, ersetzt €) - FESTE BREITE
+                    SizedBox(
+                      width: 120, // Feste Breite (80px Input + ~40px für €)
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () async {
+                            if (it.isFree ?? true) {
+                              debugPrint('€-Cents geklickt, aktiviere Input');
+                              // Sofort UI updaten
+                              setState(() {
+                                final index = _items.indexWhere(
+                                  (m) => m.id == it.id,
+                                );
+                                if (index != -1) {
+                                  _items[index] = AvatarMedia(
+                                    id: it.id,
+                                    avatarId: it.avatarId,
+                                    type: it.type,
+                                    url: it.url,
+                                    thumbUrl: it.thumbUrl,
+                                    createdAt: it.createdAt,
+                                    durationMs: it.durationMs,
+                                    aspectRatio: it.aspectRatio,
+                                    tags: it.tags,
+                                    originalFileName: it.originalFileName,
+                                    isFree: false,
+                                    price: null,
+                                  );
+                                }
+                              });
+                              // Dann Firestore updaten
+                              await _updateMediaPrice(it, isFree: false);
+                            }
+                          },
+                          child: Container(
+                            height: 40, // Volle Container-Höhe
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: !(it.isFree ?? true)
+                                  ? const Color(0x75FFFFFF) // Selektiert
+                                  : Colors.transparent,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                // Input-Feld (nur sichtbar wenn NICHT kostenlos)
+                                if (!(it.isFree ?? true))
+                                  Container(
+                                    width: 80,
+                                    height: 40,
+                                    alignment: Alignment.center,
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.2),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: TextField(
+                                      autofocus: true,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal:
+                                                true, // Dezimalzahlen (Euro)
+                                          ),
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        height: 1.0,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                      textAlignVertical:
+                                          TextAlignVertical.center,
+                                      decoration: InputDecoration(
+                                        hintText: '1,99',
+                                        hintStyle: TextStyle(
+                                          color: Colors.white.withOpacity(0.5),
+                                          fontSize: 11,
+                                        ),
+                                        border: InputBorder.none,
+                                        enabledBorder: InputBorder.none,
+                                        focusedBorder: InputBorder.none,
+                                        contentPadding: EdgeInsets.zero,
+                                        isDense: true,
+                                      ),
+                                      onChanged: (value) async {
+                                        if (value.isEmpty) return;
+
+                                        // Erlaube beide: Komma und Punkt als Dezimaltrennzeichen
+                                        final normalizedValue = value
+                                            .replaceAll(',', '.');
+                                        final euros = double.tryParse(
+                                          normalizedValue,
+                                        );
+
+                                        if (euros != null && euros >= 0) {
+                                          await _updateMediaPrice(
+                                            it,
+                                            isFree: false,
+                                            price: euros,
+                                          );
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                // Label "€" (immer sichtbar, Position wechselt)
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                    left: (it.isFree ?? true) ? 0 : 4,
+                                  ),
+                                  child: const Text(
+                                    '€',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const Spacer(),
+                    // "Credits kaufen" Link
+                    TextButton(
+                      onPressed: () {
+                        // TODO: Credit-Shop öffnen
+                      },
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 4),
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: const Text(
+                        'Credits →',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                    // Hook Icon (Speichern)
+                    MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () {
+                          // TODO: Preis speichern
+                        },
+                        child: Container(
+                          width: 40,
+                          height: 40,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: const BorderRadius.only(
+                              bottomRight: Radius.circular(7),
+                            ),
+                          ),
+                          child: ShaderMask(
+                            shaderCallback: (bounds) => const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Color(0xFFE91E63), // Magenta
+                                Color(0xFFE91E63), // Mehr Magenta
+                                AppColors.lightBlue, // Blue
+                                Color(0xFF00E5FF), // Cyan
+                              ],
+                              stops: [0.0, 0.4, 0.7, 1.0],
+                            ).createShader(bounds),
+                            child: const Icon(
+                              Icons.check,
+                              size: 24,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -3323,14 +3560,63 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
               colors: [
-                Color(0xFFE91E63).withValues(alpha: 0.3),
-                Color(0xFF00E676).withValues(alpha: 0.3),
+                Color(0xFFE91E63).withValues(alpha: 0.3), // Magenta
+                AppColors.lightBlue.withValues(alpha: 0.3), // Blue
+                Color(0xFF00E5FF).withValues(alpha: 0.3), // Cyan
               ],
+              stops: [0.0, 0.5, 1.0],
             ),
           ),
         );
       }),
     );
+  }
+
+  /// Aktualisiert Preis-Einstellungen für ein Media-Element
+  Future<void> _updateMediaPrice(
+    AvatarMedia media, {
+    required bool isFree,
+    double? price,
+  }) async {
+    try {
+      // Aktualisiere lokal
+      final updatedMedia = AvatarMedia(
+        id: media.id,
+        avatarId: media.avatarId,
+        type: media.type,
+        url: media.url,
+        thumbUrl: media.thumbUrl,
+        createdAt: media.createdAt,
+        durationMs: media.durationMs,
+        aspectRatio: media.aspectRatio,
+        tags: media.tags,
+        originalFileName: media.originalFileName,
+        isFree: isFree,
+        price: isFree ? null : price,
+      );
+
+      // Aktualisiere in Firestore
+      await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(media.avatarId)
+          .collection('media')
+          .doc(media.id)
+          .update({
+            'isFree': isFree,
+            if (price != null && !isFree) 'price': price,
+            if (isFree) 'price': FieldValue.delete(),
+          });
+
+      // Aktualisiere Liste
+      setState(() {
+        final index = _items.indexWhere((m) => m.id == media.id);
+        if (index != -1) {
+          _items[index] = updatedMedia;
+        }
+      });
+    } catch (e) {
+      debugPrint('Fehler beim Aktualisieren des Preises: $e');
+    }
   }
 
   /// Aktualisiert Tags für bestehende Bilder ohne Tags

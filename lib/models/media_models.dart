@@ -12,6 +12,8 @@ class AvatarMedia {
   aspectRatio; // width / height (z.B. 9/16 für Portrait, 16/9 für Landscape)
   final List<String>? tags; // KI-generierte Tags für Bilderkennung
   final String? originalFileName; // Originaler Dateiname für Anzeige
+  final bool? isFree; // true = kostenlos, false = kostenpflichtig
+  final double? price; // Preis in Euro (null wenn isFree oder kostenlos)
 
   const AvatarMedia({
     required this.id,
@@ -24,6 +26,8 @@ class AvatarMedia {
     this.aspectRatio,
     this.tags,
     this.originalFileName,
+    this.isFree,
+    this.price,
   });
 
   bool get isPortrait => aspectRatio != null && aspectRatio! < 1.0;
@@ -54,6 +58,8 @@ class AvatarMedia {
       aspectRatio: (map['aspectRatio'] as num?)?.toDouble(),
       tags: (map['tags'] as List<dynamic>?)?.cast<String>(),
       originalFileName: map['originalFileName'] as String?,
+      isFree: map['isFree'] as bool?,
+      price: (map['price'] as num?)?.toDouble(),
     );
   }
 
@@ -81,6 +87,8 @@ class AvatarMedia {
       if (aspectRatio != null) 'aspectRatio': aspectRatio,
       if (tags != null) 'tags': tags,
       if (originalFileName != null) 'originalFileName': originalFileName,
+      if (isFree != null) 'isFree': isFree,
+      if (price != null) 'price': price,
     };
   }
 }
