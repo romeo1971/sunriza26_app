@@ -7331,9 +7331,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               ),
               const SizedBox(height: 15),
               _buildPriceSetupContainer(it),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -7552,6 +7549,53 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         );
       }),
     );
+  }
+
+  /// Aktualisiert Preis-Einstellungen für ein Media-Element
+  Future<void> _updateMediaPrice(
+    AvatarMedia media, {
+    required bool isFree,
+    double? price,
+  }) async {
+    try {
+      // Aktualisiere lokal
+      final updatedMedia = AvatarMedia(
+        id: media.id,
+        avatarId: media.avatarId,
+        type: media.type,
+        url: media.url,
+        thumbUrl: media.thumbUrl,
+        createdAt: media.createdAt,
+        durationMs: media.durationMs,
+        aspectRatio: media.aspectRatio,
+        tags: media.tags,
+        originalFileName: media.originalFileName,
+        isFree: isFree,
+        price: isFree ? null : price,
+      );
+
+      // Aktualisiere in Firestore
+      await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(media.avatarId)
+          .collection('media')
+          .doc(media.id)
+          .update({
+            'isFree': isFree,
+            if (price != null && !isFree) 'price': price,
+            if (isFree) 'price': FieldValue.delete(),
+          });
+
+      // Aktualisiere Liste
+      setState(() {
+        final index = _items.indexWhere((m) => m.id == media.id);
+        if (index != -1) {
+          _items[index] = updatedMedia;
+        }
+      });
+    } catch (e) {
+      debugPrint('Fehler beim Aktualisieren des Preises: $e');
+    }
   }
 
   /// Aktualisiert Tags für bestehende Bilder ohne Tags
