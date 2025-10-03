@@ -22,6 +22,10 @@ class UserProfile {
   final String? language;
   // Geburtsdatum (Date of Birth) in Millisekunden seit Epoch
   final int? dob;
+  // Credits-System
+  final int credits; // Verfügbare Credits
+  final int creditsPurchased; // Gesamt gekaufte Credits
+  final int creditsSpent; // Gesamt ausgegebene Credits
 
   UserProfile({
     required this.uid,
@@ -44,6 +48,9 @@ class UserProfile {
     this.defaultPaymentMethodId,
     this.language,
     this.dob,
+    this.credits = 0,
+    this.creditsPurchased = 0,
+    this.creditsSpent = 0,
   });
 
   factory UserProfile.fromMap(Map<String, dynamic> map) {
@@ -68,6 +75,9 @@ class UserProfile {
       defaultPaymentMethodId: map['defaultPaymentMethodId'] as String?,
       language: map['language'] as String?,
       dob: map['dob'] as int?,
+      credits: (map['credits'] as num?)?.toInt() ?? 0,
+      creditsPurchased: (map['creditsPurchased'] as num?)?.toInt() ?? 0,
+      creditsSpent: (map['creditsSpent'] as num?)?.toInt() ?? 0,
     );
   }
 
@@ -93,6 +103,9 @@ class UserProfile {
       'defaultPaymentMethodId': defaultPaymentMethodId,
       'language': language,
       'dob': dob,
+      'credits': credits,
+      'creditsPurchased': creditsPurchased,
+      'creditsSpent': creditsSpent,
     };
   }
 

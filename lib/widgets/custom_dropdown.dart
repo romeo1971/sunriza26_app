@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 
-/// CustomDropdown mit integriertem Label (konsistent mit CustomTextField)
+/// CustomDropdown - Dropdown in einem Widget
 ///
-/// Features:
-/// - Label oben links (wie CustomTextField)
-/// - Weißer Border (transparent background)
-/// - Konsistentes Design mit CustomTextField
+/// WICHTIG: Einheitliche Font-Parameter um Springen zu vermeiden:
+/// - fontSize: 16
+/// - fontWeight: normal
+/// - letterSpacing: 0
+/// - height: 1.0
+///
+/// Diese Regel gilt für ALLE Input/Display Widgets!
 class CustomDropdown<T> extends StatelessWidget {
   final String label;
   final T? value;
@@ -57,7 +60,13 @@ class CustomDropdown<T> extends StatelessWidget {
           onChanged: enabled ? onChanged : null,
           isExpanded: true,
           dropdownColor: Colors.black87,
-          style: const TextStyle(color: Colors.white, fontSize: 16),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.normal,
+            letterSpacing: 0,
+            height: 1.0,
+          ),
           hint: hint != null
               ? Text(hint!, style: const TextStyle(color: Colors.white54))
               : null,

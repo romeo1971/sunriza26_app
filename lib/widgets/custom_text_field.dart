@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-/// CustomTextField mit integriertem Label (platzsparendes Design)
+/// CustomTextField - Input UND Display in einem Widget
 ///
-/// Features:
-/// - Label wird innerhalb des Input-Feldes angezeigt
-/// - Grüner Border wenn Wert vorhanden, grau wenn leer
-/// - Unterstützt alle Standard TextField-Parameter
-/// - Konsistentes Design-Pattern für die gesamte App
+/// WICHTIG: Einheitliche Font-Parameter um Springen zu vermeiden:
+/// - fontSize: 16
+/// - fontWeight: normal
+/// - cursorColor: Colors.white
+/// - letterSpacing: 0
+/// - height: 1.0
+///
+/// Diese Regel gilt für ALLE Input/Display Widgets!
 class CustomTextField extends StatelessWidget {
   final String label;
   final TextEditingController? controller;
@@ -72,7 +75,16 @@ class CustomTextField extends StatelessWidget {
       inputFormatters: inputFormatters,
       textCapitalization: textCapitalization,
       obscureText: obscureText,
-      style: style ?? const TextStyle(color: Colors.white),
+      style:
+          style ??
+          const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.normal,
+            letterSpacing: 0,
+            height: 1.0,
+          ),
+      cursorColor: Colors.white,
       enabled: enabled,
       focusNode: focusNode,
       onTap: onTap,
@@ -109,7 +121,10 @@ class CustomTextField extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.white12, width: 1),
         ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 16,
+        ),
         suffixIcon: suffixIcon,
         prefixIcon: prefixIcon,
         counterStyle: const TextStyle(color: Colors.white54),

@@ -25,10 +25,11 @@ async function generateLipsyncVideo(request) {
         });
         // Modell für Video-Generierung auswählen
         // Stand 04.09.2025: Imagen Video Generator oder ähnliche Modelle
+        const modelId = config.vertexAiModelId || 'gemini-pro-vision';
         const model = vertexAI.getGenerativeModel({
-            model: config.vertexAiModelId,
+            model: modelId,
         });
-        console.log(`Verwende Modell: ${config.vertexAiModelId}`);
+        console.log(`Verwende Modell: ${modelId}`);
         console.log(`Referenzvideo: ${request.referenceVideoUrl}`);
         // PCM (LINEAR16) in WAV verpacken (24kHz, Mono), damit Vertex 'audio/wav' korrekt versteht
         const wavBuffer = pcmToWav(request.audioBuffer, request.audioConfig.sampleRateHertz || 24000, 1, 16);

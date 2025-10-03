@@ -130,13 +130,11 @@ class AppDrawer extends StatelessWidget {
 
                 _buildDrawerItem(
                   context,
-                  icon: Icons.payment,
-                  title: context.read<LocalizationService>().t(
-                    'menu.paymentMethods',
-                  ),
+                  icon: Icons.account_balance_wallet,
+                  title: 'Zahlungen & Credits',
                   onTap: () {
                     Navigator.pop(context);
-                    Navigator.pushNamed(context, '/payment-methods');
+                    Navigator.pushNamed(context, '/payment-overview');
                   },
                 ),
 

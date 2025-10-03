@@ -1,0 +1,127 @@
+import 'package:flutter/material.dart';
+
+/// CustomPriceField - Preis-Feld für Input UND Anzeige
+///
+/// WICHTIG: Einheitliche Font-Parameter um Springen zu vermeiden:
+/// - fontSize: 16
+/// - fontWeight: FontWeight.w500
+/// - height: 1.0
+/// - letterSpacing: 0
+///
+/// Input: Max 2 Dezimalstellen (z.B. 12,34)
+///
+/// Diese Regel gilt für ALLE Input/Display Widgets (TextField, TextArea, Dropdown)!
+class CustomPriceField extends StatefulWidget {
+  final String? displayText;
+  final String? hintText;
+  final TextEditingController? controller;
+  final void Function(String)? onChanged;
+  final TextInputType? keyboardType;
+  final bool isEditing;
+  final bool autofocus;
+
+  const CustomPriceField({
+    super.key,
+    this.displayText,
+    this.hintText,
+    this.controller,
+    this.onChanged,
+    this.keyboardType,
+    this.isEditing = false,
+    this.autofocus = false,
+  });
+
+  @override
+  State<CustomPriceField> createState() => _CustomPriceFieldState();
+}
+
+class _CustomPriceFieldState extends State<CustomPriceField> {
+  @override
+  void initState() {
+    super.initState();
+    if (widget.controller != null) {
+      widget.controller!.addListener(_formatInput);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.controller?.removeListener(_formatInput);
+    super.dispose();
+  }
+
+  /// Formatiert Input auf max 2 Dezimalstellen (12,34)
+  void _formatInput() {
+    final text = widget.controller?.text ?? '';
+    if (text.isEmpty) return;
+
+    // Nur 0-9, Komma und Punkt erlauben
+    String cleaned = text.replaceAll(RegExp(r'[^0-9,.]'), '');
+
+    // Punkt durch Komma ersetzen
+    cleaned = cleaned.replaceAll('.', ',');
+
+    // Nur ein Komma erlauben
+    final parts = cleaned.split(',');
+    if (parts.length > 2) {
+      cleaned = '${parts[0]},${parts.sublist(1).join('')}';
+    }
+
+    // Max 2 Dezimalstellen
+    if (parts.length == 2 && parts[1].length > 2) {
+      cleaned = '${parts[0]},${parts[1].substring(0, 2)}';
+    }
+
+    // Nur wenn geändert, Controller updaten (verhindert Loop)
+    if (cleaned != text) {
+      final oldSelection = widget.controller?.selection;
+      widget.controller?.text = cleaned;
+      // Cursor-Position beibehalten
+      if (oldSelection != null) {
+        widget.controller?.selection = TextSelection.fromPosition(
+          TextPosition(offset: cleaned.length),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const textStyle = TextStyle(
+      color: Colors.white,
+      fontSize: 16,
+      fontWeight: FontWeight.w500,
+      height: 1.0,
+      letterSpacing: 0,
+    );
+
+    // KEINE width - immer auto (IntrinsicWidth)
+    return IntrinsicWidth(
+      child: Container(
+        alignment: Alignment.centerLeft,
+        child: widget.isEditing
+            ? TextField(
+                controller: widget.controller,
+                autofocus: widget.autofocus,
+                keyboardType: widget.keyboardType,
+                textAlign: TextAlign.left,
+                cursorColor: Colors.white,
+                style: textStyle,
+                decoration: InputDecoration(
+                  hintText: widget.hintText,
+                  hintStyle: const TextStyle(color: Colors.white, fontSize: 16),
+                  fillColor: Colors.transparent,
+                  filled: false,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                  isDense: true,
+                ),
+                onChanged: widget.onChanged,
+              )
+            : Text(widget.displayText ?? '', style: textStyle),
+      ),
+    );
+  }
+}

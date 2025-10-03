@@ -17,6 +17,15 @@ import OpenAI from 'openai';
 import * as admin from 'firebase-admin';
 import { PassThrough } from 'stream';
 
+// Stripe Checkout für Credits
+export * from './stripeCheckout';
+
+// eRechnung Generator
+export * from './invoiceGenerator';
+
+// Media-Kauf (Credits oder Stripe)
+export * from './mediaCheckout';
+
 // Firebase Admin initialisieren: lokal mit expliziten Credentials, in Cloud mit Default
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIREBASE_CLIENT_EMAIL) {
   // Lokale Entwicklung: nutze Service-Account aus .env oder Datei

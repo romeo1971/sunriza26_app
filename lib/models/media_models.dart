@@ -13,7 +13,8 @@ class AvatarMedia {
   final List<String>? tags; // KI-generierte Tags für Bilderkennung
   final String? originalFileName; // Originaler Dateiname für Anzeige
   final bool? isFree; // true = kostenlos, false = kostenpflichtig
-  final double? price; // Preis in Euro (null wenn isFree oder kostenlos)
+  final double? price; // Preis (null wenn isFree oder kostenlos)
+  final String? currency; // Währung (€ oder $), Default: €
 
   const AvatarMedia({
     required this.id,
@@ -28,6 +29,7 @@ class AvatarMedia {
     this.originalFileName,
     this.isFree,
     this.price,
+    this.currency,
   });
 
   bool get isPortrait => aspectRatio != null && aspectRatio! < 1.0;
@@ -60,6 +62,7 @@ class AvatarMedia {
       originalFileName: map['originalFileName'] as String?,
       isFree: map['isFree'] as bool?,
       price: (map['price'] as num?)?.toDouble(),
+      currency: map['currency'] as String?,
     );
   }
 
@@ -89,6 +92,7 @@ class AvatarMedia {
       if (originalFileName != null) 'originalFileName': originalFileName,
       if (isFree != null) 'isFree': isFree,
       if (price != null) 'price': price,
+      if (currency != null) 'currency': currency,
     };
   }
 }
