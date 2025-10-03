@@ -17,7 +17,8 @@ class AvatarListScreen extends StatefulWidget {
   State<AvatarListScreen> createState() => _AvatarListScreenState();
 }
 
-class _AvatarListScreenState extends State<AvatarListScreen> {
+class _AvatarListScreenState extends State<AvatarListScreen>
+    with AutomaticKeepAliveClientMixin {
   final AvatarService _avatarService = AvatarService();
   List<model.AvatarData> _avatars = [];
   List<model.AvatarData> _filteredAvatars = [];
@@ -26,6 +27,9 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
   String _searchTerm = '';
   int _currentPage = 0;
   static const int _avatarsPerPage = 2;
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -111,6 +115,7 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // WICHTIG für AutomaticKeepAliveClientMixin
     final loc = context.watch<LocalizationService>();
     return Scaffold(
       drawer: const AppDrawer(),

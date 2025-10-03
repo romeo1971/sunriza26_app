@@ -46,6 +46,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
   bool _isStoppingPlayback = false;
   StreamSubscription<PlayerState>? _playerStateSub;
+
+  // Rate-Limiting für TTS-Requests
+  DateTime? _lastTtsRequestTime;
+  static const int _minTtsDelayMs =
+      800; // Mindestens 800ms zwischen TTS-Requests
+
   String? _partnerName;
   String? _pendingFullName;
   String? _pendingLooseName;
@@ -384,12 +390,20 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   Widget _buildAppBar() {
+    // Prüfe ob von "Meine Avatare" gekommen (onClose == null = normale Navigation)
+    final showBackButton = widget.onClose == null;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(color: Colors.transparent),
       child: Row(
         children: [
-          // KEIN Zurück-Button mehr!
+          // Zurück-Pfeil nur wenn von "Meine Avatare" (nicht von Home/Explore)
+          if (showBackButton)
+            IconButton(
+              icon: const Icon(Icons.arrow_back, color: Colors.white),
+              onPressed: () => Navigator.pop(context),
+            ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -420,6 +434,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
                       height: 1.0,
+                      shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
                     ),
                     textAlign: TextAlign.center,
                     maxLines: 1,
@@ -1172,6 +1187,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   Future<void> _botSay(String text) async {
+    // Rate-Limiting: Prüfe letzte TTS-Anfrage
+    final now = DateTime.now();
+    if (_lastTtsRequestTime != null) {
+      final diff = now.difference(_lastTtsRequestTime!).inMilliseconds;
+      if (diff < _minTtsDelayMs) {
+        debugPrint('⏳ TTS Rate-Limit: Warte ${_minTtsDelayMs - diff}ms');
+        await Future.delayed(Duration(milliseconds: _minTtsDelayMs - diff));
+      }
+    }
+    _lastTtsRequestTime = DateTime.now();
+
     String? path;
     try {
       String? voiceId = (_avatarData?.training != null)
@@ -1263,6 +1289,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   Future<String?> _ensureTtsForText(String text) async {
+    // Rate-Limiting: Prüfe letzte TTS-Anfrage
+    final now = DateTime.now();
+    if (_lastTtsRequestTime != null) {
+      final diff = now.difference(_lastTtsRequestTime!).inMilliseconds;
+      if (diff < _minTtsDelayMs) {
+        debugPrint('⏳ TTS Rate-Limit: Warte ${_minTtsDelayMs - diff}ms');
+        await Future.delayed(Duration(milliseconds: _minTtsDelayMs - diff));
+      }
+    }
+    _lastTtsRequestTime = DateTime.now();
+
     try {
       final base2 = EnvService.memoryApiBaseUrl();
       if (base2.isEmpty) {
