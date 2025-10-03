@@ -18,6 +18,8 @@ class ExploreScreenState extends State<ExploreScreen> {
   final _searchController = TextEditingController();
   Set<String> _favoriteIds = {};
   String? _currentAvatarId;
+  List<AvatarData> _cachedAvatars = [];
+  bool _isInitialized = false;
 
   @override
   void initState() {
@@ -118,7 +120,23 @@ class ExploreScreenState extends State<ExploreScreen> {
           );
         }
 
+        // WICHTIG: Beim ersten Ladezustand den Cache rendern, um Flackern
+        // beim Tab-Wechsel zu vermeiden. Spinner nur wenn kein Cache existiert.
         if (snapshot.connectionState == ConnectionState.waiting) {
+          if (_cachedAvatars.isNotEmpty) {
+            return PageView.builder(
+              scrollDirection: Axis.vertical,
+              itemCount: _cachedAvatars.length,
+              onPageChanged: (index) {
+                _currentAvatarId = _cachedAvatars[index].id;
+                widget.onCurrentAvatarChanged?.call(_cachedAvatars[index].id);
+                if (mounted) setState(() {});
+              },
+              itemBuilder: (context, index) {
+                return _buildFullscreenAvatarPage(_cachedAvatars[index]);
+              },
+            );
+          }
           return const Scaffold(
             backgroundColor: Colors.black,
             body: Center(child: CircularProgressIndicator()),
@@ -131,13 +149,15 @@ class ExploreScreenState extends State<ExploreScreen> {
             )
             .toList();
 
-        // Erste Avatar ID setzen wenn noch nicht gesetzt
-        if (_currentAvatarId == null && avatars.isNotEmpty) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              setState(() => _currentAvatarId = avatars[0].id);
-            }
-          });
+        // Cache nur beim ersten Mal oder wenn sich die Anzahl ändert
+        if (!_isInitialized || _cachedAvatars.length != avatars.length) {
+          _cachedAvatars = avatars;
+          _isInitialized = true;
+
+          // Erste Avatar ID setzen wenn noch nicht gesetzt
+          if (_currentAvatarId == null && avatars.isNotEmpty) {
+            _currentAvatarId = avatars[0].id;
+          }
         }
 
         if (avatars.isEmpty) {
@@ -168,13 +188,15 @@ class ExploreScreenState extends State<ExploreScreen> {
 
         return PageView.builder(
           scrollDirection: Axis.vertical,
-          itemCount: avatars.length,
+          itemCount: _cachedAvatars.length,
           onPageChanged: (index) {
-            setState(() => _currentAvatarId = avatars[index].id);
-            widget.onCurrentAvatarChanged?.call(avatars[index].id);
+            _currentAvatarId = _cachedAvatars[index].id;
+            widget.onCurrentAvatarChanged?.call(_cachedAvatars[index].id);
+            // Nur setState für das Herz-Icon, nicht den ganzen PageView
+            if (mounted) setState(() {});
           },
           itemBuilder: (context, index) {
-            return _buildFullscreenAvatarPage(avatars[index]);
+            return _buildFullscreenAvatarPage(_cachedAvatars[index]);
           },
         );
       },
@@ -218,6 +240,7 @@ class ExploreScreenState extends State<ExploreScreen> {
               fontSize: 20,
               fontWeight: FontWeight.w300,
               height: 1.0,
+              shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
             ),
             textAlign: TextAlign.center,
             maxLines: 1,
@@ -243,6 +266,56 @@ class ExploreScreenState extends State<ExploreScreen> {
         ),
         child: Stack(
           children: [
+            // Rechts Mitte: Favoriten-Herz (TikTok-Style)
+            Positioned(
+              right: 16,
+              top: MediaQuery.of(context).size.height * 0.4,
+              child: GestureDetector(
+                onTap: () => _toggleFavorite(avatar.id),
+                child: _favoriteIds.contains(avatar.id)
+                    ? Stack(
+                        children: [
+                          Icon(
+                            Icons.favorite,
+                            color: Colors.white,
+                            size: 28,
+                            shadows: [
+                              Shadow(offset: Offset(1, 0), color: Colors.white),
+                              Shadow(
+                                offset: Offset(-1, 0),
+                                color: Colors.white,
+                              ),
+                              Shadow(offset: Offset(0, 1), color: Colors.white),
+                              Shadow(
+                                offset: Offset(0, -1),
+                                color: Colors.white,
+                              ),
+                            ],
+                          ),
+                          ShaderMask(
+                            shaderCallback: (bounds) => const LinearGradient(
+                              colors: [
+                                Color(0xFFE91E63), // Magenta
+                                Color(0xFF2196F3), // Blue
+                                Color(0xFF00E5FF), // Cyan
+                              ],
+                            ).createShader(bounds),
+                            child: const Icon(
+                              Icons.favorite,
+                              color: Colors.white,
+                              size: 28,
+                            ),
+                          ),
+                        ],
+                      )
+                    : const Icon(
+                        Icons.favorite_border,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+              ),
+            ),
+
             // Unten: Conversation starten Button (schwarz)
             Positioned(
               bottom: 16,

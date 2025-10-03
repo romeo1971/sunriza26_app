@@ -24,18 +24,23 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
   final GlobalKey<ExploreScreenState> _exploreKey =
       GlobalKey<ExploreScreenState>();
 
+  // Screens als late-Instanzvariablen, damit sie EINMAL erstellt werden
+  late final Widget _exploreScreen;
+  late final Widget _avatarListScreen;
+  late final Widget _favoritesScreen;
+  late final Widget _profileScreen;
+
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
-  }
 
-  late final List<Widget> _screens = [
-    ExploreScreen(key: _exploreKey),
-    const AvatarListScreen(),
-    const FavoritesScreen(),
-    const UserProfilePublicScreen(),
-  ];
+    // Screens einmalig initialisieren
+    _exploreScreen = ExploreScreen(key: _exploreKey);
+    _avatarListScreen = const AvatarListScreen();
+    _favoritesScreen = const FavoritesScreen();
+    _profileScreen = const UserProfilePublicScreen();
+  }
 
   Future<void> _toggleFavoriteInExplore(
     String? avatarId,
@@ -104,11 +109,38 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Screen direkt auswählen OHNE Getter
+    Widget currentScreen;
+    switch (_currentIndex) {
+      case 0:
+        currentScreen = _exploreScreen;
+        break;
+      case 1:
+        currentScreen = _avatarListScreen;
+        break;
+      case 2:
+        currentScreen = _favoritesScreen;
+        break;
+      case 3:
+        currentScreen = _profileScreen;
+        break;
+      default:
+        currentScreen = _exploreScreen;
+    }
+
     return Scaffold(
       body: Stack(
         children: [
-          // Haupt-Content (Explore, Favoriten, etc.)
-          _screens[_currentIndex],
+          // Haupt-Content: IndexedStack verhindert Neuaufbau beim Tab-Wechsel
+          IndexedStack(
+            index: _currentIndex,
+            children: [
+              _exploreScreen,
+              _avatarListScreen,
+              _favoritesScreen,
+              _profileScreen,
+            ],
+          ),
 
           // Chat-Overlay (wenn aktiv)
           if (_activeChatAvatarId != null)
@@ -143,8 +175,6 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
               label: 'Meine Avatare',
               index: 1,
             ),
-            // Plus Button (nur in Home) / Hook Button (in Favoriten)
-            _buildMiddleButton(),
             // Favoriten
             _buildNavItem(
               iconFilled: Icons.favorite,
