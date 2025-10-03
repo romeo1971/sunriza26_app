@@ -210,6 +210,60 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        toolbarHeight: 56,
+        titleSpacing: 0,
+        leading: (widget.onClose == null)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back, color: Colors.white),
+                onPressed: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  } else {
+                    Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      '/avatar-list',
+                      (route) => false,
+                    );
+                  }
+                },
+              )
+            : const SizedBox(width: 48),
+        title: Transform.translate(
+          offset: const Offset(0, 3),
+          child: Text(
+            (() {
+              final parts = <String>[];
+              if (_avatarData?.firstNamePublic == true)
+                parts.add(_avatarData!.firstName);
+              if (_avatarData?.nicknamePublic == true &&
+                  _avatarData?.nickname != null) {
+                parts.add('"${_avatarData!.nickname}"');
+              }
+              if (_avatarData?.lastNamePublic == true &&
+                  _avatarData?.lastName != null) {
+                parts.add(_avatarData!.lastName!);
+              }
+              return parts.isEmpty ? '' : parts.join(' ');
+            })(),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w300,
+              height: 1.0,
+              shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        actions: const [SizedBox(width: 48)],
+      ),
       body: SizedBox.expand(
         child: Stack(
           children: [
@@ -241,13 +295,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               )
             else
               Container(color: Colors.black),
-            // App Bar transparent ÜBER dem Bild
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: SafeArea(child: _buildAppBar()),
-            ),
+            // AppBar ist nun direkt im Scaffold eingebunden (siehe oben)
 
             // Content unten
             Positioned(
@@ -403,7 +451,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
               onPressed: () => Navigator.pop(context),
-            ),
+            )
+          else
+            const SizedBox(width: 48),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -432,7 +482,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                      fontWeight: FontWeight.w300,
                       height: 1.0,
                       shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
                     ),
@@ -444,6 +494,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               },
             ),
           ),
+          // Symmetrischer Platzhalter rechts (entspricht IconButton-Breite)
+          const SizedBox(width: 48),
           // KEINE Suche im Chat!
         ],
       ),
