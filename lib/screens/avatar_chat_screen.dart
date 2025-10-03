@@ -411,17 +411,20 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                     ? ''
                     : nameParts.join(' ');
 
-                return Text(
-                  displayText,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w300,
-                    height: 1.0,
+                return Transform.translate(
+                  offset: const Offset(0, 3),
+                  child: Text(
+                    displayText,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      height: 1.0,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 );
               },
             ),

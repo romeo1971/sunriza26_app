@@ -232,27 +232,27 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       // Orientierungsfilter: IMMER filtern, nie gemischt (außer Audio)
       if (it.type != AvatarMediaType.audio) {
-        // Für Bilder ohne aspectRatio: tatsächliche Bildgröße ermitteln
-        bool itemIsPortrait = it.isPortrait;
-        bool itemIsLandscape = it.isLandscape;
+      // Für Bilder ohne aspectRatio: tatsächliche Bildgröße ermitteln
+      bool itemIsPortrait = it.isPortrait;
+      bool itemIsLandscape = it.isLandscape;
 
-        if (it.aspectRatio == null && it.type == AvatarMediaType.image) {
-          // Prüfe Cache für bereits ermittelte Aspect Ratios
-          final cachedAspectRatio = _imageAspectRatios[it.url];
-          if (cachedAspectRatio != null) {
-            itemIsPortrait = cachedAspectRatio < 1.0;
-            itemIsLandscape = cachedAspectRatio > 1.0;
-          } else {
-            // Asynchron Aspect Ratio ermitteln (lädt im Hintergrund)
-            _loadImageAspectRatio(it.url);
-            // Default: Portrait für unbekannte Bilder (wird später korrigiert)
-            itemIsPortrait = true;
-            itemIsLandscape = false;
-          }
+      if (it.aspectRatio == null && it.type == AvatarMediaType.image) {
+        // Prüfe Cache für bereits ermittelte Aspect Ratios
+        final cachedAspectRatio = _imageAspectRatios[it.url];
+        if (cachedAspectRatio != null) {
+          itemIsPortrait = cachedAspectRatio < 1.0;
+          itemIsLandscape = cachedAspectRatio > 1.0;
+        } else {
+          // Asynchron Aspect Ratio ermitteln (lädt im Hintergrund)
+          _loadImageAspectRatio(it.url);
+          // Default: Portrait für unbekannte Bilder (wird später korrigiert)
+          itemIsPortrait = true;
+          itemIsLandscape = false;
         }
+      }
 
-        if (_showPortrait && !itemIsPortrait) return false;
-        if (!_showPortrait && !itemIsLandscape) return false;
+      if (_showPortrait && !itemIsPortrait) return false;
+      if (!_showPortrait && !itemIsLandscape) return false;
       }
 
       // KI-Such-Filter
@@ -595,49 +595,49 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               child: Stack(
                 children: [
                   Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.crop, color: Colors.white70),
-                            const SizedBox(width: 8),
-                            ChoiceChip(
-                              label: const Text('9:16'),
-                              selected: currentAspect == 9 / 16,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.crop, color: Colors.white70),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text('9:16'),
+                          selected: currentAspect == 9 / 16,
                               onSelected: isCropping
                                   ? null
                                   : (_) {
-                                      setLocal(() => currentAspect = 9 / 16);
-                                    },
-                            ),
-                            const SizedBox(width: 8),
-                            ChoiceChip(
-                              label: const Text('16:9'),
-                              selected: currentAspect == 16 / 9,
+                            setLocal(() => currentAspect = 9 / 16);
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        ChoiceChip(
+                          label: const Text('16:9'),
+                          selected: currentAspect == 16 / 9,
                               onSelected: isCropping
                                   ? null
                                   : (_) {
-                                      setLocal(() => currentAspect = 16 / 9);
-                                    },
-                            ),
-                          ],
+                            setLocal(() => currentAspect = 16 / 9);
+                          },
                         ),
-                      ),
-                      Expanded(
-                        child: cyi.Crop(
-                          key: ValueKey(currentAspect),
-                          controller: cropController,
-                          image: imageBytes,
-                          aspectRatio: currentAspect,
-                          withCircleUi: false,
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: cyi.Crop(
+                      key: ValueKey(currentAspect),
+                      controller: cropController,
+                      image: imageBytes,
+                      aspectRatio: currentAspect,
+                      withCircleUi: false,
                           onCropped: (cropResult) async {
-                            if (!mounted) return;
+                        if (!mounted) return;
                             if (cropResult is cyi.CropSuccess) {
-                              _cropAspect = currentAspect;
+                        _cropAspect = currentAspect;
 
                               // SOFORT Loading anzeigen
                               setLocal(() => isCropping = true);
@@ -648,39 +648,39 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               // Dialog schließen
                               if (mounted) Navigator.of(context).pop();
                             }
-                          },
-                        ),
-                      ),
-                      Row(
-                        children: [
-                          TextButton(
+                      },
+                    ),
+                  ),
+                  Row(
+                    children: [
+                      TextButton(
                             onPressed: isCropping
                                 ? null
                                 : () => Navigator.pop(ctx),
-                            child: const Text('Abbrechen'),
-                          ),
-                          const Spacer(),
-                          ElevatedButton(
+                        child: const Text('Abbrechen'),
+                      ),
+                      const Spacer(),
+                      ElevatedButton(
                             onPressed: isCropping
                                 ? null
                                 : () {
-                                    // Force crop auch wenn nicht bewegt wurde
-                                    try {
-                                      cropController.crop();
-                                    } catch (e) {
-                                      // Fallback: Croppe das ganze Bild
+                          // Force crop auch wenn nicht bewegt wurde
+                          try {
+                            cropController.crop();
+                          } catch (e) {
+                            // Fallback: Croppe das ganze Bild
                                       setLocal(() => isCropping = true);
                                       _uploadImage(imageBytes, ext).then((_) {
                                         if (mounted) Navigator.of(ctx).pop();
                                       });
-                                    }
-                                  },
-                            child: const Text('Zuschneiden'),
-                          ),
-                        ],
+                          }
+                        },
+                        child: const Text('Zuschneiden'),
                       ),
                     ],
                   ),
+                ],
+              ),
                   // Loading Overlay
                   if (isCropping)
                     Container(
@@ -1125,8 +1125,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
+    ScaffoldMessenger.of(
+      context,
         ).showSnackBar(SnackBar(content: Text('Fehler beim Audio-Upload: $e')));
       }
     }
@@ -1182,9 +1182,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           child: CustomTextField(
                             label: 'Suche nach Medien...',
                             controller: _searchController,
-                            prefixIcon: const Icon(
-                              Icons.search,
-                              color: Colors.white70,
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: Colors.white70,
                             ),
                             onChanged: (value) {
                               setState(() {
@@ -2947,29 +2947,29 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             final hasChanged = controller.text != initialText;
 
             return Align(
-              alignment: Alignment.topCenter,
-              child: Padding(
+        alignment: Alignment.topCenter,
+        child: Padding(
                 padding: const EdgeInsets.only(
                   top: 100.0,
                   left: 16.0,
                   right: 16.0,
                 ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: Container(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
                     width: 400, // Maximal 400px Breite
                     constraints: const BoxConstraints(maxWidth: 400),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).dialogBackgroundColor,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: SingleChildScrollView(
-                      child: Padding(
-                        padding: const EdgeInsets.all(24.0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
+              decoration: BoxDecoration(
+                color: Theme.of(context).dialogBackgroundColor,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(24.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                             // Action Buttons OBEN (über dem Bild)
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3011,48 +3011,48 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                   child: const Text('Speichern'),
                                 ),
                               ],
-                            ),
-                            const SizedBox(height: 16),
+                      ),
+                      const SizedBox(height: 16),
                             // Media Preview - Audio im Audio-Card-Style
                             if (media.type == AvatarMediaType.audio)
                               _buildAudioPreviewForDialog(media)
                             else
-                              SizedBox(
-                                height: 320,
-                                child: media.type == AvatarMediaType.video
-                                    ? FutureBuilder<VideoPlayerController?>(
+                      SizedBox(
+                        height: 320,
+                        child: media.type == AvatarMediaType.video
+                            ? FutureBuilder<VideoPlayerController?>(
                                         future: _videoControllerForThumb(
                                           media.url,
                                         ),
-                                        builder: (context, snapshot) {
-                                          if (snapshot.connectionState ==
-                                                  ConnectionState.done &&
-                                              snapshot.hasData &&
-                                              snapshot.data != null) {
-                                            final controller = snapshot.data!;
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState ==
+                                          ConnectionState.done &&
+                                      snapshot.hasData &&
+                                      snapshot.data != null) {
+                                    final controller = snapshot.data!;
                                             if (controller
                                                 .value
                                                 .isInitialized) {
-                                              return AspectRatio(
+                                      return AspectRatio(
                                                 aspectRatio: controller
                                                     .value
                                                     .aspectRatio,
-                                                child: VideoPlayer(controller),
-                                              );
-                                            }
-                                          }
+                                        child: VideoPlayer(controller),
+                                      );
+                                    }
+                                  }
                                           return Container(
                                             color: Colors.black26,
                                           );
-                                        },
-                                      )
-                                    : Image.network(
-                                        media.url,
-                                        height: 320,
-                                        fit: BoxFit.cover,
-                                      ),
+                                },
+                              )
+                            : Image.network(
+                                media.url,
+                                height: 320,
+                                fit: BoxFit.cover,
                               ),
-                            const SizedBox(height: 16),
+                      ),
+                      const SizedBox(height: 16),
                             // Header mit Vorschläge/Verwerfen Icon-Button RECHTS neben Text
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -3122,12 +3122,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             const SizedBox(height: 8),
                             CustomTextArea(
                               label: 'Tags (durch Komma getrennt)',
-                              controller: controller,
-                              hintText: media.type == AvatarMediaType.video
-                                  ? 'z.B. interview, outdoor, talking'
+                        controller: controller,
+                          hintText: media.type == AvatarMediaType.video
+                              ? 'z.B. interview, outdoor, talking'
                                   : media.type == AvatarMediaType.audio
                                   ? 'z.B. musik, podcast, interview'
-                                  : 'z.B. hund, outdoor, park',
+                              : 'z.B. hund, outdoor, park',
                               onChanged: (_) => setDialogState(() {}),
                               minLines: 3,
                               maxLines: 5,
@@ -3401,7 +3401,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                   _showPlaylistsDialog(it, usedInPlaylists),
                             ),
                           ),
-                        ),
+                      ),
                     ],
                   ),
                 ),
