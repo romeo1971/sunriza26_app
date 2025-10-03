@@ -1265,7 +1265,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
       final base = EnvService.memoryApiBaseUrl();
       if (base.isEmpty) {
-        _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
+        // Fallback: Nur Text anzeigen, kein Audio
+        _addMessage(text, false);
         return;
       }
       final uri = Uri.parse('$base/avatar/tts');
@@ -1274,7 +1275,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       if (voiceId != null) {
         payload['voice_id'] = voiceId;
       } else {
-        _showSystemSnack('Keine geklonte Stimme verfügbar');
+        // Fallback: Nur Text anzeigen, kein Audio
+        _addMessage(text, false);
         return;
       }
       // Voice-Parameter aus training.voice übernehmen

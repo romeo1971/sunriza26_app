@@ -227,6 +227,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                         ],
                       ),
                       borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: Colors.white, width: 1),
                     ),
                     child: const Icon(
                       Icons.favorite,
