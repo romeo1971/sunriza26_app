@@ -35,12 +35,17 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
-        title: const Text('Favoriten'),
+        title: const Text(
+          '❤️ Favoriten',
+          style: TextStyle(color: Colors.white, fontSize: 24),
+        ),
       ),
-      body: StreamBuilder<DocumentSnapshot>(
+      body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('users')
             .doc(userId)
+            .collection('favorites')
+            .orderBy('addedAt', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -56,12 +61,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final data = snapshot.data?.data() as Map<String, dynamic>?;
-          final favoriteIds =
-              (data?['favoriteAvatarIds'] as List<dynamic>?)
-                  ?.map((e) => e as String)
-                  .toList() ??
-              [];
+          final favoriteIds = snapshot.data!.docs.map((doc) => doc.id).toList();
 
           if (favoriteIds.isEmpty) {
             return Center(
@@ -145,27 +145,18 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                // Avatar Bild 9:16
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: avatar.avatarImageUrl != null
-                      ? Image.network(
-                          avatar.avatarImageUrl!,
-                          width: 54,
-                          height: 96,
-                          fit: BoxFit.cover,
+                // Avatar Bild
+                CircleAvatar(
+                  radius: 32,
+                  backgroundImage: avatar.avatarImageUrl != null
+                      ? NetworkImage(avatar.avatarImageUrl!)
+                      : null,
+                  child: avatar.avatarImageUrl == null
+                      ? Text(
+                          avatar.firstName[0].toUpperCase(),
+                          style: const TextStyle(fontSize: 24),
                         )
-                      : Container(
-                          width: 54,
-                          height: 96,
-                          color: Colors.grey.shade800,
-                          child: Center(
-                            child: Text(
-                              avatar.firstName[0].toUpperCase(),
-                              style: const TextStyle(fontSize: 24),
-                            ),
-                          ),
-                        ),
+                      : null,
                 ),
                 const SizedBox(width: 16),
                 // Info
@@ -196,8 +187,13 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.transparent,
-                          border: Border.all(color: Colors.white, width: 1),
+                          gradient: LinearGradient(
+                            colors: [
+                              Color(0xFFE91E63),
+                              AppColors.lightBlue,
+                              Color(0xFF00E5FF),
+                            ],
+                          ),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: const Text(
@@ -212,39 +208,10 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                     ],
                   ),
                 ),
-                // Entfernen Button - Herz mit GMBC Gradient
-                GestureDetector(
-                  onTap: () => _removeFavorite(avatar.id),
-                  child: SizedBox(
-                    width: 28,
-                    height: 28,
-                    child: Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        // Weißer 1px-Rand (Outline)
-                        const Icon(
-                          Icons.favorite_border,
-                          color: Colors.white,
-                          size: 26,
-                        ),
-                        // Herzfüllung mit GMBC-Gradient
-                        ShaderMask(
-                          shaderCallback: (bounds) => const LinearGradient(
-                            colors: [
-                              Color(0xFFE91E63), // Magenta
-                              AppColors.lightBlue, // Blue
-                              Color(0xFF00E5FF), // Cyan
-                            ],
-                          ).createShader(bounds),
-                          child: const Icon(
-                            Icons.favorite,
-                            color: Colors.white,
-                            size: 24,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                // Entfernen Button
+                IconButton(
+                  onPressed: () => _removeFavorite(avatar.id),
+                  icon: const Icon(Icons.favorite, color: Colors.red, size: 28),
                 ),
               ],
             ),
@@ -255,14 +222,81 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   }
 
   Future<void> _startConversation(AvatarData avatar) async {
-    // Direkt zum Chat - KEINE Dialoge!
+    // Finde HomeNavigationScreen im Widget-Tree
     final homeNav = context
         .findAncestorStateOfType<HomeNavigationScreenState>();
 
-    if (homeNav != null) {
-      homeNav.openChat(avatar.id);
-    } else if (mounted) {
-      Navigator.pushNamed(context, '/avatar-chat', arguments: avatar);
+    // Begrüßungstext abspielen (TODO: Voice abspielen)
+    if (avatar.greetingText != null && mounted) {
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              CircleAvatar(
+                backgroundImage: avatar.avatarImageUrl != null
+                    ? NetworkImage(avatar.avatarImageUrl!)
+                    : null,
+                child: avatar.avatarImageUrl == null
+                    ? Text(avatar.firstName[0].toUpperCase())
+                    : null,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  avatar.firstName,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            avatar.greetingText!,
+            style: const TextStyle(color: Colors.white70, fontSize: 15),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                if (homeNav != null) {
+                  homeNav.openChat(avatar.id);
+                } else {
+                  // Fallback: Normale Navigation
+                  Navigator.pushNamed(
+                    context,
+                    '/avatar-chat',
+                    arguments: {'avatarId': avatar.id},
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.lightBlue,
+              ),
+              child: const Text('Chat starten'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      // Direkt zum Chat
+      if (homeNav != null) {
+        homeNav.openChat(avatar.id);
+      } else if (mounted) {
+        // Fallback: Normale Navigation
+        Navigator.pushNamed(
+          context,
+          '/avatar-chat',
+          arguments: {'avatarId': avatar.id},
+        );
+      }
     }
   }
 
@@ -271,9 +305,12 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     if (userId == null) return;
 
     try {
-      await FirebaseFirestore.instance.collection('users').doc(userId).update({
-        'favoriteAvatarIds': FieldValue.arrayRemove([avatarId]),
-      });
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('favorites')
+          .doc(avatarId)
+          .delete();
 
       if (mounted) {
         ScaffoldMessenger.of(

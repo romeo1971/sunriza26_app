@@ -2,22 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 /// Öffentliches User-Profil (Placeholder)
-class UserProfilePublicScreen extends StatefulWidget {
+class UserProfilePublicScreen extends StatelessWidget {
   const UserProfilePublicScreen({super.key});
 
   @override
-  State<UserProfilePublicScreen> createState() =>
-      _UserProfilePublicScreenState();
-}
-
-class _UserProfilePublicScreenState extends State<UserProfilePublicScreen>
-    with AutomaticKeepAliveClientMixin {
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
   Widget build(BuildContext context) {
-    super.build(context); // WICHTIG für AutomaticKeepAliveClientMixin
     final user = FirebaseAuth.instance.currentUser;
 
     return Scaffold(

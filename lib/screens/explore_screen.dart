@@ -2,37 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
+import '../theme/app_theme.dart';
+import 'package:video_player/video_player.dart';
 import 'home_navigation_screen.dart';
-import '../widgets/safe_network_image.dart';
 
 /// Entdecken Screen - Öffentliche Avatare im Feed-Style
 class ExploreScreen extends StatefulWidget {
-  final Function(String avatarId)? onCurrentAvatarChanged;
-
-  const ExploreScreen({super.key, this.onCurrentAvatarChanged});
+  const ExploreScreen({super.key});
 
   @override
-  State<ExploreScreen> createState() => ExploreScreenState();
+  State<ExploreScreen> createState() => _ExploreScreenState();
 }
 
-class ExploreScreenState extends State<ExploreScreen> {
+class _ExploreScreenState extends State<ExploreScreen> {
   final _searchController = TextEditingController();
+  String _searchQuery = '';
   Set<String> _favoriteIds = {};
-  String? _currentAvatarId;
-  List<AvatarData> _cachedAvatars = [];
-  bool _isInitialized = false;
 
   @override
   void initState() {
     super.initState();
     _loadFavorites();
-  }
-
-  String? getCurrentAvatarId() => _currentAvatarId;
-
-  bool isAvatarFavorite(String? avatarId) {
-    if (avatarId == null) return false;
-    return _favoriteIds.contains(avatarId);
   }
 
   @override
@@ -46,22 +36,15 @@ class ExploreScreenState extends State<ExploreScreen> {
     if (userId == null) return;
 
     try {
-      final userDoc = await FirebaseFirestore.instance
+      final snapshot = await FirebaseFirestore.instance
           .collection('users')
           .doc(userId)
+          .collection('favorites')
           .get();
 
-      if (userDoc.exists) {
-        final data = userDoc.data();
-        final favs =
-            (data?['favoriteAvatarIds'] as List<dynamic>?)
-                ?.map((e) => e as String)
-                .toList() ??
-            [];
-        setState(() {
-          _favoriteIds = favs.toSet();
-        });
-      }
+      setState(() {
+        _favoriteIds = snapshot.docs.map((doc) => doc.id).toSet();
+      });
     } catch (e) {
       debugPrint('Fehler beim Laden der Favoriten: $e');
     }
@@ -72,20 +55,21 @@ class ExploreScreenState extends State<ExploreScreen> {
     if (userId == null) return;
 
     try {
-      final userRef = FirebaseFirestore.instance
+      final favRef = FirebaseFirestore.instance
           .collection('users')
-          .doc(userId);
+          .doc(userId)
+          .collection('favorites')
+          .doc(avatarId);
 
       if (_favoriteIds.contains(avatarId)) {
         // Entfernen
-        await userRef.update({
-          'favoriteAvatarIds': FieldValue.arrayRemove([avatarId]),
-        });
+        await favRef.delete();
         setState(() => _favoriteIds.remove(avatarId));
       } else {
         // Hinzufügen
-        await userRef.update({
-          'favoriteAvatarIds': FieldValue.arrayUnion([avatarId]),
+        await favRef.set({
+          'avatarId': avatarId,
+          'addedAt': FieldValue.serverTimestamp(),
         });
         setState(() => _favoriteIds.add(avatarId));
       }
@@ -121,23 +105,7 @@ class ExploreScreenState extends State<ExploreScreen> {
           );
         }
 
-        // WICHTIG: Beim ersten Ladezustand den Cache rendern, um Flackern
-        // beim Tab-Wechsel zu vermeiden. Spinner nur wenn kein Cache existiert.
         if (snapshot.connectionState == ConnectionState.waiting) {
-          if (_cachedAvatars.isNotEmpty) {
-            return PageView.builder(
-              scrollDirection: Axis.vertical,
-              itemCount: _cachedAvatars.length,
-              onPageChanged: (index) {
-                _currentAvatarId = _cachedAvatars[index].id;
-                widget.onCurrentAvatarChanged?.call(_cachedAvatars[index].id);
-                if (mounted) setState(() {});
-              },
-              itemBuilder: (context, index) {
-                return _buildFullscreenAvatarPage(_cachedAvatars[index]);
-              },
-            );
-          }
           return const Scaffold(
             backgroundColor: Colors.black,
             body: Center(child: CircularProgressIndicator()),
@@ -149,17 +117,6 @@ class ExploreScreenState extends State<ExploreScreen> {
               (doc) => AvatarData.fromMap(doc.data() as Map<String, dynamic>),
             )
             .toList();
-
-        // Cache nur beim ersten Mal oder wenn sich die Anzahl ändert
-        if (!_isInitialized || _cachedAvatars.length != avatars.length) {
-          _cachedAvatars = avatars;
-          _isInitialized = true;
-
-          // Erste Avatar ID setzen wenn noch nicht gesetzt
-          if (_currentAvatarId == null && avatars.isNotEmpty) {
-            _currentAvatarId = avatars[0].id;
-          }
-        }
 
         if (avatars.isEmpty) {
           return Scaffold(
@@ -189,15 +146,14 @@ class ExploreScreenState extends State<ExploreScreen> {
 
         return PageView.builder(
           scrollDirection: Axis.vertical,
-          itemCount: _cachedAvatars.length,
+          itemCount: avatars.length,
           onPageChanged: (index) {
-            _currentAvatarId = _cachedAvatars[index].id;
-            widget.onCurrentAvatarChanged?.call(_cachedAvatars[index].id);
-            // Nur setState für das Herz-Icon, nicht den ganzen PageView
-            if (mounted) setState(() {});
+            setState(() {
+              // Aktuellen Avatar Index speichern
+            });
           },
           itemBuilder: (context, index) {
-            return _buildFullscreenAvatarPage(_cachedAvatars[index]);
+            return _buildFullscreenAvatarPage(avatars[index]);
           },
         );
       },
@@ -225,22 +181,13 @@ class ExploreScreenState extends State<ExploreScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        toolbarHeight: 56,
-        titleSpacing: 0,
-        title: Transform.translate(
-          offset: const Offset(0, 3),
-          child: Text(
-            displayName,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w300,
-              height: 1.0,
-              shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+        title: Text(
+          displayName,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w600,
+            shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
           ),
         ),
         actions: [
@@ -250,108 +197,78 @@ class ExploreScreenState extends State<ExploreScreen> {
           ),
         ],
       ),
-      body: Stack(
-        children: [
-          // Hintergrundbild sicher laden (mit Fallback)
-          Positioned.fill(
-            child: SafeNetworkImage(
-              url: avatar.avatarImageUrl,
-              fit: BoxFit.cover,
-            ),
-          ),
-          // Overlay-UI
-          Stack(
-            children: [
-              // Rechts Mitte: Favoriten-Herz (TikTok-Style)
-              Positioned(
-                right: 16,
-                top: MediaQuery.of(context).size.height * 0.4,
-                child: GestureDetector(
-                  onTap: () => _toggleFavorite(avatar.id),
-                  child: _favoriteIds.contains(avatar.id)
-                      ? Stack(
-                          children: [
-                            Icon(
-                              Icons.favorite,
-                              color: Colors.white,
-                              size: 28,
-                              shadows: [
-                                Shadow(
-                                  offset: Offset(1, 0),
-                                  color: Colors.white,
-                                ),
-                                Shadow(
-                                  offset: Offset(-1, 0),
-                                  color: Colors.white,
-                                ),
-                                Shadow(
-                                  offset: Offset(0, 1),
-                                  color: Colors.white,
-                                ),
-                                Shadow(
-                                  offset: Offset(0, -1),
-                                  color: Colors.white,
-                                ),
-                              ],
-                            ),
-                            ShaderMask(
-                              shaderCallback: (bounds) => const LinearGradient(
-                                colors: [
-                                  Color(0xFFE91E63), // Magenta
-                                  Color(0xFF2196F3), // Blue
-                                  Color(0xFF00E5FF), // Cyan
-                                ],
-                              ).createShader(bounds),
-                              child: const Icon(
-                                Icons.favorite,
-                                color: Colors.white,
-                                size: 28,
-                              ),
-                            ),
-                          ],
-                        )
-                      : const Icon(
-                          Icons.favorite_border,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                ),
-              ),
-
-              // Unten: Conversation starten Button (schwarz)
-              Positioned(
-                bottom: 16,
-                left: 16,
-                right: 16,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    final homeNav = context
-                        .findAncestorStateOfType<HomeNavigationScreenState>();
-                    if (homeNav != null) {
-                      homeNav.openChat(avatar.id);
-                    } else {
-                      Navigator.pushNamed(
-                        context,
-                        '/avatar-chat',
-                        arguments: avatar,
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.chat_bubble_outline),
-                  label: const Text('Conversation starten'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black.withOpacity(0.7),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+      body: Container(
+        decoration: BoxDecoration(
+          image: avatar.avatarImageUrl != null
+              ? DecorationImage(
+                  image: NetworkImage(avatar.avatarImageUrl!),
+                  fit: BoxFit.cover,
+                )
+              : null,
+          color: avatar.avatarImageUrl == null ? Colors.grey.shade800 : null,
+        ),
+        child: Stack(
+          children: [
+            // Unten: Conversation starten Button (schwarz)
+            Positioned(
+              bottom: 16,
+              left: 16,
+              right: 16,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  final homeNav = context
+                      .findAncestorStateOfType<HomeNavigationScreenState>();
+                  if (homeNav != null) {
+                    homeNav.openChat(avatar.id);
+                  } else {
+                    Navigator.pushNamed(
+                      context,
+                      '/avatar-chat',
+                      arguments: {'avatarId': avatar.id},
+                    );
+                  }
+                },
+                icon: const Icon(Icons.chat_bubble_outline),
+                label: const Text('Conversation starten'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black.withOpacity(0.7),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
               ),
-            ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImagePreview(String url) {
+    return Image.network(
+      url,
+      width: double.infinity,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          height: 300,
+          color: Colors.grey.shade800,
+          child: const Center(
+            child: Icon(Icons.image_not_supported, color: Colors.white54),
           ),
-        ],
+        );
+      },
+    );
+  }
+
+  Widget _buildVideoPreview(String url) {
+    return Container(
+      width: double.infinity,
+      color: Colors.grey.shade800,
+      child: const Center(
+        child: Icon(Icons.play_circle_outline, color: Colors.white, size: 64),
       ),
     );
   }

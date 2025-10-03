@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'explore_screen.dart';
 import 'favorites_screen.dart';
 import 'avatar_list_screen.dart';
@@ -21,82 +19,25 @@ class HomeNavigationScreen extends StatefulWidget {
 class HomeNavigationScreenState extends State<HomeNavigationScreen> {
   late int _currentIndex;
   String? _activeChatAvatarId; // Für Chat-Overlay
-  final GlobalKey<ExploreScreenState> _exploreKey =
-      GlobalKey<ExploreScreenState>();
-
-  // Screens als late-Instanzvariablen, damit sie EINMAL erstellt werden
-  late final Widget _exploreScreen;
-  late final Widget _avatarListScreen;
-  late final Widget _favoritesScreen;
-  late final Widget _profileScreen;
 
   @override
   void initState() {
     super.initState();
     _currentIndex = widget.initialIndex;
-
-    // Screens einmalig initialisieren
-    _exploreScreen = ExploreScreen(key: _exploreKey);
-    _avatarListScreen = const AvatarListScreen();
-    _favoritesScreen = const FavoritesScreen();
-    _profileScreen = const UserProfilePublicScreen();
   }
 
-  Future<void> _toggleFavoriteInExplore(
-    String? avatarId,
-    bool isFavorite,
-  ) async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
+  final List<Widget> _screens = [
+    const ExploreScreen(),
+    const AvatarListScreen(),
+    const FavoritesScreen(),
+    const UserProfilePublicScreen(),
+  ];
 
-    if (avatarId == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Kein Avatar ausgewählt')));
-      return;
-    }
-
-    try {
-      final userRef = FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId);
-
-      if (isFavorite) {
-        // Entfernen (HOOK-Button)
-        await userRef.update({
-          'favoriteAvatarIds': FieldValue.arrayRemove([avatarId]),
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Aus Favoriten entfernt')),
-          );
-        }
-      } else {
-        // Hinzufügen (PLUS-Button)
-        await userRef.update({
-          'favoriteAvatarIds': FieldValue.arrayUnion([avatarId]),
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Favorit hinzugefügt ✓')),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('Fehler beim Favoriten-Toggle: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  Future<void> _removeFavoriteInFavorites() async {
-    // TODO: Im Favoriten-Screen aktuellen Avatar ermitteln und entfernen
+  void _toggleFavorite() {
+    // TODO: Implementiere Favoriten-Toggle
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(const SnackBar(content: Text('Favorit entfernt ✓')));
+    ).showSnackBar(const SnackBar(content: Text('Favorit hinzugefügt ✓')));
   }
 
   void openChat(String avatarId) {
@@ -109,38 +50,11 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Screen direkt auswählen OHNE Getter
-    Widget currentScreen;
-    switch (_currentIndex) {
-      case 0:
-        currentScreen = _exploreScreen;
-        break;
-      case 1:
-        currentScreen = _avatarListScreen;
-        break;
-      case 2:
-        currentScreen = _favoritesScreen;
-        break;
-      case 3:
-        currentScreen = _profileScreen;
-        break;
-      default:
-        currentScreen = _exploreScreen;
-    }
-
     return Scaffold(
       body: Stack(
         children: [
-          // Haupt-Content: IndexedStack verhindert Neuaufbau beim Tab-Wechsel
-          IndexedStack(
-            index: _currentIndex,
-            children: [
-              _exploreScreen,
-              _avatarListScreen,
-              _favoritesScreen,
-              _profileScreen,
-            ],
-          ),
+          // Haupt-Content (Explore, Favoriten, etc.)
+          _screens[_currentIndex],
 
           // Chat-Overlay (wenn aktiv)
           if (_activeChatAvatarId != null)
@@ -151,7 +65,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
         ],
       ),
       bottomNavigationBar: Container(
-        height: 60,
+        height: 70,
         decoration: BoxDecoration(
           color: Colors.black,
           border: Border(
@@ -162,33 +76,15 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             // Home
-            _buildNavItem(
-              iconFilled: Icons.home,
-              iconOutlined: Icons.home_outlined,
-              label: 'Home',
-              index: 0,
-            ),
+            _buildNavItem(icon: Icons.home_filled, label: 'Home', index: 0),
             // Meine Avatare
-            _buildNavItem(
-              iconFilled: Icons.people,
-              iconOutlined: Icons.people_outline,
-              label: 'Meine Avatare',
-              index: 1,
-            ),
+            _buildNavItem(icon: Icons.people, label: 'Meine Avatare', index: 1),
+            // Plus Button (nur in Home) / Hook Button (in Favoriten)
+            _buildMiddleButton(),
             // Favoriten
-            _buildNavItem(
-              iconFilled: Icons.favorite,
-              iconOutlined: Icons.favorite_border,
-              label: 'Favoriten',
-              index: 2,
-            ),
+            _buildNavItem(icon: Icons.favorite, label: 'Favoriten', index: 2),
             // Profil
-            _buildNavItem(
-              iconFilled: Icons.person,
-              iconOutlined: Icons.person_outline,
-              label: 'Profil',
-              index: 3,
-            ),
+            _buildNavItem(icon: Icons.person, label: 'Profil', index: 3),
           ],
         ),
       ),
@@ -196,52 +92,32 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
   }
 
   Widget _buildNavItem({
-    required IconData iconFilled,
-    required IconData iconOutlined,
+    required IconData icon,
     required String label,
     required int index,
   }) {
     final isSelected = _currentIndex == index;
-    final isChatActive =
-        _activeChatAvatarId != null && index == 0; // Chat = Home
 
     return GestureDetector(
-      onTap: () {
-        if (_activeChatAvatarId != null) {
-          closeChat(); // Chat schließen
-        }
-        setState(() => _currentIndex = index);
-      },
+      onTap: () => setState(() => _currentIndex = index),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (isChatActive)
-              ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [
-                    Color(0xFFE91E63), // Magenta
-                    AppColors.lightBlue, // Blue
-                    Color(0xFF00E5FF), // Cyan
-                  ],
-                ).createShader(bounds),
-                child: Icon(iconFilled, color: Colors.white, size: 21),
-              )
-            else
-              Icon(
-                isSelected ? iconFilled : iconOutlined,
-                color: isSelected ? Colors.white : Colors.grey.shade400,
-                size: 21,
-              ),
+            Icon(
+              icon,
+              color: Colors.white, // Immer weiß
+              size: 28,
+            ),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
-                color: (isSelected || isChatActive)
+                color: isSelected
                     ? Colors.white
                     : Colors.white.withOpacity(0.5),
-                fontSize: 8,
+                fontSize: 10,
               ),
             ),
           ],
@@ -251,16 +127,12 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
   }
 
   Widget _buildMiddleButton() {
-    // In Home (Index 0): PLUS oder HOOK (je nach Favoriten-Status)
+    // In Home (Index 0): PLUS Button
     // In Favoriten (Index 2): HOOK Button (Remove from Favorites)
     if (_currentIndex == 0) {
-      // Home: Prüfe ob aktueller Avatar favorisiert ist
-      final avatarId = _exploreKey.currentState?.getCurrentAvatarId();
-      final isFavorite =
-          _exploreKey.currentState?.isAvatarFavorite(avatarId) ?? false;
-
+      // PLUS Button (Home)
       return GestureDetector(
-        onTap: () => _toggleFavoriteInExplore(avatarId, isFavorite),
+        onTap: _toggleFavorite,
         child: Container(
           width: 32,
           height: 32,
@@ -274,11 +146,32 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
             ),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(
-            isFavorite ? Icons.check : Icons.add,
-            color: Colors.white,
-            size: 20,
+          child: const Icon(Icons.add, color: Colors.white, size: 20),
+        ),
+      );
+    } else if (_currentIndex == 2) {
+      // HOOK Button (Favoriten - Remove)
+      return GestureDetector(
+        onTap: () {
+          // TODO: Implementiere Remove from Favorites
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Favorit entfernt ✓')));
+        },
+        child: Container(
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Color(0xFFE91E63), // Magenta
+                AppColors.lightBlue, // Blue
+                Color(0xFF00E5FF), // Cyan
+              ],
+            ),
+            borderRadius: BorderRadius.circular(8),
           ),
+          child: const Icon(Icons.check, color: Colors.white, size: 20),
         ),
       );
     } else {

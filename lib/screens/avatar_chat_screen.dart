@@ -23,7 +23,6 @@ import '../services/playlist_service.dart';
 import '../services/media_service.dart';
 import '../services/shared_moments_service.dart';
 import '../models/media_models.dart';
-import 'package:extended_image/extended_image.dart';
 
 class AvatarChatScreen extends StatefulWidget {
   final String? avatarId; // Optional: Für Overlay-Chat
@@ -42,16 +41,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   bool _isRecording = false;
   bool _isTyping = false;
   bool _isSpeaking = false;
-  final bool _isMuted =
+  bool _isMuted =
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
   bool _isStoppingPlayback = false;
   StreamSubscription<PlayerState>? _playerStateSub;
-
-  // Rate-Limiting für TTS-Requests
-  DateTime? _lastTtsRequestTime;
-  static const int _minTtsDelayMs =
-      800; // Mindestens 800ms zwischen TTS-Requests
-
   String? _partnerName;
   String? _pendingFullName;
   String? _pendingLooseName;
@@ -154,19 +147,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         setState(() => _isSpeaking = speaking);
       }
     });
-    // Empfange AvatarData SOFORT (synchron) von der vorherigen Seite
+    // Empfange AvatarData von der vorherigen Seite ODER via widget.avatarId
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final args = ModalRoute.of(context)?.settings.arguments;
 
-      // SOFORT setzen, wenn als Argument übergeben (KEIN await!)
-      if (args is AvatarData && _avatarData == null) {
-        setState(() {
-          _avatarData = args;
-        });
-      }
-
-      // Priorisiere widget.avatarId (Overlay-Chat) - nur wenn noch nicht gesetzt
-      if (widget.avatarId != null && _avatarData == null) {
+      // Priorisiere widget.avatarId (Overlay-Chat)
+      if (widget.avatarId != null) {
         final doc = await FirebaseFirestore.instance
             .collection('avatars')
             .doc(widget.avatarId)
@@ -176,6 +162,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             _avatarData = AvatarData.fromMap(doc.data()!);
           });
         }
+      } else if (args is AvatarData) {
+        setState(() {
+          _avatarData = args;
+        });
       }
 
       // Weiter mit Loading + Greeting
@@ -210,115 +200,38 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        toolbarHeight: 56,
-        titleSpacing: 0,
-        leading: (widget.onClose == null)
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () {
-                  if (Navigator.canPop(context)) {
-                    Navigator.pop(context);
-                  } else {
-                    Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      '/avatar-list',
-                      (route) => false,
-                    );
-                  }
-                },
-              )
-            : const SizedBox(width: 48),
-        title: Transform.translate(
-          offset: const Offset(0, 3),
-          child: Text(
-            (() {
-              final parts = <String>[];
-              if (_avatarData?.firstNamePublic == true) {
-                parts.add(_avatarData!.firstName);
-              }
-              if (_avatarData?.nicknamePublic == true &&
-                  _avatarData?.nickname != null) {
-                parts.add('"${_avatarData!.nickname}"');
-              }
-              if (_avatarData?.lastNamePublic == true &&
-                  _avatarData?.lastName != null) {
-                parts.add(_avatarData!.lastName!);
-              }
-              return parts.isEmpty ? '' : parts.join(' ');
-            })(),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w300,
-              height: 1.0,
-              shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+      body: Container(
+        decoration: BoxDecoration(
+          image: DecorationImage(
+            image: (backgroundImage != null && backgroundImage.isNotEmpty)
+                ? NetworkImage(backgroundImage)
+                : const AssetImage('assets/sunriza_complete/images/sunset1.jpg')
+                      as ImageProvider,
+            fit: BoxFit.cover,
           ),
         ),
-        actions: const [SizedBox(width: 48)],
-      ),
-      body: SizedBox.expand(
-        child: Stack(
-          children: [
-            // Background Image FULLSCREEN (height: 100%, width: auto)
-            if (backgroundImage != null && backgroundImage.isNotEmpty)
-              Positioned.fill(
-                child: ExtendedImage.network(
-                  backgroundImage,
-                  fit: BoxFit.cover,
-                  cache: true,
-                  height: double.infinity,
-                  width: double.infinity,
-                  loadStateChanged: (state) {
-                    switch (state.extendedImageLoadState) {
-                      case LoadState.loading:
-                        return Container(color: Colors.black);
-                      case LoadState.completed:
-                        return ExtendedRawImage(
-                          image: state.extendedImageInfo?.image,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                        );
-                      case LoadState.failed:
-                        return Container(color: Colors.black);
-                    }
-                  },
-                ),
-              )
-            else
-              Container(color: Colors.black),
-            // AppBar ist nun direkt im Scaffold eingebunden (siehe oben)
+        child: SafeArea(
+          child: Column(
+            children: [
+              // App Bar
+              _buildAppBar(),
 
-            // Content unten
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SafeArea(
-                top: false,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Chat-Nachrichten
-                    SizedBox(height: 200, child: _buildChatMessages()),
+              // Avatar-Bild (bildschirmfüllend)
+              Expanded(flex: 3, child: _buildAvatarImage()),
 
-                    // Input-Bereich
-                    _buildInputArea(),
-                    const SizedBox(height: 8),
-                  ],
+              // Chat-Nachrichten
+              Expanded(flex: 2, child: _buildChatMessages()),
+
+              // Input-Bereich
+              _buildInputArea(),
+              const SizedBox(height: 8),
+              if (_player.playing || _isStoppingPlayback)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: _buildStopButton(),
                 ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -439,22 +352,35 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   Widget _buildAppBar() {
-    // Prüfe ob von "Meine Avatare" gekommen (onClose == null = normale Navigation)
-    final showBackButton = widget.onClose == null;
-
+    final liveKitEnabled = (dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() == '1';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: const BoxDecoration(color: Colors.transparent),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
       child: Row(
         children: [
-          // Zurück-Pfeil nur wenn von "Meine Avatare" (nicht von Home/Explore)
-          if (showBackButton)
-            IconButton(
-              icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.pop(context),
-            )
-          else
-            const SizedBox(width: 48),
+          IconButton(
+            onPressed: () async {
+              unawaited(LiveKitService().leave());
+              if (widget.onClose != null) {
+                widget.onClose!(); // Overlay schließen
+              } else if (mounted) {
+                Navigator.pop(context); // Normale Navigation
+              }
+            },
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+          ),
+          const SizedBox(width: 12),
+          // Mini-Avatar in der AppBar ausgeblendet
+          const SizedBox(width: 0),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -473,31 +399,56 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 }
 
                 final displayText = nameParts.isEmpty
-                    ? ''
+                    ? 'Avatar Chat'
                     : nameParts.join(' ');
 
-                return Transform.translate(
-                  offset: const Offset(0, 3),
-                  child: Text(
-                    displayText,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.w300,
-                      height: 1.0,
-                      shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                // Font-Größe dynamisch anpassen
+                double fontSize = 20;
+                if (displayText.length > 30) {
+                  fontSize = 14;
+                } else if (displayText.length > 20) {
+                  fontSize = 16;
+                } else if (displayText.length > 15) {
+                  fontSize = 18;
+                }
+
+                return Text(
+                  displayText,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w600,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 );
               },
             ),
           ),
-          // Symmetrischer Platzhalter rechts (entspricht IconButton-Breite)
-          const SizedBox(width: 48),
-          // KEINE Suche im Chat!
+          // Mute/Unmute (Feature‑Flag)
+          if (liveKitEnabled)
+            IconButton(
+              tooltip: _isMuted ? 'Unmute' : 'Mute',
+              onPressed: () async {
+                setState(() => _isMuted = !_isMuted);
+                try {
+                  await _player.setVolume(_isMuted ? 0.0 : 1.0);
+                } catch (_) {}
+              },
+              icon: Icon(
+                _isMuted ? Icons.volume_off : Icons.volume_up,
+                color: Colors.white,
+              ),
+            ),
+          if (liveKitEnabled)
+            IconButton(
+              tooltip: 'Beenden',
+              onPressed: () async {
+                await LiveKitService().leave();
+                if (mounted) Navigator.pop(context);
+              },
+              icon: const Icon(Icons.call_end, color: Colors.redAccent),
+            ),
         ],
       ),
     );
@@ -531,7 +482,34 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             ),
           ),
 
-          // Kein Default-Avatar mehr - nur schwarzer Hintergrund!
+          // Kein lokales Lipsync/Overlay – ausschließlich Agent-Stream
+          // Avatar-Bild nur anzeigen wenn kein Background-Bild
+          if (!hasImage)
+            Center(
+              child: Container(
+                width: 200,
+                height: 200,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 4),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.white.withValues(alpha: 0.3),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: const CircleAvatar(
+                  backgroundColor: Colors.white,
+                  child: Icon(
+                    Icons.person,
+                    size: 120,
+                    color: Colors.deepPurple,
+                  ),
+                ),
+              ),
+            ),
 
           // Typing-Indikator
           if (_isTyping)
@@ -740,38 +718,38 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 color: isUser ? Colors.black : Colors.grey.shade800,
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: GestureDetector(
-                      onTap: () async {
-                        if (!isUser) {
-                          if (message.audioPath != null) {
-                            await _playAudioAtPath(message.audioPath!);
-                          } else {
-                            final p = await _ensureTtsForText(message.text);
-                            if (p != null) {
-                              // persist audioPath into this message
-                              final idx = _messages.indexOf(message);
-                              if (idx >= 0) {
-                                setState(() {
-                                  _messages[idx] = ChatMessage(
-                                    text: message.text,
-                                    isUser: false,
-                                    audioPath: p,
-                                    timestamp: message.timestamp,
-                                  );
-                                });
-                              }
-                              await _playAudioAtPath(p);
-                            } else {
-                              _showSystemSnack('TTS nicht verfügbar');
-                            }
-                          }
+              child: GestureDetector(
+                onTap: () async {
+                  if (!isUser) {
+                    if (message.audioPath != null) {
+                      await _playAudioAtPath(message.audioPath!);
+                    } else {
+                      final p = await _ensureTtsForText(message.text);
+                      if (p != null) {
+                        // persist audioPath into this message
+                        final idx = _messages.indexOf(message);
+                        if (idx >= 0) {
+                          setState(() {
+                            _messages[idx] = ChatMessage(
+                              text: message.text,
+                              isUser: false,
+                              audioPath: p,
+                              timestamp: message.timestamp,
+                            );
+                          });
                         }
-                      },
+                        await _playAudioAtPath(p);
+                      } else {
+                        _showSystemSnack('TTS nicht verfügbar');
+                      }
+                    }
+                  }
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Flexible(
                       child: Text(
                         message.text,
                         style: const TextStyle(
@@ -780,39 +758,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                         ),
                       ),
                     ),
-                  ),
-                  if (!isUser)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: GestureDetector(
-                        onTap: () async {
-                          if (_player.playing) {
-                            await _player.pause();
-                            setState(() => _isSpeaking = false);
-                          } else {
-                            if (_player.processingState ==
-                                    ProcessingState.completed ||
-                                _player.processingState ==
-                                    ProcessingState.idle) {
-                              // Restart from beginning
-                              if (message.audioPath != null) {
-                                await _playAudioAtPath(message.audioPath!);
-                              }
-                            } else {
-                              // Resume
-                              await _player.play();
-                              setState(() => _isSpeaking = true);
-                            }
-                          }
-                        },
+                    if (!isUser)
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8),
                         child: Icon(
-                          _player.playing ? Icons.pause : Icons.volume_up,
+                          Icons.volume_up,
                           color: Colors.white70,
                           size: 18,
                         ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -1240,17 +1196,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   Future<void> _botSay(String text) async {
-    // Rate-Limiting: Prüfe letzte TTS-Anfrage
-    final now = DateTime.now();
-    if (_lastTtsRequestTime != null) {
-      final diff = now.difference(_lastTtsRequestTime!).inMilliseconds;
-      if (diff < _minTtsDelayMs) {
-        debugPrint('⏳ TTS Rate-Limit: Warte ${_minTtsDelayMs - diff}ms');
-        await Future.delayed(Duration(milliseconds: _minTtsDelayMs - diff));
-      }
-    }
-    _lastTtsRequestTime = DateTime.now();
-
     String? path;
     try {
       String? voiceId = (_avatarData?.training != null)
@@ -1266,8 +1211,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
       final base = EnvService.memoryApiBaseUrl();
       if (base.isEmpty) {
-        // Fallback: Nur Text anzeigen, kein Audio
-        _addMessage(text, false);
+        _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
         return;
       }
       final uri = Uri.parse('$base/avatar/tts');
@@ -1276,8 +1220,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       if (voiceId != null) {
         payload['voice_id'] = voiceId;
       } else {
-        // Fallback: Nur Text anzeigen, kein Audio
-        _addMessage(text, false);
+        _showSystemSnack('Keine geklonte Stimme verfügbar');
         return;
       }
       // Voice-Parameter aus training.voice übernehmen
@@ -1344,17 +1287,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   Future<String?> _ensureTtsForText(String text) async {
-    // Rate-Limiting: Prüfe letzte TTS-Anfrage
-    final now = DateTime.now();
-    if (_lastTtsRequestTime != null) {
-      final diff = now.difference(_lastTtsRequestTime!).inMilliseconds;
-      if (diff < _minTtsDelayMs) {
-        debugPrint('⏳ TTS Rate-Limit: Warte ${_minTtsDelayMs - diff}ms');
-        await Future.delayed(Duration(milliseconds: _minTtsDelayMs - diff));
-      }
-    }
-    _lastTtsRequestTime = DateTime.now();
-
     try {
       final base2 = EnvService.memoryApiBaseUrl();
       if (base2.isEmpty) {
