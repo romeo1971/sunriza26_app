@@ -27,6 +27,9 @@ class UserProfile {
   final int creditsPurchased; // Gesamt gekaufte Credits
   final int creditsSpent; // Gesamt ausgegebene Credits
 
+  // Favoriten
+  final List<String> favoriteAvatarIds; // IDs favorisierter Avatare
+
   // Seller/Marketplace (Stripe Connect)
   final bool isSeller; // Verkauft der User Media?
   final String? stripeConnectAccountId; // Connected Account ID
@@ -71,6 +74,7 @@ class UserProfile {
     this.credits = 0,
     this.creditsPurchased = 0,
     this.creditsSpent = 0,
+    this.favoriteAvatarIds = const [],
     this.isSeller = false,
     this.stripeConnectAccountId,
     this.stripeConnectStatus,
@@ -114,6 +118,11 @@ class UserProfile {
       credits: (map['credits'] as num?)?.toInt() ?? 0,
       creditsPurchased: (map['creditsPurchased'] as num?)?.toInt() ?? 0,
       creditsSpent: (map['creditsSpent'] as num?)?.toInt() ?? 0,
+      favoriteAvatarIds:
+          (map['favoriteAvatarIds'] as List<dynamic>?)
+              ?.map((e) => e as String)
+              .toList() ??
+          [],
       isSeller: (map['isSeller'] as bool?) ?? false,
       stripeConnectAccountId: map['stripeConnectAccountId'] as String?,
       stripeConnectStatus: map['stripeConnectStatus'] as String?,
@@ -158,6 +167,7 @@ class UserProfile {
       'credits': credits,
       'creditsPurchased': creditsPurchased,
       'creditsSpent': creditsSpent,
+      'favoriteAvatarIds': favoriteAvatarIds,
       'isSeller': isSeller,
       if (stripeConnectAccountId != null)
         'stripeConnectAccountId': stripeConnectAccountId,

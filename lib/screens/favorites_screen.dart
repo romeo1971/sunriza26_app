@@ -40,12 +40,10 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           style: TextStyle(color: Colors.white, fontSize: 24),
         ),
       ),
-      body: StreamBuilder<QuerySnapshot>(
+      body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance
             .collection('users')
             .doc(userId)
-            .collection('favorites')
-            .orderBy('addedAt', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
@@ -61,7 +59,12 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final favoriteIds = snapshot.data!.docs.map((doc) => doc.id).toList();
+          final data = snapshot.data?.data() as Map<String, dynamic>?;
+          final favoriteIds =
+              (data?['favoriteAvatarIds'] as List<dynamic>?)
+                  ?.map((e) => e as String)
+                  .toList() ??
+              [];
 
           if (favoriteIds.isEmpty) {
             return Center(
@@ -269,11 +272,11 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 if (homeNav != null) {
                   homeNav.openChat(avatar.id);
                 } else {
-                  // Fallback: Normale Navigation
+                  // Fallback: Normale Navigation mit Avatar-Objekt
                   Navigator.pushNamed(
                     context,
                     '/avatar-chat',
-                    arguments: {'avatarId': avatar.id},
+                    arguments: avatar,
                   );
                 }
               },
@@ -290,12 +293,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       if (homeNav != null) {
         homeNav.openChat(avatar.id);
       } else if (mounted) {
-        // Fallback: Normale Navigation
-        Navigator.pushNamed(
-          context,
-          '/avatar-chat',
-          arguments: {'avatarId': avatar.id},
-        );
+        // Fallback: Normale Navigation mit Avatar-Objekt
+        Navigator.pushNamed(context, '/avatar-chat', arguments: avatar);
       }
     }
   }
@@ -305,12 +304,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     if (userId == null) return;
 
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .collection('favorites')
-          .doc(avatarId)
-          .delete();
+      await FirebaseFirestore.instance.collection('users').doc(userId).update({
+        'favoriteAvatarIds': FieldValue.arrayRemove([avatarId]),
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(

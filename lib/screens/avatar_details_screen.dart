@@ -5527,12 +5527,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            // Zurück zu "Meine Avatare"
-            Navigator.pushNamedAndRemoveUntil(
-              context,
-              '/avatar-list',
-              (route) => false,
-            );
+            // Zurück zu "Meine Avatare" (mit Footer Navigation)
+            Navigator.pop(context);
           },
         ),
         actions: [
