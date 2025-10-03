@@ -2,27 +2,34 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
-import '../theme/app_theme.dart';
-import 'package:video_player/video_player.dart';
 import 'home_navigation_screen.dart';
 
 /// Entdecken Screen - Öffentliche Avatare im Feed-Style
 class ExploreScreen extends StatefulWidget {
-  const ExploreScreen({super.key});
+  final Function(String avatarId)? onCurrentAvatarChanged;
+
+  const ExploreScreen({super.key, this.onCurrentAvatarChanged});
 
   @override
-  State<ExploreScreen> createState() => _ExploreScreenState();
+  State<ExploreScreen> createState() => ExploreScreenState();
 }
 
-class _ExploreScreenState extends State<ExploreScreen> {
+class ExploreScreenState extends State<ExploreScreen> {
   final _searchController = TextEditingController();
-  String _searchQuery = '';
   Set<String> _favoriteIds = {};
+  String? _currentAvatarId;
 
   @override
   void initState() {
     super.initState();
     _loadFavorites();
+  }
+
+  String? getCurrentAvatarId() => _currentAvatarId;
+
+  bool isAvatarFavorite(String? avatarId) {
+    if (avatarId == null) return false;
+    return _favoriteIds.contains(avatarId);
   }
 
   @override
@@ -36,15 +43,22 @@ class _ExploreScreenState extends State<ExploreScreen> {
     if (userId == null) return;
 
     try {
-      final snapshot = await FirebaseFirestore.instance
+      final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(userId)
-          .collection('favorites')
           .get();
 
-      setState(() {
-        _favoriteIds = snapshot.docs.map((doc) => doc.id).toSet();
-      });
+      if (userDoc.exists) {
+        final data = userDoc.data();
+        final favs =
+            (data?['favoriteAvatarIds'] as List<dynamic>?)
+                ?.map((e) => e as String)
+                .toList() ??
+            [];
+        setState(() {
+          _favoriteIds = favs.toSet();
+        });
+      }
     } catch (e) {
       debugPrint('Fehler beim Laden der Favoriten: $e');
     }
@@ -55,21 +69,20 @@ class _ExploreScreenState extends State<ExploreScreen> {
     if (userId == null) return;
 
     try {
-      final favRef = FirebaseFirestore.instance
+      final userRef = FirebaseFirestore.instance
           .collection('users')
-          .doc(userId)
-          .collection('favorites')
-          .doc(avatarId);
+          .doc(userId);
 
       if (_favoriteIds.contains(avatarId)) {
         // Entfernen
-        await favRef.delete();
+        await userRef.update({
+          'favoriteAvatarIds': FieldValue.arrayRemove([avatarId]),
+        });
         setState(() => _favoriteIds.remove(avatarId));
       } else {
         // Hinzufügen
-        await favRef.set({
-          'avatarId': avatarId,
-          'addedAt': FieldValue.serverTimestamp(),
+        await userRef.update({
+          'favoriteAvatarIds': FieldValue.arrayUnion([avatarId]),
         });
         setState(() => _favoriteIds.add(avatarId));
       }
@@ -118,6 +131,15 @@ class _ExploreScreenState extends State<ExploreScreen> {
             )
             .toList();
 
+        // Erste Avatar ID setzen wenn noch nicht gesetzt
+        if (_currentAvatarId == null && avatars.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() => _currentAvatarId = avatars[0].id);
+            }
+          });
+        }
+
         if (avatars.isEmpty) {
           return Scaffold(
             backgroundColor: Colors.black,
@@ -148,9 +170,8 @@ class _ExploreScreenState extends State<ExploreScreen> {
           scrollDirection: Axis.vertical,
           itemCount: avatars.length,
           onPageChanged: (index) {
-            setState(() {
-              // Aktuellen Avatar Index speichern
-            });
+            setState(() => _currentAvatarId = avatars[index].id);
+            widget.onCurrentAvatarChanged?.call(avatars[index].id);
           },
           itemBuilder: (context, index) {
             return _buildFullscreenAvatarPage(avatars[index]);
@@ -174,6 +195,11 @@ class _ExploreScreenState extends State<ExploreScreen> {
     }
     final displayName = nameParts.isEmpty ? 'Avatar' : nameParts.join(' ');
 
+    // Bild SOFORT in den Cache laden (unsichtbar)
+    if (avatar.avatarImageUrl != null) {
+      precacheImage(NetworkImage(avatar.avatarImageUrl!), context);
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
@@ -181,13 +207,21 @@ class _ExploreScreenState extends State<ExploreScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
-        title: Text(
-          displayName,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w600,
-            shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
+        toolbarHeight: 56,
+        titleSpacing: 0,
+        title: Transform.translate(
+          offset: const Offset(0, 3),
+          child: Text(
+            displayName,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w300,
+              height: 1.0,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
         actions: [
@@ -224,7 +258,7 @@ class _ExploreScreenState extends State<ExploreScreen> {
                     Navigator.pushNamed(
                       context,
                       '/avatar-chat',
-                      arguments: {'avatarId': avatar.id},
+                      arguments: avatar,
                     );
                   }
                 },
@@ -242,33 +276,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildImagePreview(String url) {
-    return Image.network(
-      url,
-      width: double.infinity,
-      fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) {
-        return Container(
-          height: 300,
-          color: Colors.grey.shade800,
-          child: const Center(
-            child: Icon(Icons.image_not_supported, color: Colors.white54),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildVideoPreview(String url) {
-    return Container(
-      width: double.infinity,
-      color: Colors.grey.shade800,
-      child: const Center(
-        child: Icon(Icons.play_circle_outline, color: Colors.white, size: 64),
       ),
     );
   }
