@@ -6,7 +6,6 @@ import '../models/media_models.dart';
 import '../models/user_profile.dart';
 import '../services/media_purchase_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'payment_method_selector.dart';
 
 /// Dialog für Media-Kauf (Credits oder Stripe)
 class MediaPurchaseDialog extends StatefulWidget {
@@ -296,7 +295,7 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
         // Mit Karte zahlen (Stripe)
         if (canUseStripe)
           ElevatedButton.icon(
-            onPressed: _purchasing ? null : _showStripePaymentOptions,
+            onPressed: _purchasing ? null : _purchaseWithStripe,
             icon: _purchasing
                 ? const SizedBox(
                     width: 16,
@@ -312,96 +311,6 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
           ),
       ],
     );
-  }
-
-  /// Zeigt Payment Method Selector für Stripe-Zahlungen
-  void _showStripePaymentOptions() {
-    String? selectedPaymentMethodId;
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            'Zahlungsmethode wählen',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                PaymentMethodSelector(
-                  onSelected: (paymentMethodId) {
-                    setDialogState(() {
-                      selectedPaymentMethodId = paymentMethodId;
-                    });
-                  },
-                  showNewCardOption: true,
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Abbrechen'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                if (selectedPaymentMethodId != null) {
-                  _purchaseWithSavedCard(selectedPaymentMethodId!);
-                } else {
-                  _purchaseWithStripe();
-                }
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              child: const Text('Bezahlen'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Zahlung mit gespeicherter Karte
-  Future<void> _purchaseWithSavedCard(String paymentMethodId) async {
-    setState(() => _purchasing = true);
-
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
-
-    final success = await _purchaseService.purchaseMediaWithSavedCard(
-      userId: userId,
-      media: widget.media,
-      paymentMethodId: paymentMethodId,
-    );
-
-    if (!mounted) return;
-
-    setState(() => _purchasing = false);
-
-    if (success) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✓ Media erfolgreich gekauft!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-      Navigator.pop(context);
-      widget.onPurchaseSuccess?.call();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Fehler beim Kauf'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
   }
 
   Future<void> _purchaseWithCredits() async {
@@ -477,8 +386,6 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
         return Icons.videocam;
       case AvatarMediaType.audio:
         return Icons.audiotrack;
-      case AvatarMediaType.document:
-        return Icons.description;
     }
   }
 }

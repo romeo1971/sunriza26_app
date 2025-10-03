@@ -34,32 +34,6 @@ class MediaPurchaseService {
     required String userId,
     required AvatarMedia media,
   }) async {
-    // Kostenlose Media direkt freischalten
-    if (media.isFreeMedia) {
-      try {
-        final purchaseRef = _firestore
-            .collection('users')
-            .doc(userId)
-            .collection('purchased_media')
-            .doc(media.id);
-
-        await purchaseRef.set({
-          'mediaId': media.id,
-          'avatarId': media.avatarId,
-          'type': _getMediaTypeString(media.type),
-          'price': 0.0,
-          'currency': media.currency ?? '€',
-          'credits': 0,
-          'purchasedAt': FieldValue.serverTimestamp(),
-          'isFree': true,
-        });
-        return true;
-      } catch (e) {
-        print('Fehler beim kostenlosen Media-Zugriff: $e');
-        return false;
-      }
-    }
-
     final price = media.price ?? 0.0;
     final currency = media.currency ?? '€';
 
@@ -82,16 +56,7 @@ class MediaPurchaseService {
         'creditsSpent': FieldValue.increment(requiredCredits),
       });
 
-      // 2. Transfer an Verkäufer (via Cloud Function)
-      final functions = _functions;
-      await functions.httpsCallable('processCreditsPayment').call({
-        'mediaId': media.id,
-        'credits': requiredCredits,
-        'sellerId': media.avatarId, // Avatar Owner = Seller
-        'platformFeePercent': media.platformFeePercent,
-      });
-
-      // 3. Transaktion anlegen
+      // 2. Transaktion anlegen
       final transactionRef = userRef.collection('transactions').doc();
       batch.set(transactionRef, {
         'userId': userId,
@@ -106,7 +71,7 @@ class MediaPurchaseService {
         'createdAt': FieldValue.serverTimestamp(),
       });
 
-      // 4. Media als gekauft markieren
+      // 3. Media als gekauft markieren
       final purchaseRef = userRef.collection('purchased_media').doc(media.id);
       batch.set(purchaseRef, {
         'mediaId': media.id,
@@ -155,46 +120,6 @@ class MediaPurchaseService {
     } catch (e) {
       print('Fehler beim Stripe-Checkout: $e');
       return null;
-    }
-  }
-
-  /// Kauft Media mit gespeicherter Karte (Payment Intent)
-  Future<bool> purchaseMediaWithSavedCard({
-    required String userId,
-    required AvatarMedia media,
-    required String paymentMethodId,
-  }) async {
-    final price = media.price ?? 0.0;
-    final currency = media.currency ?? '€';
-
-    // Nur bei Preisen >= 2€ erlaubt
-    if (price < 2.0) {
-      throw Exception('Zahlungen unter 2€ nur mit Credits möglich');
-    }
-
-    try {
-      final callable = _functions.httpsCallable('createPaymentIntentWithCard');
-
-      final result = await callable.call({
-        'amount': (price * 100).toInt(), // in Cents
-        'currency': currency == '\$' ? 'usd' : 'eur',
-        'paymentMethodId': paymentMethodId,
-        'metadata': {
-          'type': 'media',
-          'mediaId': media.id,
-          'avatarId': media.avatarId,
-          'mediaName': media.originalFileName ?? 'Media',
-          'mediaType': _getMediaTypeString(media.type),
-          'sellerId': media.avatarId, // Avatar Owner = Seller
-          'platformFeePercent': media.platformFeePercent ?? 20,
-        },
-      });
-
-      final status = result.data['status'] as String?;
-      return status == 'succeeded';
-    } catch (e) {
-      print('Fehler bei Zahlung mit gespeicherter Karte: $e');
-      return false;
     }
   }
 
@@ -269,8 +194,6 @@ class MediaPurchaseService {
         return 'video';
       case AvatarMediaType.audio:
         return 'audio';
-      case AvatarMediaType.document:
-        return 'document';
     }
   }
 }

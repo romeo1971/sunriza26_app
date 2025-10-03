@@ -59,7 +59,7 @@ class CustomDropdown<T> extends StatelessWidget {
           items: items,
           onChanged: enabled ? onChanged : null,
           isExpanded: true,
-          dropdownColor: const Color(0xFF2A2A2A),
+          dropdownColor: Colors.black87,
           style: const TextStyle(
             color: Colors.white,
             fontSize: 16,
@@ -71,7 +71,6 @@ class CustomDropdown<T> extends StatelessWidget {
               ? Text(hint!, style: const TextStyle(color: Colors.white54))
               : null,
           icon: const Icon(Icons.arrow_drop_down, color: Colors.white70),
-          menuMaxHeight: 300,
         ),
       ),
     );

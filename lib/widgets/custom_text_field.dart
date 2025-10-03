@@ -26,10 +26,8 @@ class CustomTextField extends StatelessWidget {
   final bool obscureText;
   final Widget? suffixIcon;
   final Widget? prefixIcon;
-  final BoxConstraints? prefixIconConstraints;
   final String? hintText;
   final TextStyle? style;
-  final EdgeInsetsGeometry? contentPadding;
   final bool enabled;
   final FocusNode? focusNode;
   final void Function()? onTap;
@@ -52,10 +50,8 @@ class CustomTextField extends StatelessWidget {
     this.obscureText = false,
     this.suffixIcon,
     this.prefixIcon,
-    this.prefixIconConstraints,
     this.hintText,
     this.style,
-    this.contentPadding,
     this.enabled = true,
     this.focusNode,
     this.onTap,
@@ -65,15 +61,7 @@ class CustomTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final TextStyle effectiveStyle =
-        style ??
-        const TextStyle(
-          color: Colors.white,
-          fontSize: 16,
-          fontWeight: FontWeight.normal,
-          letterSpacing: 0,
-          height: 1.0,
-        );
+    final hasValue = controller?.text.trim().isNotEmpty ?? false;
 
     return TextFormField(
       controller: controller,
@@ -87,7 +75,15 @@ class CustomTextField extends StatelessWidget {
       inputFormatters: inputFormatters,
       textCapitalization: textCapitalization,
       obscureText: obscureText,
-      style: effectiveStyle,
+      style:
+          style ??
+          const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.normal,
+            letterSpacing: 0,
+            height: 1.0,
+          ),
       cursorColor: Colors.white,
       enabled: enabled,
       focusNode: focusNode,
@@ -95,41 +91,42 @@ class CustomTextField extends StatelessWidget {
       onFieldSubmitted: onSubmitted,
       textInputAction: textInputAction,
       decoration: InputDecoration(
-        labelText: label.isEmpty ? null : label,
-        labelStyle: effectiveStyle.copyWith(
+        labelText: hasValue ? label : null,
+        labelStyle: const TextStyle(
           color: Colors.white70,
           fontWeight: FontWeight.normal,
+          fontSize: 16,
         ),
-        floatingLabelBehavior: FloatingLabelBehavior.always,
-        hintText: hintText,
-        hintStyle: effectiveStyle.copyWith(color: Colors.white54),
+        floatingLabelBehavior: FloatingLabelBehavior.auto,
+        hintText: hintText ?? label,
+        hintStyle: const TextStyle(color: Colors.white54),
         filled: false,
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.white30, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.white30, width: 1),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
         disabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: Colors.white12, width: 1),
         ),
-        contentPadding:
-            contentPadding ??
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 12,
+          vertical: 16,
+        ),
         suffixIcon: suffixIcon,
         prefixIcon: prefixIcon,
-        prefixIconConstraints: prefixIconConstraints,
         counterStyle: const TextStyle(color: Colors.white54),
       ),
     );
