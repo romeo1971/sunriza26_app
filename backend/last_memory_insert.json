@@ -1,12 +1,12 @@
 {
   "stage": "upsert_batch",
-  "index": "avatars-index-q6etnezj0wzei7uwhh7qmjys-obievf",
-  "namespace": "q6eTNezJ0wZEi7uWhh7QMjYSBGA2_OBIEVfYOXT3BoDAJfUSv",
+  "index": "avatars-index-q6etnezj0wzei7uwhh7qmjys-qceayf",
+  "namespace": "q6eTNezJ0wZEi7uWhh7QMjYSBGA2_qceAYfAFCKdSWJyrfzFN",
   "user_id": "q6eTNezJ0wZEi7uWhh7QMjYSBGA2",
-  "avatar_id": "OBIEVfYOXT3BoDAJfUSv",
-  "text_len": 86,
+  "avatar_id": "qceAYfAFCKdSWJyrfzFN",
+  "text_len": 89,
   "chunks": 1,
   "dim": 1536,
   "inserted": 1,
-  "ts": 1759413067468
+  "ts": 1759510619488
 }

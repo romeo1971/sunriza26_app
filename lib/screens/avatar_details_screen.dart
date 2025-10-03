@@ -348,6 +348,29 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             .where((name) => name.isNotEmpty)
             .toList()
           ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    // Falls bereits ein Land existiert (z. B. aus Auto-Resolve), auf Optionsnamen normalisieren
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final raw = _countryController.text.trim();
+      if (raw.isEmpty) return;
+      String? normalized;
+      for (final entry in countries) {
+        final name = (entry['name'] ?? '').toString().trim();
+        final code = (entry['code'] ?? '').toString().trim();
+        if (name.isEmpty) continue;
+        if (raw.toLowerCase() == name.toLowerCase() ||
+            raw.toLowerCase() == code.toLowerCase()) {
+          normalized = name;
+          break;
+        }
+      }
+      if (normalized != null && normalized != raw) {
+        if (mounted) {
+          setState(() {
+            _countryController.text = normalized!;
+          });
+        }
+      }
+    });
     // Empfange AvatarData von der vorherigen Seite
     _firstNameController.addListener(_updateDirty);
     _nicknameController.addListener(_updateDirty);
@@ -393,6 +416,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       _cityController.text = data.city ?? '';
       _postalCodeController.text = data.postalCode ?? '';
       _countryController.text = data.country ?? '';
+      // Nach dem Laden: Ländewert an Optionsliste angleichen (Name/Code → exakter Optionsname)
+      // Country ggf. auf Optionsnamen normalisieren (Name/Code → Name)
+      final rawCountry = _countryController.text.trim();
+      if (rawCountry.isNotEmpty) {
+        for (final entry in countries) {
+          final name = (entry['name'] ?? '').toString().trim();
+          final code = (entry['code'] ?? '').toString().trim();
+          if (name.isEmpty) continue;
+          if (rawCountry.toLowerCase() == name.toLowerCase() ||
+              rawCountry.toLowerCase() == code.toLowerCase()) {
+            _countryController.text = name;
+            break;
+          }
+        }
+      }
       _birthDate = data.birthDate;
       _deathDate = data.deathDate;
       _calculatedAge = data.calculatedAge;
@@ -688,8 +726,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               backgroundColor: AppColors.accentGreenDark,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 7,
+                                horizontal: 16,
+                                vertical: 12,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -957,37 +995,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             }
           },
         ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: ElevatedButton(
-            onPressed:
-                (_selectedVoiceId != null &&
-                    _voicePreviewUrlFor(_selectedVoiceId!) != null)
-                ? () async {
-                    final url = _voicePreviewUrlFor(_selectedVoiceId!);
-                    if (url != null) {
-                      final uri = Uri.parse(url);
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(
-                          uri,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      }
-                    }
-                  }
-                : null,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.accentGreenDark,
-              foregroundColor: Colors.white,
-            ),
-            child: Text(
-              context.read<LocalizationService>().t(
-                'avatars.details.previewListenButton',
-              ),
-            ),
-          ),
-        ),
+        const SizedBox.shrink(),
       ],
     );
   }
@@ -3881,6 +3889,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               _profileLocalPath = f.path;
             });
           }
+
+          /// Liefert den exakten Options-Namen aus [_countryOptions],
+          /// wenn der übergebene Wert entweder Landesname oder ISO-Code ist.
+          String? _normalizeCountryOption(String value) {
+            if (value.isEmpty) return null;
+            // Map: Name/Code vergleichen, korrekten Namen zurückgeben
+            for (final entry in countries) {
+              final name = (entry['name'] ?? '').toString().trim();
+              final code = (entry['code'] ?? '').toString().trim();
+              if (name.isEmpty) continue;
+              if (value.toLowerCase() == name.toLowerCase() ||
+                  value.toLowerCase() == code.toLowerCase()) {
+                return name;
+              }
+            }
+            // Falls kein direkter Treffer, aber Liste enthält den String exakt
+            if (_countryOptions.contains(value)) return value;
+            return null;
+          }
+
           // Endung passend zur Datei wählen (png bei Cropping, sonst jpg)
           String ext = p.extension(f.path).toLowerCase();
           if (ext.isEmpty ||
@@ -5548,17 +5576,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ),
       body: Container(
         decoration: BoxDecoration(
-          image: DecorationImage(
-            image: backgroundImage != null
-                ? NetworkImage(backgroundImage)
-                : const AssetImage('assets/sunriza_complete/images/sunset1.jpg')
-                      as ImageProvider,
-            fit: BoxFit.cover,
-            colorFilter: ColorFilter.mode(
-              Colors.black.withValues(alpha: 0.7),
-              BlendMode.darken,
-            ),
-          ),
+          // Datenwelt initial: KEIN Fallback-Bild mehr, nur schwarzer Hintergrund.
+          color: Colors.black,
+          image: (backgroundImage != null)
+              ? DecorationImage(
+                  image: NetworkImage(backgroundImage),
+                  fit: BoxFit.cover,
+                  colorFilter: ColorFilter.mode(
+                    Colors.black.withValues(alpha: 0.7),
+                    BlendMode.darken,
+                  ),
+                )
+              : null,
         ),
         child: Column(
           children: [
@@ -5727,12 +5756,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Widget _buildCountryDropdown() {
     final loc = context.read<LocalizationService>();
     final currentValue = _countryController.text.trim();
+    final resolvedValue = _resolveCountryOptionName(currentValue);
 
     return CustomDropdown<String>(
       label: loc.t('avatars.details.countryLabel'),
-      value: currentValue.isNotEmpty && _countryOptions.contains(currentValue)
-          ? currentValue
-          : null,
+      value: resolvedValue,
       items: _countryOptions
           .map(
             (c) => DropdownMenuItem<String>(
@@ -5751,8 +5779,39 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
   }
 
+  // Liefert den exakten Optionsnamen aus _countryOptions für Eingaben wie
+  // ISO-Code (DE), englischen Namen (Germany) oder deutsche Bezeichnung (Deutschland)
+  String? _resolveCountryOptionName(String raw) {
+    if (raw.isEmpty) return null;
+    // Direkter Treffer
+    if (_countryOptions.contains(raw)) return raw;
+    final lower = raw.toLowerCase();
+    // Bekannte deutsche Aliase → englische Optionsnamen
+    if (lower == 'deutschland') return 'Germany';
+    if (lower == 'vereinigte staaten' || lower == 'usa') return 'United States';
+    if (lower == 'vereinigtes königreich' ||
+        lower == 'grossbritannien' ||
+        lower == 'großbritannien') {
+      return 'United Kingdom';
+    }
+    // ISO-Code oder Name matchen
+    for (final entry in countries) {
+      final name = (entry['name'] ?? '').toString().trim();
+      final code = (entry['code'] ?? '').toString().trim();
+      if (name.isEmpty) continue;
+      if (lower == name.toLowerCase() || lower == code.toLowerCase()) {
+        return name;
+      }
+    }
+    return null;
+  }
+
   Future<void> _confirmRegionSelection() async {
-    final raw = _regionInputController.text.trim();
+    // Eingabe bereinigen: abschließende Kommata/Spaces entfernen
+    final raw = _regionInputController.text.trim().replaceAll(
+      RegExp(r'[,\s]+$'),
+      '',
+    );
     if (raw.isEmpty) return;
 
     // Prüfe ob Land bereits gesetzt ist
@@ -5780,9 +5839,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
     // Versuche Adresse aufzulösen
     final result = await _resolveRegion(raw);
-    final city = result['city'] ?? '';
+    String city = result['city'] ?? '';
     final postal = result['postal'] ?? '';
     final country = result['country'] ?? '';
+    final countryCode = (result['countryCode'] ?? '').toUpperCase();
     final hasResult = city.isNotEmpty || postal.isNotEmpty;
 
     // WENN kein Match → Popup mit Fehlermeldung
@@ -5805,7 +5865,82 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       return;
     }
 
-    // WENN Match gefunden → DIREKT SPEICHERN ohne Bestätigungs-Dialog
+    // Validierung: Eingabe-PLZ/Stadt vs. Resolver – mindestens eine Komponente muss passen
+    final inputPostal = _extractPostalFromRaw(raw);
+    final inputCityRaw = _extractCityFromRaw(raw);
+    final normInputCity = _normalizeCityForCompare(inputCityRaw);
+    final normResolvedCity = _normalizeCityForCompare(city);
+
+    // Länder-spezifische Plausibilitäten (DE: 5-stellige PLZ)
+    final isDE =
+        country.toLowerCase() == 'deutschland' ||
+        country.toLowerCase() == 'germany' ||
+        country.toUpperCase() == 'DE';
+    if (isDE && inputPostal.isNotEmpty && inputPostal.length != 5) {
+      await _showRegionError('Ungültige PLZ für Deutschland.');
+      return;
+    }
+
+    // Länderweite PLZ-Validierung (z. B. BD = 4-stellig)
+    if (!_postalValidForCountry(inputPostal, countryCode)) {
+      await _showRegionError('Die PLZ passt nicht zum gewählten Land.');
+      return;
+    }
+
+    // Zusätzliche Kreuzprüfung: Wenn sowohl PLZ als auch City eingegeben wurden,
+    // müssen beide zum Resolver passen.
+    if (inputPostal.isNotEmpty && inputCityRaw.isNotEmpty) {
+      final bothMatch =
+          (inputPostal == postal) &&
+          (normInputCity == normResolvedCity || normResolvedCity.isEmpty);
+      if (!bothMatch) {
+        await _showRegionError('Die Stadt passt nicht zur PLZ.');
+        return;
+      }
+    } else {
+      // Mindestens eine Komponente muss passen
+      // Kanonische City für PLZ aus Geo-Service (gebietsabhängig)
+      String canonicalCity = '';
+      if (postal.isNotEmpty) {
+        canonicalCity =
+            (await GeoService.lookupCityForPostal(postal, country)) ?? '';
+      }
+      // Wenn PLZ im gewählten Land ungültig ist → Abbruch
+      if (postal.isNotEmpty && canonicalCity.isEmpty) {
+        await _showRegionError('Die PLZ passt nicht zum gewählten Land.');
+        return;
+      }
+
+      if (inputPostal.isNotEmpty && inputCityRaw.isNotEmpty) {
+        // Beide eingegeben → beide müssen zum Resolver passen
+        final bothMatch =
+            (inputPostal == postal) &&
+            (canonicalCity.isEmpty
+                ? (normInputCity == normResolvedCity ||
+                      normResolvedCity.isEmpty)
+                : (_normalizeCityForCompare(inputCityRaw) ==
+                      _normalizeCityForCompare(canonicalCity)));
+        if (!bothMatch) {
+          await _showRegionError('Die Stadt passt nicht zur PLZ.');
+          return;
+        }
+      } else {
+        // Mindestens eine Komponente muss passen (City gegen kanonisch, falls vorhanden)
+        final postalOk =
+            inputPostal.isEmpty || (postal.isNotEmpty && inputPostal == postal);
+        final cityCompare = canonicalCity.isNotEmpty ? canonicalCity : city;
+        final cityOk =
+            normInputCity.isEmpty ||
+            _normalizeCityForCompare(cityCompare).isEmpty ||
+            normInputCity == _normalizeCityForCompare(cityCompare);
+        if (!(postalOk || cityOk)) {
+          await _showRegionError('Die Stadt passt nicht zur PLZ.');
+          return;
+        }
+      }
+    }
+
+    // WENN Match gefunden und validiert → DIREKT SPEICHERN ohne Bestätigungs-Dialog
     setState(() {
       _cityController.text = city;
       _postalCodeController.text = postal;
@@ -5818,8 +5953,65 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _updateDirty();
   }
 
+  Future<void> _showRegionError(String message) async {
+    await showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Adresse unplausibel'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _extractPostalFromRaw(String raw) {
+    final m = RegExp(r'\b\d{4,10}\b').firstMatch(raw);
+    return m?.group(0) ?? '';
+  }
+
+  String _extractCityFromRaw(String raw) {
+    String s = raw.replaceAll(RegExp(r'\b\d+\b'), '');
+    s = s.replaceAll(',', ' ').trim();
+    s = s.replaceAll(RegExp(r'\s+'), ' ');
+    return s;
+  }
+
+  String _normalizeCityForCompare(String s) {
+    var t = s.toLowerCase().trim();
+    // deutsche Umlaute/ß normalisieren
+    t = t
+        .replaceAll('ä', 'ae')
+        .replaceAll('ö', 'oe')
+        .replaceAll('ü', 'ue')
+        .replaceAll('ß', 'ss');
+    // Sonderzeichen entfernen
+    t = t.replaceAll(RegExp(r'[^a-z\s]'), '');
+    t = t.replaceAll(RegExp(r'\s+'), ' ');
+    return t;
+  }
+
+  bool _postalValidForCountry(String postal, String countryCode) {
+    if (postal.isEmpty) return true;
+    switch (countryCode) {
+      case 'DE':
+        return RegExp(r'^\d{5}$').hasMatch(postal);
+      case 'BD':
+        return RegExp(r'^\d{4}$').hasMatch(postal);
+      case 'US':
+        return RegExp(r'^\d{5}(?:-\d{4})?$').hasMatch(postal);
+      default:
+        // Fallback: 3-10 Ziffern zulassen
+        return RegExp(r'^\d{3,10}$').hasMatch(postal);
+    }
+  }
+
   Future<Map<String, String>> _resolveRegion(String rawInput) async {
-    final raw = rawInput.trim();
+    final raw = rawInput.trim().replaceAll(RegExp(r'[,\s]+$'), '');
     final selectedCountry = _countryController.text.trim();
     if (raw.isEmpty || selectedCountry.isEmpty) {
       return {'city': '', 'postal': '', 'country': selectedCountry};
@@ -5841,8 +6033,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     String postal = '';
     String city = '';
 
-    final postalCityRegex = RegExp(r'^(\d{3,10})\s+(.+)$');
-    final postalOnlyRegex = RegExp(r'^(\d{3,10})$');
+    // Erlaube Trennung per Komma oder Space, akzeptiere evtl. nachfolgende Kommata
+    final postalCityRegex = RegExp(r'^(\d{3,10})[,\s]+(.+)$');
+    final postalOnlyRegex = RegExp(r'^(\d{3,10})[,\s]*$');
 
     if (postalCityRegex.hasMatch(raw)) {
       final match = postalCityRegex.firstMatch(raw);
@@ -5851,7 +6044,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     } else if (postalOnlyRegex.hasMatch(raw)) {
       postal = raw;
     } else {
-      city = raw;
+      // Nur als City übernehmen, wenn Buchstaben enthalten sind
+      city = RegExp(r'[A-Za-zÄÖÜäöüß]').hasMatch(raw) ? raw : '';
     }
 
     if (postal.isNotEmpty && city.isEmpty) {
@@ -5872,8 +6066,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
     }
 
+    // City bereinigen: nur Buchstaben/Leerzeichen, Ränder trimmen
+    final cleanCity = city
+        .replaceAll(RegExp(r'^[^A-Za-zÄÖÜäöüß]+'), '')
+        .replaceAll(RegExp(r'[^A-Za-zÄÖÜäöüß\s]+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
     return {
-      'city': city.trim(),
+      'city': cleanCity,
       'postal': postal.trim(),
       'country': normalizedCountry,
       'countryCode': countryCode,
