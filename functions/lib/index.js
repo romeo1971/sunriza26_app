@@ -64,6 +64,10 @@ __exportStar(require("./stripeCheckout"), exports);
 __exportStar(require("./invoiceGenerator"), exports);
 // Media-Kauf (Credits oder Stripe)
 __exportStar(require("./mediaCheckout"), exports);
+// Stripe Connect (Seller Marketplace)
+__exportStar(require("./stripeConnect"), exports);
+// Payment Methods Management (Karten speichern)
+__exportStar(require("./paymentMethods"), exports);
 // Firebase Admin initialisieren: lokal mit expliziten Credentials, in Cloud mit Default
 if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIREBASE_CLIENT_EMAIL) {
     // Lokale Entwicklung: nutze Service-Account aus .env oder Datei

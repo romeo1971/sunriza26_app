@@ -27,6 +27,26 @@ class UserProfile {
   final int creditsPurchased; // Gesamt gekaufte Credits
   final int creditsSpent; // Gesamt ausgegebene Credits
 
+  // Seller/Marketplace (Stripe Connect)
+  final bool isSeller; // Verkauft der User Media?
+  final String? stripeConnectAccountId; // Connected Account ID
+  final String? stripeConnectStatus; // pending, active, restricted, disabled
+  final bool payoutsEnabled; // Auszahlungen aktiviert?
+  final double pendingEarnings; // Noch nicht ausgezahlte Einnahmen (€)
+  final double totalEarnings; // Gesamt verdient (€)
+  final int? lastPayoutDate; // Letzte Auszahlung (Timestamp)
+
+  // Business-Daten (optional, nur für Seller)
+  final String? businessName; // Firmenname
+  final String? businessEmail; // Geschäftliche E-Mail
+  final String? businessPhone; // Geschäftliche Telefonnummer
+  final String? businessStreet; // Geschäftsadresse
+  final String? businessCity;
+  final String? businessPostalCode;
+  final String? businessCountry;
+  final String? taxId; // Steuernummer/USt-ID
+  final String? businessType; // individual, company
+
   UserProfile({
     required this.uid,
     this.email,
@@ -51,6 +71,22 @@ class UserProfile {
     this.credits = 0,
     this.creditsPurchased = 0,
     this.creditsSpent = 0,
+    this.isSeller = false,
+    this.stripeConnectAccountId,
+    this.stripeConnectStatus,
+    this.payoutsEnabled = false,
+    this.pendingEarnings = 0.0,
+    this.totalEarnings = 0.0,
+    this.lastPayoutDate,
+    this.businessName,
+    this.businessEmail,
+    this.businessPhone,
+    this.businessStreet,
+    this.businessCity,
+    this.businessPostalCode,
+    this.businessCountry,
+    this.taxId,
+    this.businessType,
   });
 
   factory UserProfile.fromMap(Map<String, dynamic> map) {
@@ -78,6 +114,22 @@ class UserProfile {
       credits: (map['credits'] as num?)?.toInt() ?? 0,
       creditsPurchased: (map['creditsPurchased'] as num?)?.toInt() ?? 0,
       creditsSpent: (map['creditsSpent'] as num?)?.toInt() ?? 0,
+      isSeller: (map['isSeller'] as bool?) ?? false,
+      stripeConnectAccountId: map['stripeConnectAccountId'] as String?,
+      stripeConnectStatus: map['stripeConnectStatus'] as String?,
+      payoutsEnabled: (map['payoutsEnabled'] as bool?) ?? false,
+      pendingEarnings: (map['pendingEarnings'] as num?)?.toDouble() ?? 0.0,
+      totalEarnings: (map['totalEarnings'] as num?)?.toDouble() ?? 0.0,
+      lastPayoutDate: map['lastPayoutDate'] as int?,
+      businessName: map['businessName'] as String?,
+      businessEmail: map['businessEmail'] as String?,
+      businessPhone: map['businessPhone'] as String?,
+      businessStreet: map['businessStreet'] as String?,
+      businessCity: map['businessCity'] as String?,
+      businessPostalCode: map['businessPostalCode'] as String?,
+      businessCountry: map['businessCountry'] as String?,
+      taxId: map['taxId'] as String?,
+      businessType: map['businessType'] as String?,
     );
   }
 
@@ -106,6 +158,24 @@ class UserProfile {
       'credits': credits,
       'creditsPurchased': creditsPurchased,
       'creditsSpent': creditsSpent,
+      'isSeller': isSeller,
+      if (stripeConnectAccountId != null)
+        'stripeConnectAccountId': stripeConnectAccountId,
+      if (stripeConnectStatus != null)
+        'stripeConnectStatus': stripeConnectStatus,
+      'payoutsEnabled': payoutsEnabled,
+      'pendingEarnings': pendingEarnings,
+      'totalEarnings': totalEarnings,
+      if (lastPayoutDate != null) 'lastPayoutDate': lastPayoutDate,
+      if (businessName != null) 'businessName': businessName,
+      if (businessEmail != null) 'businessEmail': businessEmail,
+      if (businessPhone != null) 'businessPhone': businessPhone,
+      if (businessStreet != null) 'businessStreet': businessStreet,
+      if (businessCity != null) 'businessCity': businessCity,
+      if (businessPostalCode != null) 'businessPostalCode': businessPostalCode,
+      if (businessCountry != null) 'businessCountry': businessCountry,
+      if (taxId != null) 'taxId': taxId,
+      if (businessType != null) 'businessType': businessType,
     };
   }
 

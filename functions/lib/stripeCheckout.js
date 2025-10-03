@@ -127,7 +127,7 @@ exports.createCreditsCheckoutSession = functions
 exports.stripeWebhook = functions
     .region('us-central1')
     .https.onRequest(async (req, res) => {
-    var _a;
+    var _a, _b;
     const sig = req.headers['stripe-signature'];
     const webhookSecret = ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.webhook_secret) || process.env.STRIPE_WEBHOOK_SECRET || '';
     if (!webhookSecret) {
@@ -189,6 +189,132 @@ exports.stripeWebhook = functions
         }
         catch (error) {
             console.error('Fehler beim Credits gutschreiben:', error);
+            res.status(500).send('Interner Fehler');
+            return;
+        }
+    }
+    // Handle payment_intent.succeeded (für Payment Intents mit gespeicherten Karten)
+    if (event.type === 'payment_intent.succeeded') {
+        const paymentIntent = event.data.object;
+        const { userId, type } = paymentIntent.metadata || {};
+        if (!userId || !type) {
+            console.error('Fehlende Metadata in PaymentIntent:', paymentIntent.id);
+            res.json({ received: true });
+            return;
+        }
+        try {
+            if (type === 'credits') {
+                // Credits-Kauf mit gespeicherter Karte
+                const credits = parseInt(paymentIntent.metadata.credits || '0');
+                const euroAmount = parseFloat(paymentIntent.metadata.euroAmount || '0');
+                const exchangeRate = parseFloat(paymentIntent.metadata.exchangeRate || '1.0');
+                const userRef = admin.firestore().collection('users').doc(userId);
+                await userRef.update({
+                    credits: admin.firestore.FieldValue.increment(credits),
+                    creditsPurchased: admin.firestore.FieldValue.increment(credits),
+                });
+                await userRef.collection('transactions').add({
+                    userId,
+                    type: 'credit_purchase',
+                    credits,
+                    euroAmount,
+                    amount: paymentIntent.amount,
+                    currency: paymentIntent.currency,
+                    exchangeRate,
+                    paymentIntentId: paymentIntent.id,
+                    status: 'completed',
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+                console.log(`Credits (PaymentIntent): User ${userId} - ${credits} Credits`);
+            }
+            else if (type === 'media') {
+                // Media-Kauf mit gespeicherter Karte
+                const { mediaId, avatarId, mediaName, mediaType, sellerId, platformFeePercent } = paymentIntent.metadata;
+                if (!mediaId || !avatarId || !sellerId) {
+                    console.error('Fehlende Media-Metadata:', paymentIntent.id);
+                    res.json({ received: true });
+                    return;
+                }
+                const price = paymentIntent.amount / 100; // Cents → Euro
+                const requiredCredits = Math.round(price / 0.1);
+                // 1. Media als gekauft markieren
+                await admin.firestore()
+                    .collection('users')
+                    .doc(userId)
+                    .collection('purchased_media')
+                    .doc(mediaId)
+                    .set({
+                    mediaId,
+                    avatarId,
+                    type: mediaType || 'unknown',
+                    price,
+                    currency: paymentIntent.currency,
+                    purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    paymentIntentId: paymentIntent.id,
+                });
+                // 2. Transaktion anlegen
+                await admin.firestore()
+                    .collection('users')
+                    .doc(userId)
+                    .collection('transactions')
+                    .add({
+                    userId,
+                    type: 'media_purchase',
+                    mediaId,
+                    mediaName: mediaName || 'Media',
+                    mediaType: mediaType || 'unknown',
+                    avatarId,
+                    amount: paymentIntent.amount,
+                    currency: paymentIntent.currency,
+                    paymentIntentId: paymentIntent.id,
+                    status: 'completed',
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+                // 3. Verkäufer bezahlen (Stripe Connect Transfer)
+                const feePercent = parseFloat(platformFeePercent || '20');
+                const platformFee = Math.round((paymentIntent.amount * feePercent) / 100);
+                const sellerAmount = paymentIntent.amount - platformFee;
+                const sellerDoc = await admin.firestore().collection('users').doc(sellerId).get();
+                const sellerAccountId = (_b = sellerDoc.data()) === null || _b === void 0 ? void 0 : _b.stripeConnectAccountId;
+                if (sellerAccountId) {
+                    await stripe.transfers.create({
+                        amount: sellerAmount,
+                        currency: paymentIntent.currency,
+                        destination: sellerAccountId,
+                        metadata: { mediaId, buyerId: userId, sellerId },
+                    });
+                    // Sale speichern
+                    await admin.firestore()
+                        .collection('users')
+                        .doc(sellerId)
+                        .collection('sales')
+                        .add({
+                        sellerId,
+                        avatarId,
+                        mediaId,
+                        mediaName: mediaName || 'Media',
+                        buyerId: userId,
+                        credits: requiredCredits,
+                        amount: price,
+                        platformFee: platformFee / 100,
+                        sellerEarnings: sellerAmount / 100,
+                        status: 'completed',
+                        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                    // Earnings aktualisieren
+                    await admin.firestore()
+                        .collection('users')
+                        .doc(sellerId)
+                        .update({
+                        pendingEarnings: admin.firestore.FieldValue.increment(sellerAmount / 100),
+                        totalEarnings: admin.firestore.FieldValue.increment(sellerAmount / 100),
+                    });
+                }
+                console.log(`Media gekauft (PaymentIntent): User ${userId} - Media ${mediaId}`);
+            }
+        }
+        catch (error) {
+            console.error('Fehler bei PaymentIntent-Verarbeitung:', error);
             res.status(500).send('Interner Fehler');
             return;
         }

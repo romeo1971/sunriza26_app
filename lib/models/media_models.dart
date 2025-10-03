@@ -15,6 +15,7 @@ class AvatarMedia {
   final bool? isFree; // true = kostenlos, false = kostenpflichtig
   final double? price; // Preis (null wenn isFree oder kostenlos)
   final String? currency; // Währung (€ oder $), Default: €
+  final double? platformFeePercent; // Platform-Provision (0-100), Default: 20%
 
   const AvatarMedia({
     required this.id,
@@ -30,10 +31,14 @@ class AvatarMedia {
     this.isFree,
     this.price,
     this.currency,
+    this.platformFeePercent,
   });
 
   bool get isPortrait => aspectRatio != null && aspectRatio! < 1.0;
   bool get isLandscape => aspectRatio != null && aspectRatio! > 1.0;
+
+  // Ist Media kostenlos? (isFree=true ODER price=0 ODER price=null)
+  bool get isFreeMedia => isFree == true || price == null || price == 0.0;
 
   factory AvatarMedia.fromMap(Map<String, dynamic> map) {
     final typeStr = (map['type'] as String?) ?? 'image';
@@ -63,6 +68,7 @@ class AvatarMedia {
       isFree: map['isFree'] as bool?,
       price: (map['price'] as num?)?.toDouble(),
       currency: map['currency'] as String?,
+      platformFeePercent: (map['platformFeePercent'] as num?)?.toDouble(),
     );
   }
 
@@ -93,6 +99,7 @@ class AvatarMedia {
       if (isFree != null) 'isFree': isFree,
       if (price != null) 'price': price,
       if (currency != null) 'currency': currency,
+      if (platformFeePercent != null) 'platformFeePercent': platformFeePercent,
     };
   }
 }

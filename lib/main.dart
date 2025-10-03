@@ -23,6 +23,8 @@ import 'screens/playlist_edit_screen.dart';
 import 'screens/shared_moments_screen.dart';
 import 'screens/credits_shop_screen.dart';
 import 'screens/payment_overview_screen.dart';
+import 'screens/seller_sales_screen.dart';
+import 'screens/payment_methods_screen.dart';
 import 'models/playlist_models.dart';
 import 'screens/legal_page_screen.dart';
 import 'screens/firebase_test_screen.dart';
@@ -396,6 +398,8 @@ class SunrizaApp extends StatelessWidget {
             '/avatar-list': (context) => const AvatarListScreen(),
             '/credits-shop': (context) => const CreditsShopScreen(),
             '/payment-overview': (context) => const PaymentOverviewScreen(),
+            '/seller-sales': (context) => const SellerSalesScreen(),
+            '/payment-methods': (context) => const PaymentMethodsScreen(),
             '/media-gallery': (context) {
               final args = ModalRoute.of(context)!.settings.arguments as Map?;
               final avatarId = (args?['avatarId'] as String?) ?? '';

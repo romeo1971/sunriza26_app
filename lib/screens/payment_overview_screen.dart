@@ -98,6 +98,18 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
                   ),
                   const SizedBox(height: 16),
 
+                  if (_userProfile?.isSeller == true) ...[
+                    _buildActionCard(
+                      icon: Icons.trending_up,
+                      title: 'Meine Verkäufe',
+                      subtitle: 'Einnahmen & Statistiken',
+                      onTap: () {
+                        Navigator.pushNamed(context, '/seller-sales');
+                      },
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+
                   _buildActionCard(
                     icon: Icons.payment,
                     title: 'Zahlungsmethoden',

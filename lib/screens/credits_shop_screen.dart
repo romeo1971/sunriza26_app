@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
+import '../widgets/payment_method_selector.dart';
 
 /// Credits Shop Screen - Kaufe Credits für bequeme Zahlungen
 class CreditsShopScreen extends StatefulWidget {
@@ -403,142 +404,242 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
     double price,
     double totalPrice,
   ) {
+    String? selectedPaymentMethodId;
+
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        title: Row(
-          children: [
-            ShaderMask(
-              shaderCallback: (bounds) => LinearGradient(
-                colors: [
-                  Color(0xFFE91E63),
-                  AppColors.lightBlue,
-                  Color(0xFF00E5FF),
-                ],
-              ).createShader(bounds),
-              child: const Icon(Icons.diamond, size: 28, color: Colors.white),
-            ),
-            const SizedBox(width: 12),
-            const Text(
-              'Credits kaufen',
-              style: TextStyle(color: Colors.white, fontSize: 18),
-            ),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Du kaufst:',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
-                fontSize: 14,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          title: Row(
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) => LinearGradient(
+                  colors: [
+                    Color(0xFFE91E63),
+                    AppColors.lightBlue,
+                    Color(0xFF00E5FF),
+                  ],
+                ).createShader(bounds),
+                child: const Icon(Icons.diamond, size: 28, color: Colors.white),
               ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.diamond, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Text(
-                  '$credits Credits',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Divider(color: Colors.white.withOpacity(0.2)),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              const SizedBox(width: 12),
+              const Text(
+                'Credits kaufen',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+            ],
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Preis:',
+                  'Du kaufst:',
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.7),
                     fontSize: 14,
                   ),
                 ),
-                Text(
-                  '${price.toStringAsFixed(2)} $_currency',
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(Icons.diamond, color: Colors.white, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$credits Credits',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Divider(color: Colors.white.withOpacity(0.2)),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Preis:',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      '${price.toStringAsFixed(2)} $_currency',
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Stripe-Gebühr:',
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.7),
+                        fontSize: 14,
+                      ),
+                    ),
+                    Text(
+                      '${(_stripeFeeCents / 100).toStringAsFixed(2)} $_currency',
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Divider(color: Colors.white.withOpacity(0.2)),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Gesamt:',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      '${totalPrice.toStringAsFixed(2)} $_currency',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Payment Method Selector
+                PaymentMethodSelector(
+                  onSelected: (paymentMethodId) {
+                    setDialogState(() {
+                      selectedPaymentMethodId = paymentMethodId;
+                    });
+                  },
+                  showNewCardOption: true,
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Stripe-Gebühr:',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: 14,
-                  ),
-                ),
-                Text(
-                  '${(_stripeFeeCents / 100).toStringAsFixed(2)} $_currency',
-                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                ),
-              ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Abbrechen',
+                style: TextStyle(color: Colors.white.withOpacity(0.7)),
+              ),
             ),
-            const SizedBox(height: 8),
-            Divider(color: Colors.white.withOpacity(0.2)),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Gesamt:',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                if (selectedPaymentMethodId != null) {
+                  // Mit gespeicherter Karte zahlen
+                  _payWithSavedCard(
+                    euroAmount,
+                    credits,
+                    totalPrice,
+                    selectedPaymentMethodId!,
+                  );
+                } else {
+                  // Stripe Checkout (neue Karte)
+                  _startStripeCheckout(euroAmount, credits, totalPrice);
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.lightBlue,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
-                Text(
-                  '${totalPrice.toStringAsFixed(2)} $_currency',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+              ),
+              child: const Text('Jetzt kaufen'),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Abbrechen',
-              style: TextStyle(color: Colors.white.withOpacity(0.7)),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _startStripeCheckout(euroAmount, credits, totalPrice);
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.lightBlue,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text('Jetzt kaufen'),
-          ),
-        ],
       ),
     );
+  }
+
+  /// Zahlung mit gespeicherter Karte
+  Future<void> _payWithSavedCard(
+    int euroAmount,
+    int credits,
+    double totalPrice,
+    String paymentMethodId,
+  ) async {
+    try {
+      // Loading anzeigen
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      // Cloud Function aufrufen
+      final functions = FirebaseFunctions.instance;
+      final callable = functions.httpsCallable('createPaymentIntentWithCard');
+
+      final result = await callable.call({
+        'amount': (totalPrice * 100).toInt(), // in Cents
+        'currency': _currency == '€' ? 'eur' : 'usd',
+        'paymentMethodId': paymentMethodId,
+        'metadata': {
+          'type': 'credits',
+          'euroAmount': euroAmount,
+          'credits': credits,
+          'exchangeRate': _exchangeRate,
+        },
+      });
+
+      // Loading schließen
+      if (mounted) Navigator.pop(context);
+
+      final status = result.data['status'] as String?;
+
+      if (status == 'succeeded') {
+        // Erfolg!
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ $credits Credits gekauft!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+        Navigator.pop(context); // Zurück zur Payment Overview
+      } else {
+        throw Exception('Zahlung fehlgeschlagen: $status');
+      }
+    } catch (e) {
+      debugPrint('Fehler bei Zahlung mit gespeicherter Karte: $e');
+
+      // Loading schließen falls noch offen
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Fehler: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
   }
 
   /// Startet Stripe-Checkout via Cloud Function
