@@ -4233,52 +4233,271 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Vorname (Pflichtfeld)
-        CustomTextField(
-          label: context.read<LocalizationService>().t(
-            'avatars.details.firstNameLabel',
-          ),
-          controller: _firstNameController,
-          hintText: context.read<LocalizationService>().t(
-            'avatars.details.firstNameHint',
-          ),
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return context.read<LocalizationService>().t(
-                'avatars.details.firstNameRequired',
-              );
-            }
-            return null;
-          },
-          onChanged: (_) => _updateDirty(),
+        // Vorname (Pflichtfeld) + isPublic Toggle
+        Row(
+          children: [
+            Expanded(
+              child: CustomTextField(
+                label: context.read<LocalizationService>().t(
+                  'avatars.details.firstNameLabel',
+                ),
+                controller: _firstNameController,
+                hintText: context.read<LocalizationService>().t(
+                  'avatars.details.firstNameHint',
+                ),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return context.read<LocalizationService>().t(
+                      'avatars.details.firstNameRequired',
+                    );
+                  }
+                  return null;
+                },
+                onChanged: (_) => _updateDirty(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // firstNamePublic Toggle
+            Tooltip(
+              message: (_avatarData?.firstNamePublic ?? false)
+                  ? 'Wird im Chat angezeigt'
+                  : 'Wird nicht im Chat angezeigt',
+              child: GestureDetector(
+                onTap: () async {
+                  final newValue = !(_avatarData?.firstNamePublic ?? false);
+                  if (_avatarData != null) {
+                    setState(() {
+                      _avatarData = _avatarData!.copyWith(
+                        firstNamePublic: newValue,
+                      );
+                    });
+
+                    // Sofort speichern
+                    final success = await _avatarService.updateAvatar(
+                      _avatarData!,
+                    );
+                    if (success && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            newValue
+                                ? '✓ Vorname wird im Chat angezeigt'
+                                : '✓ Vorname wird nicht im Chat angezeigt',
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: (_avatarData?.firstNamePublic ?? false)
+                        ? const LinearGradient(
+                            colors: [
+                              Color(0xFFE91E63),
+                              AppColors.lightBlue,
+                              Color(0xFF00E5FF),
+                            ],
+                          )
+                        : null,
+                    color: (_avatarData?.firstNamePublic ?? false)
+                        ? null
+                        : Colors.white.withOpacity(0.1),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    (_avatarData?.firstNamePublic ?? false)
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                    size: 24,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
 
         const SizedBox(height: 16),
 
-        // Spitzname (optional)
-        CustomTextField(
-          label: context.read<LocalizationService>().t(
-            'avatars.details.nicknameLabel',
-          ),
-          controller: _nicknameController,
-          hintText: context.read<LocalizationService>().t(
-            'avatars.details.nicknameHint',
-          ),
-          onChanged: (_) => _updateDirty(),
+        // Spitzname (optional) + nicknamePublic Toggle
+        Row(
+          children: [
+            Expanded(
+              child: CustomTextField(
+                label: context.read<LocalizationService>().t(
+                  'avatars.details.nicknameLabel',
+                ),
+                controller: _nicknameController,
+                hintText: context.read<LocalizationService>().t(
+                  'avatars.details.nicknameHint',
+                ),
+                onChanged: (_) => _updateDirty(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // nicknamePublic Toggle
+            Tooltip(
+              message: (_avatarData?.nicknamePublic ?? false)
+                  ? 'Wird im Chat angezeigt'
+                  : 'Wird nicht im Chat angezeigt',
+              child: GestureDetector(
+                onTap: () async {
+                  final newValue = !(_avatarData?.nicknamePublic ?? false);
+                  if (_avatarData != null) {
+                    setState(() {
+                      _avatarData = _avatarData!.copyWith(
+                        nicknamePublic: newValue,
+                      );
+                    });
+
+                    // Sofort speichern
+                    final success = await _avatarService.updateAvatar(
+                      _avatarData!,
+                    );
+                    if (success && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            newValue
+                                ? '✓ Nickname wird im Chat angezeigt'
+                                : '✓ Nickname wird nicht im Chat angezeigt',
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: (_avatarData?.nicknamePublic ?? false)
+                        ? const LinearGradient(
+                            colors: [
+                              Color(0xFFE91E63),
+                              AppColors.lightBlue,
+                              Color(0xFF00E5FF),
+                            ],
+                          )
+                        : null,
+                    color: (_avatarData?.nicknamePublic ?? false)
+                        ? null
+                        : Colors.white.withOpacity(0.1),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    (_avatarData?.nicknamePublic ?? false)
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                    size: 24,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
 
         const SizedBox(height: 16),
 
-        // Nachname (optional)
-        CustomTextField(
-          label: context.read<LocalizationService>().t(
-            'avatars.details.lastNameLabel',
-          ),
-          controller: _lastNameController,
-          hintText: context.read<LocalizationService>().t(
-            'avatars.details.lastNameHint',
-          ),
-          onChanged: (_) => _updateDirty(),
+        // Nachname (optional) + lastNamePublic Toggle
+        Row(
+          children: [
+            Expanded(
+              child: CustomTextField(
+                label: context.read<LocalizationService>().t(
+                  'avatars.details.lastNameLabel',
+                ),
+                controller: _lastNameController,
+                hintText: context.read<LocalizationService>().t(
+                  'avatars.details.lastNameHint',
+                ),
+                onChanged: (_) => _updateDirty(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            // lastNamePublic Toggle
+            Tooltip(
+              message: (_avatarData?.lastNamePublic ?? false)
+                  ? 'Wird im Chat angezeigt'
+                  : 'Wird nicht im Chat angezeigt',
+              child: GestureDetector(
+                onTap: () async {
+                  final newValue = !(_avatarData?.lastNamePublic ?? false);
+                  if (_avatarData != null) {
+                    setState(() {
+                      _avatarData = _avatarData!.copyWith(
+                        lastNamePublic: newValue,
+                      );
+                    });
+
+                    // Sofort speichern
+                    final success = await _avatarService.updateAvatar(
+                      _avatarData!,
+                    );
+                    if (success && mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            newValue
+                                ? '✓ Nachname wird im Chat angezeigt'
+                                : '✓ Nachname wird nicht im Chat angezeigt',
+                          ),
+                          backgroundColor: Colors.green,
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  }
+                },
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: (_avatarData?.lastNamePublic ?? false)
+                        ? const LinearGradient(
+                            colors: [
+                              Color(0xFFE91E63),
+                              AppColors.lightBlue,
+                              Color(0xFF00E5FF),
+                            ],
+                          )
+                        : null,
+                    color: (_avatarData?.lastNamePublic ?? false)
+                        ? null
+                        : Colors.white.withOpacity(0.1),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Icon(
+                    (_avatarData?.lastNamePublic ?? false)
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                    size: 24,
+                    color: Colors.white,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
 
         const SizedBox(height: 16),

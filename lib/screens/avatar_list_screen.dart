@@ -310,33 +310,76 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
             children: [
               Row(
                 children: [
-                  // Avatar-Bild 9:16 (ca. 2.5x höher)
+                  // Avatar-Bild 9:16 (ca. 2.5x höher) + isPublic Toggle
                   Builder(
                     builder: (context) {
                       const double h = 150; // ~2.5 * 60
                       const double w = h * 9 / 16;
-                      return Container(
-                        width: w,
-                        height: h,
-                        decoration: BoxDecoration(
-                          color: const Color(0x1400DFA8),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: AppColors.accentGreenDark,
-                            width: 2,
+                      return Stack(
+                        children: [
+                          Container(
+                            width: w,
+                            height: h,
+                            decoration: BoxDecoration(
+                              color: const Color(0x1400DFA8),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: AppColors.accentGreenDark,
+                                width: 2,
+                              ),
+                            ),
+                            clipBehavior: Clip.hardEdge,
+                            child: avatar.avatarImageUrl != null
+                                ? Image.network(
+                                    avatar.avatarImageUrl!,
+                                    width: w,
+                                    height: h,
+                                    fit: BoxFit.cover,
+                                    errorBuilder:
+                                        (context, error, stackTrace) =>
+                                            _buildDefaultAvatar(),
+                                  )
+                                : _buildDefaultAvatar(),
                           ),
-                        ),
-                        clipBehavior: Clip.hardEdge,
-                        child: avatar.avatarImageUrl != null
-                            ? Image.network(
-                                avatar.avatarImageUrl!,
-                                width: w,
-                                height: h,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    _buildDefaultAvatar(),
-                              )
-                            : _buildDefaultAvatar(),
+                          // isPublic Toggle - oben rechts
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: GestureDetector(
+                              onTap: () => _togglePublic(avatar),
+                              child: Container(
+                                width: 28,
+                                height: 28,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: (avatar.isPublic ?? false)
+                                      ? const LinearGradient(
+                                          colors: [
+                                            Color(0xFFE91E63), // Magenta
+                                            AppColors.lightBlue, // Blue
+                                            Color(0xFF00E5FF), // Cyan
+                                          ],
+                                        )
+                                      : null,
+                                  color: (avatar.isPublic ?? false)
+                                      ? null
+                                      : Colors.black.withOpacity(0.5),
+                                  border: Border.all(
+                                    color: Colors.white.withOpacity(0.3),
+                                    width: 1,
+                                  ),
+                                ),
+                                child: Icon(
+                                  (avatar.isPublic ?? false)
+                                      ? Icons.public
+                                      : Icons.lock,
+                                  size: 16,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       );
                     },
                   ),
@@ -346,41 +389,61 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          (avatar.nickname != null &&
-                                  avatar.nickname!.isNotEmpty)
-                              ? avatar.nickname!
-                              : avatar.firstName,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                        // Nickname (falls vorhanden)
                         if (avatar.nickname != null &&
-                            avatar.nickname!.isNotEmpty &&
-                            avatar.nickname != avatar.firstName)
+                            avatar.nickname!.isNotEmpty)
                           Text(
-                            avatar.firstName,
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: Colors.grey.shade600,
+                            avatar.nickname!,
+                            style: const TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
                             ),
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        const SizedBox(height: 4),
+                        // Vorname + Nachname (immer anzeigen)
                         Text(
-                          avatar.lastMessage ?? loc.t('avatars.noMessages'),
+                          [
+                            avatar.firstName,
+                            if (avatar.lastName != null &&
+                                avatar.lastName!.isNotEmpty)
+                              avatar.lastName!,
+                          ].join(' '),
                           style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade400,
+                            fontSize:
+                                (avatar.nickname != null &&
+                                    avatar.nickname!.isNotEmpty)
+                                ? 16
+                                : 20,
+                            fontWeight:
+                                (avatar.nickname != null &&
+                                    avatar.nickname!.isNotEmpty)
+                                ? FontWeight.normal
+                                : FontWeight.w600,
+                            color:
+                                (avatar.nickname != null &&
+                                    avatar.nickname!.isNotEmpty)
+                                ? Colors.grey.shade600
+                                : Colors.white,
                           ),
-                          maxLines: 2,
+                          maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
+                        // "Noch keine Nachrichten" ENTFERNT - nur wenn tatsächlich eine Message da ist
+                        if (avatar.lastMessage != null &&
+                            avatar.lastMessage!.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            avatar.lastMessage!,
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade400,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -512,5 +575,48 @@ class _AvatarListScreenState extends State<AvatarListScreen> {
 
   void _openAvatarChat(model.AvatarData avatar) {
     Navigator.pushNamed(context, '/avatar-chat', arguments: avatar);
+  }
+
+  /// Toggle isPublic für Avatar
+  Future<void> _togglePublic(model.AvatarData avatar) async {
+    try {
+      final newValue = !(avatar.isPublic ?? false);
+      final updatedAvatar = avatar.copyWith(isPublic: newValue);
+
+      // Optimistic UI Update
+      setState(() {
+        final index = _avatars.indexWhere((a) => a.id == avatar.id);
+        if (index != -1) {
+          _avatars[index] = updatedAvatar;
+        }
+        _applyFilter();
+      });
+
+      // Firestore Update
+      await _avatarService.updateAvatar(updatedAvatar);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              newValue
+                  ? '✓ Avatar ist jetzt öffentlich sichtbar'
+                  : '✓ Avatar ist jetzt privat',
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Fehler beim Toggle isPublic: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+        );
+      }
+      // Bei Fehler: Liste neu laden
+      _loadAvatars();
+    }
   }
 }

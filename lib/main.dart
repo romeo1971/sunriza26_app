@@ -25,6 +25,10 @@ import 'screens/credits_shop_screen.dart';
 import 'screens/payment_overview_screen.dart';
 import 'screens/seller_sales_screen.dart';
 import 'screens/payment_methods_screen.dart';
+import 'screens/home_navigation_screen.dart';
+import 'screens/explore_screen.dart';
+import 'screens/favorites_screen.dart';
+import 'screens/user_profile_public_screen.dart';
 import 'models/playlist_models.dart';
 import 'screens/legal_page_screen.dart';
 import 'screens/firebase_test_screen.dart';
@@ -392,6 +396,10 @@ class SunrizaApp extends StatelessWidget {
           home: const AuthGate(),
           debugShowCheckedModeBanner: false,
           routes: {
+            '/home': (context) => const HomeNavigationScreen(),
+            '/explore': (context) => const ExploreScreen(),
+            '/favorites': (context) => const FavoritesScreen(),
+            '/profile': (context) => const UserProfilePublicScreen(),
             '/avatar-upload': (context) => const AvatarUploadMemoriesScreen(),
             '/avatar-details': (context) => const AvatarDetailsScreen(),
             '/avatar-chat': (context) => const AvatarChatScreen(),

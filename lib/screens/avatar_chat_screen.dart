@@ -25,7 +25,10 @@ import '../services/shared_moments_service.dart';
 import '../models/media_models.dart';
 
 class AvatarChatScreen extends StatefulWidget {
-  const AvatarChatScreen({super.key});
+  final String? avatarId; // Optional: Für Overlay-Chat
+  final VoidCallback? onClose; // Optional: Für Overlay-Chat
+
+  const AvatarChatScreen({super.key, this.avatarId, this.onClose});
 
   @override
   State<AvatarChatScreen> createState() => _AvatarChatScreenState();
@@ -144,34 +147,48 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         setState(() => _isSpeaking = speaking);
       }
     });
-    // Empfange AvatarData von der vorherigen Seite
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // Empfange AvatarData von der vorherigen Seite ODER via widget.avatarId
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final args = ModalRoute.of(context)?.settings.arguments;
-      if (args is AvatarData) {
+
+      // Priorisiere widget.avatarId (Overlay-Chat)
+      if (widget.avatarId != null) {
+        final doc = await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(widget.avatarId)
+            .get();
+        if (doc.exists && mounted) {
+          setState(() {
+            _avatarData = AvatarData.fromMap(doc.data()!);
+          });
+        }
+      } else if (args is AvatarData) {
         setState(() {
           _avatarData = args;
         });
-        _loadPartnerName().then((_) async {
-          final manual =
-              (dotenv.env['LIVEKIT_MANUAL_START'] ?? '').trim() == '1';
-          if (!manual) {
-            await _maybeJoinLiveKit();
-          }
-          await _loadHistory();
-          final hasAny = _messages.isNotEmpty;
-          final lastIsBot = hasAny ? !_messages.last.isUser : false;
-          if (!_greetedOnce && !lastIsBot) {
-            _greetedOnce = true;
-            final greet = (_avatarData?.greetingText?.trim().isNotEmpty == true)
-                ? _avatarData!.greetingText!
-                : ((_partnerName ?? '').isNotEmpty
-                      ? _friendlyGreet(_partnerName ?? '')
-                      : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
-            _botSay(greet);
-          }
-          // Starte Teaser-Scheduling
-          _scheduleTeaser();
-        });
+      }
+
+      // Weiter mit Loading + Greeting
+      if (_avatarData != null) {
+        await _loadPartnerName();
+        final manual = (dotenv.env['LIVEKIT_MANUAL_START'] ?? '').trim() == '1';
+        if (!manual) {
+          await _maybeJoinLiveKit();
+        }
+        await _loadHistory();
+        final hasAny = _messages.isNotEmpty;
+        final lastIsBot = hasAny ? !_messages.last.isUser : false;
+        if (!_greetedOnce && !lastIsBot) {
+          _greetedOnce = true;
+          final greet = (_avatarData?.greetingText?.trim().isNotEmpty == true)
+              ? _avatarData!.greetingText!
+              : ((_partnerName ?? '').isNotEmpty
+                    ? _friendlyGreet(_partnerName ?? '')
+                    : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
+          _botSay(greet);
+        }
+        // Starte Teaser-Scheduling
+        _scheduleTeaser();
       }
     });
   }
@@ -353,7 +370,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           IconButton(
             onPressed: () async {
               unawaited(LiveKitService().leave());
-              if (mounted) Navigator.pop(context);
+              if (widget.onClose != null) {
+                widget.onClose!(); // Overlay schließen
+              } else if (mounted) {
+                Navigator.pop(context); // Normale Navigation
+              }
             },
             icon: const Icon(Icons.arrow_back, color: Colors.white),
           ),
@@ -361,13 +382,47 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           // Mini-Avatar in der AppBar ausgeblendet
           const SizedBox(width: 0),
           Expanded(
-            child: Text(
-              _avatarData?.displayName ?? 'Avatar Chat',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                // Nur isPublic Namen anzeigen
+                final nameParts = <String>[];
+                if (_avatarData?.firstNamePublic == true) {
+                  nameParts.add(_avatarData!.firstName);
+                }
+                if (_avatarData?.nicknamePublic == true &&
+                    _avatarData?.nickname != null) {
+                  nameParts.add('"${_avatarData!.nickname}"');
+                }
+                if (_avatarData?.lastNamePublic == true &&
+                    _avatarData?.lastName != null) {
+                  nameParts.add(_avatarData!.lastName!);
+                }
+
+                final displayText = nameParts.isEmpty
+                    ? 'Avatar Chat'
+                    : nameParts.join(' ');
+
+                // Font-Größe dynamisch anpassen
+                double fontSize = 20;
+                if (displayText.length > 30) {
+                  fontSize = 14;
+                } else if (displayText.length > 20) {
+                  fontSize = 16;
+                } else if (displayText.length > 15) {
+                  fontSize = 18;
+                }
+
+                return Text(
+                  displayText,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                );
+              },
             ),
           ),
           // Mute/Unmute (Feature‑Flag)
@@ -873,12 +928,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     final dir = await getTemporaryDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final path = '${dir.path}/segment_$timestamp.wav';
-    
+
     await _recorder.start(
-      RecordConfig(
-        encoder: AudioEncoder.wav,
-        sampleRate: 16000,
-      ),
+      RecordConfig(encoder: AudioEncoder.wav, sampleRate: 16000),
       path: path,
     );
     _segmentStartAt = DateTime.now();

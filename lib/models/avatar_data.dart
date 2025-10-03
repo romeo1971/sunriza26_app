@@ -23,6 +23,10 @@ class AvatarData {
   final Map<String, dynamic>? training;
   final String? greetingText;
   final String? role;
+  final bool? isPublic; // Öffentlich sichtbar im Explore-Feed
+  final bool? firstNamePublic; // Vorname öffentlich
+  final bool? nicknamePublic; // Nickname öffentlich
+  final bool? lastNamePublic; // Nachname öffentlich
 
   AvatarData({
     required this.id,
@@ -49,6 +53,10 @@ class AvatarData {
     this.training,
     this.greetingText,
     this.role,
+    this.isPublic,
+    this.firstNamePublic,
+    this.nicknamePublic,
+    this.lastNamePublic,
   });
 
   // Factory constructor für Firestore
@@ -84,6 +92,10 @@ class AvatarData {
       training: map['training'],
       greetingText: map['greetingText'],
       role: map['role'],
+      isPublic: map['isPublic'],
+      firstNamePublic: map['firstNamePublic'],
+      nicknamePublic: map['nicknamePublic'],
+      lastNamePublic: map['lastNamePublic'],
     );
   }
 
@@ -126,6 +138,10 @@ class AvatarData {
     }
     if (country != null && country!.isNotEmpty) map['country'] = country;
     if (role != null && role!.isNotEmpty) map['role'] = role;
+    if (isPublic != null) map['isPublic'] = isPublic;
+    if (firstNamePublic != null) map['firstNamePublic'] = firstNamePublic;
+    if (nicknamePublic != null) map['nicknamePublic'] = nicknamePublic;
+    if (lastNamePublic != null) map['lastNamePublic'] = lastNamePublic;
 
     return map;
   }
@@ -156,6 +172,10 @@ class AvatarData {
     Map<String, dynamic>? training,
     String? greetingText,
     String? role,
+    bool? isPublic,
+    bool? firstNamePublic,
+    bool? nicknamePublic,
+    bool? lastNamePublic,
     bool clearAvatarImageUrl = false,
   }) {
     return AvatarData(
@@ -185,6 +205,10 @@ class AvatarData {
       training: training ?? this.training,
       greetingText: greetingText ?? this.greetingText,
       role: role ?? this.role,
+      isPublic: isPublic ?? this.isPublic,
+      firstNamePublic: firstNamePublic ?? this.firstNamePublic,
+      nicknamePublic: nicknamePublic ?? this.nicknamePublic,
+      lastNamePublic: lastNamePublic ?? this.lastNamePublic,
     );
   }
 

@@ -266,7 +266,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
         child: InkWell(
           borderRadius: BorderRadius.circular(28),
           onTap: () {
-            Navigator.of(context).pushReplacementNamed('/avatar-list');
+            Navigator.of(context).pushReplacementNamed('/home');
           },
           child: Center(
             child: Column(
