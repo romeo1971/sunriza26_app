@@ -251,26 +251,6 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
           ),
         ),
       );
-    } else if (_currentIndex == 2) {
-      // HOOK Button (Favoriten - Remove)
-      return GestureDetector(
-        onTap: _removeFavoriteInFavorites,
-        child: Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Color(0xFFE91E63), // Magenta
-                AppColors.lightBlue, // Blue
-                Color(0xFF00E5FF), // Cyan
-              ],
-            ),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Icon(Icons.check, color: Colors.white, size: 20),
-        ),
-      );
     } else {
       // Anderen Tabs: Unsichtbar
       return const SizedBox(width: 32, height: 32);
