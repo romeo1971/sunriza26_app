@@ -2336,6 +2336,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       ),
                       child: Text(
                         (() {
+                          final isFree = it.isFree ?? false;
+                          if (isFree) return 'Kostenlos';
+
                           final typeKey = it.type == AvatarMediaType.image
                               ? 'image'
                               : 'video';
@@ -2984,6 +2987,15 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           _reopenCrop(m);
         },
         globalPricing: _globalPricing,
+        onPricingRequest: (m, refreshInViewer) async {
+          await _openMediaPricingDialog(m);
+          // Nach dem Dialog den aktualisierten Datensatz aus _items holen
+          final updated = _items.firstWhere(
+            (x) => x.id == m.id,
+            orElse: () => m,
+          );
+          refreshInViewer(updated);
+        },
       ),
     );
   }
@@ -3463,13 +3475,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   }
 
   /// Öffnet Pricing-Dialog für Bild/Video
-  void _openMediaPricingDialog(AvatarMedia media) {
+  Future<void> _openMediaPricingDialog(AvatarMedia media) async {
     // Edit-Mode State
     bool isEditing = false;
     TextEditingController? priceController;
     String? tempCurrency;
 
-    showDialog(
+    await showDialog(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
@@ -3507,26 +3519,59 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             final credits = isFree ? 0 : (effectivePrice * 10).ceil();
             final hasIndividualPrice = currentMedia.price != null;
 
+            // Global Button sichtbar wenn: Edit-Mode UND Input != Global-Preis
+            bool showGlobal = false;
+            if (isEditing && priceController != null) {
+              final inputText = priceController!.text;
+              final cleanInput = inputText.replaceAll(',', '.');
+              final inputPrice = double.tryParse(cleanInput) ?? 0.0;
+              final inputCur = tempCurrency ?? '\$';
+
+              showGlobal = (inputPrice != gpPrice) || (inputCur != gpCur);
+            } else {
+              showGlobal = overridePrice != null;
+            }
+
             return AlertDialog(
               backgroundColor: const Color(0xFF1E1E1E),
               contentPadding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
               content: SizedBox(
                 width: 328,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Header
+                    // Header mit Close Button
                     Padding(
                       padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-                      child: Text(
-                        currentMedia.type == AvatarMediaType.image
-                            ? 'Bildpreis'
-                            : 'Videopreis',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                        ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              currentMedia.type == AvatarMediaType.image
+                                  ? 'Bildpreis'
+                                  : 'Videopreis',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          // Close Button
+                          IconButton(
+                            icon: const Icon(
+                              Icons.close,
+                              color: Colors.white70,
+                              size: 24,
+                            ),
+                            onPressed: () => Navigator.of(context).pop(),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
                       ),
                     ),
                     // Bild/Video
@@ -3561,7 +3606,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       isEditing: isEditing,
                       priceController: priceController,
                       tempCurrency: tempCurrency,
-                      showGlobalButton: overridePrice != null,
+                      showGlobalButton: showGlobal,
                       onToggleFree: () async {
                         // Toggle isFree
                         final newIsFree = !isFree;
@@ -3673,6 +3718,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             priceController?.dispose();
                             priceController = null;
                           });
+                          // Schließe nur Pricing-Dialog (Viewer bleibt offen)
+                          Navigator.of(context).pop();
                         } catch (e) {
                           debugPrint('Fehler beim Speichern: $e');
                         }
@@ -3680,6 +3727,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       onCurrencyChanged: (newCur) {
                         setDialogState(() {
                           tempCurrency = newCur;
+                        });
+                      },
+                      onPriceChanged: () {
+                        setDialogState(() {
+                          // Trigger rebuild um showGlobal neu zu berechnen
                         });
                       },
                       onGlobal: () async {
@@ -4870,13 +4922,17 @@ class _MediaViewerDialog extends StatefulWidget {
   final int initialIndex;
   final void Function(AvatarMedia) onCropRequest;
   final Map<String, dynamic> globalPricing;
+  final Future<void> Function(AvatarMedia, void Function(AvatarMedia))
+  onPricingRequest;
 
   const _MediaViewerDialog({
+    super.key,
     required this.initialMedia,
     required this.allMedia,
     required this.initialIndex,
     required this.onCropRequest,
     required this.globalPricing,
+    required this.onPricingRequest,
   });
 
   @override
@@ -4892,6 +4948,20 @@ class _MediaViewerDialogState extends State<_MediaViewerDialog> {
     super.initState();
     _currentIndex = widget.initialIndex;
     _currentMedia = widget.initialMedia;
+  }
+
+  @override
+  void didUpdateWidget(_MediaViewerDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Wenn allMedia sich ändert, aktualisiere _currentMedia
+    // Suche das Medium mit der gleichen ID (falls es aktualisiert wurde)
+    final updatedMedia = widget.allMedia.firstWhere(
+      (m) => m.id == _currentMedia.id,
+      orElse: () => widget.allMedia[_currentIndex],
+    );
+    if (updatedMedia != _currentMedia) {
+      _currentMedia = updatedMedia;
+    }
   }
 
   void _goToPrevious() {
@@ -5055,9 +5125,10 @@ class _MediaViewerDialogState extends State<_MediaViewerDialog> {
 
     final overridePrice = it.price;
     final overrideCur = it.currency ?? 'EUR';
+    final isFree = it.isFree ?? false;
 
     final effectivePrice = overridePrice ?? (gpEnabled ? gpPrice : null);
-    if (effectivePrice == null) return const SizedBox.shrink();
+    if (effectivePrice == null && !isFree) return const SizedBox.shrink();
 
     String sym(String c) {
       final u = c.toUpperCase();
@@ -5068,23 +5139,42 @@ class _MediaViewerDialogState extends State<_MediaViewerDialog> {
 
     final symbol = sym(overridePrice != null ? overrideCur : gpCur);
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
-        ),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white, width: 1),
-      ),
-      child: Text(
-        '$symbol${effectivePrice.toStringAsFixed(2).replaceAll('.', ',')}',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          height: 1.0,
-          letterSpacing: 0,
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => widget.onPricingRequest(it, (updated) {
+          // Refresh in Viewer: ersetze _currentMedia, falls gleiche ID
+          if (updated.id == _currentMedia.id) {
+            setState(() {
+              _currentMedia = updated;
+            });
+          }
+        }),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFFE91E63),
+                AppColors.lightBlue,
+                Color(0xFF00E5FF),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white, width: 1),
+          ),
+          child: Text(
+            isFree
+                ? 'Kostenlos'
+                : '$symbol${effectivePrice!.toStringAsFixed(2).replaceAll('.', ',')}',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.0,
+              letterSpacing: 0,
+            ),
+          ),
         ),
       ),
     );
