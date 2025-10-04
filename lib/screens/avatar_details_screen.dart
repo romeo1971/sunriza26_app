@@ -27,7 +27,6 @@ import '../services/firebase_storage_service.dart';
 import '../services/geo_service.dart';
 import '../services/localization_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/avatar_nav_bar.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../widgets/video_player_widget.dart';
 import '../widgets/custom_text_field.dart';
@@ -554,7 +553,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           _buildVideosRowLayout(_mediaWidth(context)),
         const SizedBox.shrink(),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
         // Aufklappbare Sektionen (Texte, Audio, Stimmeinstellungen)
         Theme(
@@ -624,7 +623,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               // Texte & Freitext
               ExpansionTile(
                 initiallyExpanded: false,
@@ -721,7 +720,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
               // Audio (Stimmauswahl) inkl. Stimmeinstellungen
               ExpansionTile(
                 initiallyExpanded: false,
@@ -803,7 +802,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
             ],
           ),
         ),
@@ -3952,7 +3951,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
           /// Liefert den exakten Options-Namen aus [_countryOptions],
           /// wenn der übergebene Wert entweder Landesname oder ISO-Code ist.
-          String? _normalizeCountryOption(String value) {
+          String? normalizeCountryOption(String value) {
             if (value.isEmpty) return null;
             // Map: Name/Code vergleichen, korrekten Namen zurückgeben
             for (final entry in countries) {
@@ -4414,7 +4413,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ],
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
         // Spitzname (optional) + nicknamePublic Toggle
         Row(
@@ -4501,7 +4500,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ],
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
         // Nachname (optional) + lastNamePublic Toggle
         Row(
@@ -4588,7 +4587,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ],
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
         // Adresse - immer sichtbar
         Column(
@@ -4774,7 +4773,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 1.0),
             child: _buildInputFields(),
           ),
         ],
@@ -5613,7 +5612,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () {
             // Zurück zu "Meine Avatare" (mit Footer Navigation)
             Navigator.pop(context);
@@ -5626,10 +5625,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 'avatars.details.saveTooltip',
               ),
               onPressed: _isSaving ? null : _saveAvatarDetails,
-              icon: Icon(
-                Icons.save_outlined,
-                color: _isSaving ? Colors.grey : Colors.white,
-                size: 28,
+              icon: ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  colors: [AppColors.magenta, AppColors.lightBlue],
+                ).createShader(bounds),
+                child: Icon(
+                  Icons.save_outlined,
+                  color: _isSaving ? Colors.grey : Colors.white,
+                  size: 21.4,
+                ),
               ),
             ),
         ],
@@ -5663,9 +5667,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildMediaSection(),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 6),
                       _buildPersonDataTile(),
-                      const SizedBox(height: 32),
+                      const SizedBox(height: 6),
                     ],
                   ),
                 ),

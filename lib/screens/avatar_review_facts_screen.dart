@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:sunriza26/services/fact_review_service.dart';
 import 'package:provider/provider.dart';
 import 'package:sunriza26/services/localization_service.dart';
-import '../widgets/avatar_nav_bar.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 
@@ -184,9 +183,12 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => _handleBackNavigation(context),
         ),
+        actions: [
+          // Wenn zukünftig Actions hinzukommen, bitte Icon-Größe 21.4 setzen
+        ],
       ),
       body: Column(
         children: [

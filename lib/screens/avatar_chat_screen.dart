@@ -42,7 +42,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   bool _isRecording = false;
   bool _isTyping = false;
   bool _isSpeaking = false;
-  bool _isMuted =
+  final bool _isMuted =
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
   bool _isStoppingPlayback = false;
   StreamSubscription<PlayerState>? _playerStateSub;
@@ -238,8 +238,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           child: Text(
             (() {
               final parts = <String>[];
-              if (_avatarData?.firstNamePublic == true)
+              if (_avatarData?.firstNamePublic == true) {
                 parts.add(_avatarData!.firstName);
+              }
               if (_avatarData?.nicknamePublic == true &&
                   _avatarData?.nickname != null) {
                 parts.add('"${_avatarData!.nickname}"');

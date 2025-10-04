@@ -45,6 +45,22 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'boot/engineering_notes.dart';
 
+/// Deaktiviert jegliche Page-Transitions (kein Slide/Fade) für Navigator-Routen
+class NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
+  const NoAnimationPageTransitionsBuilder();
+
+  @override
+  Widget buildTransitions<T>(
+    PageRoute<T> route,
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+    Widget child,
+  ) {
+    return child;
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -255,6 +271,16 @@ class SunrizaApp extends StatelessWidget {
               elevation: 0,
               backgroundColor: Color(0xFF000000),
               foregroundColor: Colors.white,
+            ),
+            pageTransitionsTheme: const PageTransitionsTheme(
+              builders: {
+                TargetPlatform.android: NoAnimationPageTransitionsBuilder(),
+                TargetPlatform.iOS: NoAnimationPageTransitionsBuilder(),
+                TargetPlatform.macOS: NoAnimationPageTransitionsBuilder(),
+                TargetPlatform.linux: NoAnimationPageTransitionsBuilder(),
+                TargetPlatform.windows: NoAnimationPageTransitionsBuilder(),
+                TargetPlatform.fuchsia: NoAnimationPageTransitionsBuilder(),
+              },
             ),
             extensions: <ThemeExtension<dynamic>>[AppGradients.defaultDark()],
             // Näher am Google‑Sans Look (fällt auf Plus Jakarta zurück, Headlines versuchen 'GoogleSans')

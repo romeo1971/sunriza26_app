@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
+import '../services/avatar_service.dart';
 
 class AvatarBottomNavBar extends StatelessWidget {
   final String avatarId;
@@ -92,22 +93,43 @@ class AvatarBottomNavBar extends StatelessWidget {
   }) {
     final color = _iconColor(active);
     final icon = active ? iconFilled : iconOutlined;
-    return GestureDetector(
-      onTap: () {
-        if (active) return;
-        Navigator.pushReplacementNamed(
-          context,
-          route,
-          arguments: args ?? {'avatarId': avatarId},
-        );
-      },
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(color: color, fontSize: 8)),
-        ],
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () async {
+          if (active) return;
+          // Für den Detail-Screen AvatarData vorladen, damit Footer sofort sichtbar ist
+          if (route == '/avatar-details') {
+            final avatarSvc = AvatarService();
+            final avatar = await avatarSvc.getAvatar(avatarId);
+            if (!context.mounted) return;
+            if (avatar != null) {
+              Navigator.pushReplacementNamed(context, route, arguments: avatar);
+            } else {
+              Navigator.pushReplacementNamed(
+                context,
+                route,
+                arguments: {'avatarId': avatarId},
+              );
+            }
+            return;
+          }
+          // Alle anderen Screens per Named Route (No-Animation global durch Theme)
+          Navigator.pushReplacementNamed(
+            context,
+            route,
+            arguments:
+                args ?? {'avatarId': avatarId, 'fromScreen': currentScreen},
+          );
+        },
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 22),
+            const SizedBox(height: 2),
+            Text(label, style: TextStyle(color: color, fontSize: 8)),
+          ],
+        ),
       ),
     );
   }

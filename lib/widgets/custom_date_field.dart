@@ -62,7 +62,10 @@ class CustomDateField extends StatelessWidget {
             borderRadius: BorderRadius.circular(12),
             borderSide: const BorderSide(color: Colors.white12, width: 1),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 12,
+            vertical: 16,
+          ),
           suffixIcon: Icon(
             Icons.calendar_today,
             color: hasValue ? const Color(0xFF00E676) : Colors.white54,
@@ -97,7 +100,9 @@ class CustomDateField extends StatelessWidget {
               surface: Color(0xFF1E1E1E),
               onSurface: Colors.white,
             ),
-            dialogBackgroundColor: const Color(0xFF1E1E1E),
+            dialogTheme: DialogThemeData(
+              backgroundColor: const Color(0xFF1E1E1E),
+            ),
           ),
           child: child!,
         );

@@ -47,74 +47,51 @@ class _CustomPriceFieldState extends State<CustomPriceField> {
     super.dispose();
   }
 
-  /// Formatiert Input auf max 2 Dezimalstellen (12,34)
-  void _formatInput() {
-    final text = widget.controller?.text ?? '';
-    if (text.isEmpty) return;
-
-    // Nur 0-9, Komma und Punkt erlauben
-    String cleaned = text.replaceAll(RegExp(r'[^0-9,.]'), '');
-
-    // Punkt durch Komma ersetzen
-    cleaned = cleaned.replaceAll('.', ',');
-
-    // Nur ein Komma erlauben
-    final parts = cleaned.split(',');
-    if (parts.length > 2) {
-      cleaned = '${parts[0]},${parts.sublist(1).join('')}';
-    }
-
-    // Max 2 Dezimalstellen
-    if (parts.length == 2 && parts[1].length > 2) {
-      cleaned = '${parts[0]},${parts[1].substring(0, 2)}';
-    }
-
-    // Nur wenn geändert, Controller updaten (verhindert Loop)
-    if (cleaned != text) {
-      final oldSelection = widget.controller?.selection;
-      widget.controller?.text = cleaned;
-      // Cursor-Position beibehalten
-      if (oldSelection != null) {
-        widget.controller?.selection = TextSelection.fromPosition(
-          TextPosition(offset: cleaned.length),
-        );
-      }
-    }
-  }
+  // (alt) _formatInput entfernt – Logik steckt nun komplett im _priceInputFormatter
 
   /// Echtzeit-Formatter: nur Ziffern, ein Dezimaltrennzeichen, max. 2 Nachkommastellen
-  static final TextInputFormatter _priceInputFormatter =
-      TextInputFormatter.withFunction((oldValue, newValue) {
-        var text = newValue.text;
-        if (text.isEmpty) return newValue;
+  static final TextInputFormatter
+  _priceInputFormatter = TextInputFormatter.withFunction((oldValue, newValue) {
+    var text = newValue.text;
+    if (text.isEmpty) return newValue;
 
-        // Nur erlaubte Zeichen behalten
-        text = text.replaceAll(RegExp(r'[^0-9\.,]'), '');
-        // Punkt zu Komma
-        text = text.replaceAll('.', ',');
-        // Nur ein Komma
-        final parts = text.split(',');
-        if (parts.length > 2) {
-          text = '${parts[0]},${parts.sublist(1).join('')}';
-        }
-        // Max 2 Dezimalstellen
-        final p2 = text.split(',');
-        if (p2.length == 2 && p2[1].length > 2) {
-          text = '${p2[0]},${p2[1].substring(0, 2)}';
-        }
+    // Nur erlaubte Zeichen behalten
+    text = text.replaceAll(RegExp(r'[^0-9\.,]'), '');
+    // Punkt zu Komma
+    text = text.replaceAll('.', ',');
+    // Nur ein Komma
+    final parts = text.split(',');
+    if (parts.length > 2) {
+      text = '${parts[0]},${parts.sublist(1).join('')}';
+    }
+    // Max 2 Dezimalstellen
+    final p2 = text.split(',');
+    if (p2.length == 2 && p2[1].length > 2) {
+      text = '${p2[0]},${p2[1].substring(0, 2)}';
+    }
 
-        return TextEditingValue(
-          text: text,
-          selection: TextSelection.collapsed(offset: text.length),
-          composing: TextRange.empty,
-        );
-      });
+    // Wenn sich der Text durch den Formatter NICHT ändert, Auswahl beibehalten
+    if (text == newValue.text) {
+      return newValue;
+    }
+
+    // Cursor-Position möglichst beibehalten (kein Sprung ans Ende)
+    final desiredOffset = newValue.selection.end;
+    final clampedOffset = desiredOffset > text.length
+        ? text.length
+        : (desiredOffset < 0 ? 0 : desiredOffset);
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: clampedOffset),
+      composing: TextRange.empty,
+    );
+  });
 
   @override
   Widget build(BuildContext context) {
     const textStyle = TextStyle(
       color: Colors.white,
-      fontSize: 16,
+      fontSize: 15,
       fontWeight: FontWeight.w500,
       height: 1.0,
       letterSpacing: 0,
@@ -135,7 +112,7 @@ class _CustomPriceFieldState extends State<CustomPriceField> {
                 style: textStyle,
                 decoration: InputDecoration(
                   hintText: widget.hintText,
-                  hintStyle: const TextStyle(color: Colors.white, fontSize: 16),
+                  hintStyle: const TextStyle(color: Colors.white, fontSize: 15),
                   fillColor: Colors.transparent,
                   filled: false,
                   border: InputBorder.none,

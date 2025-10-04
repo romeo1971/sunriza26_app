@@ -8,6 +8,7 @@ import '../utils/playlist_time_utils.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 import '../widgets/custom_text_field.dart';
+import '../theme/app_theme.dart';
 
 class PlaylistListScreen extends StatefulWidget {
   final String avatarId;
@@ -279,7 +280,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       appBar: AppBar(
         title: Text(loc.t('playlists.title')),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => _handleBackNavigation(context),
         ),
         actions: [
@@ -454,17 +455,44 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                 ).showSnackBar(SnackBar(content: Text('Diagnosefehler: $e')));
               }
             },
-            icon: const Icon(Icons.rule_folder),
+            icon: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [AppColors.magenta, AppColors.lightBlue],
+              ).createShader(bounds),
+              child: const Icon(
+                Icons.rule_folder_outlined,
+                color: Colors.white,
+                size: 21.4,
+              ),
+            ),
           ),
           IconButton(
             tooltip: loc.t('avatars.refreshTooltip'),
             onPressed: _load,
-            icon: const Icon(Icons.refresh),
+            icon: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [AppColors.magenta, AppColors.lightBlue],
+              ).createShader(bounds),
+              child: const Icon(
+                Icons.refresh_outlined,
+                color: Colors.white,
+                size: 21.4,
+              ),
+            ),
           ),
           IconButton(
             tooltip: loc.t('playlists.new'),
             onPressed: _create,
-            icon: const Icon(Icons.add),
+            icon: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [AppColors.magenta, AppColors.lightBlue],
+              ).createShader(bounds),
+              child: const Icon(
+                Icons.add_outlined,
+                color: Colors.white,
+                size: 21.4,
+              ),
+            ),
           ),
         ],
       ),

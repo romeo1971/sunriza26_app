@@ -5,7 +5,6 @@ import '../services/media_service.dart';
 import '../models/media_models.dart';
 import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
-import '../widgets/avatar_nav_bar.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 
@@ -106,9 +105,12 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
           context.read<LocalizationService>().t('sharedMoments.title'),
         ),
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => _handleBackNavigation(context),
         ),
+        actions: [
+          // Keine speziellen Actions hier – falls später ergänzt, bitte Größe 21.4 wählen
+        ],
       ),
       body: Column(
         children: [

@@ -677,8 +677,9 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     setState(() => _saving = true);
     try {
       await _svc.update(p);
-      if (mounted)
+      if (mounted) {
         Navigator.pop(context, true); // Return true to trigger refresh
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
