@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import '../widgets/custom_price_field.dart';
 import '../widgets/custom_currency_select.dart';
+import '../widgets/image_video_pricing_box.dart';
 import 'dart:ui' as ui;
 import '../services/media_service.dart';
 import '../services/firebase_storage_service.dart';
@@ -2310,53 +2311,64 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               Positioned(
                 right: 6,
                 top: 6,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFFE91E63), // Magenta
-                        AppColors.lightBlue, // Blue
-                        Color(0xFF00E5FF), // Cyan
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white, width: 1),
-                  ),
-                  child: Text(
-                    (() {
-                      final typeKey = it.type == AvatarMediaType.image
-                          ? 'image'
-                          : 'video';
-                      final overridePrice = it.price;
-                      final overrideCur = _normalizeCurrencyToSymbol(
-                        it.currency,
-                      );
-                      final gp =
-                          _globalPricing[typeKey] as Map<String, dynamic>?;
-                      final gpEnabled = (gp?['enabled'] as bool?) ?? false;
-                      final gpPrice = (gp?['price'] as num?)?.toDouble() ?? 0.0;
-                      final gpCur = _normalizeCurrencyToSymbol(
-                        gp?['currency'] as String?,
-                      );
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () {
+                      // Popup öffnen
+                      _openMediaPricingDialog(it);
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFFE91E63), // Magenta
+                            AppColors.lightBlue, // Blue
+                            Color(0xFF00E5FF), // Cyan
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white, width: 1),
+                      ),
+                      child: Text(
+                        (() {
+                          final typeKey = it.type == AvatarMediaType.image
+                              ? 'image'
+                              : 'video';
+                          final overridePrice = it.price;
+                          final overrideCur = _normalizeCurrencyToSymbol(
+                            it.currency,
+                          );
+                          final gp =
+                              _globalPricing[typeKey] as Map<String, dynamic>?;
+                          final gpEnabled = (gp?['enabled'] as bool?) ?? false;
+                          final gpPrice =
+                              (gp?['price'] as num?)?.toDouble() ?? 0.0;
+                          final gpCur = _normalizeCurrencyToSymbol(
+                            gp?['currency'] as String?,
+                          );
 
-                      final effectivePrice =
-                          overridePrice ?? (gpEnabled ? gpPrice : 0.0);
-                      final symbol =
-                          (overridePrice != null ? overrideCur : gpCur) == '\$'
-                          ? '\$'
-                          : '€';
-                      return '$symbol${effectivePrice.toStringAsFixed(2).replaceAll('.', ',')}';
-                    })(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      height: 1.0,
-                      letterSpacing: 0,
+                          final effectivePrice =
+                              overridePrice ?? (gpEnabled ? gpPrice : 0.0);
+                          final symbol =
+                              (overridePrice != null ? overrideCur : gpCur) ==
+                                  '\$'
+                              ? '\$'
+                              : '€';
+                          return '$symbol${effectivePrice.toStringAsFixed(2).replaceAll('.', ',')}';
+                        })(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          height: 1.0,
+                          letterSpacing: 0,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -3447,6 +3459,282 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             ),
         ],
       ),
+    );
+  }
+
+  /// Öffnet Pricing-Dialog für Bild/Video
+  void _openMediaPricingDialog(AvatarMedia media) {
+    // Edit-Mode State
+    bool isEditing = false;
+    TextEditingController? priceController;
+    String? tempCurrency;
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            // WICHTIG: Aktuelles media aus _items holen (wegen Updates)
+            final currentMedia = _items.firstWhere(
+              (m) => m.id == media.id,
+              orElse: () => media,
+            );
+
+            final typeKey = currentMedia.type == AvatarMediaType.image
+                ? 'image'
+                : 'video';
+            final gp = _globalPricing[typeKey] as Map<String, dynamic>?;
+            final gpEnabled = (gp?['enabled'] as bool?) ?? false;
+            final gpPrice = (gp?['price'] as num?)?.toDouble() ?? 0.0;
+            final gpCur = _normalizeCurrencyToSymbol(
+              gp?['currency'] as String?,
+            );
+
+            final overridePrice = currentMedia.price;
+            final overrideCur = _normalizeCurrencyToSymbol(
+              currentMedia.currency,
+            );
+            final isFree = currentMedia.isFree ?? false;
+
+            final effectivePrice = isFree
+                ? 0.0
+                : (overridePrice ?? (gpEnabled ? gpPrice : 0.0));
+            final effectiveCurrency = (overridePrice != null
+                ? overrideCur
+                : gpCur);
+            final symbol = effectiveCurrency == '\$' ? '\$' : '€';
+
+            final credits = isFree ? 0 : (effectivePrice * 10).ceil();
+            final hasIndividualPrice = currentMedia.price != null;
+
+            return AlertDialog(
+              backgroundColor: const Color(0xFF1E1E1E),
+              contentPadding: EdgeInsets.zero,
+              content: SizedBox(
+                width: 328,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // Header
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
+                      child: Text(
+                        currentMedia.type == AvatarMediaType.image
+                            ? 'Bildpreis'
+                            : 'Videopreis',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    // Bild/Video
+                    if (currentMedia.type == AvatarMediaType.image)
+                      Image.network(
+                        currentMedia.url,
+                        width: 328,
+                        height: 328,
+                        fit: BoxFit.cover,
+                      )
+                    else
+                      Container(
+                        width: 328,
+                        height: 328,
+                        color: Colors.black,
+                        child: const Center(
+                          child: Icon(
+                            Icons.play_circle_outline,
+                            size: 64,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    // Pricing Box
+                    ImageVideoPricingBox(
+                      isFree: isFree,
+                      effectivePrice: effectivePrice,
+                      symbol: symbol,
+                      credits: credits,
+                      hasIndividualPrice: hasIndividualPrice,
+                      showCredits: gpEnabled || overridePrice != null,
+                      isEditing: isEditing,
+                      priceController: priceController,
+                      tempCurrency: tempCurrency,
+                      showGlobalButton: overridePrice != null,
+                      onToggleFree: () async {
+                        // Toggle isFree
+                        final newIsFree = !isFree;
+                        try {
+                          await FirebaseFirestore.instance
+                              .collection('avatars')
+                              .doc(widget.avatarId)
+                              .collection('media')
+                              .doc(currentMedia.id)
+                              .update({'isFree': newIsFree});
+
+                          // Lokale Liste aktualisieren
+                          final index = _items.indexWhere(
+                            (m) => m.id == currentMedia.id,
+                          );
+                          if (index != -1) {
+                            _items[index] = AvatarMedia(
+                              id: currentMedia.id,
+                              avatarId: currentMedia.avatarId,
+                              type: currentMedia.type,
+                              url: currentMedia.url,
+                              thumbUrl: currentMedia.thumbUrl,
+                              createdAt: currentMedia.createdAt,
+                              durationMs: currentMedia.durationMs,
+                              aspectRatio: currentMedia.aspectRatio,
+                              tags: currentMedia.tags,
+                              originalFileName: currentMedia.originalFileName,
+                              isFree: newIsFree,
+                              price: currentMedia.price,
+                              currency: currentMedia.currency,
+                            );
+                          }
+                          setState(() {});
+                          setDialogState(() {});
+                        } catch (e) {
+                          debugPrint('Fehler beim Toggle isFree: $e');
+                        }
+                      },
+                      onEdit: () {
+                        // Edit-Mode aktivieren
+                        setDialogState(() {
+                          isEditing = true;
+                          // Controller initialisieren wenn nicht vorhanden
+                          if (priceController == null) {
+                            final price = currentMedia.price ?? gpPrice;
+                            final priceText = price
+                                .toStringAsFixed(2)
+                                .replaceAll('.', ',');
+                            priceController = TextEditingController(
+                              text: priceText,
+                            );
+                          }
+                          tempCurrency =
+                              currentMedia.currency ??
+                              (gpCur.isNotEmpty ? gpCur : '\$');
+                        });
+                      },
+                      onCancel: () {
+                        // Abbrechen - zurück zu Standard-Mode
+                        setDialogState(() {
+                          isEditing = false;
+                          priceController?.dispose();
+                          priceController = null;
+                        });
+                      },
+                      onSave: () async {
+                        // Preis speichern
+                        final inputText = priceController?.text ?? '0,00';
+                        final cleanText = inputText.replaceAll(',', '.');
+                        final newPrice = double.tryParse(cleanText) ?? 0.0;
+                        final newCurrency = tempCurrency ?? '\$';
+
+                        try {
+                          await FirebaseFirestore.instance
+                              .collection('avatars')
+                              .doc(widget.avatarId)
+                              .collection('media')
+                              .doc(currentMedia.id)
+                              .update({
+                                'price': newPrice,
+                                'currency': newCurrency,
+                              });
+
+                          // Lokale Liste aktualisieren
+                          final index = _items.indexWhere(
+                            (m) => m.id == currentMedia.id,
+                          );
+                          if (index != -1) {
+                            _items[index] = AvatarMedia(
+                              id: currentMedia.id,
+                              avatarId: currentMedia.avatarId,
+                              type: currentMedia.type,
+                              url: currentMedia.url,
+                              thumbUrl: currentMedia.thumbUrl,
+                              createdAt: currentMedia.createdAt,
+                              durationMs: currentMedia.durationMs,
+                              aspectRatio: currentMedia.aspectRatio,
+                              tags: currentMedia.tags,
+                              originalFileName: currentMedia.originalFileName,
+                              isFree: currentMedia.isFree,
+                              price: newPrice,
+                              currency: newCurrency,
+                            );
+                          }
+
+                          setState(() {});
+                          setDialogState(() {
+                            isEditing = false;
+                            priceController?.dispose();
+                            priceController = null;
+                          });
+                        } catch (e) {
+                          debugPrint('Fehler beim Speichern: $e');
+                        }
+                      },
+                      onCurrencyChanged: (newCur) {
+                        setDialogState(() {
+                          tempCurrency = newCur;
+                        });
+                      },
+                      onGlobal: () async {
+                        // Zurück zu Global-Preis
+                        try {
+                          await FirebaseFirestore.instance
+                              .collection('avatars')
+                              .doc(widget.avatarId)
+                              .collection('media')
+                              .doc(currentMedia.id)
+                              .update({
+                                'price': FieldValue.delete(),
+                                'currency': FieldValue.delete(),
+                              });
+
+                          // Lokale Liste aktualisieren
+                          final index = _items.indexWhere(
+                            (m) => m.id == currentMedia.id,
+                          );
+                          if (index != -1) {
+                            _items[index] = AvatarMedia(
+                              id: currentMedia.id,
+                              avatarId: currentMedia.avatarId,
+                              type: currentMedia.type,
+                              url: currentMedia.url,
+                              thumbUrl: currentMedia.thumbUrl,
+                              createdAt: currentMedia.createdAt,
+                              durationMs: currentMedia.durationMs,
+                              aspectRatio: currentMedia.aspectRatio,
+                              tags: currentMedia.tags,
+                              originalFileName: currentMedia.originalFileName,
+                              isFree: currentMedia.isFree,
+                              price: null,
+                              currency: null,
+                            );
+                          }
+
+                          setState(() {});
+                          setDialogState(() {
+                            isEditing = false;
+                            priceController?.dispose();
+                            priceController = null;
+                          });
+                        } catch (e) {
+                          debugPrint('Fehler beim Zurücksetzen: $e');
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
