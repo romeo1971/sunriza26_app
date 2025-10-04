@@ -21,6 +21,7 @@ import 'screens/media_gallery_screen.dart';
 import 'screens/playlist_list_screen.dart';
 import 'screens/playlist_edit_screen.dart';
 import 'screens/shared_moments_screen.dart';
+import 'screens/avatar_review_facts_screen.dart';
 import 'screens/credits_shop_screen.dart';
 import 'screens/payment_overview_screen.dart';
 import 'screens/seller_sales_screen.dart';
@@ -435,6 +436,15 @@ class SunrizaApp extends StatelessWidget {
               final avatarId = (args?['avatarId'] as String?) ?? '';
               final fromScreen = args?['fromScreen'] as String?;
               return SharedMomentsScreen(
+                avatarId: avatarId,
+                fromScreen: fromScreen,
+              );
+            },
+            '/avatar-review-facts': (context) {
+              final args = ModalRoute.of(context)!.settings.arguments as Map?;
+              final avatarId = (args?['avatarId'] as String?) ?? '';
+              final fromScreen = args?['fromScreen'] as String?;
+              return AvatarReviewFactsScreen(
                 avatarId: avatarId,
                 fromScreen: fromScreen,
               );

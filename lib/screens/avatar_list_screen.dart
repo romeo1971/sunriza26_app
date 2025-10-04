@@ -26,7 +26,7 @@ class _AvatarListScreenState extends State<AvatarListScreen>
   final TextEditingController _searchController = TextEditingController();
   String _searchTerm = '';
   int _currentPage = 0;
-  static const int _avatarsPerPage = 2;
+  static const int _avatarsPerPage = 4;
 
   @override
   bool get wantKeepAlive => true;

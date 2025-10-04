@@ -6,6 +6,7 @@ import '../models/media_models.dart';
 import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
 import '../widgets/avatar_nav_bar.dart';
+import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 
 class SharedMomentsScreen extends StatefulWidget {
@@ -111,15 +112,7 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
       ),
       body: Column(
         children: [
-          // Sticky Navigation mit dynamischem Hintergrund
-          Container(
-            color: Colors.black.withValues(alpha: opacity),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: AvatarNavBar(
-              avatarId: widget.avatarId,
-              currentScreen: 'moments',
-            ),
-          ),
+          const SizedBox.shrink(),
           // Content
           Expanded(
             child: _loading
@@ -160,6 +153,10 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
                   ),
           ),
         ],
+      ),
+      bottomNavigationBar: AvatarBottomNavBar(
+        avatarId: widget.avatarId,
+        currentScreen: 'moments',
       ),
     );
   }

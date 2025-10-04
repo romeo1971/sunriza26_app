@@ -3,6 +3,7 @@ import 'package:sunriza26/services/fact_review_service.dart';
 import 'package:provider/provider.dart';
 import 'package:sunriza26/services/localization_service.dart';
 import '../widgets/avatar_nav_bar.dart';
+import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 
 class AvatarReviewFactsScreen extends StatefulWidget {
@@ -189,15 +190,7 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
       ),
       body: Column(
         children: [
-          // Sticky Navigation mit dynamischem Hintergrund
-          Container(
-            color: Colors.black.withValues(alpha: opacity),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: AvatarNavBar(
-              avatarId: widget.avatarId,
-              currentScreen: 'facts',
-            ),
-          ),
+          const SizedBox.shrink(),
           _buildFilterBar(),
           Expanded(
             child: RefreshIndicator(
@@ -376,6 +369,10 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
             ),
           ),
         ],
+      ),
+      bottomNavigationBar: AvatarBottomNavBar(
+        avatarId: widget.avatarId,
+        currentScreen: 'facts',
       ),
     );
   }

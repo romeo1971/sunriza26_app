@@ -28,6 +28,7 @@ import '../services/geo_service.dart';
 import '../services/localization_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/avatar_nav_bar.dart';
+import '../widgets/avatar_bottom_nav_bar.dart';
 import '../widgets/video_player_widget.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_date_field.dart';
@@ -92,6 +93,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   int? _calculatedAge;
 
   AvatarData? _avatarData;
+  String? _pendingAvatarId; // für Navigation mit nur avatarId
   final List<String> _imageUrls = [];
   final List<String> _videoUrls = [];
   final List<String> _textFileUrls = [];
@@ -395,6 +397,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         _applyAvatar(args);
         // Frische Daten aus Firestore nachladen, um veraltete Argumente zu ersetzen
         _fetchLatest(args.id);
+      } else if (args is Map && args['avatarId'] is String) {
+        _pendingAvatarId = (args['avatarId'] as String).trim();
+        if (_pendingAvatarId!.isNotEmpty) {
+          _fetchLatest(_pendingAvatarId!);
+        }
+      } else if (args is String) {
+        _pendingAvatarId = args.trim();
+        if (_pendingAvatarId!.isNotEmpty) {
+          _fetchLatest(_pendingAvatarId!);
+        }
       }
       _loadElevenVoices();
     });
@@ -485,8 +497,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (dl is String && dl.trim().isNotEmpty) {
           _voiceDialect = dl.trim();
         }
-        // WICHTIG: keine Vorauswahl im Dropdown – Nutzer entscheidet aktiv
-        _selectedVoiceId = null;
+        // Vorauswahl im Dropdown aus gespeicherten Daten herstellen
+        try {
+          final chosen = (voice['elevenVoiceId'] as String?)?.trim();
+          final cloneId = (voice['cloneVoiceId'] as String?)?.trim();
+          if ((chosen ?? '').isNotEmpty) {
+            if (cloneId != null && cloneId.isNotEmpty && chosen == cloneId) {
+              _selectedVoiceId = '__CLONE__';
+            } else {
+              _selectedVoiceId = chosen;
+            }
+          } else {
+            _selectedVoiceId = null;
+          }
+        } catch (_) {
+          _selectedVoiceId = null;
+        }
       }
       _isDirty = false;
     });
@@ -626,8 +652,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               backgroundColor: AppColors.accentGreenDark,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 7,
+                                horizontal: 16,
+                                vertical: 12,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -1003,9 +1029,43 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Future<void> _onSelectVoice(String? voiceId) async {
     setState(() {
       _selectedVoiceId = voiceId;
-      _isDirty = true; // Diskette sichtbar
+      _isDirty = false;
     });
-    // Speichern erfolgt über Diskette, nicht sofort
+    // Auswahl sofort in training.voice.elevenVoiceId persistieren
+    if (_avatarData == null) return;
+    try {
+      final existing = Map<String, dynamic>.from(_avatarData!.training ?? {});
+      final voice = Map<String, dynamic>.from(existing['voice'] ?? {});
+      if (voiceId == '__CLONE__') {
+        final cloneId = (voice['cloneVoiceId'] as String?)?.trim();
+        if (cloneId != null && cloneId.isNotEmpty) {
+          voice['elevenVoiceId'] = cloneId;
+        }
+      } else if ((voiceId ?? '').isNotEmpty) {
+        voice['elevenVoiceId'] = voiceId;
+      }
+      existing['voice'] = voice;
+      final updated = _avatarData!.copyWith(
+        training: existing,
+        updatedAt: DateTime.now(),
+      );
+      final ok = await _avatarService.updateAvatar(updated);
+      if (ok && mounted) {
+        _applyAvatar(updated);
+        _showSystemSnack(
+          context.read<LocalizationService>().t(
+            'avatars.details.voiceSelectionSaved',
+          ),
+        );
+      }
+    } catch (e) {
+      _showSystemSnack(
+        context.read<LocalizationService>().t(
+          'avatars.details.saveError',
+          params: {'msg': '$e'},
+        ),
+      );
+    }
   }
 
   Future<T?> _showBlockingProgress<T>({
@@ -5591,19 +5651,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         child: Column(
           children: [
-            // Sticky Navigation Bar
-            if (_avatarData?.id != null)
-              Container(
-                color: Colors.black,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
-                child: AvatarNavBar(
-                  avatarId: _avatarData!.id,
-                  currentScreen: 'details',
-                ),
-              ),
+            // Bottom-Navigation – keine Top-Nav mehr
+            const SizedBox.shrink(),
             // Scrollable Content
             Expanded(
               child: SingleChildScrollView(
@@ -5625,6 +5674,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ],
         ),
       ),
+      bottomNavigationBar: (_avatarData?.id != null)
+          ? AvatarBottomNavBar(
+              avatarId: _avatarData!.id,
+              currentScreen: 'details',
+            )
+          : null,
     );
   }
 

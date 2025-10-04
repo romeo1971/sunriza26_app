@@ -215,24 +215,34 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 // Entfernen Button - Herz mit GMBC Gradient
                 GestureDetector(
                   onTap: () => _removeFavorite(avatar.id),
-                  child: Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [
-                          Color(0xFFE91E63), // Magenta
-                          AppColors.lightBlue, // Blue
-                          Color(0xFF00E5FF), // Cyan
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: Colors.white, width: 1),
-                    ),
-                    child: const Icon(
-                      Icons.favorite,
-                      color: Colors.white,
-                      size: 24,
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        // Weißer 1px-Rand (Outline)
+                        const Icon(
+                          Icons.favorite_border,
+                          color: Colors.white,
+                          size: 26,
+                        ),
+                        // Herzfüllung mit GMBC-Gradient
+                        ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [
+                              Color(0xFFE91E63), // Magenta
+                              AppColors.lightBlue, // Blue
+                              Color(0xFF00E5FF), // Cyan
+                            ],
+                          ).createShader(bounds),
+                          child: const Icon(
+                            Icons.favorite,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),

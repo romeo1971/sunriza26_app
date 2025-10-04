@@ -5,7 +5,7 @@ import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import '../utils/playlist_time_utils.dart';
-import '../widgets/avatar_nav_bar.dart';
+import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 import '../widgets/custom_text_field.dart';
 
@@ -472,14 +472,8 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Globale Navigation
-                Padding(
-                  padding: const EdgeInsets.all(8),
-                  child: AvatarNavBar(
-                    avatarId: widget.avatarId,
-                    currentScreen: 'playlists',
-                  ),
-                ),
+                // Bottom-Navigation aktiv – keine Top-Nav mehr
+                const SizedBox.shrink(),
                 Expanded(
                   child: RefreshIndicator(
                     onRefresh: _load,
@@ -600,6 +594,10 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                 ),
               ],
             ),
+      bottomNavigationBar: AvatarBottomNavBar(
+        avatarId: widget.avatarId,
+        currentScreen: 'playlists',
+      ),
     );
   }
 }
