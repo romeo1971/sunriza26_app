@@ -60,7 +60,6 @@ class ImageVideoPricingBox extends StatelessWidget {
   final VoidCallback? onSave;
   final void Function(String?)? onCurrencyChanged;
   final VoidCallback? onGlobal;
-  final VoidCallback? onPriceChanged;
   final bool showGlobalButton;
 
   const ImageVideoPricingBox({
@@ -80,7 +79,6 @@ class ImageVideoPricingBox extends StatelessWidget {
     this.onSave,
     this.onCurrencyChanged,
     this.onGlobal,
-    this.onPriceChanged,
     this.showGlobalButton = false,
   });
 
@@ -88,254 +86,75 @@ class ImageVideoPricingBox extends StatelessWidget {
   Widget build(BuildContext context) {
     // EDIT-MODE
     if (isEditing && priceController != null) {
-      return ClipRRect(
-        borderRadius: const BorderRadius.only(
-          bottomLeft: Radius.circular(28),
-          bottomRight: Radius.circular(28),
-        ),
-        child: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [
-                Color(0xFFE91E63), // Magenta
-                AppColors.lightBlue, // Blue
-                Color(0xFF00E5FF), // Cyan
-              ],
-              stops: [0.0, 0.5, 1.0],
-            ),
+      return Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Color(0xFFE91E63), // Magenta
+              AppColors.lightBlue, // Blue
+              Color(0xFF00E5FF), // Cyan
+            ],
+            stops: [0.0, 0.5, 1.0],
           ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              // Responsive Breakpoints
-              final needsButtonWrap = constraints.maxWidth < 320;
-              final needsGlobalWrap = constraints.maxWidth < 260;
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            // Responsive Breakpoints
+            final needsButtonWrap = constraints.maxWidth < 340;
+            final needsGlobalWrap = constraints.maxWidth < 460;
 
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Zeile 1: Input + Currency + Global (padding) | X + Hook (KEIN padding, float right)
-                  SizedBox(
-                    height: 40,
-                    child: Row(
-                      children: [
-                        // Links: Input + Currency + Global (MIT padding)
-                        Expanded(
-                          child: Padding(
-                            padding: EdgeInsets.only(
-                              left: 12,
-                              top: 8,
-                              // wenn Global in Zeile 3 sichtbar ist: unten 0
-                              bottom: (showGlobalButton && needsGlobalWrap)
-                                  ? 0
-                                  : 8,
-                            ),
-                            child: Row(
-                              children: [
-                                // Input Field (auto width, NO border)
-                                IntrinsicWidth(
-                                  child: TextField(
-                                    controller: priceController,
-                                    autofocus: true,
-                                    keyboardType:
-                                        const TextInputType.numberWithOptions(
-                                          decimal: true,
-                                        ),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                    decoration: const InputDecoration(
-                                      border: InputBorder.none,
-                                      enabledBorder: InputBorder.none,
-                                      focusedBorder: InputBorder.none,
-                                      isDense: true,
-                                      contentPadding: EdgeInsets.symmetric(
-                                        vertical: 10,
-                                      ),
-                                    ),
-                                    inputFormatters: [_priceInputFormatter],
-                                    onChanged: (_) => onPriceChanged?.call(),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                // Currency Select (auto width)
-                                if (onCurrencyChanged != null)
-                                  SizedBox(
-                                    height: 40,
-                                    child: CustomCurrencySelect(
-                                      value: tempCurrency ?? '\$',
-                                      onChanged: onCurrencyChanged!,
-                                    ),
-                                  ),
-                                // Global (wenn genug Platz + Button aktiv)
-                                if (!needsGlobalWrap && showGlobalButton) ...[
-                                  const SizedBox(width: 8),
-                                  MouseRegion(
-                                    cursor: SystemMouseCursors.click,
-                                    child: GestureDetector(
-                                      onTap: onGlobal,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                        ),
-                                        height: 40,
-                                        alignment: Alignment.center,
-                                        child: const Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            Icon(
-                                              Icons.refresh,
-                                              size: 16,
-                                              color: Colors.white70,
-                                            ),
-                                            SizedBox(width: 4),
-                                            Text(
-                                              'Global',
-                                              style: TextStyle(
-                                                color: Colors.white70,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Zeile 1: Input + Currency (+ ggf. Global + X + Hook)
+                Row(
+                  children: [
+                    // Input Field (auto width, NO border)
+                    IntrinsicWidth(
+                      child: TextField(
+                        controller: priceController,
+                        autofocus: true,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
                         ),
-                        // Rechts: X + Hook (KEIN padding, direkt am Rand)
-                        if (!needsButtonWrap) ...[
-                          // X-Button (40px width, links neben Hook)
-                          MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              onTap: onCancel,
-                              child: Container(
-                                width: 40,
-                                height: 40,
-                                alignment: Alignment.center,
-                                child: const Icon(
-                                  Icons.close,
-                                  size: 20,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                          // Hook-Button (40px width, rechts außen)
-                          MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              onTap: onSave,
-                              child: Container(
-                                width: 40,
-                                height: 40,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                ),
-                                child: ShaderMask(
-                                  shaderCallback: (bounds) =>
-                                      const LinearGradient(
-                                        colors: [
-                                          Color(0xFFE91E63),
-                                          Color(0xFFE91E63),
-                                          AppColors.lightBlue,
-                                          Color(0xFF00E5FF),
-                                        ],
-                                        stops: [0.0, 0.4, 0.7, 1.0],
-                                      ).createShader(bounds),
-                                  child: const Icon(
-                                    Icons.check,
-                                    size: 24,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        decoration: const InputDecoration(
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(vertical: 10),
+                        ),
+                        inputFormatters: [_priceInputFormatter],
+                      ),
                     ),
-                  ),
-                  // Zeile 2: X (50%) + Hook (50%) wenn zu schmal - FULLWIDTH!
-                  if (needsButtonWrap) ...[
-                    Row(
-                      children: [
-                        // X-Button (50% width)
-                        Expanded(
-                          child: MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              onTap: onCancel,
-                              child: Container(
-                                height: 40,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white24,
-                                ),
-                                alignment: Alignment.center,
-                                child: const Icon(
-                                  Icons.close,
-                                  size: 20,
-                                  color: Colors.white70,
-                                ),
-                              ),
-                            ),
-                          ),
+                    const SizedBox(width: 8),
+                    // Currency Select (auto width)
+                    if (onCurrencyChanged != null)
+                      SizedBox(
+                        height: 40,
+                        child: CustomCurrencySelect(
+                          value: tempCurrency ?? '\$',
+                          onChanged: onCurrencyChanged!,
                         ),
-                        // Hook-Button (50% width)
-                        Expanded(
-                          child: MouseRegion(
-                            cursor: SystemMouseCursors.click,
-                            child: GestureDetector(
-                              onTap: onSave,
-                              child: Container(
-                                height: 40,
-                                alignment: Alignment.center,
-                                decoration: const BoxDecoration(
-                                  color: Colors.white,
-                                ),
-                                child: ShaderMask(
-                                  shaderCallback: (bounds) =>
-                                      const LinearGradient(
-                                        colors: [
-                                          Color(0xFFE91E63),
-                                          Color(0xFFE91E63),
-                                          AppColors.lightBlue,
-                                          Color(0xFF00E5FF),
-                                        ],
-                                        stops: [0.0, 0.4, 0.7, 1.0],
-                                      ).createShader(bounds),
-                                  child: const Icon(
-                                    Icons.check,
-                                    size: 24,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                  // Zeile 3: Global (wenn nicht in Zeile 1 passt + sichtbar)
-                  if (needsGlobalWrap && showGlobalButton) ...[
-                    Transform.translate(
-                      offset: const Offset(0, -10),
-                      child: MouseRegion(
+                      ),
+                    // Global (wenn genug Platz + Button aktiv)
+                    if (!needsGlobalWrap && showGlobalButton) ...[
+                      const SizedBox(width: 8),
+                      MouseRegion(
                         cursor: SystemMouseCursors.click,
                         child: GestureDetector(
                           onTap: onGlobal,
                           child: Container(
-                            height: 35,
-                            padding: const EdgeInsets.only(top: 15),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            height: 40,
                             alignment: Alignment.center,
                             child: const Row(
                               mainAxisSize: MainAxisSize.min,
@@ -359,12 +178,154 @@ class ImageVideoPricingBox extends StatelessWidget {
                           ),
                         ),
                       ),
-                    ),
+                    ],
+                    if (!needsButtonWrap) ...[
+                      const Spacer(),
+                      // X-Button (float right, links neben Hook)
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: onCancel,
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.close,
+                              size: 20,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Hook-Button (Speichern)
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: onSave,
+                          child: Container(
+                            width: 40,
+                            height: 40,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                            ),
+                            child: ShaderMask(
+                              shaderCallback: (bounds) => const LinearGradient(
+                                colors: [
+                                  Color(0xFFE91E63),
+                                  Color(0xFFE91E63),
+                                  AppColors.lightBlue,
+                                  Color(0xFF00E5FF),
+                                ],
+                                stops: [0.0, 0.4, 0.7, 1.0],
+                              ).createShader(bounds),
+                              child: const Icon(
+                                Icons.check,
+                                size: 24,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
+                ),
+                // Zeile 2: X (50%) + Hook (50%) wenn zu schmal
+                if (needsButtonWrap) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      // X-Button (50% width)
+                      Expanded(
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: onCancel,
+                            child: Container(
+                              height: 40,
+                              alignment: Alignment.center,
+                              child: const Icon(
+                                Icons.close,
+                                size: 20,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Hook-Button (50% width)
+                      Expanded(
+                        child: MouseRegion(
+                          cursor: SystemMouseCursors.click,
+                          child: GestureDetector(
+                            onTap: onSave,
+                            child: Container(
+                              height: 40,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                color: Colors.white,
+                              ),
+                              child: ShaderMask(
+                                shaderCallback: (bounds) =>
+                                    const LinearGradient(
+                                      colors: [
+                                        Color(0xFFE91E63),
+                                        Color(0xFFE91E63),
+                                        AppColors.lightBlue,
+                                        Color(0xFF00E5FF),
+                                      ],
+                                      stops: [0.0, 0.4, 0.7, 1.0],
+                                    ).createShader(bounds),
+                                child: const Icon(
+                                  Icons.check,
+                                  size: 24,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
-              );
-            },
-          ),
+                // Zeile 3: Global (wenn zu schmal + sichtbar)
+                if (needsButtonWrap && needsGlobalWrap && showGlobalButton) ...[
+                  const SizedBox(height: 8),
+                  MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: onGlobal,
+                      child: Container(
+                        height: 40,
+                        alignment: Alignment.center,
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.refresh,
+                              size: 16,
+                              color: Colors.white70,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'Global',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            );
+          },
         ),
       );
     }
@@ -377,273 +338,260 @@ class ImageVideoPricingBox extends StatelessWidget {
 
         if (needsTwoLines) {
           // 2-ZEILEN LAYOUT
-          return ClipRRect(
-            borderRadius: const BorderRadius.only(
-              bottomLeft: Radius.circular(28),
-              bottomRight: Radius.circular(28),
-            ),
-            child: Container(
-              decoration: const BoxDecoration(color: Color(0x20FFFFFF)),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // ZEILE 1: Preis, Credits, Edit
-                  Row(
-                    children: [
-                      // Preis
-                      Text(
-                        '$symbol${effectivePrice.toStringAsFixed(2).replaceAll('.', ',')}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                        ),
+          return Container(
+            decoration: const BoxDecoration(color: Color(0x20FFFFFF)),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // ZEILE 1: Preis, Credits, Edit
+                Row(
+                  children: [
+                    // Preis
+                    Text(
+                      '$symbol${effectivePrice.toStringAsFixed(2).replaceAll('.', ',')}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
-                      const Spacer(),
-                      // Credits + Edit (nur wenn NICHT kostenlos)
-                      if (!isFree) ...[
-                        if (showCredits) ...[
-                          ShaderMask(
-                            shaderCallback: (bounds) => const LinearGradient(
-                              colors: [
-                                Color(0xFFE91E63),
-                                AppColors.lightBlue,
-                                Color(0xFF00E5FF),
-                              ],
-                            ).createShader(bounds),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  '$credits',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                const SizedBox(width: 3),
-                                const Icon(
-                                  Icons.diamond,
-                                  size: 12,
+                    ),
+                    const Spacer(),
+                    // Credits + Edit (nur wenn NICHT kostenlos)
+                    if (!isFree) ...[
+                      if (showCredits) ...[
+                        ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [
+                              Color(0xFFE91E63),
+                              AppColors.lightBlue,
+                              Color(0xFF00E5FF),
+                            ],
+                          ).createShader(bounds),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '$credits',
+                                style: const TextStyle(
                                   color: Colors.white,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
                                 ),
-                              ],
-                            ),
+                              ),
+                              const SizedBox(width: 3),
+                              const Icon(
+                                Icons.diamond,
+                                size: 12,
+                                color: Colors.white,
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 8),
-                        ],
-                        MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: GestureDetector(
-                            onTap: onEdit,
-                            child: Stack(
-                              clipBehavior: Clip.none,
-                              children: [
-                                const Icon(
-                                  Icons.edit_outlined,
-                                  size: 18,
-                                  color: Colors.white70,
-                                ),
-                                if (hasIndividualPrice)
-                                  Positioned(
-                                    top: -2,
-                                    right: -2,
-                                    child: Container(
-                                      width: 6,
-                                      height: 6,
-                                      decoration: const BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        gradient: LinearGradient(
-                                          colors: [
-                                            Color(0xFFE91E63),
-                                            AppColors.lightBlue,
-                                            Color(0xFF00E5FF),
-                                          ],
-                                        ),
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: onEdit,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              const Icon(
+                                Icons.edit_outlined,
+                                size: 18,
+                                color: Colors.white70,
+                              ),
+                              if (hasIndividualPrice)
+                                Positioned(
+                                  top: -2,
+                                  right: -2,
+                                  child: Container(
+                                    width: 6,
+                                    height: 6,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          Color(0xFFE91E63),
+                                          AppColors.lightBlue,
+                                          Color(0xFF00E5FF),
+                                        ],
                                       ),
                                     ),
                                   ),
-                              ],
-                            ),
+                                ),
+                            ],
                           ),
                         ),
-                      ],
+                      ),
                     ],
-                  ),
-                  const SizedBox(height: 4),
-                  // ZEILE 2: Kostenpflichtig/Kostenlos (zentriert)
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: onToggleFree,
-                      child: Center(
-                        child: isFree
-                            ? const Text(
-                                'Kostenlos',
+                  ],
+                ),
+                const SizedBox(height: 4),
+                // ZEILE 2: Kostenpflichtig/Kostenlos (zentriert)
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: onToggleFree,
+                    child: Center(
+                      child: isFree
+                          ? const Text(
+                              'Kostenlos',
+                              style: TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            )
+                          : ShaderMask(
+                              shaderCallback: (bounds) => const LinearGradient(
+                                colors: [
+                                  Color(0xFFE91E63),
+                                  AppColors.lightBlue,
+                                  Color(0xFF00E5FF),
+                                ],
+                              ).createShader(bounds),
+                              child: const Text(
+                                'Kostenpflichtig',
                                 style: TextStyle(
-                                  color: Colors.white54,
+                                  color: Colors.white,
                                   fontSize: 12,
                                   fontWeight: FontWeight.w500,
                                 ),
-                              )
-                            : ShaderMask(
-                                shaderCallback: (bounds) =>
-                                    const LinearGradient(
-                                      colors: [
-                                        Color(0xFFE91E63),
-                                        AppColors.lightBlue,
-                                        Color(0xFF00E5FF),
-                                      ],
-                                    ).createShader(bounds),
-                                child: const Text(
-                                  'Kostenpflichtig',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
                               ),
-                      ),
+                            ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           );
         }
 
         // 1-ZEILEN LAYOUT (wie vorher)
-        return ClipRRect(
-          borderRadius: const BorderRadius.only(
-            bottomLeft: Radius.circular(28),
-            bottomRight: Radius.circular(28),
-          ),
-          child: Container(
-            height: 40,
-            decoration: const BoxDecoration(color: Color(0x20FFFFFF)),
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                // LINKS: Preis
-                Text(
-                  '$symbol${effectivePrice.toStringAsFixed(2).replaceAll('.', ',')}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+        return Container(
+          height: 40,
+          decoration: const BoxDecoration(color: Color(0x20FFFFFF)),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Row(
+            children: [
+              // LINKS: Preis
+              Text(
+                '$symbol${effectivePrice.toStringAsFixed(2).replaceAll('.', ',')}',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
                 ),
-                const Spacer(),
-                // MITTE: Kostenpflichtig/Kostenlos Toggle
-                MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    onTap: onToggleFree,
-                    child: isFree
-                        ? const Text(
-                            'Kostenlos',
+              ),
+              const Spacer(),
+              // MITTE: Kostenpflichtig/Kostenlos Toggle
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: onToggleFree,
+                  child: isFree
+                      ? const Text(
+                          'Kostenlos',
+                          style: TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                        )
+                      : ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [
+                              Color(0xFFE91E63),
+                              AppColors.lightBlue,
+                              Color(0xFF00E5FF),
+                            ],
+                          ).createShader(bounds),
+                          child: const Text(
+                            'Kostenpflichtig',
                             style: TextStyle(
-                              color: Colors.white54,
+                              color: Colors.white,
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
                             ),
                             textAlign: TextAlign.center,
-                          )
-                        : ShaderMask(
-                            shaderCallback: (bounds) => const LinearGradient(
-                              colors: [
-                                Color(0xFFE91E63),
-                                AppColors.lightBlue,
-                                Color(0xFF00E5FF),
-                              ],
-                            ).createShader(bounds),
-                            child: const Text(
-                              'Kostenpflichtig',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
                           ),
-                  ),
+                        ),
                 ),
-                const Spacer(),
-                // RECHTS: Credits (GMBC) + Edit-Stift (nur wenn NICHT kostenlos)
-                if (!isFree) ...[
-                  if (showCredits) ...[
-                    ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [
-                          Color(0xFFE91E63),
-                          AppColors.lightBlue,
-                          Color(0xFF00E5FF),
-                        ],
-                      ).createShader(bounds),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '$credits',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(width: 3),
-                          const Icon(
-                            Icons.diamond,
-                            size: 12,
+              ),
+              const Spacer(),
+              // RECHTS: Credits (GMBC) + Edit-Stift (nur wenn NICHT kostenlos)
+              if (!isFree) ...[
+                if (showCredits) ...[
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [
+                        Color(0xFFE91E63),
+                        AppColors.lightBlue,
+                        Color(0xFF00E5FF),
+                      ],
+                    ).createShader(bounds),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          '$credits',
+                          style: const TextStyle(
                             color: Colors.white,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
                           ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 3),
+                        const Icon(
+                          Icons.diamond,
+                          size: 12,
+                          color: Colors.white,
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 8),
-                  ],
-                  MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      onTap: onEdit,
-                      child: Stack(
-                        clipBehavior: Clip.none,
-                        children: [
-                          const Icon(
-                            Icons.edit_outlined,
-                            size: 18,
-                            color: Colors.white70,
-                          ),
-                          if (hasIndividualPrice)
-                            Positioned(
-                              top: -2,
-                              right: -2,
-                              child: Container(
-                                width: 6,
-                                height: 6,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      Color(0xFFE91E63),
-                                      AppColors.lightBlue,
-                                      Color(0xFF00E5FF),
-                                    ],
-                                  ),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: onEdit,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        const Icon(
+                          Icons.edit_outlined,
+                          size: 18,
+                          color: Colors.white70,
+                        ),
+                        if (hasIndividualPrice)
+                          Positioned(
+                            top: -2,
+                            right: -2,
+                            child: Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Color(0xFFE91E63),
+                                    AppColors.lightBlue,
+                                    Color(0xFF00E5FF),
+                                  ],
                                 ),
                               ),
                             ),
-                        ],
-                      ),
+                          ),
+                      ],
                     ),
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
         );
       },
