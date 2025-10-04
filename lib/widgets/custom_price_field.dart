@@ -87,6 +87,34 @@ class _CustomPriceFieldState extends State<CustomPriceField> {
     );
   });
 
+  /// Echtzeit-Formatter: nur Ziffern, ein Dezimaltrennzeichen, max. 2 Nachkommastellen
+  static final TextInputFormatter _priceInputFormatter =
+      TextInputFormatter.withFunction((oldValue, newValue) {
+        var text = newValue.text;
+        if (text.isEmpty) return newValue;
+
+        // Nur erlaubte Zeichen behalten
+        text = text.replaceAll(RegExp(r'[^0-9\.,]'), '');
+        // Punkt zu Komma
+        text = text.replaceAll('.', ',');
+        // Nur ein Komma
+        final parts = text.split(',');
+        if (parts.length > 2) {
+          text = '${parts[0]},${parts.sublist(1).join('')}';
+        }
+        // Max 2 Dezimalstellen
+        final p2 = text.split(',');
+        if (p2.length == 2 && p2[1].length > 2) {
+          text = '${p2[0]},${p2[1].substring(0, 2)}';
+        }
+
+        return TextEditingValue(
+          text: text,
+          selection: TextSelection.collapsed(offset: text.length),
+          composing: TextRange.empty,
+        );
+      });
+
   @override
   Widget build(BuildContext context) {
     const textStyle = TextStyle(

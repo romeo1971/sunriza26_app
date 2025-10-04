@@ -32,9 +32,6 @@ class _AvatarListScreenState extends State<AvatarListScreen>
   bool get wantKeepAlive => true;
 
   @override
-  bool get wantKeepAlive => true;
-
-  @override
   void initState() {
     super.initState();
     _loadAvatars();

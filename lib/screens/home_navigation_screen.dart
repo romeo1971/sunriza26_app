@@ -151,7 +151,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
         ],
       ),
       bottomNavigationBar: Container(
-        height: 70,
+        height: 60,
         decoration: BoxDecoration(
           color: Colors.black,
           border: Border(
@@ -226,13 +226,13 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
                     Color(0xFF00E5FF), // Cyan
                   ],
                 ).createShader(bounds),
-                child: Icon(iconFilled, color: Colors.white, size: 28),
+                child: Icon(iconFilled, color: Colors.white, size: 21),
               )
             else
               Icon(
                 isSelected ? iconFilled : iconOutlined,
                 color: isSelected ? Colors.white : Colors.grey.shade400,
-                size: 28,
+                size: 21,
               ),
             const SizedBox(height: 4),
             Text(
@@ -241,7 +241,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
                 color: (isSelected || isChatActive)
                     ? Colors.white
                     : Colors.white.withOpacity(0.5),
-                fontSize: 10,
+                fontSize: 8,
               ),
             ),
           ],
