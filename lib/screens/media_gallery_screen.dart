@@ -114,6 +114,95 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     return String.fromCharCode(0x20AC); // €
   }
 
+  Future<Uint8List?> _fetchPdfPreviewBytes(String url) async {
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode != 200) return null;
+      final doc = await pdf.PdfDocument.openData(res.bodyBytes);
+      final page = await doc.getPage(1);
+      final img = await page.render(width: 1024);
+      final uiImg = await img.createImageIfNotAvailable();
+      final byteData = await uiImg.toByteData(format: ui.ImageByteFormat.png);
+      return byteData?.buffer.asUint8List();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<String?> _fetchTextSnippet(String url, bool isRtf) async {
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode != 200) return '';
+      final raw = res.body;
+      final text = isRtf ? _extractPlainTextFromRtf(raw) : raw;
+      return text.length > 300 ? text.substring(0, 300) + '…' : text;
+    } catch (_) {
+      return '';
+    }
+  }
+
+  Future<Uint8List?> _fetchPptxPreviewBytes(String url) async {
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode != 200) return null;
+      final archive = zip.ZipDecoder().decodeBytes(
+        res.bodyBytes,
+        verify: false,
+      );
+      final candidates = [
+        'ppt/media/image1.jpeg',
+        'ppt/media/image1.jpg',
+        'ppt/media/image1.png',
+        'ppt/media/image2.jpeg',
+        'ppt/media/image2.jpg',
+        'ppt/media/image2.png',
+      ];
+      for (final name in candidates) {
+        final f = archive.files.firstWhere(
+          (af) => af.name == name,
+          orElse: () => zip.ArchiveFile('', 0, null),
+        );
+        if (f.isFile && f.content is List<int>) {
+          return Uint8List.fromList(f.content as List<int>);
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Uint8List?> _fetchDocxPreviewBytes(String url) async {
+    try {
+      final res = await http.get(Uri.parse(url));
+      if (res.statusCode != 200) return null;
+      final archive = zip.ZipDecoder().decodeBytes(
+        res.bodyBytes,
+        verify: false,
+      );
+      final candidates = [
+        'word/media/image1.jpeg',
+        'word/media/image1.jpg',
+        'word/media/image1.png',
+        'word/media/image2.jpeg',
+        'word/media/image2.jpg',
+        'word/media/image2.png',
+      ];
+      for (final name in candidates) {
+        final f = archive.files.firstWhere(
+          (af) => af.name == name,
+          orElse: () => zip.ArchiveFile('', 0, null),
+        );
+        if (f.isFile && f.content is List<int>) {
+          return Uint8List.fromList(f.content as List<int>);
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   // Filename-Sanitizer für sichere Speicherung
   String _sanitizeName(String name) =>
       name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
@@ -2443,6 +2532,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // Berechne echte Dimensionen basierend auf Crop-Aspekt-Verhältnis
     // cardWidth ist die responsive Basis-Breite (120-180px)
     double aspectRatio = it.aspectRatio ?? (9 / 16); // Default Portrait
+    // Dokumente sollen im Grid strikt 9:16 (Portrait) bzw. 16:9 (Landscape)
+    // entsprechend des aktuellen Toggles dargestellt werden
+    if (it.type == AvatarMediaType.document) {
+      aspectRatio = _showPortrait ? (9 / 16) : (16 / 9);
+    }
 
     // Audio: Breite wie 7 Navi-Buttons (40px * 7 + 8px * 6 = 328px), Höhe mit Platz für Tags
     if (it.type == AvatarMediaType.audio) {
@@ -2771,12 +2865,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               child: InkWell(
                 onTap: () {
                   setState(() {
-                    _isDeleteMode = true;
                     if (selected) {
                       _selectedMediaIds.remove(it.id);
                     } else {
                       _selectedMediaIds.add(it.id);
                     }
+                    // Delete-Mode aktiv nur solange mind. 1 Element selektiert ist
+                    _isDeleteMode = _selectedMediaIds.isNotEmpty;
                   });
                 },
                 child: Container(
@@ -2903,12 +2998,99 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
   Future<void> _confirmDeleteSelected() async {
     final count = _selectedMediaIds.length;
+    // Sammle Previews für Bestätigungsdialog
+    final selectedMedia = _items
+        .where((m) => _selectedMediaIds.contains(m.id))
+        .toList(growable: false);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Medien löschen?'),
-        content: Text(
-          'Möchtest du $count ${count == 1 ? 'Medium' : 'Medien'} wirklich löschen?',
+        content: SizedBox(
+          width: 480,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Möchtest du $count ${count == 1 ? 'Medium' : 'Medien'} wirklich löschen?',
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 140,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: selectedMedia.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) {
+                    final m = selectedMedia[i];
+                    final double h = 120.0;
+                    final double ar =
+                        (m.aspectRatio ??
+                        (m.type == AvatarMediaType.document
+                            ? (9 / 16)
+                            : (16 / 9)));
+                    Widget thumb;
+                    if (m.type == AvatarMediaType.image) {
+                      thumb = SizedBox(
+                        height: h,
+                        child: AspectRatio(
+                          aspectRatio: ar,
+                          child: Image.network(m.url, fit: BoxFit.cover),
+                        ),
+                      );
+                    } else if (m.type == AvatarMediaType.video) {
+                      thumb = FutureBuilder<VideoPlayerController?>(
+                        future: _videoControllerForThumb(m.url),
+                        builder: (context, snap) {
+                          if (snap.connectionState == ConnectionState.done &&
+                              snap.hasData &&
+                              snap.data != null &&
+                              snap.data!.value.isInitialized) {
+                            final c = snap.data!;
+                            return SizedBox(
+                              height: h,
+                              child: AspectRatio(
+                                aspectRatio: c.value.aspectRatio,
+                                child: VideoPlayer(c),
+                              ),
+                            );
+                          }
+                          return Container(
+                            height: h,
+                            width: h * ar,
+                            color: Colors.black26,
+                          );
+                        },
+                      );
+                    } else if (m.type == AvatarMediaType.document) {
+                      thumb = SizedBox(
+                        height: h,
+                        child: AspectRatio(
+                          aspectRatio: ar,
+                          child: _buildDocumentPreview(m),
+                        ),
+                      );
+                    } else {
+                      thumb = Container(
+                        height: h,
+                        alignment: Alignment.center,
+                        color: Colors.black26,
+                        child: const Icon(
+                          Icons.audiotrack,
+                          color: Colors.white70,
+                        ),
+                      );
+                    }
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: thumb,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -2947,12 +3129,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         }
 
         await _mediaSvc.delete(widget.avatarId, mediaId);
+        // Lokalen Zustand sofort aktualisieren (kein Full-Reload)
+        _items.removeWhere((m) => m.id == mediaId);
+        _mediaToPlaylists.remove(mediaId);
       }
       setState(() {
-        _isDeleteMode = false;
         _selectedMediaIds.clear();
+        _isDeleteMode = false;
       });
-      await _load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -3027,28 +3211,19 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
   // Cache für Thumbnail-Controller
   final Map<String, VideoPlayerController> _thumbControllers = {};
+  // Caches für Dokument-Previews, um erneute Netzwerk-Loads zu vermeiden
+  final Map<String, Future<Uint8List?>> _docPreviewImageFuture = {};
+  final Map<String, Future<String?>> _docPreviewTextFuture = {};
 
   /// Dokument-Preview: PDF erste Seite als Bild; TXT/MD/RTF Snippet; PPTX/DOCX erste eingebettete Grafik
   Widget _buildDocumentPreview(AvatarMedia it) {
     final lower = (it.originalFileName ?? it.url).toLowerCase();
     if (lower.endsWith('.pdf')) {
+      final f = _docPreviewImageFuture[it.url] ??= _fetchPdfPreviewBytes(
+        it.url,
+      );
       return FutureBuilder<Uint8List?>(
-        future: () async {
-          try {
-            final res = await http.get(Uri.parse(it.url));
-            if (res.statusCode != 200) return null;
-            final doc = await pdf.PdfDocument.openData(res.bodyBytes);
-            final page = await doc.getPage(1);
-            final img = await page.render(width: 1024);
-            final uiImg = await img.createImageIfNotAvailable();
-            final byteData = await uiImg.toByteData(
-              format: ui.ImageByteFormat.png,
-            );
-            return byteData?.buffer.asUint8List();
-          } catch (_) {
-            return null;
-          }
-        }(),
+        future: f,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(
@@ -3072,27 +3247,19 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     if (lower.endsWith('.txt') ||
         lower.endsWith('.md') ||
         lower.endsWith('.rtf')) {
-      return FutureBuilder<String>(
-        future: () async {
-          try {
-            final res = await http.get(Uri.parse(it.url));
-            if (res.statusCode == 200) {
-              final raw = res.body;
-              final text = lower.endsWith('.rtf')
-                  ? _extractPlainTextFromRtf(raw)
-                  : raw;
-              return text.length > 300 ? text.substring(0, 300) + '…' : text;
-            }
-          } catch (_) {}
-          return '';
-        }(),
+      final f = _docPreviewTextFuture[it.url] ??= _fetchTextSnippet(
+        it.url,
+        lower.endsWith('.rtf'),
+      );
+      return FutureBuilder<String?>(
+        future: f,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(
               child: CircularProgressIndicator(strokeWidth: 2),
             );
           }
-          final t = snap.data ?? '';
+          final t = (snap.data ?? '');
           if (t.isEmpty) {
             return Container(color: Colors.black26);
           }
@@ -3115,35 +3282,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
     // PPTX: erste eingebettete Grafik als Vorschau
     if (lower.endsWith('.pptx')) {
+      final f = _docPreviewImageFuture[it.url] ??= _fetchPptxPreviewBytes(
+        it.url,
+      );
       return FutureBuilder<Uint8List?>(
-        future: () async {
-          try {
-            final res = await http.get(Uri.parse(it.url));
-            if (res.statusCode != 200) return null;
-            final archive = zip.ZipDecoder().decodeBytes(
-              res.bodyBytes,
-              verify: false,
-            );
-            final candidates = [
-              'ppt/media/image1.jpeg',
-              'ppt/media/image1.jpg',
-              'ppt/media/image1.png',
-              'ppt/media/image2.jpeg',
-              'ppt/media/image2.jpg',
-              'ppt/media/image2.png',
-            ];
-            for (final name in candidates) {
-              final f = archive.files.firstWhere(
-                (af) => af.name == name,
-                orElse: () => zip.ArchiveFile('', 0, null),
-              );
-              if (f.isFile && f.content is List<int>) {
-                return Uint8List.fromList(f.content as List<int>);
-              }
-            }
-          } catch (_) {}
-          return null;
-        }(),
+        future: f,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(
@@ -3162,35 +3305,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
     // DOCX: erste eingebettete Grafik
     if (lower.endsWith('.docx')) {
+      final f = _docPreviewImageFuture[it.url] ??= _fetchDocxPreviewBytes(
+        it.url,
+      );
       return FutureBuilder<Uint8List?>(
-        future: () async {
-          try {
-            final res = await http.get(Uri.parse(it.url));
-            if (res.statusCode != 200) return null;
-            final archive = zip.ZipDecoder().decodeBytes(
-              res.bodyBytes,
-              verify: false,
-            );
-            final candidates = [
-              'word/media/image1.jpeg',
-              'word/media/image1.jpg',
-              'word/media/image1.png',
-              'word/media/image2.jpeg',
-              'word/media/image2.jpg',
-              'word/media/image2.png',
-            ];
-            for (final name in candidates) {
-              final f = archive.files.firstWhere(
-                (af) => af.name == name,
-                orElse: () => zip.ArchiveFile('', 0, null),
-              );
-              if (f.isFile && f.content is List<int>) {
-                return Uint8List.fromList(f.content as List<int>);
-              }
-            }
-          } catch (_) {}
-          return null;
-        }(),
+        future: f,
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) {
             return const Center(
@@ -4817,11 +4936,18 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                           );
                                         },
                                       )
-                                    : Image.network(
-                                        media.url,
-                                        height: 320,
-                                        fit: BoxFit.cover,
-                                      ),
+                                    : (media.type == AvatarMediaType.document
+                                          ? FittedBox(
+                                              fit: BoxFit.contain,
+                                              child: _buildDocumentPreview(
+                                                media,
+                                              ),
+                                            )
+                                          : Image.network(
+                                              media.url,
+                                              height: 320,
+                                              fit: BoxFit.cover,
+                                            )),
                               ),
                             const SizedBox(height: 16),
                             // Header mit Vorschläge/Verwerfen Icon-Button RECHTS neben Text
