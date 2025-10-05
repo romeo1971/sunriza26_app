@@ -1,4 +1,4 @@
-enum AvatarMediaType { image, video, audio }
+enum AvatarMediaType { image, video, audio, document }
 
 class AvatarMedia {
   final String id;
@@ -50,6 +50,9 @@ class AvatarMedia {
       case 'audio':
         mediaType = AvatarMediaType.audio;
         break;
+      case 'document':
+        mediaType = AvatarMediaType.document;
+        break;
       default:
         mediaType = AvatarMediaType.image;
     }
@@ -83,6 +86,10 @@ class AvatarMedia {
         break;
       case AvatarMediaType.image:
         typeStr = 'image';
+        break;
+      case AvatarMediaType.document:
+        typeStr = 'document';
+        break;
     }
 
     return {

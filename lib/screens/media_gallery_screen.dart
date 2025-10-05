@@ -24,6 +24,8 @@ import '../models/playlist_models.dart';
 import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
+import 'package:pdf_render/pdf_render.dart' as pdf;
+import 'package:archive/archive.dart' as zip;
 import 'package:audioplayers/audioplayers.dart';
 import '../theme/app_theme.dart';
 import '../widgets/video_player_widget.dart';
@@ -64,7 +66,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       {}; // mediaId -> List<Playlist>
   bool _loading = true;
   double _cropAspect = 9 / 16;
-  String _mediaTab = 'images'; // 'images', 'videos', 'audio'
+  String _mediaTab = 'images'; // 'images', 'videos', 'audio', 'documents'
   String _searchTerm = '';
   int _currentPage = 0;
   static const int _itemsPerPage = 9;
@@ -90,11 +92,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   // Statische Referenz um Player über Hot-Reload hinweg zu tracken
   static AudioPlayer? _globalAudioPlayer;
 
-  // Globale Preise pro Medientyp (image, video, audio)
+  // Globale Preise pro Medientyp (image, video, audio, document)
   Map<String, dynamic> _globalPricing = const {
     'image': {'enabled': false, 'price': 0.0, 'currency': 'EUR'},
     'video': {'enabled': false, 'price': 0.0, 'currency': 'EUR'},
     'audio': {'enabled': false, 'price': 0.0, 'currency': 'EUR'},
+    'document': {'enabled': false, 'price': 0.0, 'currency': 'EUR'},
   };
 
   String _normalizeCurrencyToSymbol(String? currency) {
@@ -109,6 +112,88 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
     // Treat everything else as EUR
     return String.fromCharCode(0x20AC); // €
+  }
+
+  // Filename-Sanitizer für sichere Speicherung
+  String _sanitizeName(String name) =>
+      name.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_');
+
+  // Magic-Bytes Validierung für Dokumente (PDF, DOCX/PPTX, RTF, TXT/MD)
+  Future<bool> _validateDocumentFile(File file) async {
+    try {
+      final stream = file.openRead(0, 512);
+      final builder = BytesBuilder();
+      await for (final chunk in stream) {
+        builder.add(chunk);
+        if (builder.length >= 512) break;
+      }
+      final head = builder.takeBytes();
+      if (head.isEmpty) return false;
+
+      // PDF: %PDF-
+      final isPdf =
+          head.length >= 5 &&
+          String.fromCharCodes(head.sublist(0, 5)) == '%PDF-';
+      if (isPdf) return true;
+
+      // RTF: {\rtf
+      final isRtf =
+          head.length >= 5 &&
+          String.fromCharCodes(head.sublist(0, 5)) == '{\\rtf';
+      if (isRtf) return true;
+
+      // Office OpenXML (docx/pptx): ZIP Header (PK\x03\x04|PK\x05\x06|PK\x07\x08)
+      final isZip =
+          head.length >= 4 &&
+          head[0] == 0x50 &&
+          head[1] == 0x4B &&
+          ((head[2] == 0x03 && head[3] == 0x04) ||
+              (head[2] == 0x05 && head[3] == 0x06) ||
+              (head[2] == 0x07 && head[3] == 0x08));
+      if (isZip) {
+        final lower = file.path.toLowerCase();
+        if (lower.endsWith('.docx') || lower.endsWith('.pptx')) return true;
+        return false;
+      }
+
+      // Text/Markdown: keine Null-Bytes im Anfangsblock
+      final lower = file.path.toLowerCase();
+      if (lower.endsWith('.txt') || lower.endsWith('.md')) {
+        final hasNull = head.any((b) => b == 0x00);
+        return !hasNull;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Sehr einfache RTF→Text Extraktion (für Vorschau geeignet, kein vollständiger Parser)
+  String _extractPlainTextFromRtf(String rtf) {
+    try {
+      // Hex-escapes wie \'e4 → ä (nur grob: ersetze durch '?', optional dekodieren)
+      String out = rtf.replaceAllMapped(RegExp(r"\\'[0-9a-fA-F]{2}"), (m) {
+        try {
+          final hex = m.group(0)!.substring(2);
+          final code = int.parse(hex, radix: 16);
+          return String.fromCharCode(code);
+        } catch (_) {
+          return '?';
+        }
+      });
+      // Entferne Steuergruppen {\*...}
+      out = out.replaceAll(RegExp(r"\{\\\*[^}]*\}"), ' ');
+      // Entferne Steuerwörter \control und optionale Parameter
+      out = out.replaceAll(RegExp(r"\\[a-zA-Z]+-?\d*\s?"), ' ');
+      // Klammern und Backslashes raus
+      out = out.replaceAll(RegExp(r"[{}]"), ' ');
+      out = out.replaceAll('\\', ' ');
+      // Whitespaces normalisieren
+      out = out.replaceAll(RegExp(r"\s+"), ' ').trim();
+      return out;
+    } catch (_) {
+      return '';
+    }
   }
 
   @override
@@ -250,6 +335,57 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     currency: vidCur,
                     onCurrency: (v) => setLocal(() => vidCur = v ?? vidCur),
                     icon: Icons.videocam_outlined,
+                  ),
+                  const SizedBox(height: 14),
+                  _buildGlobalPriceRow(
+                    label: 'Dokumente',
+                    enabled:
+                        (_globalPricing['document']?['enabled'] as bool?) ??
+                        false,
+                    onToggle: (v) => setLocal(() {
+                      final cur =
+                          _globalPricing['document']?['currency'] as String? ??
+                          imgCur;
+                      _globalPricing['document'] = {
+                        'enabled': v,
+                        'price':
+                            double.tryParse(
+                              (_globalPricing['document']?['price']
+                                          ?.toString() ??
+                                      '0')
+                                  .toString(),
+                            ) ??
+                            0.0,
+                        'currency': cur,
+                      };
+                    }),
+                    controller: TextEditingController(
+                      text:
+                          ((_globalPricing['document']?['price'] as num?)
+                                      ?.toDouble() ??
+                                  0.0)
+                              .toStringAsFixed(2)
+                              .replaceAll('.', ','),
+                    ),
+                    currency:
+                        (_globalPricing['document']?['currency'] as String?) ??
+                        imgCur,
+                    onCurrency: (v) => setLocal(() {
+                      final cur = v ?? imgCur;
+                      final enabled =
+                          (_globalPricing['document']?['enabled'] as bool?) ??
+                          false;
+                      final price =
+                          (_globalPricing['document']?['price'] as num?)
+                              ?.toDouble() ??
+                          0.0;
+                      _globalPricing['document'] = {
+                        'enabled': enabled,
+                        'price': price,
+                        'currency': cur,
+                      };
+                    }),
+                    icon: Icons.description_outlined,
                   ),
                   const SizedBox(height: 14),
                   _buildGlobalPriceRow(
@@ -653,6 +789,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         return false;
       }
       if (_mediaTab == 'audio' && it.type != AvatarMediaType.audio) {
+        return false;
+      }
+      if (_mediaTab == 'documents' && it.type != AvatarMediaType.document) {
         return false;
       }
 
@@ -1156,19 +1295,17 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       print('Fehler bei KI-Analyse: $e');
     }
 
-    final url = await FirebaseStorageService.uploadImage(
+    final safeExt = (ext.isNotEmpty ? ext : '.jpg');
+    final storagePath = 'avatars/${widget.avatarId}/images/$timestamp$safeExt';
+    final ref = FirebaseStorage.instance.ref().child(storagePath);
+    final task = await ref.putFile(
       f,
-      customPath:
-          'avatars/${widget.avatarId}/images/$timestamp${ext.isNotEmpty ? ext : '.jpg'}',
+      SettableMetadata(
+        contentType: safeExt == '.png' ? 'image/png' : 'image/jpeg',
+        contentDisposition: 'attachment; filename="image_$timestamp$safeExt"',
+      ),
     );
-    if (url == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bild-Upload fehlgeschlagen')),
-        );
-      }
-      return;
-    }
+    final url = await task.ref.getDownloadURL();
     final m = AvatarMedia(
       id: timestamp.toString(),
       avatarId: widget.avatarId,
@@ -1200,7 +1337,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     for (int i = 0; i < _uploadQueue.length; i++) {
       final file = _uploadQueue[i];
-      final ext = p.extension(file.path).toLowerCase();
+      // ext nicht benötigt – Content-Type wird unten aus Dateiendung abgeleitet
 
       setState(() {
         _uploadProgress = ((i + 1) / _uploadQueue.length * 100).round();
@@ -1232,29 +1369,40 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           print('❌ Fehler bei Video-Dimensionen für Video ${i + 1}: $e');
         }
 
-        // Upload
-        final url = await FirebaseStorageService.uploadVideo(
-          file,
-          customPath: 'avatars/${widget.avatarId}/videos/$timestamp$ext',
+        // Upload mit sicheren Metadaten
+        final rawBase = p.basename(file.path);
+        final base = _sanitizeName(rawBase);
+        final extOnly = p
+            .extension(file.path)
+            .toLowerCase()
+            .replaceFirst('.', '');
+        String ct = 'video/mp4';
+        if (extOnly == 'mov') ct = 'video/quicktime';
+        if (extOnly == 'webm') ct = 'video/webm';
+        final ref = FirebaseStorage.instance.ref().child(
+          'avatars/${widget.avatarId}/videos/${timestamp}_$base',
         );
-
-        if (url != null) {
-          final media = AvatarMedia(
-            id: timestamp.toString(),
-            avatarId: widget.avatarId,
-            type: AvatarMediaType.video,
-            url: url,
-            createdAt: timestamp,
-            aspectRatio: videoAspectRatio,
-            tags: tags,
-          );
-          await _mediaSvc.add(widget.avatarId, media);
-          print(
-            '✅ Video ${i + 1} gespeichert: ID=${media.id}, URL=$url, AspectRatio=$videoAspectRatio',
-          );
-        } else {
-          print('❌ Video ${i + 1}: Upload fehlgeschlagen - URL ist null');
-        }
+        final task = await ref.putFile(
+          file,
+          SettableMetadata(
+            contentType: ct,
+            contentDisposition: 'attachment; filename="$base"',
+          ),
+        );
+        final url = await task.ref.getDownloadURL();
+        final media = AvatarMedia(
+          id: timestamp.toString(),
+          avatarId: widget.avatarId,
+          type: AvatarMediaType.video,
+          url: url,
+          createdAt: timestamp,
+          aspectRatio: videoAspectRatio,
+          tags: tags,
+        );
+        await _mediaSvc.add(widget.avatarId, media);
+        print(
+          '✅ Video ${i + 1} gespeichert: ID=${media.id}, URL=$url, AspectRatio=$videoAspectRatio',
+        );
       } catch (e) {
         print('❌ Fehler beim Upload von Video ${i + 1}: $e');
       }
@@ -1307,18 +1455,19 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       print('❌ Fehler bei Video-Dimensionen: $e');
     }
 
-    final url = await FirebaseStorageService.uploadVideo(
-      File(x.path),
-      customPath: 'avatars/${widget.avatarId}/videos/$timestamp.mp4',
+    final rawBase = p.basename(x.path);
+    final base = _sanitizeName(rawBase);
+    final ref = FirebaseStorage.instance.ref().child(
+      'avatars/${widget.avatarId}/videos/${timestamp}_$base',
     );
-    if (url == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Video-Upload fehlgeschlagen')),
-        );
-      }
-      return;
-    }
+    final task = await ref.putFile(
+      File(x.path),
+      SettableMetadata(
+        contentType: 'video/mp4',
+        contentDisposition: 'attachment; filename="$base"',
+      ),
+    );
+    final url = await task.ref.getDownloadURL();
     final m = AvatarMedia(
       id: timestamp.toString(),
       avatarId: widget.avatarId,
@@ -1503,29 +1652,45 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         });
 
         final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final fileExtension = file.extension ?? 'mp3';
-
-        // Firebase Storage Upload
-        final url = await FirebaseStorageService.uploadAudio(
-          File(file.path!),
-          customPath:
-              'avatars/${widget.avatarId}/audio/${timestamp}_$i.$fileExtension',
-        );
-
-        if (url != null) {
-          // Firestore speichern
-          final m = AvatarMedia(
-            id: '${timestamp}_$i',
-            avatarId: widget.avatarId,
-            type: AvatarMediaType.audio,
-            url: url,
-            createdAt: timestamp,
-            tags: ['audio', file.name],
-            originalFileName: file.name, // Originaler Dateiname
-          );
-          await _mediaSvc.add(widget.avatarId, m);
-          uploaded++;
+        final rawBase = file.name.isNotEmpty
+            ? file.name
+            : p.basename(file.path!);
+        final safeBase = _sanitizeName(rawBase);
+        final ext = (file.extension ?? 'mp3').toLowerCase();
+        const audioAllowed = ['mp3', 'wav', 'm4a', 'aac'];
+        if (!audioAllowed.contains(ext)) {
+          debugPrint('Blockiert: Audio-Erweiterung nicht erlaubt: $ext');
+          continue;
         }
+        String ct = 'audio/mpeg';
+        if (ext == 'wav') ct = 'audio/wav';
+        if (ext == 'm4a') ct = 'audio/mp4';
+        if (ext == 'aac') ct = 'audio/aac';
+
+        final ref = FirebaseStorage.instance.ref().child(
+          'avatars/${widget.avatarId}/audio/${timestamp}_$safeBase',
+        );
+        final task = await ref.putFile(
+          File(file.path!),
+          SettableMetadata(
+            contentType: ct,
+            contentDisposition: 'attachment; filename="$safeBase"',
+          ),
+        );
+        final url = await task.ref.getDownloadURL();
+
+        // Firestore speichern
+        final m = AvatarMedia(
+          id: '${timestamp}_$i',
+          avatarId: widget.avatarId,
+          type: AvatarMediaType.audio,
+          url: url,
+          createdAt: timestamp,
+          tags: ['audio', file.name],
+          originalFileName: file.name, // Originaler Dateiname
+        );
+        await _mediaSvc.add(widget.avatarId, m);
+        uploaded++;
       }
 
       setState(() {
@@ -1628,6 +1793,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   children: [
                     _buildTopTabAppbarBtn('images', Icons.image_outlined),
                     _buildTopTabAppbarBtn('videos', Icons.videocam_outlined),
+                    _buildTopTabAppbarBtn(
+                      'documents',
+                      Icons.description_outlined,
+                    ),
                     _buildTopTabAppbarBtn('audio', Icons.audiotrack),
                     const Spacer(),
                     // Suche rechts (Stil wie Tabs)
@@ -1644,50 +1813,49 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           });
                         },
                         style: ButtonStyle(
-                          padding: const MaterialStatePropertyAll(
+                          padding: const WidgetStatePropertyAll(
                             EdgeInsets.zero,
                           ),
-                          minimumSize: const MaterialStatePropertyAll(
+                          minimumSize: const WidgetStatePropertyAll(
                             Size(60, 35),
                           ),
-                          backgroundColor: MaterialStatePropertyAll(
+                          backgroundColor: WidgetStatePropertyAll(
                             _showSearch ? Colors.white : Colors.transparent,
                           ),
-                          foregroundColor: MaterialStatePropertyAll(
+                          foregroundColor: WidgetStatePropertyAll(
                             _showSearch ? AppColors.darkSurface : Colors.white,
                           ),
-                          overlayColor:
-                              MaterialStateProperty.resolveWith<Color?>((
+                          overlayColor: WidgetStateProperty.resolveWith<Color?>(
+                            (states) {
+                              if (states.contains(WidgetState.hovered) ||
+                                  states.contains(WidgetState.focused) ||
+                                  states.contains(WidgetState.pressed)) {
+                                final mix = Color.lerp(
+                                  AppColors.magenta,
+                                  AppColors.lightBlue,
+                                  0.5,
+                                )!;
+                                return mix.withValues(alpha: 0.12);
+                              }
+                              return null;
+                            },
+                          ),
+                          shape:
+                              WidgetStateProperty.resolveWith<OutlinedBorder>((
                                 states,
                               ) {
-                                if (states.contains(MaterialState.hovered) ||
-                                    states.contains(MaterialState.focused) ||
-                                    states.contains(MaterialState.pressed)) {
-                                  final mix = Color.lerp(
-                                    AppColors.magenta,
-                                    AppColors.lightBlue,
-                                    0.5,
-                                  )!;
-                                  return mix.withValues(alpha: 0.12);
-                                }
-                                return null;
-                              }),
-                          shape:
-                              MaterialStateProperty.resolveWith<OutlinedBorder>(
-                                (states) {
-                                  final isHover =
-                                      states.contains(MaterialState.hovered) ||
-                                      states.contains(MaterialState.focused);
-                                  if (_showSearch || isHover) {
-                                    return const RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.zero,
-                                    );
-                                  }
-                                  return RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(8),
+                                final isHover =
+                                    states.contains(WidgetState.hovered) ||
+                                    states.contains(WidgetState.focused);
+                                if (_showSearch || isHover) {
+                                  return const RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.zero,
                                   );
-                                },
-                              ),
+                                }
+                                return RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                );
+                              }),
                         ),
                         child: _showSearch
                             ? ShaderMask(
@@ -2047,17 +2215,18 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           });
         },
         style: ButtonStyle(
-          padding: const MaterialStatePropertyAll(EdgeInsets.zero),
-          minimumSize: const MaterialStatePropertyAll(Size(60, 35)),
-          backgroundColor: MaterialStateProperty.resolveWith<Color?>((states) {
-            if (selected)
+          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+          minimumSize: const WidgetStatePropertyAll(Size(60, 35)),
+          backgroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
+            if (selected) {
               return const Color(0x26FFFFFF); // ausgewählt: hellgrau
+            }
             return Colors.transparent;
           }),
-          overlayColor: MaterialStateProperty.resolveWith<Color?>((states) {
-            if (states.contains(MaterialState.hovered) ||
-                states.contains(MaterialState.focused) ||
-                states.contains(MaterialState.pressed)) {
+          overlayColor: WidgetStateProperty.resolveWith<Color?>((states) {
+            if (states.contains(WidgetState.hovered) ||
+                states.contains(WidgetState.focused) ||
+                states.contains(WidgetState.pressed)) {
               final mix = Color.lerp(
                 AppColors.magenta,
                 AppColors.lightBlue,
@@ -2067,11 +2236,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             }
             return null;
           }),
-          foregroundColor: const MaterialStatePropertyAll(Colors.white),
-          shape: MaterialStateProperty.resolveWith<OutlinedBorder>((states) {
+          foregroundColor: const WidgetStatePropertyAll(Colors.white),
+          shape: WidgetStateProperty.resolveWith<OutlinedBorder>((states) {
             final isHover =
-                states.contains(MaterialState.hovered) ||
-                states.contains(MaterialState.focused);
+                states.contains(WidgetState.hovered) ||
+                states.contains(WidgetState.focused);
             if (selected || isHover) {
               return const RoundedRectangleBorder(
                 borderRadius: BorderRadius.zero,
@@ -2091,6 +2260,135 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     );
   }
 
+  // NEU: Dokumente-Upload (atomic placeholder)
+  Future<void> _showDocumentSourceDialog() async {
+    // Minimal: FilePicker für gängige Dokumente (pdf, txt, docx, pptx)
+    try {
+      final res = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'txt', 'docx', 'pptx', 'md', 'rtf'],
+      );
+      if (res == null || res.files.isEmpty) return;
+      final path = res.files.single.path;
+      if (path == null) return;
+      final file = File(path);
+      setState(() {
+        _isUploading = true;
+        _uploadProgress = 0;
+        _uploadStatus = 'Dokument wird hochgeladen...';
+      });
+
+      await _uploadDocumentFile(file);
+
+      setState(() {
+        _isUploading = false;
+        _uploadProgress = 0;
+        _uploadStatus = '';
+      });
+
+      await _load();
+    } catch (e) {
+      debugPrint('Dokumentauswahl fehlgeschlagen: $e');
+    }
+  }
+
+  Future<void> _uploadDocumentFile(File file) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      final base = p.basename(file.path);
+      final ext = p.extension(base).toLowerCase().replaceFirst('.', '');
+      // Clientseitige Allowlist
+      const allowed = ['pdf', 'txt', 'docx', 'pptx', 'md', 'rtf'];
+      if (!allowed.contains(ext)) {
+        debugPrint('Blockiert: nicht erlaubte Dokument-Erweiterung: .$ext');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Dateityp nicht erlaubt.')),
+          );
+        }
+        return;
+      }
+
+      // Magic-Bytes Validierung – blocke getarnte Dateien
+      final isValidByMagic = await _validateDocumentFile(file);
+      if (!isValidByMagic) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Dateiinhalt entspricht nicht dem Typ. Upload abgebrochen.',
+              ),
+            ),
+          );
+        }
+        return;
+      }
+      // Content-Type Mapping
+      String contentType;
+      switch (ext) {
+        case 'pdf':
+          contentType = 'application/pdf';
+          break;
+        case 'docx':
+          contentType =
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          break;
+        case 'pptx':
+          contentType =
+              'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+          break;
+        case 'rtf':
+          contentType = 'text/rtf';
+          break;
+        case 'md':
+        case 'txt':
+          contentType = 'text/plain';
+          break;
+        default:
+          contentType = 'application/octet-stream';
+      }
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final storageRef = FirebaseStorage.instance.ref().child(
+        'avatars/${widget.avatarId}/documents/${ts}_$base',
+      );
+      final task = await storageRef.putFile(
+        file,
+        SettableMetadata(
+          contentType: contentType,
+          contentDisposition: 'attachment; filename="$base"',
+          customMetadata: {'type': 'document', 'ext': ext},
+        ),
+      );
+      final url = await task.ref.getDownloadURL();
+
+      // Firestore anlegen – identisch wie Bilder, nur type=document
+      final doc = FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(widget.avatarId)
+          .collection('media')
+          .doc();
+
+      await doc.set({
+        'id': doc.id,
+        'avatarId': widget.avatarId,
+        'type': 'document',
+        'url': url,
+        'thumbUrl': null,
+        'createdAt': ts,
+        'durationMs': null,
+        'aspectRatio': _showPortrait ? (9 / 16) : (16 / 9),
+        'tags': null,
+        'originalFileName': base,
+        // Preisfelder optional identisch wie Bilder
+      });
+    } catch (e) {
+      debugPrint('Dokument-Upload fehlgeschlagen: $e');
+    }
+  }
+
   Widget _buildUploadButton() {
     const double btnW = 40.0;
     const double btnH = 32.0;
@@ -2105,6 +2403,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   _showImageSourceDialog();
                 } else if (_mediaTab == 'videos') {
                   _showVideoSourceDialog();
+                } else if (_mediaTab == 'documents') {
+                  _showDocumentSourceDialog();
                 } else {
                   _pickAudio();
                 }
@@ -2193,7 +2493,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           children: [
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: it.type == AvatarMediaType.image
+              child: (it.type == AvatarMediaType.image)
                   ? Image.network(
                       it.url,
                       fit: BoxFit.cover,
@@ -2208,6 +2508,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         );
                       },
                     )
+                  : (it.type == AvatarMediaType.document)
+                  ? _buildDocumentPreview(it)
                   : it.type == AvatarMediaType.video
                   ? FutureBuilder<VideoPlayerController?>(
                       future: _videoControllerForThumb(it.url),
@@ -2297,14 +2599,17 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       ),
                     ),
             ),
-            // Preis-Badge oben rechts (Bild/Video): Override ODER globaler Preis wenn aktiviert
+            // Preis-Badge oben rechts (Bild/Video/Dokument): Override ODER globaler Preis wenn aktiviert
             if ((it.type == AvatarMediaType.image ||
-                    it.type == AvatarMediaType.video) &&
+                    it.type == AvatarMediaType.video ||
+                    it.type == AvatarMediaType.document) &&
                 !_isDeleteMode &&
                 (it.price != null ||
-                    (((_globalPricing[it.type == AvatarMediaType.image
+                    (((_globalPricing[(it.type == AvatarMediaType.image
                                     ? 'image'
-                                    : 'video']
+                                    : (it.type == AvatarMediaType.video
+                                          ? 'video'
+                                          : 'document'))]
                                 as Map<String, dynamic>?)?['enabled']
                             as bool?) ??
                         false)))
@@ -2341,7 +2646,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
                           final typeKey = it.type == AvatarMediaType.image
                               ? 'image'
-                              : 'video';
+                              : (it.type == AvatarMediaType.video
+                                    ? 'video'
+                                    : 'document');
                           final overridePrice = it.price;
                           final overrideCur = _normalizeCurrencyToSymbol(
                             it.currency,
@@ -2428,7 +2735,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
             // Tag-Icon unten links (für Videos und Audio)
             if ((it.type == AvatarMediaType.video ||
-                    it.type == AvatarMediaType.audio) &&
+                    it.type == AvatarMediaType.audio ||
+                    it.type == AvatarMediaType.document) &&
                 !_isDeleteMode)
               Positioned(
                 left: 6,
@@ -2720,6 +3028,193 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   // Cache für Thumbnail-Controller
   final Map<String, VideoPlayerController> _thumbControllers = {};
 
+  /// Dokument-Preview: PDF erste Seite als Bild; TXT/MD/RTF Snippet; PPTX/DOCX erste eingebettete Grafik
+  Widget _buildDocumentPreview(AvatarMedia it) {
+    final lower = (it.originalFileName ?? it.url).toLowerCase();
+    if (lower.endsWith('.pdf')) {
+      return FutureBuilder<Uint8List?>(
+        future: () async {
+          try {
+            final res = await http.get(Uri.parse(it.url));
+            if (res.statusCode != 200) return null;
+            final doc = await pdf.PdfDocument.openData(res.bodyBytes);
+            final page = await doc.getPage(1);
+            final img = await page.render(width: 1024);
+            final uiImg = await img.createImageIfNotAvailable();
+            final byteData = await uiImg.toByteData(
+              format: ui.ImageByteFormat.png,
+            );
+            return byteData?.buffer.asUint8List();
+          } catch (_) {
+            return null;
+          }
+        }(),
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            );
+          }
+          final data = snap.data;
+          if (data == null || data.isEmpty) {
+            return const Center(
+              child: Icon(
+                Icons.picture_as_pdf,
+                color: Colors.white54,
+                size: 40,
+              ),
+            );
+          }
+          return Image.memory(data, fit: BoxFit.cover);
+        },
+      );
+    }
+    if (lower.endsWith('.txt') ||
+        lower.endsWith('.md') ||
+        lower.endsWith('.rtf')) {
+      return FutureBuilder<String>(
+        future: () async {
+          try {
+            final res = await http.get(Uri.parse(it.url));
+            if (res.statusCode == 200) {
+              final raw = res.body;
+              final text = lower.endsWith('.rtf')
+                  ? _extractPlainTextFromRtf(raw)
+                  : raw;
+              return text.length > 300 ? text.substring(0, 300) + '…' : text;
+            }
+          } catch (_) {}
+          return '';
+        }(),
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            );
+          }
+          final t = snap.data ?? '';
+          if (t.isEmpty) {
+            return Container(color: Colors.black26);
+          }
+          return Container(
+            color: const Color(0xFF111111),
+            padding: const EdgeInsets.all(8),
+            child: Text(
+              t,
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 11,
+                height: 1.2,
+              ),
+              maxLines: 12,
+              overflow: TextOverflow.ellipsis,
+            ),
+          );
+        },
+      );
+    }
+    // PPTX: erste eingebettete Grafik als Vorschau
+    if (lower.endsWith('.pptx')) {
+      return FutureBuilder<Uint8List?>(
+        future: () async {
+          try {
+            final res = await http.get(Uri.parse(it.url));
+            if (res.statusCode != 200) return null;
+            final archive = zip.ZipDecoder().decodeBytes(
+              res.bodyBytes,
+              verify: false,
+            );
+            final candidates = [
+              'ppt/media/image1.jpeg',
+              'ppt/media/image1.jpg',
+              'ppt/media/image1.png',
+              'ppt/media/image2.jpeg',
+              'ppt/media/image2.jpg',
+              'ppt/media/image2.png',
+            ];
+            for (final name in candidates) {
+              final f = archive.files.firstWhere(
+                (af) => af.name == name,
+                orElse: () => zip.ArchiveFile('', 0, null),
+              );
+              if (f.isFile && f.content is List<int>) {
+                return Uint8List.fromList(f.content as List<int>);
+              }
+            }
+          } catch (_) {}
+          return null;
+        }(),
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            );
+          }
+          final img = snap.data;
+          if (img == null) {
+            return const Center(
+              child: Icon(Icons.slideshow, color: Colors.white70, size: 40),
+            );
+          }
+          return Image.memory(img, fit: BoxFit.cover);
+        },
+      );
+    }
+    // DOCX: erste eingebettete Grafik
+    if (lower.endsWith('.docx')) {
+      return FutureBuilder<Uint8List?>(
+        future: () async {
+          try {
+            final res = await http.get(Uri.parse(it.url));
+            if (res.statusCode != 200) return null;
+            final archive = zip.ZipDecoder().decodeBytes(
+              res.bodyBytes,
+              verify: false,
+            );
+            final candidates = [
+              'word/media/image1.jpeg',
+              'word/media/image1.jpg',
+              'word/media/image1.png',
+              'word/media/image2.jpeg',
+              'word/media/image2.jpg',
+              'word/media/image2.png',
+            ];
+            for (final name in candidates) {
+              final f = archive.files.firstWhere(
+                (af) => af.name == name,
+                orElse: () => zip.ArchiveFile('', 0, null),
+              );
+              if (f.isFile && f.content is List<int>) {
+                return Uint8List.fromList(f.content as List<int>);
+              }
+            }
+          } catch (_) {}
+          return null;
+        }(),
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            );
+          }
+          final img = snap.data;
+          if (img == null) {
+            return const Center(
+              child: Icon(Icons.description, color: Colors.white70, size: 40),
+            );
+          }
+          return Image.memory(img, fit: BoxFit.cover);
+        },
+      );
+    }
+    // RTF/DOCX/PPTX – Platzhalter-Icon
+    return Container(
+      color: Colors.black26,
+      alignment: Alignment.center,
+      child: const Icon(Icons.description, color: Colors.white70, size: 40),
+    );
+  }
+
   Future<VideoPlayerController?> _videoControllerForThumb(String url) async {
     try {
       // Cache-Check
@@ -2958,8 +3453,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   }
 
   Future<void> _openViewer(AvatarMedia media) async {
-    // Audio hat keinen Viewer, nur Tag-Dialog
-    if (media.type == AvatarMediaType.audio) {
+    // Audio/Dokument: kein spezieller Viewer → Tags-Dialog
+    if (media.type == AvatarMediaType.audio ||
+        media.type == AvatarMediaType.document) {
       await _showTagsDialog(media);
       return;
     }
@@ -3492,9 +3988,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               orElse: () => media,
             );
 
-            final typeKey = currentMedia.type == AvatarMediaType.image
+            final String typeKey = currentMedia.type == AvatarMediaType.image
                 ? 'image'
-                : 'video';
+                : (currentMedia.type == AvatarMediaType.video
+                      ? 'video'
+                      : 'document');
             final gp = _globalPricing[typeKey] as Map<String, dynamic>?;
             final gpEnabled = (gp?['enabled'] as bool?) ?? false;
             final gpPrice = (gp?['price'] as num?)?.toDouble() ?? 0.0;
@@ -4142,9 +4640,16 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
     }
 
-    // Falls IMMER NOCH leer: Nimm "audio" als Fallback
+    // Fallback je nach Typ
     if (tags.isEmpty) {
-      tags.add('audio');
+      if (media.type == AvatarMediaType.audio)
+        tags.add('audio');
+      else if (media.type == AvatarMediaType.video)
+        tags.add('video');
+      else if (media.type == AvatarMediaType.image)
+        tags.add('image');
+      else if (media.type == AvatarMediaType.document)
+        tags.add('document');
     }
 
     return tags;
@@ -4975,7 +5480,6 @@ class _MediaViewerDialog extends StatefulWidget {
   onPricingRequest;
 
   const _MediaViewerDialog({
-    super.key,
     required this.initialMedia,
     required this.allMedia,
     required this.initialIndex,
@@ -5166,7 +5670,9 @@ class _MediaViewerDialogState extends State<_MediaViewerDialog> {
   }
 
   Widget _buildViewerPriceBadge(AvatarMedia it) {
-    final typeKey = it.type == AvatarMediaType.image ? 'image' : 'video';
+    final typeKey = it.type == AvatarMediaType.image
+        ? 'image'
+        : (it.type == AvatarMediaType.video ? 'video' : 'document');
     final gp = widget.globalPricing[typeKey] as Map<String, dynamic>?;
     final gpEnabled = (gp?['enabled'] as bool?) ?? false;
     final gpPrice = (gp?['price'] as num?)?.toDouble() ?? 0.0;

@@ -323,7 +323,9 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
       builder: (context) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
           title: const Text(
             'Zahlungsmethode wählen',
             style: TextStyle(color: Colors.white),
@@ -475,6 +477,8 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
         return Icons.videocam;
       case AvatarMediaType.audio:
         return Icons.audiotrack;
+      case AvatarMediaType.document:
+        return Icons.description;
     }
   }
 }
