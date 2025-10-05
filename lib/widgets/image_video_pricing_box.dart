@@ -123,10 +123,13 @@ class ImageVideoPricingBox extends StatelessWidget {
                         // Links: Input + Currency + Global (MIT padding)
                         Expanded(
                           child: Padding(
-                            padding: const EdgeInsets.only(
+                            padding: EdgeInsets.only(
                               left: 12,
                               top: 8,
-                              bottom: 8,
+                              // wenn Global in Zeile 3 sichtbar ist: unten 0
+                              bottom: (showGlobalButton && needsGlobalWrap)
+                                  ? 0
+                                  : 8,
                             ),
                             child: Row(
                               children: [
@@ -273,11 +276,14 @@ class ImageVideoPricingBox extends StatelessWidget {
                               onTap: onCancel,
                               child: Container(
                                 height: 40,
+                                decoration: const BoxDecoration(
+                                  color: Colors.white24,
+                                ),
                                 alignment: Alignment.center,
                                 child: const Icon(
                                   Icons.close,
                                   size: 20,
-                                  color: Colors.white,
+                                  color: Colors.white70,
                                 ),
                               ),
                             ),
@@ -321,32 +327,35 @@ class ImageVideoPricingBox extends StatelessWidget {
                   ],
                   // Zeile 3: Global (wenn nicht in Zeile 1 passt + sichtbar)
                   if (needsGlobalWrap && showGlobalButton) ...[
-                    const SizedBox(height: 8),
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: onGlobal,
-                        child: Container(
-                          height: 40,
-                          alignment: Alignment.center,
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.refresh,
-                                size: 16,
-                                color: Colors.white70,
-                              ),
-                              SizedBox(width: 4),
-                              Text(
-                                'Global',
-                                style: TextStyle(
+                    Transform.translate(
+                      offset: const Offset(0, -10),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: onGlobal,
+                          child: Container(
+                            height: 35,
+                            padding: const EdgeInsets.only(top: 15),
+                            alignment: Alignment.center,
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.refresh,
+                                  size: 16,
                                   color: Colors.white70,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
                                 ),
-                              ),
-                            ],
+                                SizedBox(width: 4),
+                                Text(
+                                  'Global',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),

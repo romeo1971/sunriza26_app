@@ -3532,6 +3532,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               showGlobal = overridePrice != null;
             }
 
+            // Vorschauhöhe: wenn Global unten erscheint, 30px weniger
+            final double previewHeight = 328 - (showGlobal ? 30 : 0);
+
             return AlertDialog(
               backgroundColor: const Color(0xFF1E1E1E),
               contentPadding: EdgeInsets.zero,
@@ -3574,27 +3577,73 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         ],
                       ),
                     ),
-                    // Bild/Video
-                    if (currentMedia.type == AvatarMediaType.image)
-                      Image.network(
-                        currentMedia.url,
-                        width: 328,
-                        height: 328,
-                        fit: BoxFit.cover,
-                      )
-                    else
-                      Container(
-                        width: 328,
-                        height: 328,
-                        color: Colors.black,
-                        child: const Center(
-                          child: Icon(
-                            Icons.play_circle_outline,
-                            size: 64,
-                            color: Colors.white,
+                    // Bild/Video mit 16:9 oder 9:16 Darstellung
+                    (() {
+                      final mediaAR = currentMedia.aspectRatio ?? (9 / 16);
+                      final isLandscape = mediaAR >= 1.0;
+
+                      Widget imageWidget;
+                      if (currentMedia.type == AvatarMediaType.image) {
+                        imageWidget = Image.network(
+                          currentMedia.url,
+                          fit: BoxFit.cover,
+                        );
+                      } else {
+                        imageWidget = FutureBuilder<VideoPlayerController?>(
+                          future: _videoControllerForThumb(currentMedia.url),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState ==
+                                    ConnectionState.done &&
+                                snapshot.hasData &&
+                                snapshot.data != null &&
+                                snapshot.data!.value.isInitialized) {
+                              final controller = snapshot.data!;
+                              return FittedBox(
+                                fit: BoxFit.cover,
+                                child: SizedBox(
+                                  width: controller.value.size.width,
+                                  height: controller.value.size.height,
+                                  child: VideoPlayer(controller),
+                                ),
+                              );
+                            }
+                            return const Center(
+                              child: Icon(
+                                Icons.play_circle_outline,
+                                size: 64,
+                                color: Colors.white,
+                              ),
+                            );
+                          },
+                        );
+                      }
+
+                      // Für Landscape: volle Breite (328), 16:9-Höhe
+                      if (isLandscape) {
+                        return SizedBox(
+                          width: 328,
+                          child: AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.zero,
+                              child: imageWidget,
+                            ),
+                          ),
+                        );
+                      }
+
+                      // Für Portrait: volle Höhe (previewHeight), 9:16-Breite
+                      return SizedBox(
+                        height: previewHeight,
+                        child: AspectRatio(
+                          aspectRatio: 9 / 16,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.zero,
+                            child: imageWidget,
                           ),
                         ),
-                      ),
+                      );
+                    })(),
                     // Pricing Box
                     ImageVideoPricingBox(
                       isFree: isFree,
