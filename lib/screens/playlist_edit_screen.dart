@@ -12,6 +12,7 @@ import '../models/media_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_dropdown.dart';
+import 'playlist_media_screen.dart';
 import 'package:intl/intl.dart';
 // removed provider/language_service dependency from this screen
 
@@ -824,9 +825,54 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
 
                       // Show After
                       CustomTextField(
-                        label: 'Anzeigezeit (Sek.) nach Chat-Beginn',
+                        label: 'Anzeige ab Chat-Start in s',
                         controller: _showAfter,
                         keyboardType: TextInputType.number,
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: 260,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            if (_saving) return;
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => PlaylistMediaScreen(
+                                  playlist: widget.playlist,
+                                ),
+                              ),
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.transparent,
+                            shadowColor: Colors.transparent,
+                            padding: EdgeInsets.zero,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                          child: Ink(
+                            decoration: BoxDecoration(
+                              gradient: Theme.of(
+                                context,
+                              ).extension<AppGradients>()?.magentaBlue,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 10),
+                              child: Center(
+                                child: Text(
+                                  'Medien & Reihenfolge',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                       // Hinweis: Highlight/Anlass wird jetzt in "Sondertermine" gesetzt (kein Feld mehr neben dem Bild)
                     ],
@@ -835,6 +881,35 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
               ],
             ),
             const SizedBox(height: 24),
+
+            // Anleitung (klappbar)
+            ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              initiallyExpanded: true,
+              title: const Text(
+                'Anleitung',
+                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
+              ),
+              childrenPadding: EdgeInsets.zero,
+              children: const [
+                SizedBox(height: 8),
+                Text(
+                  'Du kannst einen allgemeinen Zeitplan mit Wochentagen und Zeitfenstern festlegen oder Sondertermine wie Weihnachten oder Geburtstage anlegen (reagiert dynamisch auf den Chat-Partner).',
+                  style: TextStyle(height: 1.3),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Wichtig: Bei Überschneidungen gelten Sondertermine oder neuere Zeitpläne.',
+                  style: TextStyle(height: 1.3),
+                ),
+                SizedBox(height: 8),
+                Text(
+                  'Lege zuerst die Zeitfenster an und fülle sie anschließend mit Medien.',
+                  style: TextStyle(height: 1.3),
+                ),
+                SizedBox(height: 16),
+              ],
+            ),
 
             // Zeitplan / Sondertermine Section
             // Dropdown für Typ-Auswahl
@@ -948,12 +1023,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
               if (_targetingExpanded) _buildTargetingSection(),
             ],
 
-            // Media Items Section
-            const Text(
-              'Medien & Reihenfolge',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
+            // Media Items Section (obsolete – durch Button oben ersetzt)
             SizedBox(
               height: 300,
               child: ReorderableListView.builder(
