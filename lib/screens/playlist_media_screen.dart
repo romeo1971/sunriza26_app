@@ -4,6 +4,7 @@ import '../models/media_models.dart';
 import '../services/media_service.dart';
 import '../services/playlist_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/custom_text_field.dart';
 
 class PlaylistMediaScreen extends StatefulWidget {
   final Playlist playlist;
@@ -20,11 +21,221 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
   final _playlistSvc = PlaylistService();
   List<AvatarMedia> _allMedia = [];
   final List<AvatarMedia> _timeline = [];
+  bool _showSearch = false;
+  String _searchTerm = '';
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // AppBar‑Style Tab Button (35px hoch), angelehnt an media_gallery_screen
+  Widget _buildTopTabAppbarBtn(String tab, IconData icon) {
+    final selected = _tab == tab;
+    return SizedBox(
+      height: 35,
+      child: TextButton(
+        onPressed: () => setState(() => _tab = tab),
+        style: ButtonStyle(
+          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+          minimumSize: const WidgetStatePropertyAll(Size(60, 35)),
+          backgroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
+            if (selected) return const Color(0x26FFFFFF);
+            return Colors.transparent;
+          }),
+          overlayColor: WidgetStateProperty.resolveWith<Color?>((states) {
+            if (states.contains(WidgetState.hovered) ||
+                states.contains(WidgetState.focused) ||
+                states.contains(WidgetState.pressed)) {
+              final mix = Color.lerp(
+                AppColors.magenta,
+                AppColors.lightBlue,
+                0.5,
+              )!;
+              return mix.withValues(alpha: 0.12);
+            }
+            return null;
+          }),
+          foregroundColor: const WidgetStatePropertyAll(Colors.white),
+          shape: WidgetStateProperty.resolveWith<OutlinedBorder>((states) {
+            final isHover =
+                states.contains(WidgetState.hovered) ||
+                states.contains(WidgetState.focused);
+            if (selected || isHover)
+              return const RoundedRectangleBorder(
+                borderRadius: BorderRadius.zero,
+              );
+            return RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            );
+          }),
+        ),
+        child: Icon(
+          icon,
+          size: 22,
+          color: selected ? Colors.white : Colors.white54,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopNavBar() {
+    return Stack(
+      children: [
+        Container(height: 35, color: const Color(0xFF0D0D0D)),
+        Positioned.fill(child: Container(color: const Color(0x15FFFFFF))),
+        SizedBox(
+          height: 35,
+          child: Row(
+            children: [
+              _buildTopTabAppbarBtn('images', Icons.image_outlined),
+              _buildTopTabAppbarBtn('videos', Icons.videocam_outlined),
+              _buildTopTabAppbarBtn('documents', Icons.description_outlined),
+              _buildTopTabAppbarBtn('audio', Icons.audiotrack),
+              const Spacer(),
+              // Orientierung (links von der Lupe)
+              SizedBox(
+                height: 35,
+                child: TextButton(
+                  onPressed: () => setState(() => _portrait = !_portrait),
+                  style: ButtonStyle(
+                    padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                    minimumSize: const WidgetStatePropertyAll(Size(48, 35)),
+                    backgroundColor: const WidgetStatePropertyAll(
+                      Colors.transparent,
+                    ),
+                    overlayColor: WidgetStateProperty.resolveWith<Color?>((
+                      states,
+                    ) {
+                      if (states.contains(WidgetState.hovered) ||
+                          states.contains(WidgetState.focused) ||
+                          states.contains(WidgetState.pressed)) {
+                        final mix = Color.lerp(
+                          AppColors.magenta,
+                          AppColors.lightBlue,
+                          0.5,
+                        )!;
+                        return mix.withValues(alpha: 0.12);
+                      }
+                      return null;
+                    }),
+                    foregroundColor: const WidgetStatePropertyAll(Colors.white),
+                    shape: WidgetStateProperty.resolveWith<OutlinedBorder>((
+                      states,
+                    ) {
+                      final isHover =
+                          states.contains(WidgetState.hovered) ||
+                          states.contains(WidgetState.focused);
+                      if (isHover)
+                        return const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero,
+                        );
+                      return RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      );
+                    }),
+                  ),
+                  child: _portrait
+                      ? ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [AppColors.magenta, AppColors.lightBlue],
+                          ).createShader(bounds),
+                          child: const Icon(
+                            Icons.stay_primary_portrait,
+                            size: 22,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.stay_primary_landscape,
+                          size: 22,
+                          color: Colors.white54,
+                        ),
+                ),
+              ),
+              // Lupe rechts außen (toggle search) – GMBC wenn aktiv
+              SizedBox(
+                height: 35,
+                child: TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _showSearch = !_showSearch;
+                      if (!_showSearch) {
+                        _searchController.clear();
+                        _searchTerm = '';
+                      }
+                    });
+                  },
+                  style: ButtonStyle(
+                    padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                    minimumSize: const WidgetStatePropertyAll(Size(60, 35)),
+                    backgroundColor: WidgetStatePropertyAll(
+                      _showSearch ? Colors.white : Colors.transparent,
+                    ),
+                    overlayColor: WidgetStateProperty.resolveWith<Color?>((
+                      states,
+                    ) {
+                      if (states.contains(WidgetState.hovered) ||
+                          states.contains(WidgetState.focused) ||
+                          states.contains(WidgetState.pressed)) {
+                        final mix = Color.lerp(
+                          AppColors.magenta,
+                          AppColors.lightBlue,
+                          0.5,
+                        )!;
+                        return mix.withValues(alpha: 0.12);
+                      }
+                      return null;
+                    }),
+                    foregroundColor: WidgetStatePropertyAll(
+                      _showSearch ? AppColors.darkSurface : Colors.white,
+                    ),
+                    shape: WidgetStateProperty.resolveWith<OutlinedBorder>((
+                      states,
+                    ) {
+                      final isHover =
+                          states.contains(WidgetState.hovered) ||
+                          states.contains(WidgetState.focused);
+                      if (_showSearch || isHover)
+                        return const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero,
+                        );
+                      return RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      );
+                    }),
+                  ),
+                  child: _showSearch
+                      ? ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [AppColors.magenta, AppColors.lightBlue],
+                          ).createShader(bounds),
+                          child: const Icon(
+                            Icons.search,
+                            size: 22,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.search,
+                          size: 22,
+                          color: Colors.white54,
+                        ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> _load() async {
@@ -35,7 +246,7 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
   }
 
   List<AvatarMedia> get _filtered {
-    return _allMedia.where((m) {
+    final list = _allMedia.where((m) {
       switch (_tab) {
         case 'images':
           if (m.type != AvatarMediaType.image) return false;
@@ -54,6 +265,14 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
       final isPortrait = ar < 1.0;
       return _portrait ? isPortrait : !isPortrait;
     }).toList();
+
+    if (_searchTerm.isEmpty) return list;
+    final term = _searchTerm.toLowerCase();
+    return list.where((m) {
+      final name = (m.originalFileName ?? m.url).toLowerCase();
+      final tagsStr = (m.tags ?? []).map((t) => t.toLowerCase()).join(' ');
+      return name.contains(term) || tagsStr.contains(term);
+    }).toList();
   }
 
   @override
@@ -64,6 +283,7 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Playlist Medien'),
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
             tooltip: 'Speichern',
@@ -72,234 +292,95 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
           ),
           const SizedBox(width: 4),
         ],
+        // Keine Bottom‑Tabs hier – Tabs kommen unter den Header
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Header: kleines Cover, Name, Anzeigezeit
-          InkWell(
-            onTap: () => Navigator.pop(context),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Container(
-                    width: coverW,
-                    height: coverH,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade800,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade600),
-                    ),
-                    clipBehavior: Clip.hardEdge,
-                    child: widget.playlist.coverImageUrl != null
-                        ? Image.network(
-                            widget.playlist.coverImageUrl!,
-                            fit: BoxFit.cover,
-                          )
-                        : const Center(
-                            child: Icon(
-                              Icons.image_outlined,
-                              color: Colors.white54,
-                            ),
-                          ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.playlist.name,
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Anzeige ab Chat-Start: ${widget.playlist.showAfterSec}s',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Mini-Navi wie in media_gallery
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                _NavIcon(
-                  icon: Icons.image_outlined,
-                  selected: _tab == 'images',
-                  onTap: () => setState(() => _tab = 'images'),
+                Container(
+                  width: coverW,
+                  height: coverH,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade800,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade600),
+                  ),
+                  clipBehavior: Clip.hardEdge,
+                  child: widget.playlist.coverImageUrl != null
+                      ? Image.network(
+                          widget.playlist.coverImageUrl!,
+                          fit: BoxFit.cover,
+                        )
+                      : const Center(
+                          child: Icon(
+                            Icons.image_outlined,
+                            color: Colors.white54,
+                          ),
+                        ),
                 ),
-                const SizedBox(width: 8),
-                _NavIcon(
-                  icon: Icons.videocam_outlined,
-                  selected: _tab == 'videos',
-                  onTap: () => setState(() => _tab = 'videos'),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.playlist.name,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Anzeige ab Chat-Start: ${widget.playlist.showAfterSec}s',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(width: 8),
-                _NavIcon(
-                  icon: Icons.description_outlined,
-                  selected: _tab == 'documents',
-                  onTap: () => setState(() => _tab = 'documents'),
-                ),
-                const SizedBox(width: 8),
-                _NavIcon(
-                  icon: Icons.music_note_outlined,
-                  selected: _tab == 'audio',
-                  onTap: () => setState(() => _tab = 'audio'),
-                ),
-                const Spacer(),
-                // Portrait / Landscape Toggle
-                _NavIcon(
-                  icon: _portrait
-                      ? Icons.stay_primary_portrait
-                      : Icons.stay_primary_landscape,
-                  selected: true,
-                  onTap: () => setState(() => _portrait = !_portrait),
-                ),
-                const SizedBox(width: 8),
-                // Suche
-                _NavIcon(icon: Icons.search, selected: false, onTap: () {}),
               ],
             ),
           ),
 
+          // Navi im Stil der Media-Galerie (unter dem Header)
+          _buildTopNavBar(),
           const SizedBox(height: 8),
 
-          // 1/3 – 2/3 Layout: Timeline links, Medien rechts
+          // Kombinierter Container: FullWidth-Header, darunter links Timeline, rechts Medien
           Expanded(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    flex: 1,
-                    child: Container(
+              child: Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: Column(
+                  children: [
+                    // FullWidth Header mit nur einem Titel (Tab)
+                    Container(
+                      height: 44,
+                      alignment: Alignment.centerLeft,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white24),
+                        color: Colors.lightGreen.withOpacity(0.18),
+                        borderRadius: const BorderRadius.only(
+                          topLeft: Radius.circular(12),
+                          topRight: Radius.circular(12),
+                        ),
                       ),
-                      padding: const EdgeInsets.only(top: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          const Text(
-                            'Timeline',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Expanded(
-                            child: DragTarget<AvatarMedia>(
-                              builder: (context, cand, rej) {
-                                return Container(
-                                  width: double.infinity,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        const Color(0xFFE91E63).withOpacity(
-                                          cand.isNotEmpty ? 0.4 : 0.3,
-                                        ),
-                                        AppColors.lightBlue.withOpacity(
-                                          cand.isNotEmpty ? 0.4 : 0.3,
-                                        ),
-                                      ],
-                                    ),
-                                    borderRadius: const BorderRadius.only(
-                                      bottomLeft: Radius.circular(12),
-                                      bottomRight: Radius.circular(12),
-                                    ),
-                                  ),
-                                  child: _timeline.isEmpty
-                                      ? const Center(
-                                          child: Text(
-                                            'Medien per Drag & Drop Hier her',
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(
-                                              color: Colors.white60,
-                                              fontSize:
-                                                  13, // 2px kleiner als Standard 15
-                                            ),
-                                          ),
-                                        )
-                                      : ReorderableListView(
-                                          onReorder: (oldIndex, newIndex) {
-                                            if (newIndex > oldIndex)
-                                              newIndex -= 1;
-                                            final it = _timeline.removeAt(
-                                              oldIndex,
-                                            );
-                                            _timeline.insert(newIndex, it);
-                                            setState(() {});
-                                          },
-                                          children: [
-                                            for (
-                                              int i = 0;
-                                              i < _timeline.length;
-                                              i++
-                                            )
-                                              ListTile(
-                                                key: ValueKey(_timeline[i].id),
-                                                leading: _buildThumb(
-                                                  _timeline[i],
-                                                  size: 40,
-                                                ),
-                                                title: Text(
-                                                  _timeline[i]
-                                                          .originalFileName ??
-                                                      _timeline[i].url
-                                                          .split('/')
-                                                          .last,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                                trailing: const Icon(
-                                                  Icons.drag_handle,
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                );
-                              },
-                              onAccept: (m) => setState(() => _timeline.add(m)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    flex: 2,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.white24),
-                      ),
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      child: Row(
                         children: [
                           Text(
                             _tab == 'images'
@@ -314,13 +395,154 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Expanded(child: _buildMediaGrid()),
+                          const Spacer(),
+                          if (_showSearch)
+                            SizedBox(
+                              height: 32,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 160,
+                                  minWidth: 160,
+                                ),
+                                child: CustomTextField(
+                                  label: 'Suche nach Medien...',
+                                  controller: _searchController,
+                                  style: const TextStyle(fontSize: 12),
+                                  prefixIcon: const Padding(
+                                    padding: EdgeInsets.only(left: 6),
+                                    child: Icon(
+                                      Icons.search,
+                                      color: Colors.white70,
+                                      size: 18,
+                                    ),
+                                  ),
+                                  prefixIconConstraints: const BoxConstraints(
+                                    minWidth: 24,
+                                    maxWidth: 28,
+                                  ),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 10,
+                                  ),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _searchTerm = value.toLowerCase();
+                                    });
+                                  },
+                                ),
+                              ),
+                            ),
                         ],
                       ),
                     ),
-                  ),
-                ],
+                    Expanded(
+                      child: Row(
+                        children: [
+                          // Timeline links
+                          Expanded(
+                            flex: 1,
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                borderRadius: BorderRadius.only(
+                                  bottomLeft: Radius.circular(12),
+                                ),
+                              ),
+                              child: DragTarget<AvatarMedia>(
+                                builder: (context, cand, rej) {
+                                  return Container(
+                                    width: double.infinity,
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          const Color(0xFFE91E63).withOpacity(
+                                            cand.isNotEmpty ? 0.4 : 0.3,
+                                          ),
+                                          AppColors.lightBlue.withOpacity(
+                                            cand.isNotEmpty ? 0.4 : 0.3,
+                                          ),
+                                        ],
+                                      ),
+                                      borderRadius: const BorderRadius.only(
+                                        bottomLeft: Radius.circular(12),
+                                      ),
+                                    ),
+                                    child: _timeline.isEmpty
+                                        ? const Center(
+                                            child: Text(
+                                              'Medien per Drag & Drop Hier her',
+                                              textAlign: TextAlign.center,
+                                              style: TextStyle(
+                                                color: Colors.white60,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          )
+                                        : ReorderableListView(
+                                            onReorder: (oldIndex, newIndex) {
+                                              if (newIndex > oldIndex)
+                                                newIndex -= 1;
+                                              final it = _timeline.removeAt(
+                                                oldIndex,
+                                              );
+                                              _timeline.insert(newIndex, it);
+                                              setState(() {});
+                                            },
+                                            children: [
+                                              for (
+                                                int i = 0;
+                                                i < _timeline.length;
+                                                i++
+                                              )
+                                                ListTile(
+                                                  key: ValueKey(
+                                                    _timeline[i].id,
+                                                  ),
+                                                  leading: _buildThumb(
+                                                    _timeline[i],
+                                                    size: 40,
+                                                  ),
+                                                  title: Text(
+                                                    _timeline[i]
+                                                            .originalFileName ??
+                                                        _timeline[i].url
+                                                            .split('/')
+                                                            .last,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                  trailing: const Icon(
+                                                    Icons.drag_handle,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                  );
+                                },
+                                onAccept: (m) =>
+                                    setState(() => _timeline.add(m)),
+                              ),
+                            ),
+                          ),
+                          // Medienliste rechts
+                          Expanded(
+                            flex: 2,
+                            child: Container(
+                              decoration: const BoxDecoration(
+                                borderRadius: BorderRadius.only(
+                                  bottomRight: Radius.circular(12),
+                                ),
+                              ),
+                              padding: const EdgeInsets.all(16),
+                              child: _buildMediaGrid(),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

@@ -769,6 +769,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Playlist bearbeiten'),
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
             onPressed: _save,
@@ -884,6 +885,8 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
 
             // Anleitung (klappbar)
             ExpansionTile(
+              iconColor: Colors.white,
+              collapsedIconColor: Colors.white70,
               tilePadding: EdgeInsets.zero,
               initiallyExpanded: true,
               title: const Text(
@@ -967,6 +970,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                         ? Icons.expand_less
                         : Icons.expand_more,
                     size: 24,
+                    color: Colors.white,
                   ),
                 ],
               ),
@@ -1016,6 +1020,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                       _targetingExpanded
                           ? Icons.expand_less
                           : Icons.expand_more,
+                      color: Colors.white,
                     ),
                   ],
                 ),
