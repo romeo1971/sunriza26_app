@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models/playlist_models.dart';
 import '../models/media_models.dart';
 import '../services/media_service.dart';
@@ -24,33 +25,35 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
   bool _showSearch = false;
   String _searchTerm = '';
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController _intervalCtl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _load();
+    _intervalCtl.text = widget.playlist.showAfterSec.toString();
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _intervalCtl.dispose();
     super.dispose();
   }
 
   // AppBar‑Style Tab Button (35px hoch), angelehnt an media_gallery_screen
   Widget _buildTopTabAppbarBtn(String tab, IconData icon) {
     final selected = _tab == tab;
+    final appGrad = Theme.of(context).extension<AppGradients>()?.magentaBlue;
+    const double tabWidth = 68; // Einheitliche Zielbreite (breitere Variante)
     return SizedBox(
       height: 35,
       child: TextButton(
         onPressed: () => setState(() => _tab = tab),
         style: ButtonStyle(
           padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-          minimumSize: const WidgetStatePropertyAll(Size(60, 35)),
-          backgroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
-            if (selected) return const Color(0x26FFFFFF);
-            return Colors.transparent;
-          }),
+          minimumSize: const WidgetStatePropertyAll(Size(tabWidth, 35)),
+          backgroundColor: const WidgetStatePropertyAll(Colors.transparent),
           overlayColor: WidgetStateProperty.resolveWith<Color?>((states) {
             if (states.contains(WidgetState.hovered) ||
                 states.contains(WidgetState.focused) ||
@@ -78,11 +81,23 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
             );
           }),
         ),
-        child: Icon(
-          icon,
-          size: 22,
-          color: selected ? Colors.white : Colors.white54,
-        ),
+        child: selected
+            ? Ink(
+                decoration: BoxDecoration(
+                  gradient: appGrad,
+                  borderRadius: BorderRadius.zero,
+                ),
+                child: SizedBox(
+                  width: tabWidth,
+                  height: double.infinity,
+                  child: Icon(icon, size: 22, color: Colors.white),
+                ),
+              )
+            : SizedBox(
+                width: tabWidth,
+                height: double.infinity,
+                child: Icon(icon, size: 22, color: Colors.white54),
+              ),
       ),
     );
   }
@@ -101,7 +116,7 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
               _buildTopTabAppbarBtn('documents', Icons.description_outlined),
               _buildTopTabAppbarBtn('audio', Icons.audiotrack),
               const Spacer(),
-              // Orientierung (links von der Lupe)
+              // Orientierung
               SizedBox(
                 height: 35,
                 child: TextButton(
@@ -156,76 +171,6 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
                         )
                       : const Icon(
                           Icons.stay_primary_landscape,
-                          size: 22,
-                          color: Colors.white54,
-                        ),
-                ),
-              ),
-              // Lupe rechts außen (toggle search) – GMBC wenn aktiv
-              SizedBox(
-                height: 35,
-                child: TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _showSearch = !_showSearch;
-                      if (!_showSearch) {
-                        _searchController.clear();
-                        _searchTerm = '';
-                      }
-                    });
-                  },
-                  style: ButtonStyle(
-                    padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-                    minimumSize: const WidgetStatePropertyAll(Size(60, 35)),
-                    backgroundColor: WidgetStatePropertyAll(
-                      _showSearch ? Colors.white : Colors.transparent,
-                    ),
-                    overlayColor: WidgetStateProperty.resolveWith<Color?>((
-                      states,
-                    ) {
-                      if (states.contains(WidgetState.hovered) ||
-                          states.contains(WidgetState.focused) ||
-                          states.contains(WidgetState.pressed)) {
-                        final mix = Color.lerp(
-                          AppColors.magenta,
-                          AppColors.lightBlue,
-                          0.5,
-                        )!;
-                        return mix.withValues(alpha: 0.12);
-                      }
-                      return null;
-                    }),
-                    foregroundColor: WidgetStatePropertyAll(
-                      _showSearch ? AppColors.darkSurface : Colors.white,
-                    ),
-                    shape: WidgetStateProperty.resolveWith<OutlinedBorder>((
-                      states,
-                    ) {
-                      final isHover =
-                          states.contains(WidgetState.hovered) ||
-                          states.contains(WidgetState.focused);
-                      if (_showSearch || isHover)
-                        return const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.zero,
-                        );
-                      return RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      );
-                    }),
-                  ),
-                  child: _showSearch
-                      ? ShaderMask(
-                          shaderCallback: (bounds) => const LinearGradient(
-                            colors: [AppColors.magenta, AppColors.lightBlue],
-                          ).createShader(bounds),
-                          child: const Icon(
-                            Icons.search,
-                            size: 22,
-                            color: Colors.white,
-                          ),
-                        )
-                      : const Icon(
-                          Icons.search,
                           size: 22,
                           color: Colors.white54,
                         ),
@@ -339,8 +284,61 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
                         maxLines: 1,
                       ),
                       const SizedBox(height: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'Intervall:',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                          const SizedBox(width: 8),
+                          Tooltip(
+                            message: 'Anzeigezeit der Medien in Sekunden',
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(minWidth: 40),
+                              child: IntrinsicWidth(
+                                child: TextField(
+                                  controller: _intervalCtl,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: [
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                  cursorColor: Colors.white,
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    hintText: '0',
+                                    filled: true,
+                                    fillColor: Color(0x1FFFFFFF),
+                                    border: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Colors.white24,
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Colors.white24,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Colors.white24,
+                                      ),
+                                    ),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 6,
+                                    ),
+                                  ),
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
                       Text(
-                        'Anzeige ab Chat-Start: ${widget.playlist.showAfterSec}s',
+                        '${_timeline.length} Medien in der Playlist',
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 12,
@@ -372,10 +370,10 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
                     Container(
                       height: 44,
                       alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.lightGreen.withOpacity(0.18),
-                        borderRadius: const BorderRadius.only(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: const BoxDecoration(
+                        color: Colors.black,
+                        borderRadius: BorderRadius.only(
                           topLeft: Radius.circular(12),
                           topRight: Radius.circular(12),
                         ),
@@ -393,45 +391,48 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w600,
+                              color: Colors.white,
                             ),
                           ),
                           const Spacer(),
-                          if (_showSearch)
-                            SizedBox(
-                              height: 32,
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxWidth: 160,
-                                  minWidth: 160,
+                          SizedBox(
+                            height: 32,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxWidth: 185,
+                                minWidth: 185,
+                              ),
+                              child: CustomTextField(
+                                label: 'Suche nach Medien...',
+                                controller: _searchController,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white,
                                 ),
-                                child: CustomTextField(
-                                  label: 'Suche nach Medien...',
-                                  controller: _searchController,
-                                  style: const TextStyle(fontSize: 12),
-                                  prefixIcon: const Padding(
-                                    padding: EdgeInsets.only(left: 6),
-                                    child: Icon(
-                                      Icons.search,
-                                      color: Colors.white70,
-                                      size: 18,
-                                    ),
+                                prefixIcon: const Padding(
+                                  padding: EdgeInsets.only(left: 6),
+                                  child: Icon(
+                                    Icons.search,
+                                    color: Colors.white70,
+                                    size: 18,
                                   ),
-                                  prefixIconConstraints: const BoxConstraints(
-                                    minWidth: 24,
-                                    maxWidth: 28,
-                                  ),
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 10,
-                                  ),
-                                  onChanged: (value) {
-                                    setState(() {
-                                      _searchTerm = value.toLowerCase();
-                                    });
-                                  },
                                 ),
+                                prefixIconConstraints: const BoxConstraints(
+                                  minWidth: 24,
+                                  maxWidth: 28,
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 10,
+                                ),
+                                onChanged: (value) {
+                                  setState(() {
+                                    _searchTerm = value.toLowerCase();
+                                  });
+                                },
                               ),
                             ),
+                          ),
                         ],
                       ),
                     ),
@@ -657,6 +658,26 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
         order: i,
       );
     }
+    // 4) Intervall speichern
+    final sec =
+        int.tryParse(_intervalCtl.text.trim()) ?? widget.playlist.showAfterSec;
+    await _playlistSvc.update(
+      Playlist(
+        id: widget.playlist.id,
+        avatarId: widget.playlist.avatarId,
+        name: widget.playlist.name,
+        showAfterSec: sec,
+        highlightTag: widget.playlist.highlightTag,
+        coverImageUrl: widget.playlist.coverImageUrl,
+        weeklySchedules: widget.playlist.weeklySchedules,
+        specialSchedules: widget.playlist.specialSchedules,
+        createdAt: widget.playlist.createdAt,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+        targeting: widget.playlist.targeting,
+        priority: widget.playlist.priority,
+        scheduleMode: widget.playlist.scheduleMode,
+      ),
+    );
     if (mounted) {
       ScaffoldMessenger.of(
         context,
