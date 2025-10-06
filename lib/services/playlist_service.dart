@@ -512,6 +512,87 @@ class PlaylistService {
     await batch.commit();
   }
 
+  Future<void> deleteTimelineItemsByAsset(
+    String avatarId,
+    String playlistId,
+    String assetId,
+  ) async {
+    final qs = await _tItemsCol(
+      avatarId,
+      playlistId,
+    ).where('assetId', isEqualTo: assetId).get();
+    if (qs.docs.isEmpty) return;
+    final batch = _fs.batch();
+    for (final d in qs.docs) {
+      batch.delete(d.reference);
+    }
+    await batch.commit();
+  }
+
+  // Prüft und bereinigt Inkonsistenzen:
+  // 1) timelineItems ohne existierendes timelineAsset
+  // 2) timelineAssets deren mediaId nicht mehr unter avatars/{avatarId}/media existiert
+  // Löscht in Batches und gibt Counters zurück
+  Future<Map<String, int>> pruneTimelineData(
+    String avatarId,
+    String playlistId,
+  ) async {
+    final mediaCol = _fs
+        .collection('avatars')
+        .doc(avatarId)
+        .collection('media');
+    final mediaQs = await mediaCol.get();
+    final Set<String> mediaIds = mediaQs.docs.map((d) => d.id).toSet();
+
+    final assetsRef = _assetsCol(avatarId, playlistId);
+    final itemsRef = _tItemsCol(avatarId, playlistId);
+
+    final assetsQs = await assetsRef.get();
+    final itemsQs = await itemsRef.get();
+
+    final Set<String> assetDocIds = assetsQs.docs.map((d) => d.id).toSet();
+
+    final List<QueryDocumentSnapshot<Map<String, dynamic>>> itemsToDelete = [];
+    for (final it in itemsQs.docs) {
+      final aid = (it.data()['assetId'] as String?) ?? '';
+      if (aid.isEmpty || !assetDocIds.contains(aid)) {
+        itemsToDelete.add(it);
+      }
+    }
+
+    final List<QueryDocumentSnapshot<Map<String, dynamic>>> assetsToDelete = [];
+    for (final a in assetsQs.docs) {
+      final mid = (a.data()['mediaId'] as String?) ?? a.id;
+      if (!mediaIds.contains(mid)) {
+        assetsToDelete.add(a);
+      }
+    }
+
+    int deletedItems = 0;
+    int deletedAssets = 0;
+
+    if (itemsToDelete.isNotEmpty || assetsToDelete.isNotEmpty) {
+      final batch = _fs.batch();
+      for (final it in itemsToDelete) {
+        batch.delete(it.reference);
+        deletedItems++;
+      }
+      for (final a in assetsToDelete) {
+        // Lösche auch alle Items, die auf dieses Asset referenzieren
+        final itQs = await itemsRef.where('assetId', isEqualTo: a.id).get();
+        for (final it in itQs.docs) {
+          batch.delete(it.reference);
+          deletedItems++;
+        }
+        batch.delete(a.reference);
+        deletedAssets++;
+      }
+      await batch.commit();
+    }
+
+    return {'deletedItems': deletedItems, 'deletedAssets': deletedAssets};
+  }
+
   // Items
   CollectionReference<Map<String, dynamic>> _itemsCol(
     String avatarId,

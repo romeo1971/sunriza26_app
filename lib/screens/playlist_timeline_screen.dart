@@ -221,12 +221,26 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         widget.playlist.avatarId,
         widget.playlist.id,
       );
+      // Inkonstistenzen bereinigen (Items ohne Assets, Assets ohne Media)
+      await _playlistSvc.pruneTimelineData(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+      );
+      // Nach dem Prune neu laden
+      final assets2 = await _playlistSvc.listAssets(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+      );
+      final items2 = await _playlistSvc.listTimelineItems(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+      );
       // Asset-Resolution: wir nehmen als Asset-ID die media.id (gleiches id-Feld)
       final mediaById = {for (final m in _allMedia) m.id: m};
       _assets
         ..clear()
         ..addAll(
-          assets.map((a) {
+          assets2.map((a) {
             final mid = (a['mediaId'] as String?) ?? (a['id'] as String?);
             final m = (mid != null) ? mediaById[mid] : null;
             return m;
@@ -235,7 +249,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
       _timeline
         ..clear()
         ..addAll(
-          items.map((it) {
+          items2.map((it) {
             final aid = it['assetId'] as String?;
             return (aid != null) ? mediaById[aid] : null;
           }).whereType<AvatarMedia>(),
@@ -847,9 +861,36 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                       bottom: 6,
                       child: InkWell(
                         onTap: () async {
+                          final confirm = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('Asset entfernen?'),
+                              content: const Text(
+                                'Dieses Asset aus dem Pool entfernen? Verwendete Timeline‑Einträge werden ebenfalls gelöscht.',
+                              ),
+                              actions: [
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, false),
+                                  child: const Text('Abbrechen'),
+                                ),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('Entfernen'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirm != true) return;
                           setState(() {
                             _assets.removeWhere((a) => a.id == m.id);
+                            _timeline.removeWhere((t) => t.id == m.id);
+                            _syncKeysLength();
                           });
+                          await _playlistSvc.deleteTimelineItemsByAsset(
+                            widget.playlist.avatarId,
+                            widget.playlist.id,
+                            m.id,
+                          );
                           await _saveAssetsPool();
                         },
                         child: Container(
@@ -986,45 +1027,49 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                         Material(
                           key: _timelineKeys[i],
                           color: Colors.transparent,
-                          child: ListTile(
-                            leading: _buildThumb(_timeline[i], size: 40),
-                            title: Text(
-                              _timeline[i].originalFileName ??
-                                  _timeline[i].url.split('/').last,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            trailing: PopupMenuButton<String>(
-                              icon: const Icon(
-                                Icons.more_vert,
-                                color: Colors.white70,
+                          child: Tooltip(
+                            message:
+                                '${_timeline[i].originalFileName ?? _timeline[i].url.split('/').last}\n${_timeline[i].type.name}  AR:${(_timeline[i].aspectRatio ?? 0).toStringAsFixed(2)}',
+                            child: ListTile(
+                              leading: _buildThumb(_timeline[i], size: 40),
+                              title: Text(
+                                _timeline[i].originalFileName ??
+                                    _timeline[i].url.split('/').last,
+                                overflow: TextOverflow.ellipsis,
                               ),
-                              onSelected: (v) async {
-                                if (v == 'dup') {
-                                  setState(() {
-                                    _timeline.insert(i + 1, _timeline[i]);
-                                    _timelineKeys.insert(i + 1, UniqueKey());
-                                    _syncKeysLength();
-                                  });
-                                  await _persistTimelineItems();
-                                } else if (v == 'del') {
-                                  setState(() {
-                                    _timeline.removeAt(i);
-                                    _timelineKeys.removeAt(i);
-                                    _syncKeysLength();
-                                  });
-                                  await _persistTimelineItems();
-                                }
-                              },
-                              itemBuilder: (ctx) => [
-                                const PopupMenuItem<String>(
-                                  value: 'dup',
-                                  child: Text('Duplizieren'),
+                              trailing: PopupMenuButton<String>(
+                                icon: const Icon(
+                                  Icons.more_vert,
+                                  color: Colors.white70,
                                 ),
-                                const PopupMenuItem<String>(
-                                  value: 'del',
-                                  child: Text('Aus Timeline entfernen'),
-                                ),
-                              ],
+                                onSelected: (v) async {
+                                  if (v == 'dup') {
+                                    setState(() {
+                                      _timeline.insert(i + 1, _timeline[i]);
+                                      _timelineKeys.insert(i + 1, UniqueKey());
+                                      _syncKeysLength();
+                                    });
+                                    await _persistTimelineItems();
+                                  } else if (v == 'del') {
+                                    setState(() {
+                                      _timeline.removeAt(i);
+                                      _timelineKeys.removeAt(i);
+                                      _syncKeysLength();
+                                    });
+                                    await _persistTimelineItems();
+                                  }
+                                },
+                                itemBuilder: (ctx) => [
+                                  const PopupMenuItem<String>(
+                                    value: 'dup',
+                                    child: Text('Duplizieren'),
+                                  ),
+                                  const PopupMenuItem<String>(
+                                    value: 'del',
+                                    child: Text('Aus Timeline entfernen'),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),

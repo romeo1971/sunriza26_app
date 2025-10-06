@@ -72,13 +72,10 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
                 _tabBtn('documents', Icons.description_outlined),
                 _tabBtn('audio', Icons.audiotrack),
                 const Spacer(),
-                SizedBox(
-                  height: 32,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      minWidth: 180,
-                      maxWidth: 180,
-                    ),
+                // Suche rechts, responsive
+                Flexible(
+                  child: SizedBox(
+                    height: 32,
                     child: TextField(
                       controller: _search,
                       style: const TextStyle(fontSize: 12, color: Colors.white),

@@ -888,7 +888,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
               iconColor: Colors.white,
               collapsedIconColor: Colors.white70,
               tilePadding: EdgeInsets.zero,
-              initiallyExpanded: true,
+              initiallyExpanded: false,
               title: const Text(
                 'Anleitung',
                 style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
