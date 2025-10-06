@@ -32,6 +32,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   final TextEditingController _intervalCtl = TextEditingController();
   bool _timelineHover = false;
   bool _resizerHover = false;
+  String _assetSort = 'name'; // 'name' | 'type'
+  final TextEditingController _assetsSearchCtl = TextEditingController();
+  String _assetsSearchTerm = '';
 
   @override
   void initState() {
@@ -43,6 +46,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _assetsSearchCtl.dispose();
     _intervalCtl.dispose();
     super.dispose();
   }
@@ -394,24 +398,83 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
           const SizedBox(height: 8),
 
           // Call-to-Action: Medien hinzufügen (öffnet Asset-Auswahl)
-          InkWell(
-            onTap: _openAssetsPicker,
-            child: Container(
-              height: 44,
-              color: Colors.grey.shade900,
-              child: const Center(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.add, color: Colors.white, size: 22),
-                    SizedBox(width: 8),
-                    Text(
-                      'Medien hinzufügen',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ],
+          Container(
+            height: 44,
+            color: Colors.grey.shade900,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
+                InkWell(
+                  onTap: _openAssetsPicker,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: const [
+                      Icon(Icons.add, color: Colors.white, size: 22),
+                      SizedBox(width: 8),
+                      Text(
+                        'Medien hinzufügen',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+                const Spacer(),
+                if (_assets.isNotEmpty)
+                  SizedBox(
+                    height: 32,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minWidth: 180,
+                        maxWidth: 220,
+                      ),
+                      child: TextField(
+                        controller: _assetsSearchCtl,
+                        onChanged: (v) =>
+                            setState(() => _assetsSearchTerm = v.toLowerCase()),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                        ),
+                        cursorColor: Colors.white,
+                        decoration: const InputDecoration(
+                          isDense: true,
+                          hintText: 'Suche nach Medien...',
+                          hintStyle: TextStyle(
+                            color: Colors.white54,
+                            fontSize: 12,
+                          ),
+                          prefixIcon: Padding(
+                            padding: EdgeInsets.only(left: 6),
+                            child: Icon(
+                              Icons.search,
+                              color: Colors.white70,
+                              size: 18,
+                            ),
+                          ),
+                          prefixIconConstraints: BoxConstraints(
+                            minWidth: 24,
+                            maxWidth: 28,
+                          ),
+                          filled: true,
+                          fillColor: Color(0x1FFFFFFF),
+                          border: OutlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white24),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white24),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderSide: BorderSide(color: Colors.white24),
+                          ),
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
 
@@ -612,12 +675,84 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     }
   }
 
+  Future<void> _saveAssetsPool() async {
+    final docs = _assets
+        .map(
+          (m) => {
+            'id': m.id,
+            'mediaId': m.id,
+            'thumbUrl': m.thumbUrl ?? m.url,
+            'aspectRatio': m.aspectRatio,
+            'type': m.type.name,
+            'createdAt': DateTime.now().millisecondsSinceEpoch,
+          },
+        )
+        .toList();
+    await _playlistSvc.setAssets(
+      widget.playlist.avatarId,
+      widget.playlist.id,
+      docs,
+    );
+    await _load();
+  }
+
+  Future<void> _persistTimelineItems() async {
+    final itemDocs = <Map<String, dynamic>>[];
+    for (final m in _timeline) {
+      itemDocs.add({'assetId': m.id});
+    }
+    await _playlistSvc.writeTimelineItems(
+      widget.playlist.avatarId,
+      widget.playlist.id,
+      itemDocs,
+    );
+  }
+
   Widget _buildAssetsGrid() {
     if (_assets.isEmpty) {
       return const Center(
         child: Text(
           'Keine Assets ausgewählt',
           style: TextStyle(color: Colors.white60),
+        ),
+      );
+    }
+    // sortierte Sicht
+    List<AvatarMedia> view = List.of(_assets);
+    // Filter nach Tab/Portrait
+    view = view.where((m) {
+      switch (_tab) {
+        case 'images':
+          if (m.type != AvatarMediaType.image) return false;
+          break;
+        case 'videos':
+          if (m.type != AvatarMediaType.video) return false;
+          break;
+        case 'documents':
+          if (m.type != AvatarMediaType.document) return false;
+          break;
+        case 'audio':
+          if (m.type != AvatarMediaType.audio) return false;
+          break;
+      }
+      final ar = m.aspectRatio ?? 9 / 16;
+      final isPortrait = ar < 1.0;
+      return _portrait ? isPortrait : !isPortrait;
+    }).toList();
+    if (_assetsSearchTerm.isNotEmpty) {
+      final t = _assetsSearchTerm.toLowerCase();
+      view = view.where((m) {
+        final name = (m.originalFileName ?? m.url).toLowerCase();
+        final tagsStr = (m.tags ?? []).map((x) => x.toLowerCase()).join(' ');
+        return name.contains(t) || tagsStr.contains(t);
+      }).toList();
+    }
+    if (_assetSort == 'type') {
+      view.sort((a, b) => a.type.name.compareTo(b.type.name));
+    } else {
+      view.sort(
+        (a, b) => (a.originalFileName ?? a.url).toLowerCase().compareTo(
+          (b.originalFileName ?? b.url).toLowerCase(),
         ),
       );
     }
@@ -631,16 +766,80 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
             crossAxisSpacing: 12,
             childAspectRatio: 1,
           ),
-          itemCount: _assets.length,
+          itemCount: view.length,
           itemBuilder: (context, i) {
-            final m = _assets[i];
+            final m = view[i];
+            final usage = _timeline.where((t) => t.id == m.id).length;
             return LongPressDraggable<AvatarMedia>(
               data: m,
               feedback: Material(
                 color: Colors.transparent,
                 child: SizedBox(width: 100, child: _buildThumb(m)),
               ),
-              child: _buildThumbCard(m),
+              child: GestureDetector(
+                onTap: () async {
+                  setState(() => _timeline.add(m));
+                  await _persistTimelineItems();
+                },
+                child: Stack(
+                  children: [
+                    Tooltip(
+                      message:
+                          '${m.originalFileName ?? m.url.split('/').last}\n${m.type.name}  AR:${(m.aspectRatio ?? 0).toStringAsFixed(2)}',
+                      child: _buildThumbCard(m),
+                    ),
+                    if (usage > 1)
+                      Positioned(
+                        right: 6,
+                        top: 6,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.white30),
+                          ),
+                          child: Text(
+                            'x$usage',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ),
+                      ),
+                    Positioned(
+                      right: 6,
+                      bottom: 6,
+                      child: InkWell(
+                        onTap: () async {
+                          setState(() {
+                            _assets.removeWhere((a) => a.id == m.id);
+                          });
+                          await _saveAssetsPool();
+                        },
+                        child: Container(
+                          width: 24,
+                          height: 24,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.white30),
+                          ),
+                          child: const Icon(
+                            Icons.close,
+                            size: 14,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             );
           },
         );
@@ -680,7 +879,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         widget.playlist.id,
         docs,
       );
-      if (mounted) setState(() {});
+      await _load();
     }
   }
 
@@ -735,15 +934,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                       final it = _timeline.removeAt(oldIndex);
                       _timeline.insert(newIndex, it);
                       setState(() {});
-                      final itemDocs = <Map<String, dynamic>>[];
-                      for (final m in _timeline) {
-                        itemDocs.add({'assetId': m.id});
-                      }
-                      await _playlistSvc.writeTimelineItems(
-                        widget.playlist.avatarId,
-                        widget.playlist.id,
-                        itemDocs,
-                      );
+                      await _persistTimelineItems();
                     },
                     children: [
                       for (int i = 0; i < _timeline.length; i++)
@@ -755,7 +946,35 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                                 _timeline[i].url.split('/').last,
                             overflow: TextOverflow.ellipsis,
                           ),
-                          trailing: const Icon(Icons.drag_handle),
+                          trailing: PopupMenuButton<String>(
+                            icon: const Icon(
+                              Icons.more_vert,
+                              color: Colors.white70,
+                            ),
+                            onSelected: (v) async {
+                              if (v == 'dup') {
+                                setState(() {
+                                  _timeline.insert(i + 1, _timeline[i]);
+                                });
+                                await _persistTimelineItems();
+                              } else if (v == 'del') {
+                                setState(() {
+                                  _timeline.removeAt(i);
+                                });
+                                await _persistTimelineItems();
+                              }
+                            },
+                            itemBuilder: (ctx) => [
+                              const PopupMenuItem<String>(
+                                value: 'dup',
+                                child: Text('Duplizieren'),
+                              ),
+                              const PopupMenuItem<String>(
+                                value: 'del',
+                                child: Text('Aus Timeline entfernen'),
+                              ),
+                            ],
+                          ),
                         ),
                     ],
                   ),
@@ -777,7 +996,93 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         borderRadius: BorderRadius.only(bottomRight: Radius.circular(12)),
       ),
       padding: const EdgeInsets.all(16),
-      child: _buildAssetsGrid(),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              // kleine Navi
+              _miniNavIcon(
+                Icons.image_outlined,
+                _tab == 'images',
+                () => setState(() => _tab = 'images'),
+              ),
+              const SizedBox(width: 8),
+              _miniNavIcon(
+                Icons.videocam_outlined,
+                _tab == 'videos',
+                () => setState(() => _tab = 'videos'),
+              ),
+              const SizedBox(width: 8),
+              _miniNavIcon(
+                Icons.description_outlined,
+                _tab == 'documents',
+                () => setState(() => _tab = 'documents'),
+              ),
+              const SizedBox(width: 8),
+              _miniNavIcon(
+                Icons.audiotrack,
+                _tab == 'audio',
+                () => setState(() => _tab = 'audio'),
+              ),
+              const Spacer(),
+              // Portrait/Landscape Toggle klein
+              InkWell(
+                onTap: () => setState(() => _portrait = !_portrait),
+                child: Container(
+                  width: 36,
+                  height: 28,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: Icon(
+                    _portrait
+                        ? Icons.stay_primary_portrait
+                        : Icons.stay_primary_landscape,
+                    size: 16,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              PopupMenuButton<String>(
+                onSelected: (v) => setState(() => _assetSort = v),
+                itemBuilder: (ctx) => const [
+                  PopupMenuItem(value: 'name', child: Text('Sortieren: Name')),
+                  PopupMenuItem(value: 'type', child: Text('Sortieren: Typ')),
+                ],
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: const [
+                    Icon(Icons.sort, color: Colors.white70, size: 18),
+                    SizedBox(width: 6),
+                    Text('Sortieren', style: TextStyle(color: Colors.white70)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Expanded(child: _buildAssetsGrid()),
+        ],
+      ),
+    );
+  }
+
+  Widget _miniNavIcon(IconData icon, bool sel, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        width: 36,
+        height: 28,
+        decoration: BoxDecoration(
+          color: sel ? Colors.white12 : Colors.black.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Icon(icon, size: 16, color: Colors.white),
+      ),
     );
   }
 
@@ -806,6 +1111,16 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
             widget.playlist.id,
             _splitRatio,
           );
+          // neuen Wert aus DB laden und setzen
+          final p = await _playlistSvc.getOne(
+            widget.playlist.avatarId,
+            widget.playlist.id,
+          );
+          if (p?.timelineSplitRatio != null) {
+            setState(
+              () => _splitRatio = p!.timelineSplitRatio!.clamp(0.1, 0.9),
+            );
+          }
         },
         child: Container(
           width: resizerW,

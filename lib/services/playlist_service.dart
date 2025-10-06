@@ -8,6 +8,28 @@ class PlaylistService {
   CollectionReference<Map<String, dynamic>> _col(String avatarId) =>
       _fs.collection('avatars').doc(avatarId).collection('playlists');
 
+  Future<Playlist?> getOne(String avatarId, String playlistId) async {
+    final d = await _col(avatarId).doc(playlistId).get();
+    if (!d.exists) return null;
+    try {
+      final data = d.data();
+      if (data == null) return null;
+      final sanitized = _sanitizePlaylistMap(
+        Map<String, dynamic>.from(data),
+        expectedAvatarId: avatarId,
+        docId: d.id,
+        fixes: <String>[],
+      );
+      // timelineSplitRatio beibehalten, falls im Original vorhanden
+      if (data.containsKey('timelineSplitRatio')) {
+        sanitized['timelineSplitRatio'] = data['timelineSplitRatio'];
+      }
+      return Playlist.fromMap(sanitized);
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<List<Playlist>> list(String avatarId) async {
     QuerySnapshot<Map<String, dynamic>> qs;
     try {

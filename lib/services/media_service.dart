@@ -10,7 +10,9 @@ class MediaService {
     final qs = await _col(
       avatarId,
     ).orderBy('createdAt', descending: true).get();
-    return qs.docs.map((d) => AvatarMedia.fromMap(d.data())).toList();
+    return qs.docs
+        .map((d) => AvatarMedia.fromMap({'id': d.id, ...d.data()}))
+        .toList();
   }
 
   Future<void> add(String avatarId, AvatarMedia m) async {
