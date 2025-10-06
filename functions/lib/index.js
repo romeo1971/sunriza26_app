@@ -44,7 +44,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
+exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
 require("dotenv/config");
 const functions = __importStar(require("firebase-functions"));
 // admin ist bereits oben initialisiert
@@ -649,5 +649,91 @@ exports.validateRAGSystem = functions
             });
         }
     });
+});
+/**
+ * Kaskadierendes Aufräumen bei Medien-Löschung
+ * - Löscht zugehörige Storage-Thumbs (documents/images/videos/audio)
+ * - Entfernt referenzierende timelineAssets und deren timelineItems in allen Playlists
+ */
+exports.onMediaDeleteCleanup = functions
+    .region('us-central1')
+    .firestore.document('avatars/{avatarId}/media/{mediaId}')
+    .onDelete(async (_snap, context) => {
+    const { avatarId, mediaId } = context.params;
+    const db = admin.firestore();
+    const bucket = admin.storage().bucket();
+    // 1) Storage-Thumbs löschen (alle bekannten Pfade mit Prefix)
+    const prefixes = [
+        `avatars/${avatarId}/documents/thumbs/${mediaId}_`,
+        `avatars/${avatarId}/images/thumbs/${mediaId}_`,
+        `avatars/${avatarId}/videos/thumbs/${mediaId}_`,
+        `avatars/${avatarId}/audio/thumbs/${mediaId}_`,
+    ];
+    try {
+        await Promise.all(prefixes.map(async (prefix) => {
+            const [files] = await bucket.getFiles({ prefix });
+            if (!files || files.length === 0)
+                return;
+            await Promise.all(files.map(async (f) => {
+                try {
+                    await f.delete();
+                }
+                catch (e) {
+                    console.warn('Thumb delete warn:', f.name, e);
+                }
+            }));
+        }));
+    }
+    catch (e) {
+        console.warn('Thumb cleanup warn:', e);
+    }
+    // 2) timelineAssets+timelineItems löschen, die dieses mediaId referenzieren
+    try {
+        const playlistsSnap = await db.collection('avatars').doc(avatarId).collection('playlists').get();
+        for (const p of playlistsSnap.docs) {
+            const assetsRef = p.ref.collection('timelineAssets');
+            const assetsSnap = await assetsRef.where('mediaId', '==', mediaId).get();
+            if (assetsSnap.empty)
+                continue;
+            for (const a of assetsSnap.docs) {
+                // Alle Items, die auf dieses Asset zeigen, entfernen
+                const itemsRef = p.ref.collection('timelineItems');
+                const itemsSnap = await itemsRef.where('assetId', '==', a.id).get();
+                const batch = db.batch();
+                itemsSnap.forEach((it) => batch.delete(it.ref));
+                batch.delete(a.ref);
+                await batch.commit();
+            }
+        }
+    }
+    catch (e) {
+        console.error('timeline cleanup error:', e);
+    }
+});
+/**
+ * Kaskadierendes Aufräumen beim Löschen eines timelineAssets:
+ * - Löscht alle timelineItems, die auf das Asset verweisen
+ */
+exports.onTimelineAssetDelete = functions
+    .region('us-central1')
+    .firestore.document('avatars/{avatarId}/playlists/{playlistId}/timelineAssets/{assetId}')
+    .onDelete(async (_snap, context) => {
+    const { avatarId, playlistId, assetId } = context.params;
+    try {
+        const db = admin.firestore();
+        const itemsRef = db
+            .collection('avatars').doc(avatarId)
+            .collection('playlists').doc(playlistId)
+            .collection('timelineItems');
+        const itemsSnap = await itemsRef.where('assetId', '==', assetId).get();
+        if (itemsSnap.empty)
+            return;
+        const batch = db.batch();
+        itemsSnap.forEach((d) => batch.delete(d.ref));
+        await batch.commit();
+    }
+    catch (e) {
+        console.error('onTimelineAssetDelete cleanup error:', e);
+    }
 });
 //# sourceMappingURL=index.js.map

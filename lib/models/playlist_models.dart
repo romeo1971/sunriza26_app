@@ -127,6 +127,8 @@ class Playlist {
   targeting; // z.B. { gender:'female', matchUserDob:true, activeWithinDays:30 }
   // Priorität bei Kollisionen
   final int? priority;
+  // Timeline UI: Split-Verhältnis links/rechts (0..1)
+  final double? timelineSplitRatio;
 
   const Playlist({
     required this.id,
@@ -142,6 +144,7 @@ class Playlist {
     this.targeting,
     this.priority,
     this.scheduleMode,
+    this.timelineSplitRatio,
   });
 
   factory Playlist.fromMap(Map<String, dynamic> map) {
@@ -149,6 +152,12 @@ class Playlist {
       if (v is num) return v.toInt();
       if (v is String) return int.tryParse(v) ?? 0;
       return 0;
+    }
+
+    double? parseDouble(dynamic v) {
+      if (v is num) return v.toDouble();
+      if (v is String) return double.tryParse(v);
+      return null;
     }
 
     String? parseString(dynamic v) => v is String ? v : null;
@@ -214,6 +223,7 @@ class Playlist {
                 ? int.tryParse(map['priority'] as String)
                 : null),
       scheduleMode: scheduleMode,
+      timelineSplitRatio: parseDouble(map['timelineSplitRatio']),
     );
   }
 
@@ -234,6 +244,7 @@ class Playlist {
       if (targeting != null) 'targeting': targeting,
       if (priority != null) 'priority': priority,
       if (scheduleMode != null) 'scheduleMode': scheduleMode,
+      if (timelineSplitRatio != null) 'timelineSplitRatio': timelineSplitRatio,
     };
   }
 }

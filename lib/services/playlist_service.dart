@@ -355,6 +355,18 @@ class PlaylistService {
     await _col(p.avatarId).doc(p.id).set(sanitized, SetOptions(merge: false));
   }
 
+  Future<void> setTimelineSplitRatio(
+    String avatarId,
+    String playlistId,
+    double ratio,
+  ) async {
+    final r = ratio.clamp(0.1, 0.9);
+    await _col(avatarId).doc(playlistId).set({
+      'timelineSplitRatio': (r as num).toDouble(),
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+    }, SetOptions(merge: true));
+  }
+
   // Hilfsfunktion: Prüfen, ob Playlist jetzt aktiv ist
   bool isActiveNow(Playlist p, DateTime now) {
     final weekday = now.weekday; // 1=Mo .. 7=So
@@ -395,6 +407,87 @@ class PlaylistService {
 
   Future<void> delete(String avatarId, String id) async {
     await _col(avatarId).doc(id).delete();
+  }
+
+  // --- Timeline Assets / Items ---
+  CollectionReference<Map<String, dynamic>> _assetsCol(
+    String avatarId,
+    String playlistId,
+  ) => _fs
+      .collection('avatars')
+      .doc(avatarId)
+      .collection('playlists')
+      .doc(playlistId)
+      .collection('timelineAssets');
+
+  CollectionReference<Map<String, dynamic>> _tItemsCol(
+    String avatarId,
+    String playlistId,
+  ) => _fs
+      .collection('avatars')
+      .doc(avatarId)
+      .collection('playlists')
+      .doc(playlistId)
+      .collection('timelineItems');
+
+  Future<List<Map<String, dynamic>>> listAssets(
+    String avatarId,
+    String playlistId,
+  ) async {
+    final qs = await _assetsCol(avatarId, playlistId).get();
+    return qs.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+  }
+
+  Future<void> setAssets(
+    String avatarId,
+    String playlistId,
+    List<Map<String, dynamic>> assets,
+  ) async {
+    // Ersetzt alle Assets durch übergebene Liste
+    final existing = await _assetsCol(avatarId, playlistId).get();
+    final batch = _fs.batch();
+    for (final d in existing.docs) {
+      batch.delete(d.reference);
+    }
+    for (final a in assets) {
+      final id =
+          a['id'] as String? ?? _assetsCol(avatarId, playlistId).doc().id;
+      batch.set(_assetsCol(avatarId, playlistId).doc(id), a);
+    }
+    await batch.commit();
+  }
+
+  Future<List<Map<String, dynamic>>> listTimelineItems(
+    String avatarId,
+    String playlistId,
+  ) async {
+    final qs = await _tItemsCol(avatarId, playlistId).orderBy('order').get();
+    return qs.docs.map((d) => {'id': d.id, ...d.data()}).toList();
+  }
+
+  Future<void> writeTimelineItems(
+    String avatarId,
+    String playlistId,
+    List<Map<String, dynamic>> items,
+  ) async {
+    // Ersetzt alle Items mit neuer geordneter Liste
+    final existing = await _tItemsCol(avatarId, playlistId).get();
+    final batch = _fs.batch();
+    for (final d in existing.docs) {
+      batch.delete(d.reference);
+    }
+    for (int i = 0; i < items.length; i++) {
+      final it = {...items[i]};
+      it['order'] = i;
+      final id =
+          it['id'] as String? ?? _tItemsCol(avatarId, playlistId).doc().id;
+      batch.set(
+        _tItemsCol(avatarId, playlistId).doc(id),
+        it,
+        SetOptions(merge: true),
+      );
+    }
+    await batch.commit();
   }
 
   // Items

@@ -110,6 +110,28 @@ service cloud.firestore {
     match /avatars/{avatarId}/playlists/{playlistId} {
       allow get, list: if ownsAvatar(avatarId);
       allow create, update, delete: if ownsAvatar(avatarId);
+ 
+      // timelineAssets: Pool der auswählbaren Medien
+      match /timelineAssets/{assetId} {
+        allow get, list: if ownsAvatar(avatarId);
+        allow create: if ownsAvatar(avatarId)
+          // mediaId muss existieren
+          && exists(/databases/$(db)/documents/avatars/$(avatarId)/media/$(request.resource.data.mediaId));
+        allow update: if ownsAvatar(avatarId);
+        allow delete: if ownsAvatar(avatarId);
+      }
+
+      // timelineItems: geordnete Vorkommen in der Timeline
+      match /timelineItems/{itemId} {
+        allow get, list: if ownsAvatar(avatarId);
+        allow create: if ownsAvatar(avatarId)
+          // assetId muss existieren
+          && exists(/databases/$(db)/documents/avatars/$(avatarId)/playlists/$(playlistId)/timelineAssets/$(request.resource.data.assetId));
+        // assetId darf sich nicht ändern
+        allow update: if ownsAvatar(avatarId)
+          && request.resource.data.assetId == resource.data.assetId;
+        allow delete: if ownsAvatar(avatarId);
+      }
     }
 
     // Playlist-Items

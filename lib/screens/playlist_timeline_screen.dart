@@ -6,26 +6,32 @@ import '../services/media_service.dart';
 import '../services/playlist_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
+import 'playlist_media_assets_screen.dart';
 
-class PlaylistMediaScreen extends StatefulWidget {
+class PlaylistTimelineScreen extends StatefulWidget {
   final Playlist playlist;
-  const PlaylistMediaScreen({super.key, required this.playlist});
+  const PlaylistTimelineScreen({super.key, required this.playlist});
 
   @override
-  State<PlaylistMediaScreen> createState() => _PlaylistMediaScreenState();
+  State<PlaylistTimelineScreen> createState() => _PlaylistTimelineScreenState();
 }
 
-class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
+class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   String _tab = 'images'; // images|videos|documents|audio
   bool _portrait = true;
   final _mediaSvc = MediaService();
   final _playlistSvc = PlaylistService();
   List<AvatarMedia> _allMedia = [];
   final List<AvatarMedia> _timeline = [];
+  final List<AvatarMedia> _assets = []; // rechte Seite: Timeline-Assets
+  double _splitRatio = 0.38; // Anteil der linken Spalte (0..1)
+  static const double _minPaneWidth = 240.0;
   bool _showSearch = false;
   String _searchTerm = '';
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _intervalCtl = TextEditingController();
+  bool _timelineHover = false;
+  bool _resizerHover = false;
 
   @override
   void initState() {
@@ -186,7 +192,40 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
   Future<void> _load() async {
     try {
       final list = await _mediaSvc.list(widget.playlist.avatarId);
-      setState(() => _allMedia = list);
+      _allMedia = list;
+      // gespeichertes Split-Verhältnis anwenden, falls vorhanden
+      if (widget.playlist.timelineSplitRatio != null) {
+        _splitRatio = widget.playlist.timelineSplitRatio!.clamp(0.1, 0.9);
+      }
+      // Assets + Items laden
+      final assets = await _playlistSvc.listAssets(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+      );
+      final items = await _playlistSvc.listTimelineItems(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+      );
+      // Asset-Resolution: wir nehmen als Asset-ID die media.id (gleiches id-Feld)
+      final mediaById = {for (final m in _allMedia) m.id: m};
+      _assets
+        ..clear()
+        ..addAll(
+          assets.map((a) {
+            final mid = (a['mediaId'] as String?) ?? (a['id'] as String?);
+            final m = (mid != null) ? mediaById[mid] : null;
+            return m;
+          }).whereType<AvatarMedia>(),
+        );
+      _timeline
+        ..clear()
+        ..addAll(
+          items.map((it) {
+            final aid = it['assetId'] as String?;
+            return (aid != null) ? mediaById[aid] : null;
+          }).whereType<AvatarMedia>(),
+        );
+      setState(() {});
     } catch (_) {}
   }
 
@@ -288,7 +327,7 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Text(
-                            'Intervall:',
+                            'Zeit-Intervall:',
                             style: TextStyle(fontSize: 12),
                           ),
                           const SizedBox(width: 8),
@@ -351,199 +390,101 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
             ),
           ),
 
-          // Navi im Stil der Media-Galerie (unter dem Header)
-          _buildTopNavBar(),
+          // (entfernt) Galerie-Navi – gehört nur in den Assets-Screen
           const SizedBox(height: 8),
 
-          // Kombinierter Container: FullWidth-Header, darunter links Timeline, rechts Medien
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.white24),
-                ),
-                child: Column(
+          // Call-to-Action: Medien hinzufügen (öffnet Asset-Auswahl)
+          InkWell(
+            onTap: _openAssetsPicker,
+            child: Container(
+              height: 44,
+              color: Colors.grey.shade900,
+              child: const Center(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    // FullWidth Header mit nur einem Titel (Tab)
-                    Container(
-                      height: 44,
-                      alignment: Alignment.centerLeft,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: const BoxDecoration(
-                        color: Colors.black,
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(12),
-                          topRight: Radius.circular(12),
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(
-                            _tab == 'images'
-                                ? 'Bilder'
-                                : _tab == 'videos'
-                                ? 'Videos'
-                                : _tab == 'documents'
-                                ? 'Dokumente'
-                                : 'Audio',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                          ),
-                          const Spacer(),
-                          SizedBox(
-                            height: 32,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxWidth: 185,
-                                minWidth: 185,
-                              ),
-                              child: CustomTextField(
-                                label: 'Suche nach Medien...',
-                                controller: _searchController,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white,
-                                ),
-                                prefixIcon: const Padding(
-                                  padding: EdgeInsets.only(left: 6),
-                                  child: Icon(
-                                    Icons.search,
-                                    color: Colors.white70,
-                                    size: 18,
-                                  ),
-                                ),
-                                prefixIconConstraints: const BoxConstraints(
-                                  minWidth: 24,
-                                  maxWidth: 28,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 10,
-                                ),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _searchTerm = value.toLowerCase();
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          // Timeline links
-                          Expanded(
-                            flex: 1,
-                            child: Container(
-                              decoration: const BoxDecoration(
-                                borderRadius: BorderRadius.only(
-                                  bottomLeft: Radius.circular(12),
-                                ),
-                              ),
-                              child: DragTarget<AvatarMedia>(
-                                builder: (context, cand, rej) {
-                                  return Container(
-                                    width: double.infinity,
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                          const Color(0xFFE91E63).withOpacity(
-                                            cand.isNotEmpty ? 0.4 : 0.3,
-                                          ),
-                                          AppColors.lightBlue.withOpacity(
-                                            cand.isNotEmpty ? 0.4 : 0.3,
-                                          ),
-                                        ],
-                                      ),
-                                      borderRadius: const BorderRadius.only(
-                                        bottomLeft: Radius.circular(12),
-                                      ),
-                                    ),
-                                    child: _timeline.isEmpty
-                                        ? const Center(
-                                            child: Text(
-                                              'Medien per Drag & Drop Hier her',
-                                              textAlign: TextAlign.center,
-                                              style: TextStyle(
-                                                color: Colors.white60,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          )
-                                        : ReorderableListView(
-                                            onReorder: (oldIndex, newIndex) {
-                                              if (newIndex > oldIndex)
-                                                newIndex -= 1;
-                                              final it = _timeline.removeAt(
-                                                oldIndex,
-                                              );
-                                              _timeline.insert(newIndex, it);
-                                              setState(() {});
-                                            },
-                                            children: [
-                                              for (
-                                                int i = 0;
-                                                i < _timeline.length;
-                                                i++
-                                              )
-                                                ListTile(
-                                                  key: ValueKey(
-                                                    _timeline[i].id,
-                                                  ),
-                                                  leading: _buildThumb(
-                                                    _timeline[i],
-                                                    size: 40,
-                                                  ),
-                                                  title: Text(
-                                                    _timeline[i]
-                                                            .originalFileName ??
-                                                        _timeline[i].url
-                                                            .split('/')
-                                                            .last,
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                  trailing: const Icon(
-                                                    Icons.drag_handle,
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                  );
-                                },
-                                onAccept: (m) =>
-                                    setState(() => _timeline.add(m)),
-                              ),
-                            ),
-                          ),
-                          // Medienliste rechts
-                          Expanded(
-                            flex: 2,
-                            child: Container(
-                              decoration: const BoxDecoration(
-                                borderRadius: BorderRadius.only(
-                                  bottomRight: Radius.circular(12),
-                                ),
-                              ),
-                              padding: const EdgeInsets.all(16),
-                              child: _buildMediaGrid(),
-                            ),
-                          ),
-                        ],
-                      ),
+                    Icon(Icons.add, color: Colors.white, size: 22),
+                    SizedBox(width: 8),
+                    Text(
+                      'Medien hinzufügen',
+                      style: TextStyle(color: Colors.white),
                     ),
                   ],
                 ),
+              ),
+            ),
+          ),
+
+          // Kombinierter Container: FullWidth-Header, darunter links Timeline, rechts Assets mit Resizer
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                // keine Border unten um den Split-Container
+              ),
+              child: Column(
+                children: [
+                  // Kein innerer Header/Label mehr – direkt die Split-Ansicht
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, cons) {
+                        final totalW = cons.maxWidth;
+                        const double resizerW = 14.0;
+                        // verfügbare Breite (ohne Resizer)
+                        final available = (totalW - resizerW).clamp(
+                          0.0,
+                          double.infinity,
+                        );
+                        // konstante Mindestbreite je Pane für maximale Beweglichkeit
+                        const double minPane = 32.0;
+                        if (available <= 2 * minPane) {
+                          // zu schmal: mittig teilen
+                          final leftW = available / 2;
+                          return Row(
+                            children: [
+                              SizedBox(
+                                width: leftW,
+                                child: _buildTimelinePane(),
+                              ),
+                              _buildResizer(totalW, leftW, resizerW),
+                              Expanded(child: _buildAssetsPane()),
+                            ],
+                          );
+                        }
+                        final double minLeft = minPane;
+                        final double maxLeft = (available - minPane).clamp(
+                          minLeft,
+                          available,
+                        );
+                        // leftW aus Ratio, aber relativ zu available rechnen
+                        double leftW = (_splitRatio * available).clamp(
+                          minLeft,
+                          maxLeft,
+                        );
+                        return Row(
+                          children: [
+                            // Timeline links
+                            SizedBox(width: leftW, child: _buildTimelinePane()),
+                            // Resizer
+                            _buildResizer(totalW, leftW, resizerW),
+                            // Assets rechts
+                            Expanded(
+                              child: Container(
+                                decoration: const BoxDecoration(
+                                  borderRadius: BorderRadius.only(
+                                    bottomRight: Radius.circular(12),
+                                  ),
+                                ),
+                                padding: const EdgeInsets.all(16),
+                                child: _buildAssetsGrid(),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -635,54 +576,250 @@ class _PlaylistMediaScreenState extends State<PlaylistMediaScreen> {
   }
 
   Future<void> _saveTimeline() async {
-    // Persistiere Reihenfolge: existierende Items ersetzen
-    // 1) Liste vorhandener Items laden
-    final existing = await _playlistSvc.listItems(
+    // 1) Assets in Firestore spiegeln (id = media.id)
+    final assetsDocs = _assets
+        .map(
+          (m) => {
+            'id': m.id,
+            'mediaId': m.id,
+            'thumbUrl': m.thumbUrl ?? m.url,
+            'aspectRatio': m.aspectRatio,
+            'type': m.type.name,
+            'createdAt': DateTime.now().millisecondsSinceEpoch,
+          },
+        )
+        .toList();
+    await _playlistSvc.setAssets(
       widget.playlist.avatarId,
       widget.playlist.id,
+      assetsDocs,
     );
-    // 2) Vorhandene Items löschen
-    for (final it in existing) {
-      await _playlistSvc.deleteItem(
-        widget.playlist.avatarId,
-        widget.playlist.id,
-        it.id,
-      );
+
+    // 2) Timeline-Items (assetId-Referenzen) in Reihenfolge schreiben
+    final itemDocs = <Map<String, dynamic>>[];
+    for (final m in _timeline) {
+      itemDocs.add({'assetId': m.id});
     }
-    // 3) Neue Reihenfolge schreiben
-    for (int i = 0; i < _timeline.length; i++) {
-      await _playlistSvc.addItem(
-        widget.playlist.avatarId,
-        widget.playlist.id,
-        _timeline[i].id,
-        order: i,
-      );
-    }
-    // 4) Intervall speichern
-    final sec =
-        int.tryParse(_intervalCtl.text.trim()) ?? widget.playlist.showAfterSec;
-    await _playlistSvc.update(
-      Playlist(
-        id: widget.playlist.id,
-        avatarId: widget.playlist.avatarId,
-        name: widget.playlist.name,
-        showAfterSec: sec,
-        highlightTag: widget.playlist.highlightTag,
-        coverImageUrl: widget.playlist.coverImageUrl,
-        weeklySchedules: widget.playlist.weeklySchedules,
-        specialSchedules: widget.playlist.specialSchedules,
-        createdAt: widget.playlist.createdAt,
-        updatedAt: DateTime.now().millisecondsSinceEpoch,
-        targeting: widget.playlist.targeting,
-        priority: widget.playlist.priority,
-        scheduleMode: widget.playlist.scheduleMode,
-      ),
+    await _playlistSvc.writeTimelineItems(
+      widget.playlist.avatarId,
+      widget.playlist.id,
+      itemDocs,
     );
     if (mounted) {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Timeline gespeichert')));
     }
+  }
+
+  Widget _buildAssetsGrid() {
+    if (_assets.isEmpty) {
+      return const Center(
+        child: Text(
+          'Keine Assets ausgewählt',
+          style: TextStyle(color: Colors.white60),
+        ),
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, cons) {
+        final crossAxis = (cons.maxWidth / 180).floor().clamp(1, 6);
+        return GridView.builder(
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxis,
+            mainAxisSpacing: 12,
+            crossAxisSpacing: 12,
+            childAspectRatio: 1,
+          ),
+          itemCount: _assets.length,
+          itemBuilder: (context, i) {
+            final m = _assets[i];
+            return LongPressDraggable<AvatarMedia>(
+              data: m,
+              feedback: Material(
+                color: Colors.transparent,
+                child: SizedBox(width: 100, child: _buildThumb(m)),
+              ),
+              child: _buildThumbCard(m),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openAssetsPicker() async {
+    final result = await Navigator.push<List<AvatarMedia>>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlaylistMediaAssetsScreen(
+          avatarId: widget.playlist.avatarId,
+          preselected: _assets,
+        ),
+      ),
+    );
+    if (result != null) {
+      _assets
+        ..clear()
+        ..addAll(result);
+      // Nach Auswahl speichern wir die Assets sofort (Pool)
+      final docs = _assets
+          .map(
+            (m) => {
+              'id': m.id,
+              'mediaId': m.id,
+              'thumbUrl': m.thumbUrl ?? m.url,
+              'aspectRatio': m.aspectRatio,
+              'type': m.type.name,
+              'createdAt': DateTime.now().millisecondsSinceEpoch,
+            },
+          )
+          .toList();
+      await _playlistSvc.setAssets(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+        docs,
+      );
+      if (mounted) setState(() {});
+    }
+  }
+
+  Widget _buildTimelinePane() {
+    return Container(
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(12)),
+      ),
+      child: DragTarget<AvatarMedia>(
+        builder: (context, cand, rej) {
+          return AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            width: double.infinity,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  const Color(0xFFE91E63).withOpacity(
+                    (_timelineHover || cand.isNotEmpty) ? 0.55 : 0.3,
+                  ),
+                  AppColors.lightBlue.withOpacity(
+                    (_timelineHover || cand.isNotEmpty) ? 0.55 : 0.3,
+                  ),
+                ],
+              ),
+              borderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(12),
+              ),
+              boxShadow: (_timelineHover || cand.isNotEmpty)
+                  ? [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 12,
+                        spreadRadius: 1,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: _timeline.isEmpty
+                ? const Center(
+                    child: Text(
+                      'Medien per Drag & Drop Hier her',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
+                    ),
+                  )
+                : ReorderableListView(
+                    onReorder: (oldIndex, newIndex) async {
+                      if (newIndex > oldIndex) newIndex -= 1;
+                      final it = _timeline.removeAt(oldIndex);
+                      _timeline.insert(newIndex, it);
+                      setState(() {});
+                      final itemDocs = <Map<String, dynamic>>[];
+                      for (final m in _timeline) {
+                        itemDocs.add({'assetId': m.id});
+                      }
+                      await _playlistSvc.writeTimelineItems(
+                        widget.playlist.avatarId,
+                        widget.playlist.id,
+                        itemDocs,
+                      );
+                    },
+                    children: [
+                      for (int i = 0; i < _timeline.length; i++)
+                        ListTile(
+                          key: ValueKey(_timeline[i].id),
+                          leading: _buildThumb(_timeline[i], size: 40),
+                          title: Text(
+                            _timeline[i].originalFileName ??
+                                _timeline[i].url.split('/').last,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: const Icon(Icons.drag_handle),
+                        ),
+                    ],
+                  ),
+          );
+        },
+        onWillAccept: (m) {
+          setState(() => _timelineHover = true);
+          return true;
+        },
+        onLeave: (m) => setState(() => _timelineHover = false),
+        onAccept: (m) => setState(() => _timeline.add(m)),
+      ),
+    );
+  }
+
+  Widget _buildAssetsPane() {
+    return Container(
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.only(bottomRight: Radius.circular(12)),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: _buildAssetsGrid(),
+    );
+  }
+
+  Widget _buildResizer(double totalW, double leftW, double resizerW) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeColumn,
+      onEnter: (_) => setState(() => _resizerHover = true),
+      onExit: (_) => setState(() => _resizerHover = false),
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onHorizontalDragUpdate: (d) {
+          setState(() {
+            final available2 = (totalW - resizerW).clamp(0.0, double.infinity);
+            const double minPane2 = 32.0;
+            if (available2 <= 2 * minPane2) return;
+            final double newLeft = (leftW + d.delta.dx).clamp(
+              minPane2,
+              available2 - minPane2,
+            );
+            _splitRatio = available2 > 0 ? (newLeft / available2) : 0.5;
+          });
+        },
+        onHorizontalDragEnd: (_) async {
+          await _playlistSvc.setTimelineSplitRatio(
+            widget.playlist.avatarId,
+            widget.playlist.id,
+            _splitRatio,
+          );
+        },
+        child: Container(
+          width: resizerW,
+          color: _resizerHover ? Colors.white10 : Colors.transparent,
+          child: Center(
+            child: Container(
+              width: _resizerHover ? 3 : 2,
+              height: 28,
+              color: _resizerHover ? Colors.white54 : Colors.white24,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

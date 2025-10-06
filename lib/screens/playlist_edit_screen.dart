@@ -12,7 +12,7 @@ import '../models/media_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_dropdown.dart';
-import 'playlist_media_screen.dart';
+import 'playlist_timeline_screen.dart';
 import 'package:intl/intl.dart';
 // removed provider/language_service dependency from this screen
 
@@ -839,7 +839,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                             await Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (_) => PlaylistMediaScreen(
+                                builder: (_) => PlaylistTimelineScreen(
                                   playlist: widget.playlist,
                                 ),
                               ),
