@@ -23,6 +23,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   final _playlistSvc = PlaylistService();
   List<AvatarMedia> _allMedia = [];
   final List<AvatarMedia> _timeline = [];
+  final List<Key> _timelineKeys = [];
   final List<AvatarMedia> _assets = []; // rechte Seite: Timeline-Assets
   double _splitRatio = 0.38; // Anteil der linken Spalte (0..1)
   static const double _minPaneWidth = 240.0;
@@ -35,6 +36,16 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   String _assetSort = 'name'; // 'name' | 'type'
   final TextEditingController _assetsSearchCtl = TextEditingController();
   String _assetsSearchTerm = '';
+
+  void _syncKeysLength() {
+    // Halte die Keys-Liste stabil gleich lang wie die Timeline
+    while (_timelineKeys.length < _timeline.length) {
+      _timelineKeys.add(UniqueKey());
+    }
+    while (_timelineKeys.length > _timeline.length) {
+      _timelineKeys.removeLast();
+    }
+  }
 
   @override
   void initState() {
@@ -229,6 +240,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
             return (aid != null) ? mediaById[aid] : null;
           }).whereType<AvatarMedia>(),
         );
+      _timelineKeys
+        ..clear()
+        ..addAll(List.generate(_timeline.length, (_) => UniqueKey()));
       setState(() {});
     } catch (_) {}
   }
@@ -420,13 +434,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                 ),
                 const Spacer(),
                 if (_assets.isNotEmpty)
-                  SizedBox(
-                    height: 32,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(
-                        minWidth: 180,
-                        maxWidth: 220,
-                      ),
+                  Flexible(
+                    child: SizedBox(
+                      height: 32,
                       child: TextField(
                         controller: _assetsSearchCtl,
                         onChanged: (v) =>
@@ -663,15 +673,23 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     for (final m in _timeline) {
       itemDocs.add({'assetId': m.id});
     }
-    await _playlistSvc.writeTimelineItems(
-      widget.playlist.avatarId,
-      widget.playlist.id,
-      itemDocs,
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Timeline gespeichert')));
+    try {
+      await _playlistSvc.writeTimelineItems(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+        itemDocs,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Timeline gespeichert')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Speichern der Timeline: $e')),
+        );
+      }
     }
   }
 
@@ -688,12 +706,20 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
           },
         )
         .toList();
-    await _playlistSvc.setAssets(
-      widget.playlist.avatarId,
-      widget.playlist.id,
-      docs,
-    );
-    await _load();
+    try {
+      await _playlistSvc.setAssets(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+        docs,
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Speichern der Assets: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _persistTimelineItems() async {
@@ -701,11 +727,13 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     for (final m in _timeline) {
       itemDocs.add({'assetId': m.id});
     }
-    await _playlistSvc.writeTimelineItems(
-      widget.playlist.avatarId,
-      widget.playlist.id,
-      itemDocs,
-    );
+    try {
+      await _playlistSvc.writeTimelineItems(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+        itemDocs,
+      );
+    } catch (_) {}
   }
 
   Widget _buildAssetsGrid() {
@@ -758,7 +786,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     }
     return LayoutBuilder(
       builder: (context, cons) {
-        final crossAxis = (cons.maxWidth / 180).floor().clamp(1, 6);
+        final crossAxis = (cons.maxWidth / 120).floor().clamp(2, 10);
         return GridView.builder(
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxis,
@@ -778,7 +806,10 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
               ),
               child: GestureDetector(
                 onTap: () async {
-                  setState(() => _timeline.add(m));
+                  setState(() {
+                    _timeline.add(m);
+                    _timelineKeys.add(UniqueKey());
+                  });
                   await _persistTimelineItems();
                 },
                 child: Stack(
@@ -858,9 +889,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
       ),
     );
     if (result != null) {
-      _assets
-        ..clear()
-        ..addAll(result);
+      setState(() {
+        _assets
+          ..clear()
+          ..addAll(result);
+      });
       // Nach Auswahl speichern wir die Assets sofort (Pool)
       final docs = _assets
           .map(
@@ -874,11 +907,19 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
             },
           )
           .toList();
-      await _playlistSvc.setAssets(
-        widget.playlist.avatarId,
-        widget.playlist.id,
-        docs,
-      );
+      try {
+        await _playlistSvc.setAssets(
+          widget.playlist.avatarId,
+          widget.playlist.id,
+          docs,
+        );
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Fehler beim Speichern der Assets: $e')),
+          );
+        }
+      }
       await _load();
     }
   }
@@ -929,51 +970,62 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                     ),
                   )
                 : ReorderableListView(
+                    buildDefaultDragHandles: true,
+                    proxyDecorator: (child, index, animation) => child,
                     onReorder: (oldIndex, newIndex) async {
                       if (newIndex > oldIndex) newIndex -= 1;
                       final it = _timeline.removeAt(oldIndex);
+                      final k = _timelineKeys.removeAt(oldIndex);
                       _timeline.insert(newIndex, it);
-                      setState(() {});
+                      _timelineKeys.insert(newIndex, k);
+                      setState(_syncKeysLength);
                       await _persistTimelineItems();
                     },
                     children: [
                       for (int i = 0; i < _timeline.length; i++)
-                        ListTile(
-                          key: ValueKey(_timeline[i].id),
-                          leading: _buildThumb(_timeline[i], size: 40),
-                          title: Text(
-                            _timeline[i].originalFileName ??
-                                _timeline[i].url.split('/').last,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          trailing: PopupMenuButton<String>(
-                            icon: const Icon(
-                              Icons.more_vert,
-                              color: Colors.white70,
+                        Material(
+                          key: _timelineKeys[i],
+                          color: Colors.transparent,
+                          child: ListTile(
+                            leading: _buildThumb(_timeline[i], size: 40),
+                            title: Text(
+                              _timeline[i].originalFileName ??
+                                  _timeline[i].url.split('/').last,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            onSelected: (v) async {
-                              if (v == 'dup') {
-                                setState(() {
-                                  _timeline.insert(i + 1, _timeline[i]);
-                                });
-                                await _persistTimelineItems();
-                              } else if (v == 'del') {
-                                setState(() {
-                                  _timeline.removeAt(i);
-                                });
-                                await _persistTimelineItems();
-                              }
-                            },
-                            itemBuilder: (ctx) => [
-                              const PopupMenuItem<String>(
-                                value: 'dup',
-                                child: Text('Duplizieren'),
+                            trailing: PopupMenuButton<String>(
+                              icon: const Icon(
+                                Icons.more_vert,
+                                color: Colors.white70,
                               ),
-                              const PopupMenuItem<String>(
-                                value: 'del',
-                                child: Text('Aus Timeline entfernen'),
-                              ),
-                            ],
+                              onSelected: (v) async {
+                                if (v == 'dup') {
+                                  setState(() {
+                                    _timeline.insert(i + 1, _timeline[i]);
+                                    _timelineKeys.insert(i + 1, UniqueKey());
+                                    _syncKeysLength();
+                                  });
+                                  await _persistTimelineItems();
+                                } else if (v == 'del') {
+                                  setState(() {
+                                    _timeline.removeAt(i);
+                                    _timelineKeys.removeAt(i);
+                                    _syncKeysLength();
+                                  });
+                                  await _persistTimelineItems();
+                                }
+                              },
+                              itemBuilder: (ctx) => [
+                                const PopupMenuItem<String>(
+                                  value: 'dup',
+                                  child: Text('Duplizieren'),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: 'del',
+                                  child: Text('Aus Timeline entfernen'),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                     ],
@@ -985,7 +1037,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
           return true;
         },
         onLeave: (m) => setState(() => _timelineHover = false),
-        onAccept: (m) => setState(() => _timeline.add(m)),
+        onAccept: (m) => setState(() {
+          _timeline.add(m);
+          _timelineKeys.add(UniqueKey());
+          _syncKeysLength();
+        }),
       ),
     );
   }

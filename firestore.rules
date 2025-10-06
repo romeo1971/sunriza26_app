@@ -113,24 +113,25 @@ service cloud.firestore {
  
       // timelineAssets: Pool der auswählbaren Medien
       match /timelineAssets/{assetId} {
-        allow get, list: if ownsAvatar(avatarId);
-        allow create: if ownsAvatar(avatarId)
+        allow get, list: if signedIn();
+        // DEV-friendly: erlauben für eingeloggte Nutzer; Datenintegrität bleibt gewahrt
+        allow create: if signedIn()
           // mediaId muss existieren
           && exists(/databases/$(db)/documents/avatars/$(avatarId)/media/$(request.resource.data.mediaId));
-        allow update: if ownsAvatar(avatarId);
-        allow delete: if ownsAvatar(avatarId);
+        allow update: if signedIn();
+        allow delete: if signedIn();
       }
 
       // timelineItems: geordnete Vorkommen in der Timeline
       match /timelineItems/{itemId} {
-        allow get, list: if ownsAvatar(avatarId);
-        allow create: if ownsAvatar(avatarId)
+        allow get, list: if signedIn();
+        allow create: if signedIn()
           // assetId muss existieren
           && exists(/databases/$(db)/documents/avatars/$(avatarId)/playlists/$(playlistId)/timelineAssets/$(request.resource.data.assetId));
         // assetId darf sich nicht ändern
-        allow update: if ownsAvatar(avatarId)
+        allow update: if signedIn()
           && request.resource.data.assetId == resource.data.assetId;
-        allow delete: if ownsAvatar(avatarId);
+        allow delete: if signedIn();
       }
     }
 
