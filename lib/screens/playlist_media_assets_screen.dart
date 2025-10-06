@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:video_player/video_player.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import '../models/media_models.dart';
 import '../services/media_service.dart';
+import '../services/playlist_service.dart';
 import '../theme/app_theme.dart';
 
 class PlaylistMediaAssetsScreen extends StatefulWidget {
   final String avatarId;
   final List<AvatarMedia> preselected;
+  final String? playlistId; // optional: für Bereinigung
   const PlaylistMediaAssetsScreen({
     super.key,
     required this.avatarId,
     this.preselected = const [],
+    this.playlistId,
   });
 
   @override
@@ -19,12 +24,14 @@ class PlaylistMediaAssetsScreen extends StatefulWidget {
 
 class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
   final _mediaSvc = MediaService();
+  final _playlistSvc = PlaylistService();
   List<AvatarMedia> _all = [];
   final List<String> _selected = [];
   String _tab = 'images';
   bool _portrait = true;
   final TextEditingController _search = TextEditingController();
   String _term = '';
+  final Map<String, VideoPlayerController> _videoCtrls = {};
 
   @override
   void initState() {
@@ -35,7 +42,26 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
     );
   }
 
+  @override
+  void dispose() {
+    for (final c in _videoCtrls.values) {
+      c.dispose();
+    }
+    _videoCtrls.clear();
+    _search.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
+    // Optional: Inkonsistenzen bereinigen (Assets ohne Media)
+    if (widget.playlistId != null) {
+      try {
+        await _playlistSvc.pruneTimelineData(
+          widget.avatarId,
+          widget.playlistId!,
+        );
+      } catch (_) {}
+    }
     final list = await _mediaSvc.list(widget.avatarId);
     setState(() {
       _all = list;
@@ -62,73 +88,82 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
           ),
         ],
         bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(35),
-          child: SizedBox(
-            height: 35,
-            child: Row(
-              children: [
-                _tabBtn('images', Icons.image_outlined),
-                _tabBtn('videos', Icons.videocam_outlined),
-                _tabBtn('documents', Icons.description_outlined),
-                _tabBtn('audio', Icons.audiotrack),
-                const Spacer(),
-                // Suche rechts, responsive
-                Flexible(
-                  child: SizedBox(
-                    height: 32,
-                    child: TextField(
-                      controller: _search,
-                      style: const TextStyle(fontSize: 12, color: Colors.white),
-                      cursorColor: Colors.white,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        hintText: 'Suche nach Medien...',
-                        hintStyle: TextStyle(
-                          color: Colors.white54,
-                          fontSize: 12,
+          preferredSize: const Size.fromHeight(84),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                color: const Color(0xFF1E1E1E),
+                height: 35,
+                child: Row(
+                  children: [
+                    _tabBtn('images', Icons.image_outlined),
+                    _tabBtn('videos', Icons.videocam_outlined),
+                    _tabBtn('documents', Icons.description_outlined),
+                    _tabBtn('audio', Icons.audiotrack),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () => setState(() => _portrait = !_portrait),
+                      child: Icon(
+                        _portrait
+                            ? Icons.stay_primary_portrait
+                            : Icons.stay_primary_landscape,
+                        color: Colors.white54,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Suche in separatem Fullwidth-Container
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                alignment: Alignment.center,
+                child: SizedBox(
+                  height: 36,
+                  width: double.infinity,
+                  child: TextField(
+                    controller: _search,
+                    style: const TextStyle(fontSize: 12, color: Colors.white),
+                    cursorColor: Colors.white,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      hintText: 'Suche nach Medien...',
+                      hintStyle: TextStyle(color: Colors.white54, fontSize: 12),
+                      prefixIcon: Padding(
+                        padding: EdgeInsets.only(left: 6),
+                        child: Icon(
+                          Icons.search,
+                          color: Colors.white70,
+                          size: 18,
                         ),
-                        prefixIcon: Padding(
-                          padding: EdgeInsets.only(left: 6),
-                          child: Icon(
-                            Icons.search,
-                            color: Colors.white70,
-                            size: 18,
-                          ),
-                        ),
-                        prefixIconConstraints: BoxConstraints(
-                          minWidth: 24,
-                          maxWidth: 28,
-                        ),
-                        filled: true,
-                        fillColor: Color(0x1FFFFFFF),
-                        border: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white24),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white24),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderSide: BorderSide(color: Colors.white24),
-                        ),
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 8,
-                        ),
+                      ),
+                      prefixIconConstraints: BoxConstraints(
+                        minWidth: 24,
+                        maxWidth: 28,
+                      ),
+                      filled: true,
+                      fillColor: Color(0x1FFFFFFF),
+                      border: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white24),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white24),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderSide: BorderSide(color: Colors.white24),
+                      ),
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 10,
                       ),
                     ),
                   ),
                 ),
-                TextButton(
-                  onPressed: () => setState(() => _portrait = !_portrait),
-                  child: Icon(
-                    _portrait
-                        ? Icons.stay_primary_portrait
-                        : Icons.stay_primary_landscape,
-                    color: Colors.white54,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
@@ -201,7 +236,8 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
             crossAxisCount: col,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            childAspectRatio: 1,
+            // Kachelverhältnis wie in media_gallery: Portrait 9:16, Landscape 16:9
+            childAspectRatio: _portrait ? (9 / 16) : (16 / 9),
           ),
           itemCount: items.length,
           itemBuilder: (ctx, i) {
@@ -226,13 +262,187 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
                   ),
                 ),
                 clipBehavior: Clip.hardEdge,
-                child: Image.network(m.thumbUrl ?? m.url, fit: BoxFit.cover),
+                child: _buildMediaCard(m),
               ),
             );
           },
         );
       },
     );
+  }
+
+  Widget _buildMediaCard(AvatarMedia m) {
+    switch (m.type) {
+      case AvatarMediaType.image:
+        return Image.network(m.thumbUrl ?? m.url, fit: BoxFit.cover);
+      case AvatarMediaType.video:
+        return FutureBuilder<VideoPlayerController>(
+          future: _videoControllerFor(m.url),
+          builder: (ctx, snap) {
+            if (snap.connectionState != ConnectionState.done || !snap.hasData) {
+              if ((m.thumbUrl ?? '').isNotEmpty) {
+                return Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    Image.network(
+                      m.thumbUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox(),
+                    ),
+                    const Align(
+                      alignment: Alignment.center,
+                      child: Icon(
+                        Icons.play_circle_outline,
+                        size: 36,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
+                );
+              }
+              return const Center(
+                child: Icon(Icons.videocam, color: Colors.white70, size: 32),
+              );
+            }
+            final ctrl = snap.data!;
+            return Stack(
+              fit: StackFit.expand,
+              children: [
+                FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: ctrl.value.size.width,
+                    height: ctrl.value.size.height,
+                    child: VideoPlayer(ctrl),
+                  ),
+                ),
+                const Align(
+                  alignment: Alignment.center,
+                  child: Icon(
+                    Icons.play_circle_outline,
+                    size: 36,
+                    color: Colors.white70,
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      case AvatarMediaType.document:
+        if ((m.thumbUrl ?? '').isNotEmpty) {
+          return Image.network(
+            m.thumbUrl!,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => _docFallback(m),
+          );
+        }
+        // Fallback: Versuche eine Thumb-Datei aus Storage (documents/thumbs/{id}*) zu finden
+        return FutureBuilder<String?>(
+          future: _findDocThumbFromStorage(widget.avatarId, m.id),
+          builder: (ctx, snap) {
+            final url = snap.data;
+            if (url != null && url.isNotEmpty) {
+              return Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _docFallback(m),
+              );
+            }
+            return _docFallback(m);
+          },
+        );
+      case AvatarMediaType.audio:
+        String fmtDuration() {
+          final ms = m.durationMs ?? 0;
+          final s = (ms ~/ 1000) % 60;
+          final min = (ms ~/ 1000) ~/ 60;
+          String two(int n) => n.toString().padLeft(2, '0');
+          return '${two(min)}:${two(s)}';
+        }
+        return Container(
+          color: const Color(0xFF101010),
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.play_arrow, color: Colors.white70),
+                  SizedBox(width: 12),
+                  Icon(Icons.pause, color: Colors.white38),
+                  SizedBox(width: 12),
+                  Icon(Icons.replay, color: Colors.white38),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                (m.originalFileName ?? m.url.split('/').last),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+                style: const TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                fmtDuration(),
+                style: const TextStyle(fontSize: 11, color: Colors.white54),
+              ),
+            ],
+          ),
+        );
+    }
+  }
+
+  Widget _docFallback(AvatarMedia m) {
+    return Container(
+      color: const Color(0xFF101010),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.description, color: Colors.white70, size: 28),
+            const SizedBox(height: 6),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                (m.originalFileName ?? m.url.split('/').last),
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<VideoPlayerController> _videoControllerFor(String url) async {
+    if (_videoCtrls.containsKey(url)) return _videoCtrls[url]!;
+    final c = VideoPlayerController.networkUrl(Uri.parse(url));
+    await c.initialize();
+    c.setVolume(0);
+    _videoCtrls[url] = c;
+    return c;
+  }
+
+  Future<String?> _findDocThumbFromStorage(
+    String avatarId,
+    String mediaId,
+  ) async {
+    try {
+      final prefix = 'avatars/$avatarId/documents/thumbs/$mediaId';
+      final bucket = FirebaseStorage.instance.ref();
+      final list = await bucket.child(prefix).listAll();
+      if (list.items.isEmpty) return null;
+      // wähle erstes (oder bestes) Element
+      final ref = list.items.first;
+      return await ref.getDownloadURL();
+    } catch (_) {
+      return null;
+    }
   }
 
   void _save() {

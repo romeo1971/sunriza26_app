@@ -44,7 +44,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
+exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.onMediaCreateSetAvatarImage = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
 require("dotenv/config");
 const functions = __importStar(require("firebase-functions"));
 // admin ist bereits oben initialisiert
@@ -352,6 +352,352 @@ exports.testTTS = functions
 });
 // Produktiver Alias: gleicher Handler wie testTTS, aber unter dem Namen "tts"
 exports.tts = exports.testTTS;
+/**
+ * Storage-Cleaner: Löscht verwaiste Dateien und setzt fehlende thumbUrl für Dokumente
+ * Aufruf: https://<region>-<project>.cloudfunctions.net/cleanStorageAndFixDocThumbs?avatarId=AVATAR_ID
+ */
+async function runCleanerForAvatar(avatarId) {
+    var _a, _b, _c, _d;
+    const db = admin.firestore();
+    const bucket = admin.storage().bucket();
+    const mediaSnap = await db
+        .collection('avatars')
+        .doc(avatarId)
+        .collection('media')
+        .get();
+    const referencedPaths = new Set();
+    const mediaDocs = [];
+    const extractPath = (url) => {
+        if (!url)
+            return null;
+        try {
+            if (url.startsWith('gs://')) {
+                const u = url.replace('gs://', '');
+                const i = u.indexOf('/');
+                return i >= 0 ? u.substring(i + 1) : null;
+            }
+            const u = new URL(url);
+            if (u.hostname.includes('firebasestorage.googleapis.com')) {
+                const m = u.pathname.match(/\/o\/(.+)$/);
+                if (m && m[1]) {
+                    const p = m[1].split('?')[0];
+                    return decodeURIComponent(p);
+                }
+            }
+        }
+        catch (_) { }
+        return null;
+    };
+    mediaSnap.forEach((d) => {
+        const data = d.data();
+        mediaDocs.push({ id: d.id, type: data.type, url: data.url, thumbUrl: data.thumbUrl });
+        const p1 = extractPath(data.url);
+        const p2 = extractPath(data.thumbUrl);
+        if (p1)
+            referencedPaths.add(p1);
+        if (p2)
+            referencedPaths.add(p2);
+    });
+    // Delete only in allowed media folders
+    const base = `avatars/${avatarId}/`;
+    // SICHER: Lösche nur Thumbs – Originale nie automatisch löschen
+    const allowed = [
+        `${base}images/thumbs/`,
+        `${base}videos/thumbs/`,
+        `${base}documents/thumbs/`,
+        `${base}audio/thumbs/`,
+    ];
+    const [files] = await bucket.getFiles({ prefix: base });
+    let deleted = 0;
+    for (const f of files) {
+        const name = f.name;
+        if (name.endsWith('/'))
+            continue;
+        if (!allowed.some((p) => name.startsWith(p)))
+            continue; // skip non-media folders (e.g. playlists)
+        if (!referencedPaths.has(name)) {
+            try {
+                await f.delete();
+                deleted++;
+            }
+            catch (e) {
+                console.warn('Delete failed for', name, e);
+            }
+        }
+    }
+    // Fix missing document thumbs from existing files
+    let fixedThumbs = 0;
+    for (const m of mediaDocs) {
+        if (m.type !== 'document' || (m.thumbUrl && m.thumbUrl.length > 0))
+            continue;
+        const thumbPrefix = `${base}documents/thumbs/${m.id}`;
+        const [tfs] = await bucket.getFiles({ prefix: thumbPrefix });
+        if (tfs && tfs.length > 0) {
+            let latest = tfs[0];
+            for (const f of tfs) {
+                const a = new Date(((_a = latest.metadata) === null || _a === void 0 ? void 0 : _a.updated) || ((_b = latest.metadata) === null || _b === void 0 ? void 0 : _b.timeCreated) || 0).getTime();
+                const b = new Date(((_c = f.metadata) === null || _c === void 0 ? void 0 : _c.updated) || ((_d = f.metadata) === null || _d === void 0 ? void 0 : _d.timeCreated) || 0).getTime();
+                if (b > a)
+                    latest = f;
+            }
+            try {
+                const [url] = await latest.getSignedUrl({ action: 'read', expires: Date.now() + 365 * 24 * 3600 * 1000 });
+                await db
+                    .collection('avatars').doc(avatarId)
+                    .collection('media').doc(m.id)
+                    .update({ thumbUrl: url, aspectRatio: 9 / 16 });
+                fixedThumbs++;
+            }
+            catch (e) {
+                console.warn('Set thumb failed for', m.id, e);
+            }
+        }
+    }
+    return { deletedFiles: deleted, fixedDocumentThumbs: fixedThumbs, mediaCount: mediaDocs.length };
+}
+exports.cleanStorageAndFixDocThumbs = functions
+    .region('us-central1')
+    .runWith({ timeoutSeconds: 540, memory: '1GB' })
+    .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+        try {
+            const avatarId = (req.query.avatarId || '').trim();
+            if (!avatarId) {
+                res.status(400).json({ error: 'avatarId fehlt' });
+                return;
+            }
+            const out = await runCleanerForAvatar(avatarId);
+            res.status(200).json(out);
+        }
+        catch (e) {
+            console.error('Cleaner error:', e);
+            res.status(500).json({ error: (e === null || e === void 0 ? void 0 : e.message) || 'unknown' });
+        }
+    });
+});
+// Scheduled daily cleanup for all avatars
+exports.scheduledStorageClean = functions
+    .region('us-central1')
+    .pubsub.schedule('30 3 * * 0') // wöchentlich So 03:30 UTC
+    .timeZone('Etc/UTC')
+    .onRun(async () => {
+    const db = admin.firestore();
+    const avatars = await db.collection('avatars').select('id').get();
+    for (const doc of avatars.docs) {
+        try {
+            await runCleanerForAvatar(doc.id);
+            // Re-run prune on playlists referencing this avatar
+            // reserved: playlist-level maintenance can be added here if needed
+        }
+        catch (e) {
+            console.warn('scheduled clean failed for', doc.id, e);
+        }
+    }
+});
+// Manual trigger for all avatars (one-off)
+exports.cleanAllAvatarsNow = functions
+    .region('us-central1')
+    .runWith({ timeoutSeconds: 540, memory: '1GB' })
+    .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+        try {
+            const db = admin.firestore();
+            const avatars = await db.collection('avatars').select('id').get();
+            const results = [];
+            for (const doc of avatars.docs) {
+                const r = await runCleanerForAvatar(doc.id);
+                results.push({ avatarId: doc.id, ...r });
+            }
+            res.status(200).json({ results });
+        }
+        catch (e) {
+            res.status(500).json({ error: (e === null || e === void 0 ? void 0 : e.message) || 'unknown' });
+        }
+    });
+});
+// Backfill: setze fehlende thumbUrl für Bilder/Videos (auf Original-URL) und für Dokumente aus Storage-Thumbs
+async function runBackfillThumbsForAvatar(avatarId) {
+    var _a, _b, _c, _d;
+    const db = admin.firestore();
+    const bucket = admin.storage().bucket();
+    const snap = await db.collection('avatars').doc(avatarId).collection('media').get();
+    let updated = 0;
+    for (const d of snap.docs) {
+        const m = d.data();
+        if (!m)
+            continue;
+        if ((!m.thumbUrl || m.thumbUrl.length === 0)) {
+            if (m.type === 'image' || m.type === 'video') {
+                if (typeof m.url === 'string' && m.url.length > 0) {
+                    await d.ref.update({ thumbUrl: m.url });
+                    updated++;
+                }
+            }
+            else if (m.type === 'document') {
+                const prefix = `avatars/${avatarId}/documents/thumbs/${d.id}`;
+                const [tfs] = await bucket.getFiles({ prefix });
+                if (tfs && tfs.length > 0) {
+                    let latest = tfs[0];
+                    for (const f of tfs) {
+                        const a = new Date(((_a = latest.metadata) === null || _a === void 0 ? void 0 : _a.updated) || ((_b = latest.metadata) === null || _b === void 0 ? void 0 : _b.timeCreated) || 0).getTime();
+                        const b = new Date(((_c = f.metadata) === null || _c === void 0 ? void 0 : _c.updated) || ((_d = f.metadata) === null || _d === void 0 ? void 0 : _d.timeCreated) || 0).getTime();
+                        if (b > a)
+                            latest = f;
+                    }
+                    const [url] = await latest.getSignedUrl({ action: 'read', expires: Date.now() + 365 * 24 * 3600 * 1000 });
+                    await d.ref.update({ thumbUrl: url });
+                    updated++;
+                }
+            }
+        }
+    }
+    return { updatedThumbs: updated, mediaCount: snap.size };
+}
+exports.backfillThumbsAllAvatars = functions
+    .region('us-central1')
+    .runWith({ timeoutSeconds: 540, memory: '1GB' })
+    .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+        try {
+            const db = admin.firestore();
+            const avatars = await db.collection('avatars').select('id').get();
+            const results = [];
+            for (const doc of avatars.docs) {
+                const r = await runBackfillThumbsForAvatar(doc.id);
+                results.push({ avatarId: doc.id, ...r });
+            }
+            res.status(200).json({ results });
+        }
+        catch (e) {
+            res.status(500).json({ error: (e === null || e === void 0 ? void 0 : e.message) || 'unknown' });
+        }
+    });
+});
+exports.scheduledBackfillThumbs = functions
+    .region('us-central1')
+    .pubsub.schedule('15 4 * * 0') // wöchentlich So 04:15 UTC
+    .timeZone('Etc/UTC')
+    .onRun(async () => {
+    const db = admin.firestore();
+    const avatars = await db.collection('avatars').select('id').get();
+    for (const doc of avatars.docs) {
+        try {
+            await runBackfillThumbsForAvatar(doc.id);
+        }
+        catch (_a) { }
+    }
+});
+// Firestore Trigger: Wenn erstes Bild hochgeladen wird, setze es als avatarImageUrl
+exports.onMediaCreateSetAvatarImage = functions
+    .region('us-central1')
+    .firestore.document('avatars/{avatarId}/media/{mediaId}')
+    .onCreate(async (snap, ctx) => {
+    var _a;
+    try {
+        const data = snap.data();
+        const avatarId = ctx.params.avatarId;
+        if (!data || data.type !== 'image')
+            return;
+        const db = admin.firestore();
+        const avatarRef = db.collection('avatars').doc(avatarId);
+        const avatar = await avatarRef.get();
+        const currentUrl = (_a = avatar.data()) === null || _a === void 0 ? void 0 : _a.avatarImageUrl;
+        if (currentUrl && currentUrl.trim().length > 0)
+            return; // bereits gesetzt
+        // Prüfe, ob dies das einzige Bild ist
+        const imgs = await avatarRef.collection('media').where('type', '==', 'image').limit(2).get();
+        if (imgs.size === 1 && imgs.docs[0].id === snap.id) {
+            const url = data.url;
+            if (url && url.length > 0) {
+                await avatarRef.update({ avatarImageUrl: url, updatedAt: Date.now() });
+            }
+        }
+    }
+    catch (e) {
+        console.warn('onMediaCreateSetAvatarImage error', e);
+    }
+});
+// Restore/Set avatar cover images if missing or broken
+exports.restoreAvatarCovers = functions
+    .region('us-central1')
+    .runWith({ timeoutSeconds: 540, memory: '1GB' })
+    .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+        var _a, _b, _c, _d, _e;
+        try {
+            const db = admin.firestore();
+            const bucket = admin.storage().bucket();
+            const avatars = await db.collection('avatars').get();
+            const out = [];
+            for (const doc of avatars.docs) {
+                const data = doc.data();
+                let needsFix = false;
+                const url = data.avatarImageUrl;
+                if (!url || url.trim().length === 0)
+                    needsFix = true;
+                else {
+                    try {
+                        const r = await node_fetch_1.default(url, { method: 'HEAD' });
+                        if (!r.ok)
+                            needsFix = true;
+                    }
+                    catch (_f) {
+                        needsFix = true;
+                    }
+                }
+                if (!needsFix) {
+                    out.push({ id: doc.id, status: 'ok' });
+                    continue;
+                }
+                // 1) Versuche neuestes Bild unter avatars/<id>/images/
+                const prefix = `avatars/${doc.id}/images/`;
+                const [files] = await bucket.getFiles({ prefix });
+                let chosen = null;
+                for (const f of files) {
+                    if (f.name.endsWith('/'))
+                        continue;
+                    if (f.name.includes('/thumbs/'))
+                        continue;
+                    if (!chosen) {
+                        chosen = f;
+                        continue;
+                    }
+                    const a = new Date(((_a = chosen.metadata) === null || _a === void 0 ? void 0 : _a.updated) || ((_b = chosen.metadata) === null || _b === void 0 ? void 0 : _b.timeCreated) || 0).getTime();
+                    const b = new Date(((_c = f.metadata) === null || _c === void 0 ? void 0 : _c.updated) || ((_d = f.metadata) === null || _d === void 0 ? void 0 : _d.timeCreated) || 0).getTime();
+                    if (b > a)
+                        chosen = f;
+                }
+                // 2) Falls nichts gefunden, nimm erstes Bild aus media collection
+                if (!chosen) {
+                    const ms = await db.collection('avatars').doc(doc.id).collection('media').where('type', '==', 'image').limit(1).get();
+                    const m = (_e = ms.docs[0]) === null || _e === void 0 ? void 0 : _e.data();
+                    if (m === null || m === void 0 ? void 0 : m.url) {
+                        await doc.ref.update({ avatarImageUrl: m.url, updatedAt: Date.now() });
+                        out.push({ id: doc.id, status: 'setFromMediaUrl' });
+                        continue;
+                    }
+                }
+                if (chosen) {
+                    try {
+                        const [signed] = await chosen.getSignedUrl({ action: 'read', expires: Date.now() + 365 * 24 * 3600 * 1000 });
+                        await doc.ref.update({ avatarImageUrl: signed, updatedAt: Date.now() });
+                        out.push({ id: doc.id, status: 'setFromStorage', file: chosen.name });
+                    }
+                    catch (e) {
+                        out.push({ id: doc.id, status: 'failedSet', error: e === null || e === void 0 ? void 0 : e.message });
+                    }
+                }
+                else {
+                    out.push({ id: doc.id, status: 'noImageFound' });
+                }
+            }
+            res.status(200).json({ results: out });
+        }
+        catch (e) {
+            res.status(500).json({ error: (e === null || e === void 0 ? void 0 : e.message) || 'unknown' });
+        }
+    });
+});
 /**
  * LLM Router: OpenAI primär (gpt-4o-mini), Gemini Fallback
  * Body: { messages: [{role:'system'|'user'|'assistant', content:string}], maxTokens?, temperature? }

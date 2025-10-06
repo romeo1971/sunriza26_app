@@ -37,6 +37,23 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   final TextEditingController _assetsSearchCtl = TextEditingController();
   String _assetsSearchTerm = '';
 
+  String _displayName(AvatarMedia m) {
+    if ((m.originalFileName ?? '').trim().isNotEmpty)
+      return m.originalFileName!.trim();
+    try {
+      final uri = Uri.parse(m.url);
+      String last = uri.pathSegments.isNotEmpty ? uri.pathSegments.last : m.url;
+      final qIdx = last.indexOf('?');
+      if (qIdx >= 0) last = last.substring(0, qIdx);
+      return Uri.decodeComponent(last).replaceAll('+', ' ');
+    } catch (_) {
+      final raw = m.url.split('/').last;
+      final qIdx = raw.indexOf('?');
+      final cut = qIdx >= 0 ? raw.substring(0, qIdx) : raw;
+      return cut;
+    }
+  }
+
   void _syncKeysLength() {
     // Halte die Keys-Liste stabil gleich lang wie die Timeline
     while (_timelineKeys.length < _timeline.length) {
@@ -639,21 +656,82 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     if (m.type == AvatarMediaType.image) {
       content = Image.network(m.url, fit: BoxFit.cover);
     } else if (m.type == AvatarMediaType.video) {
-      content = const Center(
-        child: Icon(Icons.videocam, color: Colors.white70),
-      );
+      if (m.thumbUrl != null && m.thumbUrl!.isNotEmpty) {
+        content = Image.network(
+          m.thumbUrl!,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) =>
+              const Center(child: Icon(Icons.videocam, color: Colors.white70)),
+        );
+      } else {
+        content = const Center(
+          child: Icon(Icons.videocam, color: Colors.white70),
+        );
+      }
     } else if (m.type == AvatarMediaType.document) {
-      final thumb = m.thumbUrl ?? m.url;
-      content = Image.network(
-        thumb,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) =>
-            const Center(child: Icon(Icons.description, color: Colors.white70)),
-      );
+      if (m.thumbUrl != null && m.thumbUrl!.isNotEmpty) {
+        content = Image.network(
+          m.thumbUrl!,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const Center(
+            child: Icon(Icons.description, color: Colors.white70),
+          ),
+        );
+      } else {
+        content = Container(
+          color: const Color(0xFF101010),
+          child: const Center(
+            child: Icon(Icons.description, color: Colors.white70, size: 28),
+          ),
+        );
+      }
     } else {
-      content = const Center(
-        child: Icon(Icons.audiotrack, color: Colors.white70),
-      );
+      if (size != null) {
+        content = const Center(
+          child: Icon(Icons.audiotrack, color: Colors.white70),
+        );
+      } else {
+        String fmt() {
+          final ms = m.durationMs ?? 0;
+          final s = (ms ~/ 1000) % 60;
+          final min = (ms ~/ 1000) ~/ 60;
+          String two(int n) => n.toString().padLeft(2, '0');
+          return '${two(min)}:${two(s)}';
+        }
+
+        content = Container(
+          color: const Color(0xFF101010),
+          padding: const EdgeInsets.all(10),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  Icon(Icons.play_arrow, color: Colors.white70, size: 20),
+                  SizedBox(width: 12),
+                  Icon(Icons.pause, color: Colors.white38, size: 20),
+                  SizedBox(width: 12),
+                  Icon(Icons.replay, color: Colors.white38, size: 20),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                _displayName(m),
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 12),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                fmt(),
+                style: const TextStyle(fontSize: 11, color: Colors.white54),
+              ),
+            ],
+          ),
+        );
+      }
     }
     // Zeige Medien im eigenen Seitenverhältnis (Portrait/Landscape korrekt),
     // ohne starre Kachelgröße – passt sich der verfügbaren Breite an
@@ -830,7 +908,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                   children: [
                     Tooltip(
                       message:
-                          '${m.originalFileName ?? m.url.split('/').last}\n${m.type.name}  AR:${(m.aspectRatio ?? 0).toStringAsFixed(2)}',
+                          '${_displayName(m)}\n${m.type.name}  AR:${(m.aspectRatio ?? 0).toStringAsFixed(2)}',
                       child: _buildThumbCard(m),
                     ),
                     if (usage > 1)
@@ -925,6 +1003,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
       MaterialPageRoute(
         builder: (_) => PlaylistMediaAssetsScreen(
           avatarId: widget.playlist.avatarId,
+          playlistId: widget.playlist.id,
           preselected: _assets,
         ),
       ),
@@ -1014,6 +1093,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                     buildDefaultDragHandles: true,
                     proxyDecorator: (child, index, animation) => child,
                     onReorder: (oldIndex, newIndex) async {
+                      if (oldIndex < 0 || oldIndex >= _timeline.length) return;
+                      if (newIndex > _timeline.length)
+                        newIndex = _timeline.length;
                       if (newIndex > oldIndex) newIndex -= 1;
                       final it = _timeline.removeAt(oldIndex);
                       final k = _timelineKeys.removeAt(oldIndex);
@@ -1023,7 +1105,19 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                       await _persistTimelineItems();
                     },
                     children: [
-                      for (int i = 0; i < _timeline.length; i++)
+                      // Hard-Sync vor dem Rendern – vermeidet Null/Index-Probleme bei schnellem D&D
+                      ...() {
+                        _syncKeysLength();
+                        return <Widget>[];
+                      }(),
+                      for (
+                        int i = 0;
+                        i <
+                            (_timeline.length <= _timelineKeys.length
+                                ? _timeline.length
+                                : _timelineKeys.length);
+                        i++
+                      )
                         Material(
                           key: _timelineKeys[i],
                           color: Colors.transparent,
@@ -1033,8 +1127,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                             child: ListTile(
                               leading: _buildThumb(_timeline[i], size: 40),
                               title: Text(
-                                _timeline[i].originalFileName ??
-                                    _timeline[i].url.split('/').last,
+                                _displayName(_timeline[i]),
                                 overflow: TextOverflow.ellipsis,
                               ),
                               trailing: PopupMenuButton<String>(

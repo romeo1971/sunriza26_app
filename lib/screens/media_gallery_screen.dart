@@ -472,12 +472,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               children: [
                 const Text(
                   'Globale Preise',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
                     fontSize: 16,
-                height: 1.0,
-              ),
+                    height: 1.0,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 MouseRegion(
@@ -698,53 +698,53 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white24),
-      ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white24),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          children: [
             // Kopfzeile: Icon + Label links, Eye rechts mit GMBC-Farbfüllung
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
-            child: Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
-              children: [
+                children: [
                   Icon(icon, color: Colors.white, size: 18),
-                const SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       label,
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
-          InkResponse(
-            onTap: () => onToggle(!enabled),
-            radius: 18,
-            child: SizedBox(
-              width: 28,
-              height: 28,
-              child: Center(
-                child: enabled
-                    ? ShaderMask(
+                  InkResponse(
+                    onTap: () => onToggle(!enabled),
+                    radius: 18,
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: Center(
+                        child: enabled
+                            ? ShaderMask(
                                 shaderCallback: (bounds) =>
                                     const LinearGradient(
-                          colors: [
-                            Color(0xFFE91E63),
-                            AppColors.lightBlue,
-                            Color(0xFF00E5FF),
-                          ],
-                        ).createShader(bounds),
-                        child: const Icon(
-                          Icons.visibility,
+                                      colors: [
+                                        Color(0xFFE91E63),
+                                        AppColors.lightBlue,
+                                        Color(0xFF00E5FF),
+                                      ],
+                                    ).createShader(bounds),
+                                child: const Icon(
+                                  Icons.visibility,
                                   size: 22,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(
-                        Icons.visibility_off,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.visibility_off,
                                 size: 22,
                                 color: Colors.white54,
                               ),
@@ -810,22 +810,22 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           Text(
                             c.toString(),
                             style: const TextStyle(
-                        color: Colors.white70,
+                              color: Colors.white70,
                               fontSize: 13,
-                      ),
-              ),
+                            ),
+                          ),
                           const SizedBox(width: 2),
                           const Icon(
                             Icons.diamond,
                             size: 12,
                             color: Colors.white,
-            ),
+                          ),
                         ],
                       );
                     },
-          ),
+                  ),
                   // float-left Verhalten: kein Spacer am Ende
-        ],
+                ],
               ),
             ),
           ],
@@ -995,9 +995,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       // Orientierungsfilter: IMMER filtern, nie gemischt (außer Audio)
       if (it.type != AvatarMediaType.audio) {
-        // Für Bilder ohne aspectRatio: tatsächliche Bildgröße ermitteln
-        bool itemIsPortrait = it.isPortrait;
-        bool itemIsLandscape = it.isLandscape;
+        // Für Bilder/Dokumente ohne aspectRatio: nicht ausfiltern (als Portrait behandeln)
+        bool itemIsPortrait =
+            it.isPortrait ||
+            (it.aspectRatio == null && it.type == AvatarMediaType.document);
+        bool itemIsLandscape =
+            it.isLandscape ||
+            (it.aspectRatio == null && it.type == AvatarMediaType.document);
 
         if (it.aspectRatio == null && it.type == AvatarMediaType.image) {
           // Prüfe Cache für bereits ermittelte Aspect Ratios
@@ -1588,19 +1592,19 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           ),
         );
         final url = await task.ref.getDownloadURL();
-          final media = AvatarMedia(
-            id: timestamp.toString(),
-            avatarId: widget.avatarId,
-            type: AvatarMediaType.video,
-            url: url,
-            createdAt: timestamp,
-            aspectRatio: videoAspectRatio,
-            tags: tags,
-          );
-          await _mediaSvc.add(widget.avatarId, media);
-          print(
-            '✅ Video ${i + 1} gespeichert: ID=${media.id}, URL=$url, AspectRatio=$videoAspectRatio',
-          );
+        final media = AvatarMedia(
+          id: timestamp.toString(),
+          avatarId: widget.avatarId,
+          type: AvatarMediaType.video,
+          url: url,
+          createdAt: timestamp,
+          aspectRatio: videoAspectRatio,
+          tags: tags,
+        );
+        await _mediaSvc.add(widget.avatarId, media);
+        print(
+          '✅ Video ${i + 1} gespeichert: ID=${media.id}, URL=$url, AspectRatio=$videoAspectRatio',
+        );
       } catch (e) {
         print('❌ Fehler beim Upload von Video ${i + 1}: $e');
       }
@@ -1877,18 +1881,18 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         );
         final url = await task.ref.getDownloadURL();
 
-          // Firestore speichern
-          final m = AvatarMedia(
-            id: '${timestamp}_$i',
-            avatarId: widget.avatarId,
-            type: AvatarMediaType.audio,
-            url: url,
-            createdAt: timestamp,
-            tags: ['audio', file.name],
-            originalFileName: file.name, // Originaler Dateiname
-          );
-          await _mediaSvc.add(widget.avatarId, m);
-          uploaded++;
+        // Firestore speichern
+        final m = AvatarMedia(
+          id: '${timestamp}_$i',
+          avatarId: widget.avatarId,
+          type: AvatarMediaType.audio,
+          url: url,
+          createdAt: timestamp,
+          tags: ['audio', file.name],
+          originalFileName: file.name, // Originaler Dateiname
+        );
+        await _mediaSvc.add(widget.avatarId, m);
+        uploaded++;
       }
 
       setState(() {
@@ -2096,20 +2100,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                   margin: const EdgeInsets.only(top: 5),
                   child: Container(
-                          color: Colors.white.withValues(alpha: 0.05),
+                    color: Colors.white.withValues(alpha: 0.05),
                     padding: const EdgeInsets.fromLTRB(16, 1, 16, 0),
-                          child: Center(
-                            child: Text(
-                              'Verlinkbare Medien für Deine Playists',
-                              style: const TextStyle(
+                    child: Center(
+                      child: Text(
+                        'Verlinkbare Medien für Deine Playists',
+                        style: const TextStyle(
                           color: Colors.white54,
-                                fontSize: 14,
-                                height: 1.2,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
+                          fontSize: 14,
+                          height: 1.2,
                         ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
                 ),
                 // Tool-Zeile direkt ÜBER den Medien: Upload + Portrait/Landscape (+ optionale Suche rechts)
                 Padding(
@@ -2848,60 +2852,60 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       // Popup öffnen
                       _openMediaPricingDialog(it);
                     },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFFE91E63), // Magenta
-                        AppColors.lightBlue, // Blue
-                        Color(0xFF00E5FF), // Cyan
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white, width: 1),
-                  ),
-                  child: Text(
-                    (() {
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFFE91E63), // Magenta
+                            AppColors.lightBlue, // Blue
+                            Color(0xFF00E5FF), // Cyan
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white, width: 1),
+                      ),
+                      child: Text(
+                        (() {
                           final isFree = it.isFree ?? false;
                           if (isFree) return 'Kostenlos';
 
-                      final typeKey = it.type == AvatarMediaType.image
-                          ? 'image'
+                          final typeKey = it.type == AvatarMediaType.image
+                              ? 'image'
                               : (it.type == AvatarMediaType.video
                                     ? 'video'
                                     : 'document');
-                      final overridePrice = it.price;
-                      final overrideCur = _normalizeCurrencyToSymbol(
-                        it.currency,
-                      );
-                      final gp =
-                          _globalPricing[typeKey] as Map<String, dynamic>?;
-                      final gpEnabled = (gp?['enabled'] as bool?) ?? false;
+                          final overridePrice = it.price;
+                          final overrideCur = _normalizeCurrencyToSymbol(
+                            it.currency,
+                          );
+                          final gp =
+                              _globalPricing[typeKey] as Map<String, dynamic>?;
+                          final gpEnabled = (gp?['enabled'] as bool?) ?? false;
                           final gpPrice =
                               (gp?['price'] as num?)?.toDouble() ?? 0.0;
-                      final gpCur = _normalizeCurrencyToSymbol(
-                        gp?['currency'] as String?,
-                      );
+                          final gpCur = _normalizeCurrencyToSymbol(
+                            gp?['currency'] as String?,
+                          );
 
-                      final effectivePrice =
-                          overridePrice ?? (gpEnabled ? gpPrice : 0.0);
-                      final symbol =
+                          final effectivePrice =
+                              overridePrice ?? (gpEnabled ? gpPrice : 0.0);
+                          final symbol =
                               (overridePrice != null ? overrideCur : gpCur) ==
                                   '\$'
-                          ? '\$'
-                          : '€';
-                      return '$symbol${effectivePrice.toStringAsFixed(2).replaceAll('.', ',')}';
-                    })(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      height: 1.0,
-                      letterSpacing: 0,
+                              ? '\$'
+                              : '€';
+                          return '$symbol${effectivePrice.toStringAsFixed(2).replaceAll('.', ',')}';
+                        })(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          height: 1.0,
+                          letterSpacing: 0,
                         ),
                       ),
                     ),
@@ -3147,7 +3151,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-          'Möchtest du $count ${count == 1 ? 'Medium' : 'Medien'} wirklich löschen?',
+                'Möchtest du $count ${count == 1 ? 'Medium' : 'Medien'} wirklich löschen?',
               ),
               const SizedBox(height: 12),
               SizedBox(
@@ -3592,7 +3596,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           bytes = null;
         }
       } else {
-      final source = await _downloadToTemp(media.url, suffix: '.png');
+        final source = await _downloadToTemp(media.url, suffix: '.png');
         bytes = await source?.readAsBytes();
       }
 
@@ -3882,28 +3886,28 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // Wenn EDITING: Zeige Input-Container mit GMBC-Gradient
     if (isEditing) {
       return Container(
-          height: 40,
-          decoration: const BoxDecoration(
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(7),
-              bottomRight: Radius.circular(7),
-            ),
-            gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [
-                Color(0xFFE91E63), // Magenta
-                AppColors.lightBlue, // Blue
-                Color(0xFF00E5FF), // Cyan
-              ],
-              stops: [0.0, 0.5, 1.0],
-            ),
+        height: 40,
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.only(
+            bottomLeft: Radius.circular(7),
+            bottomRight: Radius.circular(7),
           ),
-          padding: EdgeInsets.zero,
-          child: Row(
-            children: [
+          gradient: LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Color(0xFFE91E63), // Magenta
+              AppColors.lightBlue, // Blue
+              Color(0xFF00E5FF), // Cyan
+            ],
+            stops: [0.0, 0.5, 1.0],
+          ),
+        ),
+        padding: EdgeInsets.zero,
+        child: Row(
+          children: [
             // LINKS: Input-Feld für Preis-Bearbeitung
-              Expanded(child: _buildPriceField(media, isEditing)),
+            Expanded(child: _buildPriceField(media, isEditing)),
             // MITTE: "Zurück zu Global" Button (wenn individueller Preis gesetzt)
             if (media.price != null)
               MouseRegion(
@@ -3954,13 +3958,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     height: 40,
                     alignment: Alignment.center,
                     child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         Icon(Icons.refresh, size: 16, color: Colors.white70),
                         SizedBox(width: 4),
                         Text(
                           'Global',
-                      style: TextStyle(
+                          style: TextStyle(
                             color: Colors.white70,
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
@@ -3976,121 +3980,121 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 // X-Button (Abbrechen)
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () {
-                          // Abbrechen ohne Speichern - alte Werte wiederherstellen
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () {
+                      // Abbrechen ohne Speichern - alte Werte wiederherstellen
                       // Falls kein individueller Preis: Globalen Preis verwenden
                       final gp =
                           _globalPricing['audio'] as Map<String, dynamic>?;
                       final gpPrice = (gp?['price'] as num?)?.toDouble() ?? 0.0;
                       final price = media.price ?? gpPrice;
-                          final priceText = price
-                              .toStringAsFixed(2)
-                              .replaceAll('.', ',');
-                          _priceControllers[media.id]?.text = priceText;
-                          _tempCurrency[media.id] = media.currency ?? '\$';
-                          _editingPriceMediaIds.remove(media.id);
-                          setState(() {});
-                        },
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          alignment: Alignment.center,
-                          decoration: const BoxDecoration(
-                            color: Colors.transparent,
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            size: 20,
-                            color: Colors.white,
-                          ),
+                      final priceText = price
+                          .toStringAsFixed(2)
+                          .replaceAll('.', ',');
+                      _priceControllers[media.id]?.text = priceText;
+                      _tempCurrency[media.id] = media.currency ?? '\$';
+                      _editingPriceMediaIds.remove(media.id);
+                      setState(() {});
+                    },
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: Colors.transparent,
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        size: 20,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+                // Hook Icon (Speichern)
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () async {
+                      // Preis aus Input parsen
+                      final inputText =
+                          _priceControllers[media.id]?.text ?? '0,00';
+                      final cleanText = inputText.replaceAll(',', '.');
+                      final newPrice = double.tryParse(cleanText) ?? 0.0;
+                      final newCurrency = _tempCurrency[media.id] ?? '\$';
+
+                      // Firestore Update
+                      try {
+                        await FirebaseFirestore.instance
+                            .collection('avatars')
+                            .doc(widget.avatarId)
+                            .collection('media')
+                            .doc(media.id)
+                            .update({
+                              'price': newPrice,
+                              'currency': newCurrency,
+                            });
+
+                        // Lokale Liste aktualisieren
+                        final index = _items.indexWhere(
+                          (m) => m.id == media.id,
+                        );
+                        if (index != -1) {
+                          _items[index] = AvatarMedia(
+                            id: media.id,
+                            avatarId: media.avatarId,
+                            type: media.type,
+                            url: media.url,
+                            thumbUrl: media.thumbUrl,
+                            createdAt: media.createdAt,
+                            durationMs: media.durationMs,
+                            aspectRatio: media.aspectRatio,
+                            tags: media.tags,
+                            originalFileName: media.originalFileName,
+                            isFree: media.isFree,
+                            price: newPrice,
+                            currency: newCurrency,
+                          );
+                        }
+
+                        // Input schließen
+                        _editingPriceMediaIds.remove(media.id);
+                        setState(() {});
+                      } catch (e) {
+                        debugPrint('Fehler beim Speichern des Preises: $e');
+                      }
+                    },
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.only(
+                          bottomRight: Radius.circular(7),
+                        ),
+                      ),
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFFE91E63), // Magenta
+                            Color(0xFFE91E63), // Mehr Magenta
+                            AppColors.lightBlue, // Blue
+                            Color(0xFF00E5FF), // Cyan
+                          ],
+                          stops: [0.0, 0.4, 0.7, 1.0],
+                        ).createShader(bounds),
+                        child: const Icon(
+                          Icons.check,
+                          size: 24,
+                          color: Colors.white,
                         ),
                       ),
                     ),
-                // Hook Icon (Speichern)
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () async {
-                          // Preis aus Input parsen
-                          final inputText =
-                              _priceControllers[media.id]?.text ?? '0,00';
-                          final cleanText = inputText.replaceAll(',', '.');
-                          final newPrice = double.tryParse(cleanText) ?? 0.0;
-                          final newCurrency = _tempCurrency[media.id] ?? '\$';
-
-                          // Firestore Update
-                          try {
-                            await FirebaseFirestore.instance
-                                .collection('avatars')
-                                .doc(widget.avatarId)
-                                .collection('media')
-                                .doc(media.id)
-                                .update({
-                                  'price': newPrice,
-                                  'currency': newCurrency,
-                                });
-
-                            // Lokale Liste aktualisieren
-                            final index = _items.indexWhere(
-                              (m) => m.id == media.id,
-                            );
-                            if (index != -1) {
-                              _items[index] = AvatarMedia(
-                                id: media.id,
-                                avatarId: media.avatarId,
-                                type: media.type,
-                                url: media.url,
-                                thumbUrl: media.thumbUrl,
-                                createdAt: media.createdAt,
-                                durationMs: media.durationMs,
-                                aspectRatio: media.aspectRatio,
-                                tags: media.tags,
-                                originalFileName: media.originalFileName,
-                                isFree: media.isFree,
-                                price: newPrice,
-                                currency: newCurrency,
-                              );
-                            }
-
-                            // Input schließen
-                            _editingPriceMediaIds.remove(media.id);
-                            setState(() {});
-                          } catch (e) {
-                            debugPrint('Fehler beim Speichern des Preises: $e');
-                          }
-                        },
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.only(
-                              bottomRight: Radius.circular(7),
-                            ),
-                          ),
-                          child: ShaderMask(
-                            shaderCallback: (bounds) => const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Color(0xFFE91E63), // Magenta
-                                Color(0xFFE91E63), // Mehr Magenta
-                                AppColors.lightBlue, // Blue
-                                Color(0xFF00E5FF), // Cyan
-                              ],
-                              stops: [0.0, 0.4, 0.7, 1.0],
-                            ).createShader(bounds),
-                            child: const Icon(
-                              Icons.check,
-                              size: 24,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
+                  ),
                 ),
               ],
             ),
@@ -5005,7 +5009,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // Fallback je nach Typ
     if (tags.isEmpty) {
       if (media.type == AvatarMediaType.audio)
-      tags.add('audio');
+        tags.add('audio');
       else if (media.type == AvatarMediaType.video)
         tags.add('video');
       else if (media.type == AvatarMediaType.image)
@@ -5196,10 +5200,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                                       AvatarMediaType.document
                                                   ? _buildDocumentPreviewBackground(
                                                       media,
-                                      )
-                                    : Image.network(
-                                        media.url,
-                                        fit: BoxFit.cover,
+                                                    )
+                                                  : Image.network(
+                                                      media.url,
+                                                      fit: BoxFit.cover,
                                                     ),
                                             ),
                                           );
@@ -6100,28 +6104,28 @@ class _MediaViewerDialogState extends State<_MediaViewerDialog> {
           }
         }),
         child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
               colors: [
                 Color(0xFFE91E63),
                 AppColors.lightBlue,
                 Color(0xFF00E5FF),
               ],
-        ),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white, width: 1),
-      ),
-      child: Text(
+            ),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white, width: 1),
+          ),
+          child: Text(
             isFree
                 ? 'Kostenlos'
                 : '$symbol${effectivePrice!.toStringAsFixed(2).replaceAll('.', ',')}',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          height: 1.0,
-          letterSpacing: 0,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.0,
+              letterSpacing: 0,
             ),
           ),
         ),

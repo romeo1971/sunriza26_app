@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
 import 'home_navigation_screen.dart';
+import '../widgets/safe_network_image.dart';
 
 /// Entdecken Screen - Öffentliche Avatare im Feed-Style
 class ExploreScreen extends StatefulWidget {
@@ -217,11 +218,6 @@ class ExploreScreenState extends State<ExploreScreen> {
     }
     final displayName = nameParts.isEmpty ? 'Avatar' : nameParts.join(' ');
 
-    // Bild SOFORT in den Cache laden (unsichtbar)
-    if (avatar.avatarImageUrl != null) {
-      precacheImage(NetworkImage(avatar.avatarImageUrl!), context);
-    }
-
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
@@ -254,101 +250,108 @@ class ExploreScreenState extends State<ExploreScreen> {
           ),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          image: avatar.avatarImageUrl != null
-              ? DecorationImage(
-                  image: NetworkImage(avatar.avatarImageUrl!),
-                  fit: BoxFit.cover,
-                )
-              : null,
-          color: avatar.avatarImageUrl == null ? Colors.grey.shade800 : null,
-        ),
-        child: Stack(
-          children: [
-            // Rechts Mitte: Favoriten-Herz (TikTok-Style)
-            Positioned(
-              right: 16,
-              top: MediaQuery.of(context).size.height * 0.4,
-              child: GestureDetector(
-                onTap: () => _toggleFavorite(avatar.id),
-                child: _favoriteIds.contains(avatar.id)
-                    ? Stack(
-                        children: [
-                          Icon(
-                            Icons.favorite,
-                            color: Colors.white,
-                            size: 28,
-                            shadows: [
-                              Shadow(offset: Offset(1, 0), color: Colors.white),
-                              Shadow(
-                                offset: Offset(-1, 0),
-                                color: Colors.white,
-                              ),
-                              Shadow(offset: Offset(0, 1), color: Colors.white),
-                              Shadow(
-                                offset: Offset(0, -1),
-                                color: Colors.white,
-                              ),
-                            ],
-                          ),
-                          ShaderMask(
-                            shaderCallback: (bounds) => const LinearGradient(
-                              colors: [
-                                Color(0xFFE91E63), // Magenta
-                                Color(0xFF2196F3), // Blue
-                                Color(0xFF00E5FF), // Cyan
-                              ],
-                            ).createShader(bounds),
-                            child: const Icon(
+      body: Stack(
+        children: [
+          // Hintergrundbild sicher laden (mit Fallback)
+          Positioned.fill(
+            child: SafeNetworkImage(
+              url: avatar.avatarImageUrl,
+              fit: BoxFit.cover,
+            ),
+          ),
+          // Overlay-UI
+          Stack(
+            children: [
+              // Rechts Mitte: Favoriten-Herz (TikTok-Style)
+              Positioned(
+                right: 16,
+                top: MediaQuery.of(context).size.height * 0.4,
+                child: GestureDetector(
+                  onTap: () => _toggleFavorite(avatar.id),
+                  child: _favoriteIds.contains(avatar.id)
+                      ? Stack(
+                          children: [
+                            Icon(
                               Icons.favorite,
                               color: Colors.white,
                               size: 28,
+                              shadows: [
+                                Shadow(
+                                  offset: Offset(1, 0),
+                                  color: Colors.white,
+                                ),
+                                Shadow(
+                                  offset: Offset(-1, 0),
+                                  color: Colors.white,
+                                ),
+                                Shadow(
+                                  offset: Offset(0, 1),
+                                  color: Colors.white,
+                                ),
+                                Shadow(
+                                  offset: Offset(0, -1),
+                                  color: Colors.white,
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      )
-                    : const Icon(
-                        Icons.favorite_border,
-                        color: Colors.white,
-                        size: 28,
-                      ),
+                            ShaderMask(
+                              shaderCallback: (bounds) => const LinearGradient(
+                                colors: [
+                                  Color(0xFFE91E63), // Magenta
+                                  Color(0xFF2196F3), // Blue
+                                  Color(0xFF00E5FF), // Cyan
+                                ],
+                              ).createShader(bounds),
+                              child: const Icon(
+                                Icons.favorite,
+                                color: Colors.white,
+                                size: 28,
+                              ),
+                            ),
+                          ],
+                        )
+                      : const Icon(
+                          Icons.favorite_border,
+                          color: Colors.white,
+                          size: 28,
+                        ),
+                ),
               ),
-            ),
 
-            // Unten: Conversation starten Button (schwarz)
-            Positioned(
-              bottom: 16,
-              left: 16,
-              right: 16,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  final homeNav = context
-                      .findAncestorStateOfType<HomeNavigationScreenState>();
-                  if (homeNav != null) {
-                    homeNav.openChat(avatar.id);
-                  } else {
-                    Navigator.pushNamed(
-                      context,
-                      '/avatar-chat',
-                      arguments: avatar,
-                    );
-                  }
-                },
-                icon: const Icon(Icons.chat_bubble_outline),
-                label: const Text('Conversation starten'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black.withOpacity(0.7),
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(double.infinity, 48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+              // Unten: Conversation starten Button (schwarz)
+              Positioned(
+                bottom: 16,
+                left: 16,
+                right: 16,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    final homeNav = context
+                        .findAncestorStateOfType<HomeNavigationScreenState>();
+                    if (homeNav != null) {
+                      homeNav.openChat(avatar.id);
+                    } else {
+                      Navigator.pushNamed(
+                        context,
+                        '/avatar-chat',
+                        arguments: avatar,
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.chat_bubble_outline),
+                  label: const Text('Conversation starten'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black.withOpacity(0.7),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(double.infinity, 48),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ),
     );
   }

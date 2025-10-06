@@ -563,13 +563,17 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     setState(() => _uploadingCover = true);
 
     try {
+      // Speichere unter neuem Dateinamen, um Cache-Kollisionen zu vermeiden
+      final ts = DateTime.now().millisecondsSinceEpoch;
       final ref = FirebaseStorage.instance.ref().child(
-        'avatars/${widget.playlist.avatarId}/playlists/${widget.playlist.id}/cover.jpg',
+        'avatars/${widget.playlist.avatarId}/playlists/${widget.playlist.id}/cover_$ts.jpg',
       );
 
       print('📤 Uploading to Firebase...');
       await ref.putFile(f);
-      final url = await ref.getDownloadURL();
+      var url = await ref.getDownloadURL();
+      // Cache-Bust anfügen, damit die große Ansicht sofort neu lädt
+      url = '$url?v=$ts';
       print('✅ Upload complete: $url');
 
       setState(() {
