@@ -67,13 +67,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   bool _loading = true;
   double _cropAspect = 9 / 16;
   String _mediaTab = 'images'; // 'images', 'videos', 'audio', 'documents'
+  bool _portrait = true; // Portrait/Landscape Toggle
   String _searchTerm = '';
   int _currentPage = 0;
   static const int _itemsPerPage = 9;
   bool _isDeleteMode = false;
   final Set<String> _selectedMediaIds = {};
   bool _showSearch = false;
-  bool _showPortrait = true; // true = portrait, false = landscape
   final Map<String, double> _imageAspectRatios =
       {}; // Cache für Bild-Aspekt-Verhältnisse
 
@@ -1038,8 +1038,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           }
         }
 
-        if (_showPortrait && !itemIsPortrait) return false;
-        if (!_showPortrait && !itemIsLandscape) return false;
+        if (_portrait && !itemIsPortrait) return false;
+        if (!_portrait && !itemIsLandscape) return false;
       }
 
       // KI-Such-Filter
@@ -2021,6 +2021,32 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     ),
                     _buildTopTabAppbarBtn('audio', Icons.audiotrack),
                     const Spacer(),
+                    // Portrait/Landscape Toggle (ausgeblendet bei Audio)
+                    if (_mediaTab != 'audio')
+                      SizedBox(
+                        height: 35,
+                        child: TextButton(
+                          onPressed: () =>
+                              setState(() => _portrait = !_portrait),
+                          style: ButtonStyle(
+                            padding: const WidgetStatePropertyAll(
+                              EdgeInsets.zero,
+                            ),
+                            minimumSize: const WidgetStatePropertyAll(
+                              Size(40, 35),
+                            ),
+                          ),
+                          child: Icon(
+                            _portrait
+                                ? Icons.stay_primary_portrait
+                                : Icons.stay_primary_landscape,
+                            color: _portrait
+                                ? AppColors.lightBlue
+                                : Colors.white54,
+                            size: 18,
+                          ),
+                        ),
+                      ),
                     // Suche rechts (Stil wie Tabs)
                     SizedBox(
                       height: 35,
@@ -2151,15 +2177,15 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             child: ElevatedButton(
                               onPressed: () {
                                 setState(() {
-                                  _showPortrait = !_showPortrait;
+                                  _portrait = !_portrait;
                                   _currentPage = 0;
                                 });
                               },
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: _showPortrait
+                                backgroundColor: _portrait
                                     ? Colors.white
                                     : const Color(0x40FFFFFF),
-                                foregroundColor: _showPortrait
+                                foregroundColor: _portrait
                                     ? null
                                     : Colors.white,
                                 shadowColor: Colors.transparent,
@@ -2168,7 +2194,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
-                              child: _showPortrait
+                              child: _portrait
                                   ? ShaderMask(
                                       shaderCallback: (bounds) =>
                                           const LinearGradient(
@@ -2722,7 +2748,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             // Nutze ECHTE Video-Dimensionen
             videoAR = snapshot.data!.value.aspectRatio;
           }
-          
+
           bool isPortrait = videoAR < 1.0;
           double baseWidth = cardWidth;
           if (!isPortrait) {
@@ -2730,7 +2756,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           }
           double actualHeight = baseWidth / videoAR;
           double actualWidth = baseWidth;
-          
+
           return _buildMediaCardContent(
             it,
             actualWidth,

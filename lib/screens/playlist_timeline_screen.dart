@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:video_player/video_player.dart';
 import '../models/playlist_models.dart';
 import '../models/media_models.dart';
 import '../services/media_service.dart';
@@ -38,6 +40,14 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   final TextEditingController _assetsSearchCtl = TextEditingController();
   String _assetsSearchTerm = '';
 
+  // Audio-Player-Logik (wie in media_assets)
+  final Map<String, VideoPlayerController> _audioCtrls = {};
+  final Map<String, Duration> _audioDurations = {};
+  String? _playingAudioUrl;
+  final Map<String, Duration> _audioCurrent = {};
+  final Set<String> _audioHasListener = {};
+  Timer? _audioTicker;
+
   String _displayName(AvatarMedia m) {
     if ((m.originalFileName ?? '').trim().isNotEmpty)
       return m.originalFileName!.trim();
@@ -70,6 +80,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     super.initState();
     _load();
     _intervalCtl.text = widget.playlist.showAfterSec.toString();
+    _assetsSearchCtl.addListener(() {
+      setState(() => _assetsSearchTerm = _assetsSearchCtl.text.toLowerCase());
+    });
   }
 
   @override
@@ -77,6 +90,13 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     _searchController.dispose();
     _assetsSearchCtl.dispose();
     _intervalCtl.dispose();
+    for (final c in _audioCtrls.values) {
+      c.dispose();
+    }
+    _audioCtrls.clear();
+    try {
+      _audioTicker?.cancel();
+    } catch (_) {}
     super.dispose();
   }
 
@@ -444,12 +464,12 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
           const SizedBox(height: 8),
 
           // Call-to-Action: Medien hinzufügen (öffnet Asset-Auswahl)
-                    Container(
-                      height: 44,
+          Container(
+            height: 44,
             color: Colors.grey.shade900,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Row(
-                        children: [
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              children: [
                 InkWell(
                   onTap: _openAssetsPicker,
                   child: Row(
@@ -457,26 +477,26 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                     children: const [
                       Icon(Icons.add, color: Colors.white, size: 22),
                       SizedBox(width: 8),
-                          Text(
+                      Text(
                         'Medien hinzufügen',
                         style: TextStyle(color: Colors.white),
                       ),
                     ],
-                            ),
-                          ),
-                          const Spacer(),
+                  ),
+                ),
+                const Spacer(),
                 if (_assets.isNotEmpty)
                   Flexible(
                     child: SizedBox(
-                            height: 32,
+                      height: 32,
                       child: TextField(
                         controller: _assetsSearchCtl,
                         onChanged: (v) =>
                             setState(() => _assetsSearchTerm = v.toLowerCase()),
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white,
-                                ),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Colors.white,
+                        ),
                         cursorColor: Colors.white,
                         decoration: const InputDecoration(
                           isDense: true,
@@ -486,17 +506,17 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                             fontSize: 12,
                           ),
                           prefixIcon: Padding(
-                                  padding: EdgeInsets.only(left: 6),
-                                  child: Icon(
-                                    Icons.search,
-                                    color: Colors.white70,
-                                    size: 18,
-                                  ),
-                                ),
+                            padding: EdgeInsets.only(left: 6),
+                            child: Icon(
+                              Icons.search,
+                              color: Colors.white70,
+                              size: 18,
+                            ),
+                          ),
                           prefixIconConstraints: BoxConstraints(
-                                  minWidth: 24,
-                                  maxWidth: 28,
-                                ),
+                            minWidth: 24,
+                            maxWidth: 28,
+                          ),
                           filled: true,
                           fillColor: Color(0x1FFFFFFF),
                           border: OutlineInputBorder(
@@ -509,21 +529,21 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                             borderSide: BorderSide(color: Colors.white24),
                           ),
                           contentPadding: EdgeInsets.symmetric(
-                                  horizontal: 8,
+                            horizontal: 8,
                             vertical: 8,
                           ),
                         ),
-                              ),
-                            ),
-                          ),
-                        ],
                       ),
                     ),
+                  ),
+              ],
+            ),
+          ),
 
           // Kombinierter Container: FullWidth-Header, darunter links Timeline, rechts Assets mit Resizer
-                    Expanded(
-                            child: Container(
-                                    decoration: BoxDecoration(
+          Expanded(
+            child: Container(
+              decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 // keine Border unten um den Split-Container
               ),
@@ -546,7 +566,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                           // zu schmal: mittig teilen
                           final leftW = available / 2;
                           return Row(
-                                            children: [
+                            children: [
                               SizedBox(
                                 width: leftW,
                                 child: _buildTimelinePane(),
@@ -573,23 +593,13 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                             // Resizer
                             _buildResizer(totalW, leftW, resizerW),
                             // Assets rechts
-                          Expanded(
-                            child: Container(
-                              decoration: const BoxDecoration(
-                                borderRadius: BorderRadius.only(
-                                  bottomRight: Radius.circular(12),
-                                ),
-                              ),
-                              padding: const EdgeInsets.all(16),
-                                child: _buildAssetsGrid(),
-                            ),
-                          ),
-                        ],
+                            Expanded(child: _buildAssetsPane()),
+                          ],
                         );
                       },
-                      ),
                     ),
-                  ],
+                  ),
+                ],
               ),
             ),
           ),
@@ -665,20 +675,20 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
               const Center(child: Icon(Icons.videocam, color: Colors.white70)),
         );
       } else {
-      content = const Center(
-        child: Icon(Icons.videocam, color: Colors.white70),
-      );
+        content = const Center(
+          child: Icon(Icons.videocam, color: Colors.white70),
+        );
       }
     } else if (m.type == AvatarMediaType.document) {
       if (m.thumbUrl != null && m.thumbUrl!.isNotEmpty) {
-      content = Image.network(
+        content = Image.network(
           m.thumbUrl!,
-        fit: BoxFit.cover,
+          fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => const Center(
             child: Icon(Icons.description, color: Colors.white70),
           ),
-      );
-    } else {
+        );
+      } else {
         content = Container(
           color: const Color(0xFF101010),
           child: const Center(
@@ -687,10 +697,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         );
       }
     } else {
+      // Audio: nur Name + Zeit (keine Icons IN der Kachel wie in media_assets)
       if (size != null) {
-      content = const Center(
-        child: Icon(Icons.audiotrack, color: Colors.white70),
-      );
+        content = const Center(
+          child: Icon(Icons.audiotrack, color: Colors.white70),
+        );
       } else {
         String fmt() {
           final ms = m.durationMs ?? 0;
@@ -700,34 +711,27 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
           return '${two(min)}:${two(s)}';
         }
 
+        final fileName = _displayName(m);
         content = Container(
           color: const Color(0xFF101010),
-          padding: const EdgeInsets.all(10),
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.play_arrow, color: Colors.white70, size: 20),
-                  SizedBox(width: 12),
-                  Icon(Icons.pause, color: Colors.white38, size: 20),
-                  SizedBox(width: 12),
-                  Icon(Icons.replay, color: Colors.white38, size: 20),
-                ],
-              ),
-              const SizedBox(height: 6),
               Text(
-                _displayName(m),
-                textAlign: TextAlign.center,
-                maxLines: 2,
+                fileName,
+                maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
               const SizedBox(height: 4),
               Text(
                 fmt(),
-                style: const TextStyle(fontSize: 11, color: Colors.white54),
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white60, fontSize: 12),
               ),
             ],
           ),
@@ -854,7 +858,8 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
           break;
         case 'audio':
           if (m.type != AvatarMediaType.audio) return false;
-          break;
+          // Bei Audio KEINEN Orientation-Filter anwenden!
+          return true;
       }
       final ar = m.aspectRatio ?? 9 / 16;
       final isPortrait = ar < 1.0;
@@ -879,18 +884,276 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     }
     return LayoutBuilder(
       builder: (context, cons) {
-        final crossAxis = (cons.maxWidth / 120).floor().clamp(2, 10);
+        // Audio: fixe Breite 328px, sonst dynamisch basierend auf Portrait/Landscape
+        final crossAxis = _tab == 'audio'
+            ? (cons.maxWidth / 328).floor().clamp(1, 6)
+            : (_portrait
+                  ? (cons.maxWidth / 100).floor().clamp(
+                      2,
+                      10,
+                    ) // Portrait schmaler
+                  : (cons.maxWidth / 180).floor().clamp(
+                      2,
+                      10,
+                    )); // Landscape breiter
         return GridView.builder(
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxis,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            childAspectRatio: 1,
+            // Für Audio fixe Höhe statt AspectRatio
+            mainAxisExtent: _tab == 'audio' ? 148 : null,
+            // Für Nicht-Audio: 9/16 (Portrait) oder 16/9 (Landscape)
+            childAspectRatio: _tab == 'audio'
+                ? 1.0
+                : (_portrait ? (9 / 16) : (16 / 9)),
           ),
           itemCount: view.length,
           itemBuilder: (context, i) {
             final m = view[i];
             final usage = _timeline.where((t) => t.id == m.id).length;
+
+            // Für Audio: Column mit Kachel oben + Buttons unten
+            if (_tab == 'audio') {
+              final fileName = _displayName(m);
+              return Column(
+                children: [
+                  // Kachel oben: nur Name + Zeit (wie in media_assets)
+                  Expanded(
+                    child: LongPressDraggable<AvatarMedia>(
+                      data: m,
+                      feedback: Material(
+                        color: Colors.transparent,
+                        child: SizedBox(
+                          width: 100,
+                          child: Container(
+                            color: const Color(0xFF101010),
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.audiotrack,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ),
+                      ),
+                      child: GestureDetector(
+                        onTap: () async {
+                          setState(() {
+                            _timeline.add(m);
+                            _timelineKeys.add(UniqueKey());
+                          });
+                          await _persistTimelineItems();
+                        },
+                        child: Stack(
+                          children: [
+                            // Audio-Kachel: 1:1 wie in media_assets
+                            Tooltip(
+                              message: fileName,
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(color: Colors.white24),
+                                ),
+                                clipBehavior: Clip.hardEdge,
+                                child: Container(
+                                  color: const Color(0xFF101010),
+                                  alignment: Alignment.center,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 8,
+                                  ),
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        fileName,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Builder(
+                                        builder: (_) {
+                                          final cur =
+                                              _audioCurrent[m.url] ??
+                                              Duration.zero;
+                                          final tot =
+                                              _audioDurations[m.url] ??
+                                              Duration.zero;
+                                          return Text(
+                                            '${_fmtDur(cur)} / ${_fmtDur(tot)}',
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              color: Colors.white60,
+                                              fontSize: 12,
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (usage > 1)
+                              Positioned(
+                                right: 42,
+                                top: 6,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 6,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.6),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(color: Colors.white30),
+                                  ),
+                                  child: Text(
+                                    'x$usage',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            Positioned(
+                              right: 6,
+                              top: 6,
+                              child: InkWell(
+                                onTap: () async {
+                                  final confirm = await showDialog<bool>(
+                                    context: context,
+                                    builder: (ctx) => AlertDialog(
+                                      title: const Text('Asset entfernen?'),
+                                      content: const Text(
+                                        'Dieses Asset aus dem Pool entfernen? Verwendete Timeline‑Einträge werden ebenfalls gelöscht.',
+                                      ),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, false),
+                                          child: const Text('Abbrechen'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () =>
+                                              Navigator.pop(ctx, true),
+                                          child: const Text('Entfernen'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirm != true) return;
+                                  setState(() {
+                                    _assets.removeWhere((a) => a.id == m.id);
+                                    _timeline.removeWhere((t) => t.id == m.id);
+                                    _syncKeysLength();
+                                  });
+                                  await _playlistSvc.deleteTimelineItemsByAsset(
+                                    widget.playlist.avatarId,
+                                    widget.playlist.id,
+                                    m.id,
+                                  );
+                                  await _saveAssetsPool();
+                                },
+                                child: Container(
+                                  width: 30,
+                                  height: 30,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withValues(alpha: 0.7),
+                                    borderRadius: BorderRadius.circular(15),
+                                    border: Border.all(
+                                      color: Colors.white54,
+                                      width: 1.5,
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  // Buttons UNTER der Kachel
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Builder(
+                          builder: (_) {
+                            final isPlaying =
+                                _playingAudioUrl == m.url &&
+                                ((_audioCtrls[m.url]?.value.isPlaying) == true);
+                            if (isPlaying) {
+                              return IconButton(
+                                icon: const Icon(Icons.pause, size: 18),
+                                color: Colors.white70,
+                                onPressed: () => _pauseAudio(m),
+                                tooltip: 'Pause',
+                              );
+                            }
+                            // Play: benutze das gewohnte runde Gradient-Icon
+                            return Tooltip(
+                              message: 'Abspielen',
+                              child: InkWell(
+                                onTap: () => _playAudio(m),
+                                borderRadius: BorderRadius.circular(20),
+                                child: Container(
+                                  width: 28,
+                                  height: 28,
+                                  decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFFE91E63),
+                                        AppColors.lightBlue,
+                                        Color(0xFF00E5FF),
+                                      ],
+                                      stops: [0.0, 0.6, 1.0],
+                                    ),
+                                  ),
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.play_arrow,
+                                      size: 16,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.replay, size: 18),
+                          color: Colors.white54,
+                          onPressed: () => _restartAudio(m),
+                          tooltip: 'Neu starten',
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            }
+
+            // Für Nicht-Audio: wie bisher
             return LongPressDraggable<AvatarMedia>(
               data: m,
               feedback: Material(
@@ -914,7 +1177,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                     ),
                     if (usage > 1)
                       Positioned(
-                        right: 6,
+                        right: 42,
                         top: 6,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -937,7 +1200,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                       ),
                     Positioned(
                       right: 6,
-                      bottom: 6,
+                      top: 6,
                       child: InkWell(
                         onTap: () async {
                           final confirm = await showDialog<bool>(
@@ -973,16 +1236,19 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                           await _saveAssetsPool();
                         },
                         child: Container(
-                          width: 24,
-                          height: 24,
+                          width: 30,
+                          height: 30,
                           decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.6),
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: Colors.white30),
+                            color: Colors.black.withValues(alpha: 0.7),
+                            borderRadius: BorderRadius.circular(15),
+                            border: Border.all(
+                              color: Colors.white54,
+                              width: 1.5,
+                            ),
                           ),
                           child: const Icon(
                             Icons.close,
-                            size: 14,
+                            size: 18,
                             color: Colors.white,
                           ),
                         ),
@@ -1016,7 +1282,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => PlaylistMediaAssetsScreen(
-        avatarId: widget.playlist.avatarId,
+          avatarId: widget.playlist.avatarId,
           playlistId: widget.playlist.id,
           preselected: _assets,
         ),
@@ -1048,7 +1314,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
           docs,
         );
       } catch (e) {
-    if (mounted) {
+        if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Fehler beim Speichern der Assets: $e')),
           );
@@ -1203,77 +1469,84 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
       decoration: const BoxDecoration(
         borderRadius: BorderRadius.only(bottomRight: Radius.circular(12)),
       ),
-      padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          Row(
-            children: [
-              // kleine Navi
-              _miniNavIcon(
-                Icons.image_outlined,
-                _tab == 'images',
-                () => setState(() => _tab = 'images'),
-              ),
-              const SizedBox(width: 8),
-              _miniNavIcon(
-                Icons.videocam_outlined,
-                _tab == 'videos',
-                () => setState(() => _tab = 'videos'),
-              ),
-              const SizedBox(width: 8),
-              _miniNavIcon(
-                Icons.description_outlined,
-                _tab == 'documents',
-                () => setState(() => _tab = 'documents'),
-              ),
-              const SizedBox(width: 8),
-              _miniNavIcon(
-                Icons.audiotrack,
-                _tab == 'audio',
-                () => setState(() => _tab = 'audio'),
-              ),
-              const Spacer(),
-              // Portrait/Landscape Toggle klein
-              InkWell(
-                onTap: () => setState(() => _portrait = !_portrait),
-                child: Container(
-                  width: 36,
-                  height: 28,
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: Colors.white24),
-                  ),
-                  child: Icon(
-                    _portrait
-                        ? Icons.stay_primary_portrait
-                        : Icons.stay_primary_landscape,
-                    size: 16,
-                    color: Colors.white70,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              PopupMenuButton<String>(
-                onSelected: (v) => setState(() => _assetSort = v),
-                itemBuilder: (ctx) => const [
-                  PopupMenuItem(value: 'name', child: Text('Sortieren: Name')),
-                  PopupMenuItem(value: 'type', child: Text('Sortieren: Typ')),
+          // Navigation Header wie in playlist_media_assets_screen (full width)
+          SizedBox(
+            width: double.infinity,
+            child: Container(
+              color: const Color(0xFF1E1E1E),
+              height: 35,
+              child: Row(
+                children: [
+                  _tabBtn('images', Icons.image_outlined),
+                  _tabBtn('videos', Icons.videocam_outlined),
+                  _tabBtn('documents', Icons.description_outlined),
+                  _tabBtn('audio', Icons.audiotrack),
+                  const Spacer(),
+                  if (_tab != 'audio')
+                    TextButton(
+                      onPressed: () => setState(() => _portrait = !_portrait),
+                      style: ButtonStyle(
+                        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                        minimumSize: const WidgetStatePropertyAll(Size(40, 35)),
+                      ),
+                      child: _portrait
+                          ? ShaderMask(
+                              shaderCallback: (bounds) => const LinearGradient(
+                                colors: [
+                                  AppColors.magenta,
+                                  AppColors.lightBlue,
+                                ],
+                              ).createShader(bounds),
+                              child: const Icon(
+                                Icons.stay_primary_portrait,
+                                size: 18,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.stay_primary_landscape,
+                              size: 18,
+                              color: Colors.white54,
+                            ),
+                    ),
                 ],
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: const [
-                    Icon(Icons.sort, color: Colors.white70, size: 18),
-                    SizedBox(width: 6),
-                    Text('Sortieren', style: TextStyle(color: Colors.white70)),
-                  ],
-                ),
               ),
-            ],
+            ),
           ),
-          const SizedBox(height: 8),
-          Expanded(child: _buildAssetsGrid()),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: _buildAssetsGrid(),
+            ),
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _tabBtn(String t, IconData icon) {
+    final sel = _tab == t;
+    final grad = Theme.of(context).extension<AppGradients>()?.magentaBlue;
+    return SizedBox(
+      height: 35,
+      child: TextButton(
+        onPressed: () => setState(() {
+          _tab = t;
+          // Bei Dokumente/Audio automatisch auf Portrait setzen
+          if (t == 'documents' || t == 'audio') _portrait = true;
+        }),
+        style: ButtonStyle(
+          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+          minimumSize: const WidgetStatePropertyAll(Size(36, 35)),
+        ),
+        child: sel && grad != null
+            ? ShaderMask(
+                shaderCallback: (b) => grad.createShader(b),
+                child: Icon(icon, size: 18, color: Colors.white),
+              )
+            : Icon(icon, size: 18, color: Colors.white54),
       ),
     );
   }
@@ -1332,17 +1605,122 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         },
         child: Container(
           width: resizerW,
-          color: _resizerHover ? Colors.white10 : Colors.transparent,
+          decoration: _resizerHover
+              ? BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [AppColors.magenta, AppColors.lightBlue],
+                  ),
+                  backgroundBlendMode: BlendMode.overlay,
+                  color: const Color(0xFF1E1E1E).withValues(alpha: 0.8),
+                )
+              : const BoxDecoration(color: Color(0xFF1E1E1E)),
           child: Center(
             child: Container(
               width: _resizerHover ? 3 : 2,
               height: 28,
-              color: _resizerHover ? Colors.white54 : Colors.white24,
+              decoration: _resizerHover
+                  ? BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [AppColors.magenta, AppColors.lightBlue],
+                      ),
+                      borderRadius: BorderRadius.circular(2),
+                    )
+                  : BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  // === Audio-Player-Logik (1:1 von media_assets) ===
+
+  Future<VideoPlayerController> _audioControllerFor(String url) async {
+    if (_audioCtrls.containsKey(url)) return _audioCtrls[url]!;
+    final c = VideoPlayerController.networkUrl(Uri.parse(url));
+    await c.initialize();
+    c.setVolume(1);
+    _audioCtrls[url] = c;
+    _audioDurations[url] = c.value.duration;
+    if (!_audioHasListener.contains(url)) {
+      c.addListener(() {
+        final v = c.value;
+        _audioCurrent[url] = v.position;
+        _audioDurations[url] = v.duration;
+        if (mounted) setState(() {});
+        if (!v.isPlaying && v.position >= v.duration && mounted) {
+          if (_playingAudioUrl == url) {
+            setState(() => _playingAudioUrl = null);
+          }
+        }
+      });
+      _audioHasListener.add(url);
+    }
+    return c;
+  }
+
+  Future<void> _stopAllAudiosExcept(String? keepUrl) async {
+    for (final entry in _audioCtrls.entries) {
+      if (keepUrl != null && entry.key == keepUrl) continue;
+      try {
+        await entry.value.pause();
+      } catch (_) {}
+    }
+    if (keepUrl == null) {
+      _playingAudioUrl = null;
+    } else if (_playingAudioUrl != keepUrl) {
+      _playingAudioUrl = keepUrl;
+    }
+  }
+
+  Future<void> _playAudio(AvatarMedia m) async {
+    final c = await _audioControllerFor(m.url);
+    await _stopAllAudiosExcept(m.url);
+    await c.play();
+    _audioTicker ??= Timer.periodic(const Duration(milliseconds: 250), (_) {
+      final url = _playingAudioUrl;
+      if (url == null) return;
+      final c = _audioCtrls[url];
+      if (c != null) {
+        _audioCurrent[url] = c.value.position;
+        _audioDurations[url] = c.value.duration;
+      }
+      if (!mounted) return;
+      setState(() {});
+    });
+    setState(() => _playingAudioUrl = m.url);
+  }
+
+  Future<void> _pauseAudio(AvatarMedia m) async {
+    final c = await _audioControllerFor(m.url);
+    await c.pause();
+    setState(() {
+      if (_playingAudioUrl == m.url) _playingAudioUrl = null;
+    });
+    if (_playingAudioUrl == null) {
+      try {
+        _audioTicker?.cancel();
+      } catch (_) {}
+      _audioTicker = null;
+    }
+  }
+
+  Future<void> _restartAudio(AvatarMedia m) async {
+    final c = await _audioControllerFor(m.url);
+    await _stopAllAudiosExcept(m.url);
+    await c.seekTo(Duration.zero);
+    await c.play();
+    setState(() => _playingAudioUrl = m.url);
+  }
+
+  String _fmtDur(Duration d) {
+    final s = d.inSeconds;
+    final mm = (s ~/ 60).toString().padLeft(2, '0');
+    final ss = (s % 60).toString().padLeft(2, '0');
+    return '$mm:$ss';
   }
 }
 

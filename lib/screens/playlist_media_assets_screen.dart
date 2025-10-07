@@ -141,12 +141,34 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
                     if (_tab != 'audio')
                       TextButton(
                         onPressed: () => setState(() => _portrait = !_portrait),
-                        child: Icon(
-                          _portrait
-                              ? Icons.stay_primary_portrait
-                              : Icons.stay_primary_landscape,
-                          color: Colors.white54,
+                        style: ButtonStyle(
+                          padding: const WidgetStatePropertyAll(
+                            EdgeInsets.zero,
+                          ),
+                          minimumSize: const WidgetStatePropertyAll(
+                            Size(40, 35),
+                          ),
                         ),
+                        child: _portrait
+                            ? ShaderMask(
+                                shaderCallback: (bounds) =>
+                                    const LinearGradient(
+                                      colors: [
+                                        AppColors.magenta,
+                                        AppColors.lightBlue,
+                                      ],
+                                    ).createShader(bounds),
+                                child: const Icon(
+                                  Icons.stay_primary_portrait,
+                                  size: 18,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.stay_primary_landscape,
+                                size: 18,
+                                color: Colors.white54,
+                              ),
                       ),
                   ],
                 ),
