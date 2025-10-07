@@ -7,6 +7,7 @@ import '../services/playlist_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import 'playlist_media_assets_screen.dart';
+import '../services/doc_thumb_service.dart';
 
 class PlaylistTimelineScreen extends StatefulWidget {
   final Playlist playlist;
@@ -998,6 +999,19 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   }
 
   Future<void> _openAssetsPicker() async {
+    // Bevor der Picker geöffnet wird: fehlende Dokument-Thumbnails generieren
+    try {
+      final missing = _allMedia.where(
+        (m) =>
+            m.type == AvatarMediaType.document && ((m.thumbUrl ?? '').isEmpty),
+      );
+      for (final m in missing) {
+        await DocThumbService.generateAndStoreThumb(
+          widget.playlist.avatarId,
+          m,
+        );
+      }
+    } catch (_) {}
     final result = await Navigator.push<List<AvatarMedia>>(
       context,
       MaterialPageRoute(

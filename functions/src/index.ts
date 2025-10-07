@@ -16,6 +16,12 @@ import fetch from 'node-fetch';
 import OpenAI from 'openai';
 import * as admin from 'firebase-admin';
 import { PassThrough } from 'stream';
+import ffmpegPath from 'ffmpeg-static';
+import ffmpeg from 'fluent-ffmpeg';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import sharp from 'sharp';
 
 // Stripe Checkout für Credits
 export * from './stripeCheckout';
@@ -564,6 +570,168 @@ export const scheduledBackfillThumbs = functions
     }
   });
 
+// Backfill: setzt fehlende Audio-Thumbs (Platzhalter: nutzt Audio-URL als thumbUrl)
+async function runBackfillAudioThumbsForAvatar(avatarId: string) {
+  const db = admin.firestore();
+  const snap = await db.collection('avatars').doc(avatarId).collection('media')
+    .where('type','==','audio').get();
+  let updated = 0;
+  for (const d of snap.docs) {
+    const m = d.data() as any;
+    const has = typeof m.thumbUrl === 'string' && m.thumbUrl.length > 0;
+    if (!has && typeof m.url === 'string' && m.url.length > 0) {
+      await d.ref.set({ thumbUrl: m.url, aspectRatio: 16/9 }, { merge: true });
+      updated++;
+    }
+  }
+  return { updatedAudioThumbs: updated, audioCount: snap.size };
+}
+
+export const backfillAudioThumbsAllAvatars = functions
+  .region('us-central1')
+  .runWith({ timeoutSeconds: 540, memory: '1GB' })
+  .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+      try {
+        const db = admin.firestore();
+        const avatars = await db.collection('avatars').select('id').get();
+        const results: any[] = [];
+        for (const doc of avatars.docs) {
+          const r = await runBackfillAudioThumbsForAvatar(doc.id);
+          results.push({ avatarId: doc.id, ...r });
+        }
+        res.status(200).json({ results });
+      } catch (e) {
+        res.status(500).json({ error: (e as any)?.message || 'unknown' });
+      }
+    });
+  });
+
+export const scheduledBackfillAudioThumbs = functions
+  .region('us-central1')
+  .pubsub.schedule('45 4 * * 0') // wöchentlich So 04:45 UTC
+  .timeZone('Etc/UTC')
+  .onRun(async () => {
+    const db = admin.firestore();
+    const avatars = await db.collection('avatars').select('id').get();
+    for (const doc of avatars.docs) {
+      try { await runBackfillAudioThumbsForAvatar(doc.id); } catch {}
+    }
+  });
+
+// Erzeuge und setze echte Audio-Waveform-PNG als thumbUrl
+async function createWaveThumb(avatarId: string, mediaId: string, audioUrl: string) {
+  if (ffmpegPath) (ffmpeg as any).setFfmpegPath(ffmpegPath);
+  const tmpDir = os.tmpdir();
+  const src = path.join(tmpDir, `${mediaId}.audio`);
+  const out = path.join(tmpDir, `${mediaId}.png`);
+  const res = await (fetch as any)(audioUrl);
+  if (!(res as any).ok) throw new Error(`download audio failed ${res.status}`);
+  const buf = Buffer.from(await (res as any).arrayBuffer());
+  fs.writeFileSync(src, buf);
+  await new Promise<void>((resolve, reject) => {
+    (ffmpeg as any)(src)
+      .complexFilter(['showwavespic=s=800x180:colors=0xFFFFFF'])
+      .frames(1)
+      .on('end', () => resolve())
+      .on('error', (e: any) => reject(e))
+      .save(out);
+  });
+  const bucket = admin.storage().bucket();
+  const dest = `avatars/${avatarId}/audio/thumbs/${mediaId}.png`;
+  await bucket.upload(out, {
+    destination: dest,
+    contentType: 'image/png',
+    metadata: { cacheControl: 'public,max-age=31536000,immutable' },
+  });
+  const [signed] = await bucket.file(dest).getSignedUrl({ action: 'read', expires: Date.now() + 365*24*3600*1000 });
+  try { fs.unlinkSync(src); } catch {}
+  try { fs.unlinkSync(out); } catch {}
+  await admin.firestore().collection('avatars').doc(avatarId)
+    .collection('media').doc(mediaId)
+    .set({ thumbUrl: signed, aspectRatio: 800/180 }, { merge: true });
+  return signed;
+}
+
+export const backfillAudioWaveforms = functions
+  .region('us-central1')
+  .runWith({ timeoutSeconds: 540, memory: '2GB' })
+  .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+      try {
+        const avatarId = (req.query.avatarId as string || '').trim();
+        if (!avatarId) { res.status(400).json({ error: 'avatarId fehlt' }); return; }
+        const db = admin.firestore();
+        const qs = await db.collection('avatars').doc(avatarId).collection('media')
+          .where('type','==','audio').get();
+        let created = 0;
+        for (const d of qs.docs) {
+          const m = d.data() as any;
+          if (!m || !m.url) continue;
+          const has = typeof m.thumbUrl === 'string' && m.thumbUrl.length > 0;
+          if (has) continue;
+          try { await createWaveThumb(avatarId, d.id, m.url); created++; } catch (e) { console.warn('waveform fail', d.id, e); }
+        }
+        res.status(200).json({ avatarId, created, total: qs.size });
+      } catch (e) {
+        res.status(500).json({ error: (e as any)?.message || 'unknown' });
+      }
+    });
+  });
+
+// Video: Thumb aus erstem Frame generieren, wenn nicht vorhanden
+async function createVideoThumbFromFirstFrame(avatarId: string, mediaId: string, videoUrl: string) {
+  if (ffmpegPath) (ffmpeg as any).setFfmpegPath(ffmpegPath);
+  const tmpDir = os.tmpdir();
+  const src = path.join(tmpDir, `${mediaId}.mp4`);
+  const out = path.join(tmpDir, `${mediaId}.jpg`);
+  // Download Video (kurz, reicht für Frame)
+  const res = await (fetch as any)(videoUrl);
+  if (!(res as any).ok) throw new Error(`download video failed ${(res as any).status}`);
+  const buf = Buffer.from(await (res as any).arrayBuffer());
+  fs.writeFileSync(src, buf);
+  await new Promise<void>((resolve, reject) => {
+    (ffmpeg as any)(src)
+      .on('end', () => resolve())
+      .on('error', (e: any) => reject(e))
+      .screenshots({
+        count: 1,
+        timemarks: ['0.5'],
+        filename: path.basename(out),
+        folder: tmpDir,
+      });
+  });
+  const bucket = admin.storage().bucket();
+  const dest = `avatars/${avatarId}/videos/thumbs/${mediaId}_${Date.now()}.jpg`;
+  await bucket.upload(out, {
+    destination: dest,
+    contentType: 'image/jpeg',
+    metadata: { cacheControl: 'public,max-age=31536000,immutable' },
+  });
+  const [signed] = await bucket.file(dest).getSignedUrl({ action: 'read', expires: Date.now() + 365*24*3600*1000 });
+  try { fs.unlinkSync(src); } catch {}
+  try { fs.unlinkSync(out); } catch {}
+  await admin.firestore().collection('avatars').doc(avatarId)
+    .collection('media').doc(mediaId)
+    .set({ thumbUrl: signed, aspectRatio: 16/9 }, { merge: true });
+  return signed;
+}
+
+// Video: Vorhandenes Poster/Platzhalterbild in Storage kopieren und als Thumb setzen
+async function copyExistingVideoThumbToStorage(avatarId: string, mediaId: string, imageUrl: string) {
+  const res = await (fetch as any)(imageUrl);
+  if (!(res as any).ok) throw new Error(`download image failed ${(res as any).status}`);
+  const buf = Buffer.from(await (res as any).arrayBuffer());
+  const bucket = admin.storage().bucket();
+  const dest = `avatars/${avatarId}/videos/thumbs/${mediaId}_${Date.now()}.jpg`;
+  await bucket.file(dest).save(buf, { contentType: 'image/jpeg', metadata: { cacheControl: 'public,max-age=31536000,immutable' }});
+  const [signed] = await bucket.file(dest).getSignedUrl({ action: 'read', expires: Date.now() + 365*24*3600*1000 });
+  await admin.firestore().collection('avatars').doc(avatarId)
+    .collection('media').doc(mediaId)
+    .set({ thumbUrl: signed }, { merge: true });
+  return signed;
+}
+
 // Firestore Trigger: Wenn erstes Bild hochgeladen wird, setze es als avatarImageUrl
 export const onMediaCreateSetAvatarImage = functions
   .region('us-central1')
@@ -591,6 +759,111 @@ export const onMediaCreateSetAvatarImage = functions
     }
   });
 
+// Firestore Trigger: Bei Audio-Upload fehlende thumbUrl sofort setzen (Platzhalter: url)
+export const onMediaCreateSetAudioThumb = functions
+  .region('us-central1')
+  .firestore.document('avatars/{avatarId}/media/{mediaId}')
+  .onCreate(async (snap, ctx) => {
+    try {
+      const data = snap.data() as any;
+      if (!data || data.type !== 'audio') return;
+      const url = data.url as string | undefined;
+      if (!url || url.length === 0) return;
+      // Erzeuge echte Waveform sofort
+      try {
+        await createWaveThumb(ctx.params.avatarId as string, snap.id, url);
+      } catch (e) {
+        // Fallback: setze zumindest die Audio-URL als Thumb
+        await snap.ref.set({ thumbUrl: url, aspectRatio: 16/9 }, { merge: true });
+      }
+    } catch (e) {
+      console.warn('onMediaCreateSetAudioThumb error', e);
+    }
+  });
+
+// Firestore Trigger: Bei Image-Upload erstelle Thumb (9:16 oder 16:9 zugeschnitten)
+export const onMediaCreateSetImageThumb = functions
+  .region('us-central1')
+  .firestore.document('avatars/{avatarId}/media/{mediaId}')
+  .onCreate(async (snap, ctx) => {
+    try {
+      const data = snap.data() as any;
+      if (!data || data.type !== 'image') return;
+      if (data.thumbUrl) return;
+      const avatarId = ctx.params.avatarId as string;
+      const mediaId = ctx.params.mediaId as string;
+      const url = data.url as string | undefined;
+      if (!url) return;
+      const res = await (fetch as any)(url);
+      if (!(res as any).ok) return;
+      const buf = Buffer.from(await (res as any).arrayBuffer());
+      const meta = await sharp(buf).metadata();
+      const ar = (meta.width || 1) / (meta.height || 1);
+      const portrait = ar < 1.0;
+      const targetAR = portrait ? 9/16 : 16/9;
+      // zentriertes Crop auf targetAR
+      let width = meta.width || 0;
+      let height = meta.height || 0;
+      if (width <= 0 || height <= 0) return;
+      let cropW = width;
+      let cropH = Math.round(width / targetAR);
+      if (cropH > height) {
+        cropH = height;
+        cropW = Math.round(cropH * targetAR);
+      }
+      const left = Math.max(0, Math.floor((width - cropW) / 2));
+      const top = Math.max(0, Math.floor((height - cropH) / 2));
+      const outBuf = await sharp(buf)
+        .extract({ left, top, width: cropW, height: cropH })
+        .resize(720)
+        .jpeg({ quality: 80 })
+        .toBuffer();
+      const bucket = admin.storage().bucket();
+      const dest = `avatars/${avatarId}/images/thumbs/${mediaId}_${Date.now()}.jpg`;
+      await bucket.file(dest).save(outBuf, { contentType: 'image/jpeg', metadata: { cacheControl: 'public,max-age=31536000,immutable' }});
+      const [signed] = await bucket.file(dest).getSignedUrl({ action: 'read', expires: Date.now() + 365*24*3600*1000 });
+      await snap.ref.set({ thumbUrl: signed, aspectRatio: targetAR }, { merge: true });
+    } catch (e) {
+      console.warn('onMediaCreateSetImageThumb error', e);
+    }
+  });
+
+// Firestore Trigger: Bei Video-Upload versuche vorhandenes Storage-Thumb zu setzen
+export const onMediaCreateSetVideoThumb = functions
+  .region('us-central1')
+  .firestore.document('avatars/{avatarId}/media/{mediaId}')
+  .onCreate(async (snap, ctx) => {
+    try {
+      const data = snap.data() as any;
+      if (!data || data.type !== 'video') return;
+      const avatarId = ctx.params.avatarId as string;
+      const mediaId = ctx.params.mediaId as string;
+      const bucket = admin.storage().bucket();
+      const prefix = `avatars/${avatarId}/videos/thumbs/${mediaId}`;
+      const [items] = await bucket.getFiles({ prefix });
+      if (items.length > 0) {
+        const f = items[0];
+        const [signed] = await f.getSignedUrl({ action: 'read', expires: Date.now() + 365*24*3600*1000 });
+        await snap.ref.set({ thumbUrl: signed }, { merge: true });
+        return;
+      }
+      // Wenn bereits ein externes Poster/Platzhalterbild existiert → in Storage übernehmen
+      if (typeof data.thumbUrl === 'string' && data.thumbUrl.length > 0) {
+        try {
+          await copyExistingVideoThumbToStorage(avatarId, mediaId, data.thumbUrl as string);
+          return;
+        } catch (e) {
+          console.warn('copyExistingVideoThumbToStorage failed, fallback to frame grab', e);
+        }
+      }
+      // Falls kein Storage-Thumb existiert: generiere aus erstem Frame
+      if (typeof data.url === 'string' && data.url.length > 0) {
+        await createVideoThumbFromFirstFrame(avatarId, mediaId, data.url);
+      }
+    } catch (e) {
+      console.warn('onMediaCreateSetVideoThumb error', e);
+    }
+  });
 // Restore/Set avatar cover images if missing or broken
 export const restoreAvatarCovers = functions
   .region('us-central1')
@@ -957,15 +1230,45 @@ export const validateRAGSystem = functions
   * - Löscht zugehörige Storage-Thumbs (documents/images/videos/audio)
   * - Entfernt referenzierende timelineAssets und deren timelineItems in allen Playlists
   */
- export const onMediaDeleteCleanup = functions
+export const onMediaDeleteCleanup = functions
    .region('us-central1')
-   .firestore.document('avatars/{avatarId}/media/{mediaId}')
-   .onDelete(async (_snap, context) => {
-     const { avatarId, mediaId } = context.params as { avatarId: string; mediaId: string };
+  .firestore.document('avatars/{avatarId}/media/{mediaId}')
+  .onDelete(async (snap, context) => {
+    const { avatarId, mediaId } = context.params as { avatarId: string; mediaId: string };
      const db = admin.firestore();
      const bucket = admin.storage().bucket();
  
-     // 1) Storage-Thumbs löschen (alle bekannten Pfade mit Prefix)
+    // 0) Originaldatei im Storage löschen, sofern URL bekannt
+    try {
+      const data = snap.data() as any;
+      const extractPath = (url?: string): string | null => {
+        if (!url) return null;
+        try {
+          if (url.startsWith('gs://')) {
+            const u = url.replace('gs://', '');
+            const i = u.indexOf('/');
+            return i >= 0 ? u.substring(i + 1) : null;
+          }
+          const u = new URL(url);
+          if (u.hostname.includes('firebasestorage.googleapis.com')) {
+            const m = u.pathname.match(/\/o\/(.+)$/);
+            if (m && m[1]) {
+              const p = m[1].split('?')[0];
+              return decodeURIComponent(p);
+            }
+          }
+        } catch {}
+        return null;
+      };
+      const originalPath = extractPath(data?.url);
+      if (originalPath) {
+        try { await bucket.file(originalPath).delete(); } catch (e) { console.warn('original delete warn:', originalPath, e); }
+      }
+    } catch (e) {
+      console.warn('original delete parse warn:', e);
+    }
+
+    // 1) Storage-Thumbs & Hero löschen (alle bekannten Pfade mit Prefix)
      const prefixes = [
        `avatars/${avatarId}/documents/thumbs/${mediaId}_`,
        `avatars/${avatarId}/images/thumbs/${mediaId}_`,
@@ -984,6 +1287,24 @@ export const validateRAGSystem = functions
            );
          }),
        );
+      // Hero-Image ggf. löschen
+      try {
+        const hero = `avatars/${avatarId}/images/heroImage.jpg`;
+        const [exists] = await bucket.file(hero).exists();
+        if (exists) {
+          // nur löschen, wenn dieses Media die Quelle des Hero war
+          const data = snap.data() as any;
+          if (data?.url && typeof data.url === 'string') {
+            const avatarRef = db.collection('avatars').doc(avatarId);
+            const avatarSnap = await avatarRef.get();
+            const avatar = avatarSnap.data() as any;
+            if (avatar?.avatarImageUrl && avatar.avatarImageUrl.includes('heroImage.jpg')) {
+              await bucket.file(hero).delete();
+              await avatarRef.update({ avatarImageUrl: admin.firestore.FieldValue.delete() });
+            }
+          }
+        }
+      } catch (e) { console.warn('hero delete warn', e); }
      } catch (e) {
        console.warn('Thumb cleanup warn:', e);
      }
