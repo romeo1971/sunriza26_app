@@ -3,6 +3,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'dart:io';
 import 'dart:typed_data';
 import '../models/playlist_models.dart';
@@ -36,7 +37,11 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
 
   // Cover Image State
   String? _coverImageUrl;
+  String? _coverOriginalFileName;
   bool _uploadingCover = false;
+
+  // Dirty State (für Save-Button Anzeige)
+  bool _isDirty = false;
 
   // Weekly Schedule State: Map<Weekday, Set<TimeSlot>>
   final Map<int, Set<TimeSlot>> _weeklySchedule = {};
@@ -150,17 +155,26 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
             ChoiceChip(
               label: const Text('Alle'),
               selected: _tgGender == 'any',
-              onSelected: (_) => setState(() => _tgGender = 'any'),
+              onSelected: (_) => setState(() {
+                _tgGender = 'any';
+                _isDirty = true;
+              }),
             ),
             ChoiceChip(
               label: const Text('Männlich'),
               selected: _tgGender == 'male',
-              onSelected: (_) => setState(() => _tgGender = 'male'),
+              onSelected: (_) => setState(() {
+                _tgGender = 'male';
+                _isDirty = true;
+              }),
             ),
             ChoiceChip(
               label: const Text('Weiblich'),
               selected: _tgGender == 'female',
-              onSelected: (_) => setState(() => _tgGender = 'female'),
+              onSelected: (_) => setState(() {
+                _tgGender = 'female';
+                _isDirty = true;
+              }),
             ),
           ],
         ),
@@ -169,7 +183,10 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
           contentPadding: EdgeInsets.zero,
           title: const Text('Geburtstag des Users (DOB) berücksichtigen'),
           value: _tgMatchDob,
-          onChanged: (v) => setState(() => _tgMatchDob = v),
+          onChanged: (v) => setState(() {
+            _tgMatchDob = v;
+            _isDirty = true;
+          }),
         ),
         const SizedBox(height: 8),
         Row(
@@ -302,14 +319,16 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
   @override
   void initState() {
     super.initState();
-    _name = TextEditingController(text: widget.playlist.name);
+    _name = TextEditingController(text: widget.playlist.name)
+      ..addListener(() => setState(() => _isDirty = true));
     _showAfter = TextEditingController(
       text: widget.playlist.showAfterSec.toString(),
-    );
+    )..addListener(() => setState(() => _isDirty = true));
     _highlightTag = TextEditingController(
       text: widget.playlist.highlightTag ?? '',
-    );
+    )..addListener(() => setState(() => _isDirty = true));
     _coverImageUrl = widget.playlist.coverImageUrl;
+    _coverOriginalFileName = widget.playlist.coverOriginalFileName;
 
     // Initialize weekly schedule from playlist
     for (final ws in widget.playlist.weeklySchedules) {
@@ -391,6 +410,30 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
       widget.playlist.id,
     );
     final medias = await _mediaSvc.list(widget.playlist.avatarId);
+
+    // Initialize targeting controllers (mit Listeners für _isDirty)
+    final tg = widget.playlist.targeting;
+    _tgActiveDays = TextEditingController(
+      text: tg != null && tg['activeWithinDays'] != null
+          ? tg['activeWithinDays'].toString()
+          : '',
+    )..addListener(() => setState(() => _isDirty = true));
+    _tgNewUserDays = TextEditingController(
+      text: tg != null && tg['newUserWithinDays'] != null
+          ? tg['newUserWithinDays'].toString()
+          : '',
+    )..addListener(() => setState(() => _isDirty = true));
+    _tgPriority = TextEditingController(
+      text: widget.playlist.priority?.toString() ?? '0',
+    )..addListener(() => setState(() => _isDirty = true));
+
+    // Lade Targeting-State
+    if (tg != null) {
+      _targetingEnabled = true;
+      if (tg['gender'] != null) _tgGender = tg['gender'] as String;
+      if (tg['matchUserDob'] == true) _tgMatchDob = true;
+    }
+
     setState(() {
       _items = items;
       _mediaMap = {for (final m in medias) m.id: m};
@@ -543,13 +586,62 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     }
   }
 
+  Future<void> _deleteCoverImage() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cover-Bild löschen?'),
+        content: const Text(
+          'Möchten Sie das Cover-Bild wirklich entfernen? Es wird nur der Platzhalter angezeigt.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    // Cover aus Storage löschen (wenn vorhanden)
+    if (_coverImageUrl != null && _coverImageUrl!.isNotEmpty) {
+      try {
+        final ref = FirebaseStorage.instance.refFromURL(_coverImageUrl!);
+        await ref.delete();
+        print('✅ Cover aus Storage gelöscht');
+      } catch (e) {
+        print('⚠️ Fehler beim Löschen aus Storage: $e');
+        // Weitermachen, auch wenn Storage-Löschung fehlschlägt
+      }
+    }
+
+    setState(() {
+      _coverImageUrl = null;
+      _coverOriginalFileName = null;
+      _isDirty = true;
+    });
+
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Cover-Bild entfernt')));
+    }
+  }
+
   Future<void> _uploadCoverImage() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     if (pickedFile == null) return;
 
     File f = File(pickedFile.path);
-    print('🖼️ Original file: ${f.path}');
+    final originalFileName = p.basename(pickedFile.path);
+    print('🖼️ Original file: ${f.path} (Name: $originalFileName)');
 
     final cropped = await _cropToPortrait916(f);
     if (cropped == null) {
@@ -578,7 +670,9 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
 
       setState(() {
         _coverImageUrl = url;
+        _coverOriginalFileName = originalFileName;
         _uploadingCover = false;
+        _isDirty = true;
       });
     } catch (e) {
       print('❌ Upload error: $e');
@@ -655,6 +749,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
       showAfterSec: int.tryParse(_showAfter.text.trim()) ?? 0,
       highlightTag: highlightText.isNotEmpty ? highlightText : null,
       coverImageUrl: _coverImageUrl,
+      coverOriginalFileName: _coverOriginalFileName,
       weeklySchedules: wsOut,
       specialSchedules: ssOut,
       targeting: _targetingEnabled
@@ -683,6 +778,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     try {
       await _svc.update(p);
       if (mounted) {
+        setState(() => _isDirty = false);
         Navigator.pop(context, true); // Return true to trigger refresh
       }
     } catch (e) {
@@ -707,6 +803,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
       } else {
         _weeklySchedule[weekday]!.add(slot);
       }
+      _isDirty = true;
     });
   }
 
@@ -775,10 +872,12 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
         title: const Text('Playlist bearbeiten'),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            onPressed: _save,
-            icon: const Icon(Icons.save_outlined, color: Colors.white),
-          ),
+          if (_isDirty)
+            IconButton(
+              onPressed: _save,
+              icon: const Icon(Icons.save_outlined, color: Colors.white),
+              tooltip: 'Speichern',
+            ),
         ],
       ),
       body: SingleChildScrollView(
@@ -790,34 +889,64 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                GestureDetector(
-                  onTap: _uploadingCover ? null : _uploadCoverImage,
-                  child: Container(
-                    width: 120,
-                    height: 213, // 9:16 aspect ratio
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade800,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade600),
+                Stack(
+                  children: [
+                    GestureDetector(
+                      onTap: _uploadingCover ? null : _uploadCoverImage,
+                      child: Container(
+                        width: 120,
+                        height: 213, // 9:16 aspect ratio
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade800,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.grey.shade600),
+                        ),
+                        child: _uploadingCover
+                            ? const Center(child: CircularProgressIndicator())
+                            : _coverImageUrl != null
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: Image.network(
+                                  _coverImageUrl!,
+                                  fit: BoxFit.cover,
+                                ),
+                              )
+                            : const Center(
+                                child: Icon(
+                                  Icons.add_photo_alternate,
+                                  size: 40,
+                                  color: Colors.white54,
+                                ),
+                              ),
+                      ),
                     ),
-                    child: _uploadingCover
-                        ? const Center(child: CircularProgressIndicator())
-                        : _coverImageUrl != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              _coverImageUrl!,
-                              fit: BoxFit.cover,
+                    // Delete Button (nur wenn Cover vorhanden)
+                    if (_coverImageUrl != null && !_uploadingCover)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: InkWell(
+                          onTap: _deleteCoverImage,
+                          child: Container(
+                            width: 28,
+                            height: 28,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                color: Colors.white54,
+                                width: 1.5,
+                              ),
                             ),
-                          )
-                        : const Center(
-                            child: Icon(
-                              Icons.add_photo_alternate,
-                              size: 40,
-                              color: Colors.white54,
+                            child: const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 16,
                             ),
                           ),
-                  ),
+                        ),
+                      ),
+                  ],
                 ),
                 const SizedBox(width: 16),
                 Expanded(
@@ -943,6 +1072,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                 if (value != null) {
                   setState(() {
                     _playlistType = value;
+                    _isDirty = true;
                   });
                 }
               },
@@ -1001,6 +1131,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                   onChanged: (v) => setState(() {
                     _targetingEnabled = v;
                     if (v) _targetingExpanded = true;
+                    _isDirty = true;
                   }),
                 ),
               ],
@@ -1843,9 +1974,9 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
   // Targeting State
   String _tgGender = 'any'; // any|male|female
   bool _tgMatchDob = false;
-  final TextEditingController _tgActiveDays = TextEditingController();
-  final TextEditingController _tgNewUserDays = TextEditingController();
-  final TextEditingController _tgPriority = TextEditingController(text: '0');
+  late final TextEditingController _tgActiveDays;
+  late final TextEditingController _tgNewUserDays;
+  late final TextEditingController _tgPriority;
   bool _targetingEnabled = false;
   bool _targetingExpanded = false;
 

@@ -42,6 +42,7 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
   final Map<String, Duration> _audioCurrent = {};
   final Set<String> _audioHasListener = {};
   Timer? _audioTicker;
+  bool _isDirty = false; // Trackt ob Änderungen vorgenommen wurden
 
   @override
   void initState() {
@@ -117,11 +118,12 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
             onPressed: () => Navigator.pop(context),
             icon: const Icon(Icons.close),
           ),
-          IconButton(
-            tooltip: 'Speichern',
-            onPressed: _save,
-            icon: const Icon(Icons.save),
-          ),
+          if (_isDirty)
+            IconButton(
+              tooltip: 'Speichern',
+              onPressed: _save,
+              icon: const Icon(Icons.save),
+            ),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(84),
@@ -338,6 +340,7 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
                   } else {
                     _selected.insert(0, m.id);
                   }
+                  _isDirty = true;
                 });
               },
               child: Column(
@@ -801,6 +804,7 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
 
   void _save() {
     final result = _all.where((m) => _selected.contains(m.id)).toList();
+    setState(() => _isDirty = false);
     Navigator.pop(context, result);
   }
 }

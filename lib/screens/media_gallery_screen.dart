@@ -1240,6 +1240,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             createdAt: timestamp,
             aspectRatio: aspectRatio,
             tags: tags.isNotEmpty ? tags : null,
+            originalFileName: p.basename(file.path),
           );
           await _mediaSvc.add(widget.avatarId, media);
           print('✅ Bild ${i + 1} hochgeladen mit ${tags.length} Tags');
@@ -1430,7 +1431,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               setLocal(() => isCropping = true);
 
                               // Upload durchführen
-                              await _uploadImage(cropResult.croppedImage, ext);
+                              await _uploadImage(
+                                cropResult.croppedImage,
+                                ext,
+                                originalFileName,
+                              );
 
                               // Dialog schließen
                               if (mounted) Navigator.of(context).pop();
@@ -1457,7 +1462,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                     } catch (e) {
                                       // Fallback: Croppe das ganze Bild
                                       setLocal(() => isCropping = true);
-                                      _uploadImage(imageBytes, ext).then((_) {
+                                      _uploadImage(
+                                        imageBytes,
+                                        ext,
+                                        originalFileName,
+                                      ).then((_) {
                                         if (mounted) Navigator.of(ctx).pop();
                                       });
                                     }
@@ -1495,7 +1504,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     );
   }
 
-  Future<void> _uploadImage(Uint8List bytes, String ext) async {
+  Future<void> _uploadImage(
+    Uint8List bytes,
+    String ext,
+    String originalFileName,
+  ) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
@@ -1536,6 +1549,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       createdAt: timestamp,
       aspectRatio: _cropAspect,
       tags: tags.isNotEmpty ? tags : null,
+      originalFileName: originalFileName,
     );
     await _mediaSvc.add(widget.avatarId, m);
     await _load();
@@ -1620,6 +1634,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           createdAt: timestamp,
           aspectRatio: videoAspectRatio,
           tags: tags,
+          originalFileName: base,
         );
         await _mediaSvc.add(widget.avatarId, media);
         print(
@@ -1698,6 +1713,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       createdAt: timestamp,
       aspectRatio: videoAspectRatio,
       tags: tags,
+      originalFileName: base,
     );
     await _mediaSvc.add(widget.avatarId, m);
     await _load();

@@ -44,7 +44,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.fixVideoAspectRatios = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.onVideoObjectFinalize = exports.onImageObjectFinalize = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
+exports.backfillOriginalFileNames = exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.fixVideoAspectRatios = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.onVideoObjectFinalize = exports.onImageObjectFinalize = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
 require("dotenv/config");
 const functions = __importStar(require("firebase-functions"));
 // admin ist bereits oben initialisiert
@@ -1690,5 +1690,91 @@ exports.onTimelineAssetDelete = functions
     catch (e) {
         console.error('onTimelineAssetDelete cleanup error:', e);
     }
+});
+/**
+ * Backfill originalFileName für existierende Medien
+ * Extrahiert den Dateinamen aus der URL und setzt ihn in Firestore
+ */
+exports.backfillOriginalFileNames = functions
+    .region('us-central1')
+    .runWith({ timeoutSeconds: 540, memory: '2GB' })
+    .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+        try {
+            const db = admin.firestore();
+            const avatars = await db.collection('avatars').get();
+            const results = [];
+            let updated = 0;
+            let skipped = 0;
+            for (const avatarDoc of avatars.docs) {
+                const avatarId = avatarDoc.id;
+                const mediaSnap = await db.collection('avatars').doc(avatarId)
+                    .collection('media')
+                    .get();
+                for (const mediaDoc of mediaSnap.docs) {
+                    const data = mediaDoc.data();
+                    const mediaId = mediaDoc.id;
+                    // Skip wenn originalFileName bereits vorhanden
+                    if (data.originalFileName && data.originalFileName.trim() !== '') {
+                        skipped++;
+                        continue;
+                    }
+                    // Extrahiere Dateinamen aus URL
+                    try {
+                        const url = data.url;
+                        if (!url) {
+                            results.push({ avatarId, mediaId, status: 'no_url' });
+                            continue;
+                        }
+                        // Parse URL und extrahiere NUR den Dateinamen (ohne Pfad)
+                        const urlObj = new URL(url);
+                        const pathname = urlObj.pathname;
+                        const segments = pathname.split('/');
+                        let filename = segments[segments.length - 1];
+                        // Entferne Query-Parameter
+                        const queryIndex = filename.indexOf('?');
+                        if (queryIndex >= 0) {
+                            filename = filename.substring(0, queryIndex);
+                        }
+                        // Decode URL-Encoding
+                        filename = decodeURIComponent(filename);
+                        // Entferne alles VOR dem letzten Slash (falls noch Pfad drin ist)
+                        const lastSlash = filename.lastIndexOf('/');
+                        if (lastSlash >= 0) {
+                            filename = filename.substring(lastSlash + 1);
+                        }
+                        // Update in Firestore
+                        await mediaDoc.ref.update({ originalFileName: filename });
+                        updated++;
+                        results.push({
+                            avatarId,
+                            mediaId,
+                            type: data.type,
+                            status: 'updated',
+                            originalFileName: filename,
+                        });
+                    }
+                    catch (e) {
+                        results.push({
+                            avatarId,
+                            mediaId,
+                            status: 'error',
+                            error: e.message
+                        });
+                    }
+                }
+            }
+            res.status(200).json({
+                success: true,
+                updated,
+                skipped,
+                total: updated + skipped,
+                results: results.slice(0, 100), // Nur erste 100 für Ausgabe
+            });
+        }
+        catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
 });
 //# sourceMappingURL=index.js.map

@@ -39,6 +39,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   String _assetSort = 'name'; // 'name' | 'type'
   final TextEditingController _assetsSearchCtl = TextEditingController();
   String _assetsSearchTerm = '';
+  bool _isDirty = false; // Trackt ob Änderungen vorgenommen wurden
 
   // Audio-Player-Logik (wie in media_assets)
   final Map<String, VideoPlayerController> _audioCtrls = {};
@@ -339,11 +340,12 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         title: const Text('Playlist Medien'),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          IconButton(
-            tooltip: 'Speichern',
-            onPressed: _saveTimeline,
-            icon: const Icon(Icons.save),
-          ),
+          if (_isDirty)
+            IconButton(
+              tooltip: 'Speichern',
+              onPressed: _saveTimeline,
+              icon: const Icon(Icons.save),
+            ),
           const SizedBox(width: 4),
         ],
         // Keine Bottom‑Tabs hier – Tabs kommen unter den Header
@@ -777,6 +779,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         itemDocs,
       );
       if (mounted) {
+        setState(() => _isDirty = false);
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Timeline gespeichert')));
@@ -941,6 +944,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                           setState(() {
                             _timeline.add(m);
                             _timelineKeys.add(UniqueKey());
+                            _isDirty = true;
                           });
                           await _persistTimelineItems();
                         },
@@ -1055,6 +1059,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                                     _assets.removeWhere((a) => a.id == m.id);
                                     _timeline.removeWhere((t) => t.id == m.id);
                                     _syncKeysLength();
+                                    _isDirty = true;
                                   });
                                   await _playlistSvc.deleteTimelineItemsByAsset(
                                     widget.playlist.avatarId,
@@ -1165,6 +1170,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                   setState(() {
                     _timeline.add(m);
                     _timelineKeys.add(UniqueKey());
+                    _isDirty = true;
                   });
                   await _persistTimelineItems();
                 },
@@ -1227,6 +1233,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                             _assets.removeWhere((a) => a.id == m.id);
                             _timeline.removeWhere((t) => t.id == m.id);
                             _syncKeysLength();
+                            _isDirty = true;
                           });
                           await _playlistSvc.deleteTimelineItemsByAsset(
                             widget.playlist.avatarId,
@@ -1293,6 +1300,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         _assets
           ..clear()
           ..addAll(result);
+        _isDirty = true;
       });
       // Nach Auswahl speichern wir die Assets sofort (Pool)
       final docs = _assets
@@ -1381,7 +1389,10 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                       final k = _timelineKeys.removeAt(oldIndex);
                       _timeline.insert(newIndex, it);
                       _timelineKeys.insert(newIndex, k);
-                      setState(_syncKeysLength);
+                      setState(() {
+                        _syncKeysLength();
+                        _isDirty = true;
+                      });
                       await _persistTimelineItems();
                     },
                     children: [
@@ -1421,6 +1432,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                                       _timeline.insert(i + 1, _timeline[i]);
                                       _timelineKeys.insert(i + 1, UniqueKey());
                                       _syncKeysLength();
+                                      _isDirty = true;
                                     });
                                     await _persistTimelineItems();
                                   } else if (v == 'del') {
@@ -1428,6 +1440,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                                       _timeline.removeAt(i);
                                       _timelineKeys.removeAt(i);
                                       _syncKeysLength();
+                                      _isDirty = true;
                                     });
                                     await _persistTimelineItems();
                                   }
@@ -1459,6 +1472,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
           _timeline.add(m);
           _timelineKeys.add(UniqueKey());
           _syncKeysLength();
+          _isDirty = true;
         }),
       ),
     );

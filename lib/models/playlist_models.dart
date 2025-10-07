@@ -114,6 +114,8 @@ class Playlist {
   final String? highlightTag;
   // Cover-Bild URL (9:16 Format)
   final String? coverImageUrl;
+  // Originaler Dateiname des Cover-Bildes
+  final String? coverOriginalFileName;
   // Wöchentlicher Zeitplan: Wochentag + Zeitfenster
   final List<WeeklySchedule> weeklySchedules;
   // Sondertermine: Datumsspannen + Zeitfenster (überschreiben weekly)
@@ -137,6 +139,7 @@ class Playlist {
     required this.showAfterSec,
     this.highlightTag,
     this.coverImageUrl,
+    this.coverOriginalFileName,
     this.weeklySchedules = const [],
     this.specialSchedules = const [],
     required this.createdAt,
@@ -212,6 +215,7 @@ class Playlist {
       showAfterSec: parseInt(map['showAfterSec']),
       highlightTag: parseString(map['highlightTag']),
       coverImageUrl: parseString(map['coverImageUrl']),
+      coverOriginalFileName: parseString(map['coverOriginalFileName']),
       weeklySchedules: weekly,
       specialSchedules: specials,
       createdAt: parseInt(map['createdAt']),
@@ -237,6 +241,8 @@ class Playlist {
         'highlightTag': highlightTag,
       if (coverImageUrl != null && coverImageUrl!.isNotEmpty)
         'coverImageUrl': coverImageUrl,
+      if (coverOriginalFileName != null && coverOriginalFileName!.isNotEmpty)
+        'coverOriginalFileName': coverOriginalFileName,
       'weeklySchedules': weeklySchedules.map((s) => s.toMap()).toList(),
       'specialSchedules': specialSchedules.map((s) => s.toMap()).toList(),
       'createdAt': createdAt,
