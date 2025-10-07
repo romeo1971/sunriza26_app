@@ -22,6 +22,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import sharp from 'sharp';
+import * as functionsStorage from 'firebase-functions/v2/storage';
 
 // Stripe Checkout für Credits
 export * from './stripeCheckout';
@@ -717,6 +718,97 @@ async function createVideoThumbFromFirstFrame(avatarId: string, mediaId: string,
   return signed;
 }
 
+// STORAGE TRIGGERS: Thumbs für Details-Screen Uploads (direkter Storage-Upload)
+function parseAvatarPath(objectName: string | undefined) {
+  if (!objectName) return null;
+  // erwartet: avatars/<avatarId>/(images|videos)/...
+  const parts = objectName.split('/');
+  if (parts.length < 4) return null;
+  if (parts[0] !== 'avatars') return null;
+  const avatarId = parts[1];
+  const kind = parts[2];
+  const inThumbs = parts.length >= 4 && parts[3] === 'thumbs';
+  return { avatarId, kind, inThumbs, fileName: parts[parts.length - 1], objectName };
+}
+
+export const onImageObjectFinalize = functionsStorage.onObjectFinalized({ region: 'europe-west9' }, async (event) => {
+  try {
+    const obj = parseAvatarPath(event.data.name);
+    if (!obj) return;
+    if (obj.kind !== 'images') return;
+    if (obj.inThumbs) return; // keine Thumbs für Thumbs
+    const bucket = admin.storage().bucket(event.data.bucket);
+    const [bytes] = await bucket.file(obj.objectName!).download();
+    // Crop auf 9:16/16:9 wie in Galerie
+    const meta = await sharp(bytes).metadata();
+    const ar = (meta.width || 1) / (meta.height || 1);
+    const targetAR = ar < 1.0 ? 9/16 : 16/9;
+    let width = meta.width || 0;
+    let height = meta.height || 0;
+    if (width <= 0 || height <= 0) return;
+    let cropW = width;
+    let cropH = Math.round(width / targetAR);
+    if (cropH > height) { cropH = height; cropW = Math.round(cropH * targetAR); }
+    const left = Math.max(0, Math.floor((width - cropW) / 2));
+    const top = Math.max(0, Math.floor((height - cropH) / 2));
+    const out = await sharp(bytes).extract({ left, top, width: cropW, height: cropH }).resize(720).jpeg({ quality: 80 }).toBuffer();
+    const base = obj.fileName.replace(/\.[^.]+$/, '');
+    const dest = `avatars/${obj.avatarId}/images/thumbs/${base}_thumb.jpg`;
+    await bucket.file(dest).save(out, { contentType: 'image/jpeg', metadata: { cacheControl: 'public,max-age=31536000,immutable' }});
+  } catch (e) {
+    console.warn('onImageObjectFinalize error', e);
+  }
+});
+
+export const onVideoObjectFinalize = functionsStorage.onObjectFinalized({ region: 'europe-west9' }, async (event) => {
+  try {
+    const obj = parseAvatarPath(event.data.name);
+    if (!obj) return;
+    if (obj.kind !== 'videos') return;
+    if (obj.inThumbs) return;
+    const bucket = admin.storage().bucket(event.data.bucket);
+    const tmpDir = os.tmpdir();
+    const src = path.join(tmpDir, `${Date.now()}_${obj.fileName}`);
+    const out = path.join(tmpDir, `${Date.now()}_${obj.fileName}.jpg`);
+    await bucket.file(obj.objectName!).download({ destination: src });
+    if (ffmpegPath) (ffmpeg as any).setFfmpegPath(ffmpegPath);
+    await new Promise<void>((resolve, reject) => {
+      (ffmpeg as any)(src)
+        .on('end', () => resolve())
+        .on('error', (e: any) => reject(e))
+        .screenshots({ count: 1, timemarks: ['0.5'], filename: path.basename(out), folder: tmpDir });
+    });
+    const base = obj.fileName.replace(/\.[^.]+$/, '');
+    const dest = `avatars/${obj.avatarId}/videos/thumbs/${base}_thumb.jpg`;
+    await bucket.upload(out, { destination: dest, contentType: 'image/jpeg', metadata: { cacheControl: 'public,max-age=31536000,immutable' }});
+    try { fs.unlinkSync(src); } catch {}
+    try { fs.unlinkSync(out); } catch {}
+  } catch (e) {
+    console.warn('onVideoObjectFinalize error', e);
+  }
+});
+
+// Storage-Delete: zugehörige Thumbs löschen
+export const onMediaObjectDelete = functionsStorage.onObjectDeleted({ region: 'europe-west9' }, async (event) => {
+  try {
+    const obj = parseAvatarPath(event.data.name);
+    if (!obj) return;
+    if (obj.inThumbs) return; // Thumb gelöscht → keine Aktion
+    const bucket = admin.storage().bucket(event.data.bucket);
+    const base = obj.fileName.replace(/\.[^.]+$/, '');
+    const prefix = `avatars/${obj.avatarId}/${obj.kind}/thumbs/${base}_`;
+    const [files] = await bucket.getFiles({ prefix });
+    await Promise.all(files.map(f => f.delete().catch(() => {})));
+    if (obj.kind === 'images' && obj.fileName === 'heroImage.jpg') {
+      try {
+        const avatarRef = admin.firestore().collection('avatars').doc(obj.avatarId);
+        await avatarRef.update({ avatarImageUrl: admin.firestore.FieldValue.delete() });
+      } catch {}
+    }
+  } catch (e) {
+    console.warn('onMediaObjectDelete error', e);
+  }
+});
 // Video: Vorhandenes Poster/Platzhalterbild in Storage kopieren und als Thumb setzen
 async function copyExistingVideoThumbToStorage(avatarId: string, mediaId: string, imageUrl: string) {
   const res = await (fetch as any)(imageUrl);
@@ -794,9 +886,23 @@ export const onMediaCreateSetImageThumb = functions
       const mediaId = ctx.params.mediaId as string;
       const url = data.url as string | undefined;
       if (!url) return;
-      const res = await (fetch as any)(url);
-      if (!(res as any).ok) return;
-      const buf = Buffer.from(await (res as any).arrayBuffer());
+      // Lade Bytes: unterstütze sowohl https Download-URLs als auch gs:// Pfade
+      let buf: Buffer | null = null;
+      try {
+        if (url.startsWith('gs://')) {
+          const u = url.replace('gs://', '');
+          const i = u.indexOf('/');
+          const pathOnly = i >= 0 ? u.substring(i + 1) : '';
+          const [bytes] = await admin.storage().bucket().file(pathOnly).download();
+          buf = Buffer.from(bytes);
+        } else {
+          const res = await (fetch as any)(url);
+          if ((res as any).ok) buf = Buffer.from(await (res as any).arrayBuffer());
+        }
+      } catch (e) {
+        console.warn('image fetch failed', e);
+      }
+      if (!buf) return;
       const meta = await sharp(buf).metadata();
       const ar = (meta.width || 1) / (meta.height || 1);
       const portrait = ar < 1.0;

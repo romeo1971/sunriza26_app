@@ -44,7 +44,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
+exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.onVideoObjectFinalize = exports.onImageObjectFinalize = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
 require("dotenv/config");
 const functions = __importStar(require("firebase-functions"));
 // admin ist bereits oben initialisiert
@@ -64,6 +64,7 @@ const fs = __importStar(require("fs"));
 const os = __importStar(require("os"));
 const path = __importStar(require("path"));
 const sharp_1 = __importDefault(require("sharp"));
+const functionsStorage = __importStar(require("firebase-functions/v2/storage"));
 // Stripe Checkout für Credits
 __exportStar(require("./stripeCheckout"), exports);
 // eRechnung Generator
@@ -766,6 +767,135 @@ async function createVideoThumbFromFirstFrame(avatarId, mediaId, videoUrl) {
         .set({ thumbUrl: signed, aspectRatio: 16 / 9 }, { merge: true });
     return signed;
 }
+// STORAGE TRIGGERS: Thumbs für Details-Screen Uploads (direkter Storage-Upload)
+function parseAvatarPath(objectName) {
+    if (!objectName)
+        return null;
+    // erwartet: avatars/<avatarId>/(images|videos)/...
+    const parts = objectName.split('/');
+    if (parts.length < 4)
+        return null;
+    if (parts[0] !== 'avatars')
+        return null;
+    const avatarId = parts[1];
+    const kind = parts[2];
+    const inThumbs = parts.length >= 4 && parts[3] === 'thumbs';
+    return { avatarId, kind, inThumbs, fileName: parts[parts.length - 1], objectName };
+}
+exports.onImageObjectFinalize = functionsStorage.onObjectFinalized({ region: 'europe-west9' }, async (event) => {
+    try {
+        const obj = parseAvatarPath(event.data.name);
+        if (!obj)
+            return;
+        if (obj.kind !== 'images')
+            return;
+        if (obj.inThumbs)
+            return; // keine Thumbs für Thumbs
+        const bucket = admin.storage().bucket(event.data.bucket);
+        const [bytes] = await bucket.file(obj.objectName).download();
+        // Crop auf 9:16/16:9 wie in Galerie
+        const meta = await (0, sharp_1.default)(bytes).metadata();
+        const ar = (meta.width || 1) / (meta.height || 1);
+        const targetAR = ar < 1.0 ? 9 / 16 : 16 / 9;
+        let width = meta.width || 0;
+        let height = meta.height || 0;
+        if (width <= 0 || height <= 0)
+            return;
+        let cropW = width;
+        let cropH = Math.round(width / targetAR);
+        if (cropH > height) {
+            cropH = height;
+            cropW = Math.round(cropH * targetAR);
+        }
+        const left = Math.max(0, Math.floor((width - cropW) / 2));
+        const top = Math.max(0, Math.floor((height - cropH) / 2));
+        const out = await (0, sharp_1.default)(bytes).extract({ left, top, width: cropW, height: cropH }).resize(720).jpeg({ quality: 80 }).toBuffer();
+        const base = obj.fileName.replace(/\.[^.]+$/, '');
+        const dest = `avatars/${obj.avatarId}/images/thumbs/${base}_thumb.jpg`;
+        await bucket.file(dest).save(out, { contentType: 'image/jpeg', metadata: { cacheControl: 'public,max-age=31536000,immutable' } });
+    }
+    catch (e) {
+        console.warn('onImageObjectFinalize error', e);
+    }
+});
+exports.onVideoObjectFinalize = functionsStorage.onObjectFinalized({ region: 'europe-west9' }, async (event) => {
+    try {
+        const obj = parseAvatarPath(event.data.name);
+        if (!obj)
+            return;
+        if (obj.kind !== 'videos')
+            return;
+        if (obj.inThumbs)
+            return;
+        const bucket = admin.storage().bucket(event.data.bucket);
+        const tmpDir = os.tmpdir();
+        const src = path.join(tmpDir, `${Date.now()}_${obj.fileName}`);
+        const out = path.join(tmpDir, `${Date.now()}_${obj.fileName}.jpg`);
+        await bucket.file(obj.objectName).download({ destination: src });
+        if (ffmpeg_static_1.default)
+            fluent_ffmpeg_1.default.setFfmpegPath(ffmpeg_static_1.default);
+        await new Promise((resolve, reject) => {
+            fluent_ffmpeg_1.default(src)
+                .on('end', () => resolve())
+                .on('error', (e) => reject(e))
+                .screenshots({ count: 1, timemarks: ['0.5'], filename: path.basename(out), folder: tmpDir });
+        });
+        const base = obj.fileName.replace(/\.[^.]+$/, '');
+        const dest = `avatars/${obj.avatarId}/videos/thumbs/${base}_thumb.jpg`;
+        await bucket.upload(out, { destination: dest, contentType: 'image/jpeg', metadata: { cacheControl: 'public,max-age=31536000,immutable' } });
+        try {
+            fs.unlinkSync(src);
+        }
+        catch (_a) { }
+        try {
+            fs.unlinkSync(out);
+        }
+        catch (_b) { }
+    }
+    catch (e) {
+        console.warn('onVideoObjectFinalize error', e);
+    }
+});
+// Storage-Delete: zugehörige Thumbs löschen
+exports.onMediaObjectDelete = functionsStorage.onObjectDeleted({ region: 'europe-west9' }, async (event) => {
+    try {
+        const obj = parseAvatarPath(event.data.name);
+        if (!obj)
+            return;
+        if (obj.inThumbs)
+            return; // Thumb gelöscht → keine Aktion
+        const bucket = admin.storage().bucket(event.data.bucket);
+        const base = obj.fileName.replace(/\.[^.]+$/, '');
+        const prefix = `avatars/${obj.avatarId}/${obj.kind}/thumbs/${base}_`;
+        const [files] = await bucket.getFiles({ prefix });
+        await Promise.all(files.map(f => f.delete().catch(() => { })));
+        if (obj.kind === 'images' && obj.fileName === 'heroImage.jpg') {
+            try {
+                const avatarRef = admin.firestore().collection('avatars').doc(obj.avatarId);
+                await avatarRef.update({ avatarImageUrl: admin.firestore.FieldValue.delete() });
+            }
+            catch (_a) { }
+        }
+    }
+    catch (e) {
+        console.warn('onMediaObjectDelete error', e);
+    }
+});
+// Video: Vorhandenes Poster/Platzhalterbild in Storage kopieren und als Thumb setzen
+async function copyExistingVideoThumbToStorage(avatarId, mediaId, imageUrl) {
+    const res = await node_fetch_1.default(imageUrl);
+    if (!res.ok)
+        throw new Error(`download image failed ${res.status}`);
+    const buf = Buffer.from(await res.arrayBuffer());
+    const bucket = admin.storage().bucket();
+    const dest = `avatars/${avatarId}/videos/thumbs/${mediaId}_${Date.now()}.jpg`;
+    await bucket.file(dest).save(buf, { contentType: 'image/jpeg', metadata: { cacheControl: 'public,max-age=31536000,immutable' } });
+    const [signed] = await bucket.file(dest).getSignedUrl({ action: 'read', expires: Date.now() + 365 * 24 * 3600 * 1000 });
+    await admin.firestore().collection('avatars').doc(avatarId)
+        .collection('media').doc(mediaId)
+        .set({ thumbUrl: signed }, { merge: true });
+    return signed;
+}
 // Firestore Trigger: Wenn erstes Bild hochgeladen wird, setze es als avatarImageUrl
 exports.onMediaCreateSetAvatarImage = functions
     .region('us-central1')
@@ -837,10 +967,27 @@ exports.onMediaCreateSetImageThumb = functions
         const url = data.url;
         if (!url)
             return;
-        const res = await node_fetch_1.default(url);
-        if (!res.ok)
+        // Lade Bytes: unterstütze sowohl https Download-URLs als auch gs:// Pfade
+        let buf = null;
+        try {
+            if (url.startsWith('gs://')) {
+                const u = url.replace('gs://', '');
+                const i = u.indexOf('/');
+                const pathOnly = i >= 0 ? u.substring(i + 1) : '';
+                const [bytes] = await admin.storage().bucket().file(pathOnly).download();
+                buf = Buffer.from(bytes);
+            }
+            else {
+                const res = await node_fetch_1.default(url);
+                if (res.ok)
+                    buf = Buffer.from(await res.arrayBuffer());
+            }
+        }
+        catch (e) {
+            console.warn('image fetch failed', e);
+        }
+        if (!buf)
             return;
-        const buf = Buffer.from(await res.arrayBuffer());
         const meta = await (0, sharp_1.default)(buf).metadata();
         const ar = (meta.width || 1) / (meta.height || 1);
         const portrait = ar < 1.0;
@@ -882,8 +1029,6 @@ exports.onMediaCreateSetVideoThumb = functions
         const data = snap.data();
         if (!data || data.type !== 'video')
             return;
-        if (data.thumbUrl)
-            return;
         const avatarId = ctx.params.avatarId;
         const mediaId = ctx.params.mediaId;
         const bucket = admin.storage().bucket();
@@ -894,6 +1039,16 @@ exports.onMediaCreateSetVideoThumb = functions
             const [signed] = await f.getSignedUrl({ action: 'read', expires: Date.now() + 365 * 24 * 3600 * 1000 });
             await snap.ref.set({ thumbUrl: signed }, { merge: true });
             return;
+        }
+        // Wenn bereits ein externes Poster/Platzhalterbild existiert → in Storage übernehmen
+        if (typeof data.thumbUrl === 'string' && data.thumbUrl.length > 0) {
+            try {
+                await copyExistingVideoThumbToStorage(avatarId, mediaId, data.thumbUrl);
+                return;
+            }
+            catch (e) {
+                console.warn('copyExistingVideoThumbToStorage failed, fallback to frame grab', e);
+            }
         }
         // Falls kein Storage-Thumb existiert: generiere aus erstem Frame
         if (typeof data.url === 'string' && data.url.length > 0) {

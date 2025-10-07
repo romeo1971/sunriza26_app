@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -26,6 +27,8 @@ import '../services/env_service.dart';
 import '../services/firebase_storage_service.dart';
 import '../services/geo_service.dart';
 import '../services/localization_service.dart';
+import '../services/media_service.dart';
+import '../models/media_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../widgets/video_player_widget.dart';
@@ -75,6 +78,7 @@ class AvatarDetailsScreen extends StatefulWidget {
 
 class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _mediaSvc = MediaService();
   final _firstNameController = TextEditingController();
   final _nicknameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -2959,6 +2963,25 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return ok;
   }
 
+  /// Erstellt ein media-Dokument via MediaService (triggert serverseitige Thumb-Generierung)
+  Future<void> _addMediaDoc(String url, AvatarMediaType type) async {
+    if (_avatarData == null) return;
+    try {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final media = AvatarMedia(
+        id: ts.toString(),
+        avatarId: _avatarData!.id,
+        type: type,
+        url: url,
+        createdAt: ts,
+      );
+      await _mediaSvc.add(_avatarData!.id, media);
+      debugPrint('✅ Media-Doc erstellt: $type → $url');
+    } catch (e) {
+      debugPrint('❌ Fehler beim Erstellen des Media-Doc: $e');
+    }
+  }
+
   String pathFromLocalFile(String p) {
     try {
       final parts = p.split('/');
@@ -3997,6 +4020,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             );
             // Sofort persistieren (Firestore aktualisieren)
             await _persistTextFileUrls();
+            // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
+            _addMediaDoc(url, AvatarMediaType.image);
             debugPrint('🖼️ Bild ${i + 1} erfolgreich gespeichert!');
           } else {
             debugPrint('❌ Bild ${i + 1} Upload fehlgeschlagen!');
@@ -4056,6 +4081,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           });
           // Sofort persistieren (Firestore aktualisieren)
           await _persistTextFileUrls();
+          // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
+          _addMediaDoc(url, AvatarMediaType.image);
         }
       }
     }
@@ -4108,6 +4135,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             debugPrint('🎬 Video zu Liste hinzugefügt, persistiere...');
             // Sofort persistieren (Firestore aktualisieren)
             await _persistTextFileUrls();
+            // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
+            _addMediaDoc(url, AvatarMediaType.video);
             debugPrint('🎬 Video erfolgreich gespeichert!');
 
             if (mounted) {
@@ -4157,6 +4186,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             debugPrint('🎬 Video zu Liste hinzugefügt, persistiere...');
             // Sofort persistieren (Firestore aktualisieren)
             await _persistTextFileUrls();
+            // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
+            _addMediaDoc(url, AvatarMediaType.video);
             debugPrint('🎬 Video erfolgreich gespeichert!');
 
             if (mounted) {
@@ -5531,17 +5562,66 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
     if (ok != true) return;
 
-    // Remote löschen (Bilder)
+    // Remote löschen (Bilder) + zugehörige Thumbs und evtl. Media-Dokumente
     for (final url in _selectedRemoteImages) {
-      await FirebaseStorageService.deleteFile(url);
+      try {
+        // Original löschen
+        await FirebaseStorageService.deleteFile(url);
+        // Zugehörige Thumbs unter images/thumbs/<basename>_*
+        final originalPath = FirebaseStorageService.pathFromUrl(url);
+        if (originalPath.isNotEmpty) {
+          final dir = p.dirname(originalPath); // avatars/<id>/images
+          final base = p.basenameWithoutExtension(originalPath);
+          final prefix = '$dir/thumbs/${base}_';
+          try {
+            await FirebaseStorageService.deleteByPrefix(prefix);
+          } catch (_) {}
+        }
+        // Firestore media docs entfernen (falls vorhanden)
+        try {
+          final avatarId = _avatarData!.id;
+          final qs = await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(avatarId)
+              .collection('media')
+              .where('url', isEqualTo: url)
+              .get();
+          for (final d in qs.docs) {
+            await d.reference.delete();
+          }
+        } catch (_) {}
+      } catch (_) {}
       _imageUrls.remove(url);
       if (_profileImageUrl == url) {
         _profileImageUrl = _imageUrls.isNotEmpty ? _imageUrls.first : null;
       }
     }
-    // Remote löschen (Videos)
+    // Remote löschen (Videos) + Thumbs und Media-Dokumente
     for (final url in _selectedRemoteVideos) {
-      await FirebaseStorageService.deleteFile(url);
+      try {
+        await FirebaseStorageService.deleteFile(url);
+        final originalPath = FirebaseStorageService.pathFromUrl(url);
+        if (originalPath.isNotEmpty) {
+          final dir = p.dirname(originalPath); // avatars/<id>/videos
+          final base = p.basenameWithoutExtension(originalPath);
+          final prefix = '$dir/thumbs/${base}_';
+          try {
+            await FirebaseStorageService.deleteByPrefix(prefix);
+          } catch (_) {}
+        }
+        try {
+          final avatarId = _avatarData!.id;
+          final qs = await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(avatarId)
+              .collection('media')
+              .where('url', isEqualTo: url)
+              .get();
+          for (final d in qs.docs) {
+            await d.reference.delete();
+          }
+        } catch (_) {}
+      } catch (_) {}
       _videoUrls.remove(url);
     }
     // Hero-Video sicherstellen: wenn Hero-Video gelöscht oder fehlt, nächstes setzen

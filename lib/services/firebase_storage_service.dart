@@ -329,6 +329,26 @@ class FirebaseStorageService {
     }
   }
 
+  /// Lösche alle Dateien mit einem bestimmten Präfix (z.B. thumbs)
+  static Future<void> deleteByPrefix(String prefix) async {
+    try {
+      final ref = _storage.ref().child(prefix);
+      final listResult = await ref.listAll();
+
+      // Lösche alle Dateien
+      for (final item in listResult.items) {
+        await item.delete();
+      }
+
+      // Lösche rekursiv alle Unterordner
+      for (final folder in listResult.prefixes) {
+        await deleteByPrefix(folder.fullPath);
+      }
+    } catch (e) {
+      debugPrint('Fehler beim Löschen mit Präfix $prefix: $e');
+    }
+  }
+
   /// Lösche alle Dateien eines Avatars
   static Future<bool> deleteAvatarFiles(String avatarId) async {
     try {
