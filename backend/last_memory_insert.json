@@ -1,12 +1,11 @@
 {
-  "stage": "upsert_batch",
-  "index": "avatars-index-q6etnezj0wzei7uwhh7qmjys-pdtagp",
-  "namespace": "q6eTNezJ0wZEi7uWhh7QMjYSBGA2_pdTAgP4RMyGIcxzcJND1",
+  "stage": "embeddings_ok",
+  "index": "avatars-index-q6etnezj0wzei7uwhh7qmjys-daep8l",
+  "namespace": "q6eTNezJ0wZEi7uWhh7QMjYSBGA2_DAeP8lx06Wg8PMyQuuQI",
   "user_id": "q6eTNezJ0wZEi7uWhh7QMjYSBGA2",
-  "avatar_id": "pdTAgP4RMyGIcxzcJND1",
-  "text_len": 79,
+  "avatar_id": "DAeP8lx06Wg8PMyQuuQI",
+  "text_len": 84,
   "chunks": 1,
   "dim": 1536,
-  "inserted": 1,
-  "ts": 1759514864756
+  "ts": 1759834785689
 }

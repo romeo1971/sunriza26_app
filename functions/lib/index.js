@@ -44,7 +44,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.onVideoObjectFinalize = exports.onImageObjectFinalize = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
+exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.fixVideoAspectRatios = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.onVideoObjectFinalize = exports.onImageObjectFinalize = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
 require("dotenv/config");
 const functions = __importStar(require("firebase-functions"));
 // admin ist bereits oben initialisiert
@@ -724,6 +724,7 @@ exports.backfillAudioWaveforms = functions
 });
 // Video: Thumb aus erstem Frame generieren, wenn nicht vorhanden
 async function createVideoThumbFromFirstFrame(avatarId, mediaId, videoUrl) {
+    var _a;
     if (ffmpeg_static_1.default)
         fluent_ffmpeg_1.default.setFfmpegPath(ffmpeg_static_1.default);
     const tmpDir = os.tmpdir();
@@ -735,6 +736,26 @@ async function createVideoThumbFromFirstFrame(avatarId, mediaId, videoUrl) {
         throw new Error(`download video failed ${res.status}`);
     const buf = Buffer.from(await res.arrayBuffer());
     fs.writeFileSync(src, buf);
+    // Extrahiere Video-Dimensionen mit FFprobe
+    let aspectRatio = 16 / 9; // Fallback
+    try {
+        const metadata = await new Promise((resolve, reject) => {
+            fluent_ffmpeg_1.default.ffprobe(src, (err, data) => {
+                if (err)
+                    reject(err);
+                else
+                    resolve(data);
+            });
+        });
+        const videoStream = (_a = metadata === null || metadata === void 0 ? void 0 : metadata.streams) === null || _a === void 0 ? void 0 : _a.find((s) => s.codec_type === 'video');
+        if ((videoStream === null || videoStream === void 0 ? void 0 : videoStream.width) && (videoStream === null || videoStream === void 0 ? void 0 : videoStream.height)) {
+            aspectRatio = videoStream.width / videoStream.height;
+            console.log(`Video dimensions: ${videoStream.width}x${videoStream.height}, aspectRatio: ${aspectRatio}`);
+        }
+    }
+    catch (e) {
+        console.warn('Failed to extract video dimensions, using fallback 16/9', e);
+    }
     await new Promise((resolve, reject) => {
         fluent_ffmpeg_1.default(src)
             .on('end', () => resolve())
@@ -757,14 +778,14 @@ async function createVideoThumbFromFirstFrame(avatarId, mediaId, videoUrl) {
     try {
         fs.unlinkSync(src);
     }
-    catch (_a) { }
+    catch (_b) { }
     try {
         fs.unlinkSync(out);
     }
-    catch (_b) { }
+    catch (_c) { }
     await admin.firestore().collection('avatars').doc(avatarId)
         .collection('media').doc(mediaId)
-        .set({ thumbUrl: signed, aspectRatio: 16 / 9 }, { merge: true });
+        .set({ thumbUrl: signed, aspectRatio }, { merge: true });
     return signed;
 }
 // STORAGE TRIGGERS: Thumbs für Details-Screen Uploads (direkter Storage-Upload)
@@ -1058,6 +1079,94 @@ exports.onMediaCreateSetVideoThumb = functions
     catch (e) {
         console.warn('onMediaCreateSetVideoThumb error', e);
     }
+});
+// Backfill: Korrigiere aspectRatio für alle Videos basierend auf echten Dimensionen
+exports.fixVideoAspectRatios = functions
+    .region('us-central1')
+    .runWith({ timeoutSeconds: 540, memory: '2GB' })
+    .https.onRequest(async (req, res) => {
+    return corsHandler(req, res, async () => {
+        var _a;
+        try {
+            if (ffmpeg_static_1.default)
+                fluent_ffmpeg_1.default.setFfmpegPath(ffmpeg_static_1.default);
+            const db = admin.firestore();
+            const avatars = await db.collection('avatars').get();
+            const results = [];
+            for (const avatarDoc of avatars.docs) {
+                const avatarId = avatarDoc.id;
+                const mediaSnap = await db.collection('avatars').doc(avatarId)
+                    .collection('media')
+                    .where('type', '==', 'video')
+                    .get();
+                for (const mediaDoc of mediaSnap.docs) {
+                    const data = mediaDoc.data();
+                    const mediaId = mediaDoc.id;
+                    const videoUrl = data.url;
+                    if (!videoUrl) {
+                        results.push({ avatarId, mediaId, status: 'no_url' });
+                        continue;
+                    }
+                    try {
+                        // Download Video temporär
+                        const tmpDir = os.tmpdir();
+                        const src = path.join(tmpDir, `${mediaId}_fix.mp4`);
+                        const res = await node_fetch_1.default(videoUrl);
+                        if (!res.ok) {
+                            results.push({ avatarId, mediaId, status: 'download_failed' });
+                            continue;
+                        }
+                        const buf = Buffer.from(await res.arrayBuffer());
+                        fs.writeFileSync(src, buf);
+                        // Extrahiere Video-Dimensionen
+                        const metadata = await new Promise((resolve, reject) => {
+                            fluent_ffmpeg_1.default.ffprobe(src, (err, data) => {
+                                if (err)
+                                    reject(err);
+                                else
+                                    resolve(data);
+                            });
+                        });
+                        const videoStream = (_a = metadata === null || metadata === void 0 ? void 0 : metadata.streams) === null || _a === void 0 ? void 0 : _a.find((s) => s.codec_type === 'video');
+                        if ((videoStream === null || videoStream === void 0 ? void 0 : videoStream.width) && (videoStream === null || videoStream === void 0 ? void 0 : videoStream.height)) {
+                            const aspectRatio = videoStream.width / videoStream.height;
+                            const oldAR = data.aspectRatio;
+                            // Update in Firestore
+                            await mediaDoc.ref.update({ aspectRatio });
+                            // Cleanup
+                            try {
+                                fs.unlinkSync(src);
+                            }
+                            catch (_b) { }
+                            results.push({
+                                avatarId,
+                                mediaId,
+                                status: 'updated',
+                                oldAspectRatio: oldAR,
+                                newAspectRatio: aspectRatio,
+                                dimensions: `${videoStream.width}x${videoStream.height}`,
+                            });
+                            console.log(`✅ Fixed ${avatarId}/${mediaId}: ${oldAR} → ${aspectRatio}`);
+                        }
+                        else {
+                            try {
+                                fs.unlinkSync(src);
+                            }
+                            catch (_c) { }
+                            results.push({ avatarId, mediaId, status: 'no_dimensions' });
+                        }
+                    }
+                    catch (e) {
+                        results.push({ avatarId, mediaId, status: 'error', error: e.message });
+                    }
+                }
+            }
+            res.status(200).json({ success: true, results, total: results.length });
+        }
+        catch (e) {
+            res.status(500).json({ error: e.message });
+        }
+    });
 });
 // Restore/Set avatar cover images if missing or broken
 exports.restoreAvatarCovers = functions

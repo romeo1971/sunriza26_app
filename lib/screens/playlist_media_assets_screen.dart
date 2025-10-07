@@ -5,6 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../services/doc_thumb_service.dart';
 import '../models/media_models.dart';
+import '../models/avatar_data.dart';
 import '../services/media_service.dart';
 import '../services/playlist_service.dart';
 import '../theme/app_theme.dart';
@@ -78,9 +79,28 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
         );
       } catch (_) {}
     }
+
+    // Hero-URLs laden (imageUrls/videoUrls aus AvatarData)
+    Set<String> heroUrls = {};
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(widget.avatarId)
+          .get();
+      if (doc.exists) {
+        final data = AvatarData.fromMap({'id': doc.id, ...doc.data()!});
+        heroUrls.addAll(data.imageUrls);
+        heroUrls.addAll(data.videoUrls);
+      }
+    } catch (e) {
+      debugPrint('❌ Fehler beim Laden der Hero-URLs: $e');
+    }
+
     final list = await _mediaSvc.list(widget.avatarId);
+    // Filtere Hero-Images/Videos heraus
+    final filtered = list.where((m) => !heroUrls.contains(m.url)).toList();
     setState(() {
-      _all = list;
+      _all = filtered;
       _selected.addAll(widget.preselected.map((e) => e.id));
     });
   }
