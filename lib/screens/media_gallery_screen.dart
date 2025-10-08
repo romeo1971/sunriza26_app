@@ -2123,19 +2123,21 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                 ),
                         ),
                       ),
-                    // Suche rechts (Stil wie Tabs)
+                    // Suche rechts (Stil wie Tabs) - nur aktiv wenn Medien vorhanden
                     SizedBox(
                       height: 35,
                       child: TextButton(
-                        onPressed: () {
-                          setState(() {
-                            _showSearch = !_showSearch;
-                            if (!_showSearch) {
-                              _searchController.clear();
-                              _searchTerm = '';
-                            }
-                          });
-                        },
+                        onPressed: _items.isEmpty
+                            ? null
+                            : () {
+                                setState(() {
+                                  _showSearch = !_showSearch;
+                                  if (!_showSearch) {
+                                    _searchController.clear();
+                                    _searchTerm = '';
+                                  }
+                                });
+                              },
                         style: ButtonStyle(
                           padding: const WidgetStatePropertyAll(
                             EdgeInsets.zero,
@@ -2215,25 +2217,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Info-Text (immer sichtbar)
-                Container(
-                  width: double.infinity,
-                  height: 60,
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
-                  margin: const EdgeInsets.only(top: 5),
-                  child: Container(
-                    color: Colors.white.withValues(alpha: 0.05),
-                    padding: const EdgeInsets.fromLTRB(16, 1, 16, 0),
-                    child: Center(
-                      child: Text(
-                        'Verlinkbare Medien für Deine Playists',
-                        style: const TextStyle(
-                          color: Colors.white54,
-                          fontSize: 14,
-                          height: 1.2,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
+                // Info-Text (wie in details_screen)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Text(
+                    'Verlinkbare Medien für Deine Playlists',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: 12, // gleiche fontSize wie details_screen
                     ),
                   ),
                 ),

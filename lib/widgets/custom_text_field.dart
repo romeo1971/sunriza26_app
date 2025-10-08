@@ -65,7 +65,6 @@ class CustomTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasValue = controller?.text.trim().isNotEmpty ?? false;
     final TextStyle effectiveStyle =
         style ??
         const TextStyle(
@@ -96,13 +95,13 @@ class CustomTextField extends StatelessWidget {
       onFieldSubmitted: onSubmitted,
       textInputAction: textInputAction,
       decoration: InputDecoration(
-        labelText: hasValue ? label : null,
+        labelText: label.isEmpty ? null : label,
         labelStyle: effectiveStyle.copyWith(
           color: Colors.white70,
           fontWeight: FontWeight.normal,
         ),
-        floatingLabelBehavior: FloatingLabelBehavior.auto,
-        hintText: hintText ?? label,
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+        hintText: hintText,
         hintStyle: effectiveStyle.copyWith(color: Colors.white54),
         filled: false,
         enabledBorder: OutlineInputBorder(

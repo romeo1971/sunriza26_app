@@ -6,6 +6,7 @@ import 'dart:io';
 import '../services/firebase_storage_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
+import '../widgets/custom_text_field.dart';
 
 class AvatarUploadMemoriesScreen extends StatefulWidget {
   const AvatarUploadMemoriesScreen({super.key});
@@ -430,20 +431,30 @@ class _AvatarUploadMemoriesScreenState
                 }
               },
         style: ElevatedButton.styleFrom(
-          backgroundColor: AppColors.accentGreenDark,
+          backgroundColor: Colors.white,
           foregroundColor: Colors.white,
+          shadowColor: Colors.transparent,
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
         ),
-        child: Text(
-          _isUploading
-              ? 'Wird hochgeladen...'
-              : (hasAvatarSelected
-                    ? 'Avatar jetzt anlegen'
-                    : 'Avatar-Bild wählen'),
-          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+        child: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [AppColors.magenta, AppColors.lightBlue],
+          ).createShader(bounds),
+          child: Text(
+            _isUploading
+                ? 'Wird hochgeladen...'
+                : (hasAvatarSelected
+                      ? 'Avatar jetzt anlegen'
+                      : 'Avatar-Bild wählen'),
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.white,
+            ),
+          ),
         ),
       ),
     );
@@ -501,17 +512,19 @@ class _AvatarUploadMemoriesScreenState
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Text schreiben'),
-        content: TextField(
-          controller: _textController,
-          maxLines: 5,
-          decoration: const InputDecoration(
+        content: SizedBox(
+          width: double.maxFinite,
+          child: CustomTextField(
+            label: '',
+            controller: _textController,
             hintText: 'Schreibe hier deinen persönlichen Text...',
-            border: OutlineInputBorder(),
+            maxLines: 5,
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
+            style: TextButton.styleFrom(foregroundColor: Colors.white70),
             child: const Text('Abbrechen'),
           ),
           ElevatedButton(
@@ -524,7 +537,27 @@ class _AvatarUploadMemoriesScreenState
                 Navigator.pop(context);
               }
             },
-            child: const Text('Hinzufügen'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.white,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [AppColors.magenta, AppColors.lightBlue],
+              ).createShader(bounds),
+              child: const Text(
+                'Hinzufügen',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ),
         ],
       ),

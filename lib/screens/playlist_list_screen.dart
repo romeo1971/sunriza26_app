@@ -9,6 +9,13 @@ import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 import '../widgets/custom_text_field.dart';
 import '../theme/app_theme.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:crop_your_image/crop_your_image.dart' as cyi;
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+import 'dart:io';
+import 'dart:typed_data';
 
 class PlaylistListScreen extends StatefulWidget {
   final String avatarId;
@@ -72,26 +79,67 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     final c = TextEditingController();
     return showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text(context.read<LocalizationService>().t('playlists.new')),
-        content: CustomTextField(
-          label: context.read<LocalizationService>().t('common.name'),
-          controller: c,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text(
-              context.read<LocalizationService>().t('buttons.cancel'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) {
+          bool hasText = c.text.isNotEmpty;
+          return AlertDialog(
+            title: Text(context.read<LocalizationService>().t('playlists.new')),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: CustomTextField(
+                label: 'Name der Playlist',
+                controller: c,
+                onChanged: (value) {
+                  setState(() {
+                    hasText = value.isNotEmpty;
+                  });
+                },
+              ),
             ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, c.text),
-            child: Text(
-              context.read<LocalizationService>().t('playlists.create'),
-            ),
-          ),
-        ],
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                child: Text(
+                  context.read<LocalizationService>().t('buttons.cancel'),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: hasText ? () => Navigator.pop(ctx, c.text) : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.white,
+                  shadowColor: Colors.transparent,
+                  disabledBackgroundColor: Colors.white24,
+                  disabledForegroundColor: Colors.white24,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: ShaderMask(
+                  blendMode: BlendMode.srcIn,
+                  shaderCallback: (bounds) => LinearGradient(
+                    colors: hasText
+                        ? [AppColors.magenta, AppColors.lightBlue]
+                        : [Colors.white24, Colors.white24],
+                  ).createShader(bounds),
+                  child: Text(
+                    context.read<LocalizationService>().t('playlists.create'),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      height: 1.0,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -104,6 +152,215 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     );
     if (result == true) {
       _load(); // Reload list after edit
+    }
+  }
+
+  void _openTimeline(Playlist p) async {
+    await Navigator.pushNamed(context, '/playlist-timeline', arguments: p);
+    _load(); // Reload list after timeline
+  }
+
+  Future<File?> _cropToPortrait916(File input) async {
+    try {
+      final bytes = await input.readAsBytes();
+      final cropController = cyi.CropController();
+      Uint8List? result;
+
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+          backgroundColor: Colors.black,
+          clipBehavior: Clip.hardEdge,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: LayoutBuilder(
+            builder: (dCtx, _) {
+              final sz = MediaQuery.of(dCtx).size;
+              final double dlgW = (sz.width * 0.9).clamp(320.0, 900.0);
+              final double dlgH = (sz.height * 0.9).clamp(480.0, 1200.0);
+              return SizedBox(
+                width: dlgW,
+                height: dlgH,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: cyi.Crop(
+                        controller: cropController,
+                        image: bytes,
+                        aspectRatio: 9 / 16,
+                        withCircleUi: false,
+                        baseColor: Colors.black,
+                        maskColor: Colors.black38,
+                        onCropped: (cropResult) {
+                          if (cropResult is cyi.CropSuccess) {
+                            result = cropResult.croppedImage;
+                          }
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                result = null;
+                                Navigator.pop(ctx);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade800,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: Text(
+                                      'Abbrechen',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                cropController.crop();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFFE91E63),
+                                      AppColors.lightBlue,
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: Text(
+                                      'Zuschneiden',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      if (result == null) return null;
+      final dir = await getTemporaryDirectory();
+      final tmp = await File(
+        '${dir.path}/crop_${DateTime.now().millisecondsSinceEpoch}.png',
+      ).create(recursive: true);
+      await tmp.writeAsBytes(result!, flush: true);
+      return tmp;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _uploadCoverImage(Playlist playlist) async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile == null) return;
+
+    File f = File(pickedFile.path);
+    final originalFileName = p.basename(pickedFile.path);
+
+    final cropped = await _cropToPortrait916(f);
+    if (cropped == null) return;
+
+    f = cropped;
+
+    try {
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final ref = FirebaseStorage.instance.ref().child(
+        'avatars/${playlist.avatarId}/playlists/${playlist.id}/cover_$ts.jpg',
+      );
+
+      await ref.putFile(f);
+      var url = await ref.getDownloadURL();
+      url = '$url?v=$ts';
+
+      // Update playlist
+      final updated = Playlist(
+        id: playlist.id,
+        avatarId: playlist.avatarId,
+        name: playlist.name,
+        showAfterSec: playlist.showAfterSec,
+        highlightTag: playlist.highlightTag,
+        coverImageUrl: url,
+        coverOriginalFileName: originalFileName,
+        weeklySchedules: playlist.weeklySchedules,
+        specialSchedules: playlist.specialSchedules,
+        targeting: playlist.targeting,
+        priority: playlist.priority,
+        scheduleMode: playlist.scheduleMode,
+        createdAt: playlist.createdAt,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      );
+
+      await _svc.update(updated);
+      await _load(); // Reload list
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Cover-Bild hochgeladen')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Fehler beim Upload: $e')));
+      }
     }
   }
 
@@ -386,6 +643,10 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                 TextButton(
                                                   onPressed: () =>
                                                       Navigator.pop(c2, false),
+                                                  style: TextButton.styleFrom(
+                                                    foregroundColor:
+                                                        Colors.white70,
+                                                  ),
                                                   child: const Text(
                                                     'Abbrechen',
                                                   ),
@@ -393,7 +654,42 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                 ElevatedButton(
                                                   onPressed: () =>
                                                       Navigator.pop(c2, true),
-                                                  child: const Text('Löschen'),
+                                                  style: ElevatedButton.styleFrom(
+                                                    backgroundColor:
+                                                        Colors.white,
+                                                    foregroundColor:
+                                                        Colors.white,
+                                                    shadowColor:
+                                                        Colors.transparent,
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 24,
+                                                          vertical: 12,
+                                                        ),
+                                                    shape: RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            8,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                  child: ShaderMask(
+                                                    shaderCallback: (bounds) =>
+                                                        const LinearGradient(
+                                                          colors: [
+                                                            AppColors.magenta,
+                                                            AppColors.lightBlue,
+                                                          ],
+                                                        ).createShader(bounds),
+                                                    child: const Text(
+                                                      'Löschen',
+                                                      style: TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
                                                 ),
                                               ],
                                             ),
@@ -443,6 +739,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                     actions: [
                       TextButton(
                         onPressed: () => Navigator.pop(ctx),
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                        ),
                         child: const Text('Schließen'),
                       ),
                     ],
@@ -524,27 +823,27 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                 const Divider(height: 1),
                             itemBuilder: (context, i) {
                               final p = _items[i];
-                              return InkWell(
-                                onTap: () => _openEdit(p),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(8.0),
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                child: Container(
+                                  constraints: const BoxConstraints(
+                                    minHeight: 178,
+                                  ),
                                   child: Row(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      // Cover Image
-                                      p.coverImageUrl != null
-                                          ? ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              child: Image.network(
-                                                p.coverImageUrl!,
-                                                width: 100,
-                                                height: 178,
-                                                fit: BoxFit.cover,
-                                              ),
-                                            )
-                                          : Container(
+                                      // Cover Image mit Upload-Icon
+                                      SizedBox(
+                                        width: 100,
+                                        height: 178,
+                                        child: Stack(
+                                          children: [
+                                            // Cover Image
+                                            Container(
                                               width: 100,
                                               height: 178,
                                               decoration: BoxDecoration(
@@ -552,12 +851,59 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                 borderRadius:
                                                     BorderRadius.circular(8),
                                               ),
-                                              child: const Icon(
-                                                Icons.playlist_play,
-                                                size: 60,
-                                                color: Colors.white54,
+                                              clipBehavior: Clip.hardEdge,
+                                              child: p.coverImageUrl != null
+                                                  ? Image.network(
+                                                      p.coverImageUrl!,
+                                                      width: 100,
+                                                      height: 178,
+                                                      fit: BoxFit.cover,
+                                                    )
+                                                  : const Icon(
+                                                      Icons.playlist_play,
+                                                      size: 60,
+                                                      color: Colors.white54,
+                                                    ),
+                                            ),
+                                            // Upload-Icon (nur in list)
+                                            Positioned(
+                                              bottom: 4,
+                                              right: 4,
+                                              child: MouseRegion(
+                                                cursor:
+                                                    SystemMouseCursors.click,
+                                                child: GestureDetector(
+                                                  onTap: () =>
+                                                      _uploadCoverImage(p),
+                                                  child: Container(
+                                                    width: 28,
+                                                    height: 28,
+                                                    decoration: BoxDecoration(
+                                                      gradient:
+                                                          const LinearGradient(
+                                                            colors: [
+                                                              AppColors.magenta,
+                                                              AppColors
+                                                                  .lightBlue,
+                                                            ],
+                                                          ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            14,
+                                                          ),
+                                                    ),
+                                                    child: const Icon(
+                                                      Icons.file_upload,
+                                                      color: Colors.white,
+                                                      size: 16,
+                                                    ),
+                                                  ),
+                                                ),
                                               ),
                                             ),
+                                          ],
+                                        ),
+                                      ),
                                       const SizedBox(width: 16),
                                       // Content
                                       Expanded(
@@ -565,6 +911,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
+                                            // Name (Vorgabe-Stil)
                                             Text(
                                               p.name,
                                               style: const TextStyle(
@@ -606,12 +953,70 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                 color: Colors.white70,
                                               ),
                                             ),
-                                            const SizedBox(height: 4),
+                                            const SizedBox(height: 8),
                                             _buildSafeSummary(p),
+                                            const SizedBox(height: 12),
+                                            // Zwei Buttons: Zeitplan & Timeline
+                                            Row(
+                                              children: [
+                                                Expanded(
+                                                  child: ElevatedButton.icon(
+                                                    onPressed: () =>
+                                                        _openEdit(p),
+                                                    icon: const Icon(
+                                                      Icons.calendar_today,
+                                                      size: 16,
+                                                    ),
+                                                    label: const Text(
+                                                      'Zeitplan',
+                                                    ),
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: Colors
+                                                          .white
+                                                          .withValues(
+                                                            alpha: 0.1,
+                                                          ),
+                                                      foregroundColor:
+                                                          Colors.white,
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            vertical: 8,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Expanded(
+                                                  child: ElevatedButton.icon(
+                                                    onPressed: () =>
+                                                        _openTimeline(p),
+                                                    icon: const Icon(
+                                                      Icons.view_timeline,
+                                                      size: 16,
+                                                    ),
+                                                    label: const Text(
+                                                      'Timeline',
+                                                    ),
+                                                    style: ElevatedButton.styleFrom(
+                                                      backgroundColor: Colors
+                                                          .white
+                                                          .withValues(
+                                                            alpha: 0.1,
+                                                          ),
+                                                      foregroundColor:
+                                                          Colors.white,
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            vertical: 8,
+                                                          ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ],
                                         ),
                                       ),
-                                      const Icon(Icons.chevron_right),
                                     ],
                                   ),
                                 ),

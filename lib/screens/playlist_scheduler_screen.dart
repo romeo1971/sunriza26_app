@@ -17,17 +17,17 @@ import 'playlist_timeline_screen.dart';
 import 'package:intl/intl.dart';
 // removed provider/language_service dependency from this screen
 
-class PlaylistEditScreen extends StatefulWidget {
+class PlaylistSchedulerScreen extends StatefulWidget {
   final Playlist playlist;
-  const PlaylistEditScreen({super.key, required this.playlist});
+  const PlaylistSchedulerScreen({super.key, required this.playlist});
 
   @override
-  State<PlaylistEditScreen> createState() => _PlaylistEditScreenState();
+  State<PlaylistSchedulerScreen> createState() =>
+      _PlaylistSchedulerScreenState();
 }
 
-class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
+class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
   late TextEditingController _name;
-  late TextEditingController _showAfter;
   late TextEditingController _highlightTag;
   final _svc = PlaylistService();
   final _mediaSvc = MediaService();
@@ -35,10 +35,9 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
   Map<String, AvatarMedia> _mediaMap = {};
   bool _saving = false; // verhindert doppelte Saves/Races beim Navigieren
 
-  // Cover Image State
+  // Cover Image State (nur Anzeige)
   String? _coverImageUrl;
   String? _coverOriginalFileName;
-  bool _uploadingCover = false;
 
   // Dirty State (für Save-Button Anzeige)
   bool _isDirty = false;
@@ -321,9 +320,6 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     super.initState();
     _name = TextEditingController(text: widget.playlist.name)
       ..addListener(() => setState(() => _isDirty = true));
-    _showAfter = TextEditingController(
-      text: widget.playlist.showAfterSec.toString(),
-    )..addListener(() => setState(() => _isDirty = true));
     _highlightTag = TextEditingController(
       text: widget.playlist.highlightTag ?? '',
     )..addListener(() => setState(() => _isDirty = true));
@@ -586,105 +582,6 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
     }
   }
 
-  Future<void> _deleteCoverImage() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Cover-Bild löschen?'),
-        content: const Text(
-          'Möchten Sie das Cover-Bild wirklich entfernen? Es wird nur der Platzhalter angezeigt.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm != true) return;
-
-    // Cover aus Storage löschen (wenn vorhanden)
-    if (_coverImageUrl != null && _coverImageUrl!.isNotEmpty) {
-      try {
-        final ref = FirebaseStorage.instance.refFromURL(_coverImageUrl!);
-        await ref.delete();
-        print('✅ Cover aus Storage gelöscht');
-      } catch (e) {
-        print('⚠️ Fehler beim Löschen aus Storage: $e');
-        // Weitermachen, auch wenn Storage-Löschung fehlschlägt
-      }
-    }
-
-    setState(() {
-      _coverImageUrl = null;
-      _coverOriginalFileName = null;
-      _isDirty = true;
-    });
-
-    if (mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Cover-Bild entfernt')));
-    }
-  }
-
-  Future<void> _uploadCoverImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile == null) return;
-
-    File f = File(pickedFile.path);
-    final originalFileName = p.basename(pickedFile.path);
-    print('🖼️ Original file: ${f.path} (Name: $originalFileName)');
-
-    final cropped = await _cropToPortrait916(f);
-    if (cropped == null) {
-      print('❌ Cropping cancelled or failed');
-      return;
-    }
-
-    f = cropped;
-    print('✅ Using cropped file: ${f.path}');
-
-    setState(() => _uploadingCover = true);
-
-    try {
-      // Speichere unter neuem Dateinamen, um Cache-Kollisionen zu vermeiden
-      final ts = DateTime.now().millisecondsSinceEpoch;
-      final ref = FirebaseStorage.instance.ref().child(
-        'avatars/${widget.playlist.avatarId}/playlists/${widget.playlist.id}/cover_$ts.jpg',
-      );
-
-      print('📤 Uploading to Firebase...');
-      await ref.putFile(f);
-      var url = await ref.getDownloadURL();
-      // Cache-Bust anfügen, damit die große Ansicht sofort neu lädt
-      url = '$url?v=$ts';
-      print('✅ Upload complete: $url');
-
-      setState(() {
-        _coverImageUrl = url;
-        _coverOriginalFileName = originalFileName;
-        _uploadingCover = false;
-        _isDirty = true;
-      });
-    } catch (e) {
-      print('❌ Upload error: $e');
-      setState(() => _uploadingCover = false);
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Fehler beim Upload: $e')));
-      }
-    }
-  }
-
   Future<void> _save() async {
     final highlightText = _highlightTag.text.trim();
 
@@ -746,7 +643,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
       id: widget.playlist.id,
       avatarId: widget.playlist.avatarId,
       name: _name.text.trim(),
-      showAfterSec: int.tryParse(_showAfter.text.trim()) ?? 0,
+      showAfterSec: widget.playlist.showAfterSec, // wird in Timeline gesetzt
       highlightTag: highlightText.isNotEmpty ? highlightText : null,
       coverImageUrl: _coverImageUrl,
       coverOriginalFileName: _coverOriginalFileName,
@@ -869,7 +766,7 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Playlist bearbeiten'),
+        title: const Text('Scheduler'),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           if (_isDirty)
@@ -881,318 +778,312 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Cover Image Upload + Name/Anzeigezeit
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Stack(
+            // Cover Image + Name (einheitlich strukturiert)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 178),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    GestureDetector(
-                      onTap: _uploadingCover ? null : _uploadCoverImage,
+                    // Cover Image (nur Anzeige)
+                    SizedBox(
+                      width: 100,
+                      height: 178,
                       child: Container(
-                        width: 120,
-                        height: 213, // 9:16 aspect ratio
+                        width: 100,
+                        height: 178,
                         decoration: BoxDecoration(
                           color: Colors.grey.shade800,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: Colors.grey.shade600),
+                          borderRadius: BorderRadius.circular(8),
                         ),
-                        child: _uploadingCover
-                            ? const Center(child: CircularProgressIndicator())
-                            : _coverImageUrl != null
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(12),
-                                child: Image.network(
-                                  _coverImageUrl!,
-                                  fit: BoxFit.cover,
-                                ),
+                        clipBehavior: Clip.hardEdge,
+                        child: _coverImageUrl != null
+                            ? Image.network(
+                                _coverImageUrl!,
+                                width: 100,
+                                height: 178,
+                                fit: BoxFit.cover,
                               )
                             : const Center(
                                 child: Icon(
-                                  Icons.add_photo_alternate,
-                                  size: 40,
+                                  Icons.playlist_play,
+                                  size: 60,
                                   color: Colors.white54,
                                 ),
                               ),
                       ),
                     ),
-                    // Delete Button (nur wenn Cover vorhanden)
-                    if (_coverImageUrl != null && !_uploadingCover)
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: InkWell(
-                          onTap: _deleteCoverImage,
-                          child: Container(
-                            width: 28,
-                            height: 28,
-                            decoration: BoxDecoration(
-                              color: Colors.black.withValues(alpha: 0.7),
-                              borderRadius: BorderRadius.circular(14),
-                              border: Border.all(
-                                color: Colors.white54,
-                                width: 1.5,
-                              ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Name anzeigen
+                          Text(
+                            widget.playlist.name,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
                             ),
-                            child: const Icon(
-                              Icons.close,
-                              color: Colors.white,
-                              size: 16,
-                            ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Name
-                      CustomTextField(label: 'Name', controller: _name),
-                      const SizedBox(height: 12),
-
-                      // Show After
-                      CustomTextField(
-                        label: 'Anzeige ab Chat-Start in s',
-                        controller: _showAfter,
-                        keyboardType: TextInputType.number,
-                      ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: 260,
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            if (_saving) return;
-                            await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => PlaylistTimelineScreen(
-                                  playlist: widget.playlist,
-                                ),
-                              ),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            padding: EdgeInsets.zero,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
+                          const SizedBox(height: 8),
+                          // Name bearbeiten
+                          CustomTextField(
+                            label: 'Name der Playlist',
+                            controller: _name,
                           ),
-                          child: Ink(
-                            decoration: BoxDecoration(
-                              gradient: Theme.of(
+                          const SizedBox(height: 12),
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              if (_saving) return;
+                              await Navigator.push(
                                 context,
-                              ).extension<AppGradients>()?.magentaBlue,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 10),
-                              child: Center(
-                                child: Text(
-                                  'Medien & Reihenfolge',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
+                                MaterialPageRoute(
+                                  builder: (_) => PlaylistTimelineScreen(
+                                    playlist: widget.playlist,
                                   ),
                                 ),
+                              );
+                            },
+                            icon: const Icon(Icons.view_timeline, size: 16),
+                            label: const Text('Timeline'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white.withValues(
+                                alpha: 0.1,
+                              ),
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
                               ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                      // Hinweis: Highlight/Anlass wird jetzt in "Sondertermine" gesetzt (kein Feld mehr neben dem Bild)
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-
-            // Anleitung (klappbar)
-            ExpansionTile(
-              iconColor: Colors.white,
-              collapsedIconColor: Colors.white70,
-              tilePadding: EdgeInsets.zero,
-              initiallyExpanded: false,
-              title: const Text(
-                'Anleitung',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700),
-              ),
-              childrenPadding: EdgeInsets.zero,
-              children: const [
-                SizedBox(height: 8),
-                Text(
-                  'Du kannst einen allgemeinen Zeitplan mit Wochentagen und Zeitfenstern festlegen oder Sondertermine wie Weihnachten oder Geburtstage anlegen (reagiert dynamisch auf den Chat-Partner).',
-                  style: TextStyle(height: 1.3),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Wichtig: Bei Überschneidungen gelten Sondertermine oder neuere Zeitpläne.',
-                  style: TextStyle(height: 1.3),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Lege zuerst die Zeitfenster an und fülle sie anschließend mit Medien.',
-                  style: TextStyle(height: 1.3),
-                ),
-                SizedBox(height: 16),
-              ],
-            ),
-
-            // Zeitplan / Sondertermine Section
-            // Dropdown für Typ-Auswahl
-            CustomDropdown<String>(
-              label: 'Typ',
-              value: _playlistType,
-              items: const [
-                DropdownMenuItem(
-                  value: 'weekly',
-                  child: Text(
-                    'Zeitplan',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-                DropdownMenuItem(
-                  value: 'special',
-                  child: Text(
-                    'Sondertermine',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _playlistType = value;
-                    _isDirty = true;
-                  });
-                }
-              },
-            ),
-            const SizedBox(height: 8),
-
-            // Klappbarer Bereich Header
-            GestureDetector(
-              onTap: () {
-                setState(() {
-                  _weeklyScheduleExpanded = !_weeklyScheduleExpanded;
-                });
-              },
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _playlistType == 'weekly'
-                        ? 'Wochentage wählen'
-                        : 'Anlass wählen',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    _weeklyScheduleExpanded
-                        ? Icons.expand_less
-                        : Icons.expand_more,
-                    size: 24,
-                    color: Colors.white,
-                  ),
-                ],
-              ),
-            ),
-            if (_weeklyScheduleExpanded) ...[
-              const SizedBox(height: 16),
-              if (_playlistType == 'weekly')
-                _buildWeeklyScheduleMatrix()
-              else
-                _buildSpecialScheduleEditor(),
-              const SizedBox(height: 24),
-            ],
-            // Targeting Section (collapsible)
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Zielgruppe (optional)',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                Switch(
-                  value: _targetingEnabled,
-                  onChanged: (v) => setState(() {
-                    _targetingEnabled = v;
-                    if (v) _targetingExpanded = true;
-                    _isDirty = true;
-                  }),
-                ),
-              ],
-            ),
-            if (_targetingEnabled) ...[
-              const SizedBox(height: 8),
-              GestureDetector(
-                onTap: () =>
-                    setState(() => _targetingExpanded = !_targetingExpanded),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Einstellungen',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    Icon(
-                      _targetingExpanded
-                          ? Icons.expand_less
-                          : Icons.expand_more,
-                      color: Colors.white,
                     ),
                   ],
                 ),
               ),
-              if (_targetingExpanded) _buildTargetingSection(),
-            ],
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 24),
 
-            // Media Items Section (obsolete – durch Button oben ersetzt)
-            SizedBox(
-              height: 300,
-              child: ReorderableListView.builder(
-                itemCount: _items.length,
-                onReorder: (oldIndex, newIndex) async {
-                  if (newIndex > oldIndex) newIndex -= 1;
-                  final moved = _items.removeAt(oldIndex);
-                  _items.insert(newIndex, moved);
-                  setState(() {});
-                  await _svc.setOrder(
-                    widget.playlist.avatarId,
-                    widget.playlist.id,
-                    _items,
-                  );
-                },
-                itemBuilder: (context, i) {
-                  final it = _items[i];
-                  final media = _mediaMap[it.mediaId];
-                  return ListTile(
-                    key: ValueKey(it.id),
-                    leading: media == null
-                        ? const Icon(Icons.broken_image)
-                        : (media.type == AvatarMediaType.video
-                              ? const Icon(Icons.videocam)
-                              : const Icon(Icons.photo)),
-                    title: Text(media?.url.split('/').last ?? it.mediaId),
-                    trailing: const Icon(Icons.drag_handle),
-                  );
-                },
+                  // Anleitung (klappbar)
+                  ExpansionTile(
+                    iconColor: Colors.white,
+                    collapsedIconColor: Colors.white70,
+                    tilePadding: EdgeInsets.zero,
+                    initiallyExpanded: false,
+                    title: const Text(
+                      'Anleitung',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    childrenPadding: EdgeInsets.zero,
+                    children: const [
+                      SizedBox(height: 8),
+                      Text(
+                        'Du kannst einen allgemeinen Zeitplan mit Wochentagen und Zeitfenstern festlegen oder Sondertermine wie Weihnachten oder Geburtstage anlegen (reagiert dynamisch auf den Chat-Partner).',
+                        style: TextStyle(height: 1.3),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Wichtig: Bei Überschneidungen gelten Sondertermine oder neuere Zeitpläne.',
+                        style: TextStyle(height: 1.3),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        'Lege zuerst die Zeitfenster an und fülle sie anschließend mit Medien.',
+                        style: TextStyle(height: 1.3),
+                      ),
+                      SizedBox(height: 16),
+                    ],
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Zeitplan / Sondertermine Section
+                  // Dropdown für Typ-Auswahl
+                  CustomDropdown<String>(
+                    label: 'Typ',
+                    value: _playlistType,
+                    items: const [
+                      DropdownMenuItem(
+                        value: 'weekly',
+                        child: Text(
+                          'Zeitplan',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                      DropdownMenuItem(
+                        value: 'special',
+                        child: Text(
+                          'Sondertermine',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        setState(() {
+                          _playlistType = value;
+                          _isDirty = true;
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Klappbarer Bereich Header
+                  GestureDetector(
+                    onTap: () {
+                      setState(() {
+                        _weeklyScheduleExpanded = !_weeklyScheduleExpanded;
+                      });
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ShaderMask(
+                          blendMode: BlendMode.srcIn,
+                          shaderCallback: (bounds) => LinearGradient(
+                            colors: _weeklyScheduleExpanded
+                                ? [Colors.white, Colors.white]
+                                : [AppColors.magenta, AppColors.lightBlue],
+                          ).createShader(bounds),
+                          child: Text(
+                            _playlistType == 'weekly'
+                                ? 'Wochentage wählen'
+                                : 'Anlass wählen',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ShaderMask(
+                          blendMode: BlendMode.srcIn,
+                          shaderCallback: (bounds) => LinearGradient(
+                            colors: _weeklyScheduleExpanded
+                                ? [Colors.white, Colors.white]
+                                : [AppColors.magenta, AppColors.lightBlue],
+                          ).createShader(bounds),
+                          child: Icon(
+                            _weeklyScheduleExpanded
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                            size: 24,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_weeklyScheduleExpanded) ...[
+                    const SizedBox(height: 16),
+                    if (_playlistType == 'weekly')
+                      _buildWeeklyScheduleMatrix()
+                    else
+                      _buildSpecialScheduleEditor(),
+                    const SizedBox(height: 24),
+                  ],
+                  // Targeting Section (collapsible)
+                  const SizedBox(height: 24),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Zielgruppe (optional)',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Switch(
+                        value: _targetingEnabled,
+                        onChanged: (v) => setState(() {
+                          _targetingEnabled = v;
+                          if (v) _targetingExpanded = true;
+                          _isDirty = true;
+                        }),
+                      ),
+                    ],
+                  ),
+                  if (_targetingEnabled) ...[
+                    const SizedBox(height: 8),
+                    GestureDetector(
+                      onTap: () => setState(
+                        () => _targetingExpanded = !_targetingExpanded,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Einstellungen',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Icon(
+                            _targetingExpanded
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                            color: Colors.white,
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (_targetingExpanded) _buildTargetingSection(),
+                  ],
+
+                  // Media Items Section (obsolete – durch Button oben ersetzt)
+                  SizedBox(
+                    height: 300,
+                    child: ReorderableListView.builder(
+                      itemCount: _items.length,
+                      onReorder: (oldIndex, newIndex) async {
+                        if (newIndex > oldIndex) newIndex -= 1;
+                        final moved = _items.removeAt(oldIndex);
+                        _items.insert(newIndex, moved);
+                        setState(() {});
+                        await _svc.setOrder(
+                          widget.playlist.avatarId,
+                          widget.playlist.id,
+                          _items,
+                        );
+                      },
+                      itemBuilder: (context, i) {
+                        final it = _items[i];
+                        final media = _mediaMap[it.mediaId];
+                        return ListTile(
+                          key: ValueKey(it.id),
+                          leading: media == null
+                              ? const Icon(Icons.broken_image)
+                              : (media.type == AvatarMediaType.video
+                                    ? const Icon(Icons.videocam)
+                                    : const Icon(Icons.photo)),
+                          title: Text(media?.url.split('/').last ?? it.mediaId),
+                          trailing: const Icon(Icons.drag_handle),
+                        );
+                      },
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1429,23 +1320,33 @@ class _PlaylistEditScreenState extends State<PlaylistEditScreen> {
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Checkbox(
-                        value: _weeklySchedule[_selectedWeekday]?.length == 6,
-                        tristate: true,
-                        onChanged: (val) {
-                          setState(() {
-                            if (val == true) {
-                              // Alle 6 Zeitfenster auswählen
-                              _weeklySchedule[_selectedWeekday!] = Set.from(
-                                TimeSlot.values,
-                              );
-                            } else {
-                              // Alle abwählen
-                              _weeklySchedule[_selectedWeekday!]?.clear();
-                            }
-                          });
-                        },
+                      Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          gradient:
+                              _weeklySchedule[_selectedWeekday]?.length == 6
+                              ? const LinearGradient(
+                                  colors: [
+                                    AppColors.magenta,
+                                    AppColors.lightBlue,
+                                  ],
+                                )
+                              : null,
+                          border: _weeklySchedule[_selectedWeekday]?.length != 6
+                              ? Border.all(color: Colors.white54, width: 2)
+                              : null,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: _weeklySchedule[_selectedWeekday]?.length == 6
+                            ? const Icon(
+                                Icons.check,
+                                size: 18,
+                                color: Colors.white,
+                              )
+                            : null,
                       ),
+                      const SizedBox(width: 8),
                       const Text(
                         'Alle Tageszeiten',
                         style: TextStyle(fontSize: 13),

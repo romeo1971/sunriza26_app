@@ -110,7 +110,7 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Assets wählen'),
+        title: const Text('Media Assets'),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(

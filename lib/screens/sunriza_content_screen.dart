@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../widgets/youtube_player_web.dart';
+import '../theme/app_theme.dart';
 
 /// Screen mit allen Inhalten von sunriza.com
 class SunrizaContentScreen extends StatefulWidget {
@@ -93,16 +94,26 @@ class _SunrizaContentScreenState extends State<SunrizaContentScreen> {
           ElevatedButton(
             onPressed: () {},
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00FF94),
-              foregroundColor: Colors.black,
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.white,
+              shadowColor: Colors.transparent,
               padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text(
-              'Jetzt starten',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            child: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [AppColors.magenta, AppColors.lightBlue],
+              ).createShader(bounds),
+              child: const Text(
+                'Jetzt starten',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
         ],
@@ -363,16 +374,26 @@ class _SunrizaContentScreenState extends State<SunrizaContentScreen> {
           ElevatedButton(
             onPressed: () {},
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF00FF94),
-              foregroundColor: Colors.black,
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.white,
+              shadowColor: Colors.transparent,
               padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text(
-              'Jetzt starten',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            child: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [AppColors.magenta, AppColors.lightBlue],
+              ).createShader(bounds),
+              child: const Text(
+                'Jetzt starten',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
         ],

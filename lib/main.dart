@@ -19,7 +19,8 @@ import 'screens/avatar_chat_screen.dart';
 import 'screens/avatar_list_screen.dart';
 import 'screens/media_gallery_screen.dart';
 import 'screens/playlist_list_screen.dart';
-import 'screens/playlist_edit_screen.dart';
+import 'screens/playlist_scheduler_screen.dart';
+import 'screens/playlist_timeline_screen.dart';
 import 'screens/shared_moments_screen.dart';
 import 'screens/avatar_review_facts_screen.dart';
 import 'screens/credits_shop_screen.dart';
@@ -455,7 +456,11 @@ class SunrizaApp extends StatelessWidget {
             },
             '/playlist-edit': (context) {
               final p = ModalRoute.of(context)!.settings.arguments as Playlist;
-              return PlaylistEditScreen(playlist: p);
+              return PlaylistSchedulerScreen(playlist: p);
+            },
+            '/playlist-timeline': (context) {
+              final p = ModalRoute.of(context)!.settings.arguments as Playlist;
+              return PlaylistTimelineScreen(playlist: p);
             },
             '/shared-moments': (context) {
               final args = ModalRoute.of(context)!.settings.arguments as Map?;

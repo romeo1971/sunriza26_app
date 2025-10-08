@@ -126,7 +126,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   // Inline-Vorschaubild nicht nötig, Thumbnails entstehen in den Tiles per FutureBuilder
   final Map<String, Uint8List> _videoThumbCache = {};
   String? _currentInlineUrl; // merkt die aktuell dargestellte Hero-Video-URL
-  // bool _autoVideoCrownApplied = false;
+  // bool _autoVideoHeroApplied = false;
   final Set<String> _selectedRemoteImages = {};
   final Set<String> _selectedLocalImages = {};
   final Set<String> _selectedRemoteVideos = {};
@@ -329,8 +329,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (!sameDate(_deathDate, current.deathDate)) dirty = true;
 
     // Hero-Image / Profilbild geändert
-    final baselineCrown = current.avatarImageUrl;
-    if ((_profileImageUrl ?? '') != (baselineCrown ?? '')) dirty = true;
+    final baselineHero = current.avatarImageUrl;
+    if ((_profileImageUrl ?? '') != (baselineHero ?? '')) dirty = true;
 
     // Neue lokale Dateien oder Freitext
     if (_newImageFiles.isNotEmpty ||
@@ -527,28 +527,80 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             'avatars.details.defaultGreeting',
           );
     // Hero-Video in Großansicht initialisieren
-    _initInlineFromCrown();
+    _initInlineFromHero();
     // Kein Autogenerieren mehr – Generierung erfolgt nur auf Nutzeraktion
   }
 
   // Obsolet: Rundes Avatarbild oben wurde entfernt (Hintergrundbild reicht aus)
 
-  Widget _buildMediaSection() {
+  // Hero-Media Navigation (außerhalb ScrollView, direkt unter AppBar)
+  Widget _buildHeroMediaNav() {
+    return Stack(
+      children: [
+        // Hintergrund: quasi black
+        Container(height: 35, color: const Color(0xFF0D0D0D)),
+        // Weißes Overlay #ffffff15
+        Positioned.fill(child: Container(color: const Color(0x15FFFFFF))),
+        // Inhalt
+        Container(
+          height: 35,
+          padding: EdgeInsets.zero,
+          child: Row(
+            children: [
+              _buildTopTabBtn('images', Icons.image_outlined),
+              _buildTopTabBtn('videos', Icons.videocam_outlined),
+              // Upload-Button
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: SizedBox(
+                  height: 35,
+                  child: TextButton(
+                    onPressed: (_mediaTab == 'images' && _imageUrls.length >= 4)
+                        ? null
+                        : (_mediaTab == 'images' ? _onAddImages : _onAddVideos),
+                    style: ButtonStyle(
+                      padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                      minimumSize: const WidgetStatePropertyAll(Size(40, 35)),
+                    ),
+                    child: Container(
+                      height: double.infinity,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [AppColors.magenta, AppColors.lightBlue],
+                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      child: const Icon(
+                        Icons.file_upload,
+                        size: 18,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Hero-Media Content (innerhalb ScrollView)
+  Widget _buildMediaContent() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Opener-Text oberhalb des Medienbereichs
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-          child: Text(
-            context.read<LocalizationService>().t('avatars.details.mediaHint'),
-            style: TextStyle(color: Colors.white.withValues(alpha: 0.85)),
+        // Info-Text (2px kleiner)
+        Text(
+          context.read<LocalizationService>().t('avatars.details.mediaHint'),
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.85),
+            fontSize: 12, // 2px kleiner (Standard ist ~14px)
           ),
         ),
 
         const SizedBox(height: 12),
-
-        // Navigation-Chips entfernt – lokale Buttons über dem großen Medienbereich vorhanden
 
         // Medienbereich (gelber Rahmen-Bereich) – show/hide
         if (_mediaTab == 'images')
@@ -752,8 +804,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                             onPressed: _onAddAudio,
                             style: ElevatedButton.styleFrom(
                               alignment: Alignment.centerLeft,
-                              backgroundColor: AppColors.accentGreenDark,
+                              backgroundColor: Colors.white,
                               foregroundColor: Colors.white,
+                              shadowColor: Colors.transparent,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
                                 vertical: 12,
@@ -762,30 +815,37 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 borderRadius: BorderRadius.circular(12),
                               ),
                             ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  context.read<LocalizationService>().t(
-                                    'avatars.details.audioUploadTitle',
+                            child: ShaderMask(
+                              shaderCallback: (bounds) => const LinearGradient(
+                                colors: [AppColors.magenta, AppColors.lightBlue],
+                              ).createShader(bounds),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    context.read<LocalizationService>().t(
+                                      'avatars.details.audioUploadTitle',
+                                    ),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      fontSize: 16,
+                                      color: Colors.white,
+                                    ),
                                   ),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
+                                  SizedBox(height: 2),
+                                  Text(
+                                    context.read<LocalizationService>().t(
+                                      'avatars.details.audioUploadSubtitle',
+                                    ),
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w300,
+                                      fontSize: 13,
+                                      color: Colors.white,
+                                    ),
                                   ),
-                                ),
-                                SizedBox(height: 2),
-                                Text(
-                                  context.read<LocalizationService>().t(
-                                    'avatars.details.audioUploadSubtitle',
-                                  ),
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w300,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -811,6 +871,63 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  // Tab-Button für Hero-Navigation (identisch zu media_gallery_screen)
+  Widget _buildTopTabBtn(String tab, IconData icon) {
+    final selected = _mediaTab == tab;
+    return SizedBox(
+      height: 35,
+      child: TextButton(
+        onPressed: () {
+          setState(() {
+            _mediaTab = tab;
+          });
+        },
+        style: ButtonStyle(
+          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+          minimumSize: const WidgetStatePropertyAll(Size(60, 35)),
+          backgroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
+            if (selected) {
+              return const Color(0x26FFFFFF); // ausgewählt: hellgrau
+            }
+            return Colors.transparent;
+          }),
+          overlayColor: WidgetStateProperty.resolveWith<Color?>((states) {
+            if (states.contains(WidgetState.hovered) ||
+                states.contains(WidgetState.focused) ||
+                states.contains(WidgetState.pressed)) {
+              final mix = Color.lerp(
+                AppColors.magenta,
+                AppColors.lightBlue,
+                0.5,
+              )!;
+              return mix.withValues(alpha: 0.12);
+            }
+            return null;
+          }),
+          foregroundColor: const WidgetStatePropertyAll(Colors.white),
+          shape: WidgetStateProperty.resolveWith<OutlinedBorder>((states) {
+            final isHover =
+                states.contains(WidgetState.hovered) ||
+                states.contains(WidgetState.focused);
+            if (selected || isHover) {
+              return const RoundedRectangleBorder(
+                borderRadius: BorderRadius.zero,
+              );
+            }
+            return RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            );
+          }),
+        ),
+        child: Icon(
+          icon,
+          size: 22,
+          color: selected ? Colors.white : Colors.white54,
+        ),
+      ),
     );
   }
 
@@ -1177,7 +1294,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             leftW = minNavWidth; // MIN durch Navigation-Breite
           }
           final double leftH = leftW * (16 / 9);
-          final double totalH = navBtnH + 8 + leftH;
+          final double totalH = leftH; // Navigation ist jetzt separat oben
           // Thumbnail-Breite berechnen
           final double thumbW = leftH / 16 * 9;
           // Row-Breite = großes Bild + spacing + 2 Thumbnails (breit wie 2 Bilder)
@@ -1194,108 +1311,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Navigation: Links Icons (Bild/Video), rechts Upload‑Icon
-                    SizedBox(
-                      width: leftW,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              SizedBox(
-                                width: navBtnH,
-                                height: navBtnH,
-                                child: ElevatedButton(
-                                  onPressed: () =>
-                                      setState(() => _mediaTab = 'images'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _mediaTab == 'images'
-                                        ? AppColors.accentGreenDark
-                                        : Colors.transparent,
-                                    foregroundColor: Colors.white,
-                                    shadowColor: Colors.transparent,
-                                    padding: EdgeInsets.zero,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      side: BorderSide(
-                                        color: _mediaTab == 'images'
-                                            ? AppColors.accentGreenDark
-                                            : Colors.white24,
-                                      ),
-                                    ),
-                                  ),
-                                  child: const Icon(Icons.image, size: 20),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              SizedBox(
-                                width: navBtnH,
-                                height: navBtnH,
-                                child: ElevatedButton(
-                                  onPressed: () =>
-                                      setState(() => _mediaTab = 'videos'),
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _mediaTab == 'videos'
-                                        ? AppColors.accentGreenDark
-                                        : Colors.transparent,
-                                    foregroundColor: Colors.white,
-                                    shadowColor: Colors.transparent,
-                                    padding: EdgeInsets.zero,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      side: BorderSide(
-                                        color: _mediaTab == 'videos'
-                                            ? AppColors.accentGreenDark
-                                            : Colors.white24,
-                                      ),
-                                    ),
-                                  ),
-                                  child: const Icon(Icons.videocam, size: 20),
-                                ),
-                              ),
-                            ],
-                          ),
-                          // Rechts nur Upload‑Icon für aktuellen Tab (hier: Bilder)
-                          SizedBox(
-                            width: navBtnH,
-                            height: navBtnH,
-                            child: (_mediaTab == 'images')
-                                ? ElevatedButton(
-                                    onPressed: (_imageUrls.length >= 4)
-                                        ? null
-                                        : _onAddImages,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.transparent,
-                                      shadowColor: Colors.transparent,
-                                      padding: EdgeInsets.zero,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    child: Ink(
-                                      decoration: BoxDecoration(
-                                        gradient: const LinearGradient(
-                                          colors: [
-                                            Color(0xFFE91E63),
-                                            AppColors.lightBlue,
-                                          ],
-                                        ),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: const Center(
-                                        child: Icon(
-                                          Icons.file_upload,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                    // Navigation wurde nach oben verschoben
                     SizedBox(
                       width: leftW,
                       height: leftH,
@@ -1412,7 +1428,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                 const SizedBox(width: gridSpacing),
                             itemBuilder: (context, index) {
                               final url = remoteFour[index];
-                              final isCrown =
+                              final isHero =
                                   _profileImageUrl == url ||
                                   (_profileImageUrl == null && index == 0);
                               // Thumbnails: gleiche Proportionen wie großes Bild, aber kleinere Höhe
@@ -1422,7 +1438,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               return SizedBox(
                                 width: thumbW,
                                 height: thumbH,
-                                child: _imageThumbNetwork(url, isCrown),
+                                child: _imageThumbNetwork(url, isHero),
                               );
                             },
                           ),
@@ -1512,7 +1528,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             leftW = minNavWidth; // MIN durch Navigation-Breite
           }
           final double leftH = leftW * (16 / 9);
-          final double totalH = navBtnH + 8 + leftH;
+          final double totalH = leftH; // Navigation ist jetzt separat oben
           // Thumbnail-Breite berechnen
           final double thumbW = leftH / 16 * 9;
           // Row-Breite = großes Video + spacing + 2 Thumbnails (breit wie 2 Videos)
@@ -1525,115 +1541,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Video-Preview/Inline-Player links GROSS (responsive) + lokale Navigation oben
+                // Video-Preview/Inline-Player links GROSS (responsive)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Navigation: links Icons (Bild/Video), rechts Upload‑Icon nur im aktiven Tab (Videos)
-                    SizedBox(
-                      width: leftW,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              SizedBox(
-                                width: navBtnH,
-                                height: navBtnH,
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    if (_mediaTab != 'images') {
-                                      setState(() => _mediaTab = 'images');
-                                    }
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _mediaTab == 'images'
-                                        ? AppColors.accentGreenDark
-                                        : Colors.transparent,
-                                    foregroundColor: Colors.white,
-                                    shadowColor: Colors.transparent,
-                                    padding: EdgeInsets.zero,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      side: BorderSide(
-                                        color: _mediaTab == 'images'
-                                            ? AppColors.accentGreenDark
-                                            : Colors.white24,
-                                      ),
-                                    ),
-                                  ),
-                                  child: const Icon(Icons.image, size: 20),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              SizedBox(
-                                width: navBtnH,
-                                height: navBtnH,
-                                child: ElevatedButton(
-                                  onPressed: () {
-                                    if (_mediaTab != 'videos') {
-                                      setState(() => _mediaTab = 'videos');
-                                    }
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: _mediaTab == 'videos'
-                                        ? AppColors.accentGreenDark
-                                        : Colors.transparent,
-                                    foregroundColor: Colors.white,
-                                    shadowColor: Colors.transparent,
-                                    padding: EdgeInsets.zero,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                      side: BorderSide(
-                                        color: _mediaTab == 'videos'
-                                            ? AppColors.accentGreenDark
-                                            : Colors.white24,
-                                      ),
-                                    ),
-                                  ),
-                                  child: const Icon(Icons.videocam, size: 20),
-                                ),
-                              ),
-                            ],
-                          ),
-                          SizedBox(
-                            width: navBtnH,
-                            height: navBtnH,
-                            child: (_mediaTab == 'videos')
-                                ? ElevatedButton(
-                                    onPressed: _onAddVideos,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.transparent,
-                                      shadowColor: Colors.transparent,
-                                      padding: EdgeInsets.zero,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                    ),
-                                    child: Ink(
-                                      decoration: BoxDecoration(
-                                        gradient: const LinearGradient(
-                                          colors: [
-                                            Color(0xFFE91E63),
-                                            AppColors.lightBlue,
-                                          ],
-                                        ),
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: const Center(
-                                        child: Icon(
-                                          Icons.file_upload,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
+                    // Navigation wurde nach oben verschoben
                     SizedBox(
                       width: leftW,
                       height: leftH,
@@ -1656,15 +1568,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               Positioned.fill(
                                 child: Builder(
                                   builder: (context) {
-                                    final crown = _getCrownVideoUrl();
+                                    final hero = _getHeroVideoUrl();
                                     return GestureDetector(
                                       behavior: HitTestBehavior.opaque,
                                       onTap: () {
-                                        if ((crown ?? '').isNotEmpty) {
-                                          _playNetworkInline(crown!);
+                                        if ((hero ?? '').isNotEmpty) {
+                                          _playNetworkInline(hero!);
                                         }
                                       },
-                                      child: (crown == null)
+                                      child: (hero == null)
                                           ? Container(
                                               color: Colors.black26,
                                               child: const Icon(
@@ -1677,7 +1589,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                               aspectRatio: 9 / 16,
                                               child: FutureBuilder<Uint8List?>(
                                                 future: _thumbnailForRemote(
-                                                  crown,
+                                                  hero,
                                                 ),
                                                 builder: (context, snapshot) {
                                                   if (snapshot.hasData &&
@@ -2079,6 +1991,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(ctx, false),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white70,
+                          ),
                           child: Text(
                             context.read<LocalizationService>().t(
                               'avatars.details.cancel',
@@ -2087,9 +2002,30 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         ),
                         ElevatedButton(
                           onPressed: () => Navigator.pop(ctx, true),
-                          child: Text(
-                            context.read<LocalizationService>().t(
-                              'avatars.details.delete',
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.white,
+                            shadowColor: Colors.transparent,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: ShaderMask(
+                            shaderCallback: (bounds) => const LinearGradient(
+                              colors: [AppColors.magenta, AppColors.lightBlue],
+                            ).createShader(bounds),
+                            child: Text(
+                              context.read<LocalizationService>().t(
+                                'avatars.details.delete',
+                              ),
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ),
                         ),
@@ -2813,14 +2749,38 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white70,
+            ),
             child: Text(
               context.read<LocalizationService>().t('avatars.details.cancel'),
             ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              context.read<LocalizationService>().t('avatars.details.delete'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.white,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 12,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [AppColors.magenta, AppColors.lightBlue],
+              ).createShader(bounds),
+              child: Text(
+                context.read<LocalizationService>().t('avatars.details.delete'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
@@ -2849,14 +2809,38 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white70,
+            ),
             child: Text(
               context.read<LocalizationService>().t('avatars.details.cancel'),
             ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              context.read<LocalizationService>().t('avatars.details.delete'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.white,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 12,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [AppColors.magenta, AppColors.lightBlue],
+              ).createShader(bounds),
+              child: Text(
+                context.read<LocalizationService>().t('avatars.details.delete'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
@@ -3051,7 +3035,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return lines.join('\n');
   }
 
-  Widget _imageThumbNetwork(String url, bool isCrown) {
+  Widget _imageThumbNetwork(String url, bool isHero) {
     final selected = _selectedRemoteImages.contains(url);
     return GestureDetector(
       onTap: () async {
@@ -3104,7 +3088,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               },
             ),
           ),
-          if (isCrown)
+          if (isHero)
             const Positioned(
               top: 4,
               left: 4,
@@ -3173,22 +3157,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   // _imageThumbFile wurde im neuen Layout nicht mehr benötigt
-  String? _getCrownVideoUrl() {
+  String? _getHeroVideoUrl() {
     try {
       final tr = Map<String, dynamic>.from(_avatarData?.training ?? {});
-      final v = (tr['crownVideoUrl'] as String?)?.trim();
+      final v = (tr['heroVideoUrl'] as String?)?.trim();
       if (v != null && v.isNotEmpty) return v;
     } catch (_) {}
     if (_videoUrls.isNotEmpty) return _videoUrls.first;
     return null;
   }
 
-  Future<void> _setCrownVideo(String url) async {
+  Future<void> _setHeroVideo(String url) async {
     if (_avatarData == null) return;
     try {
       final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
-      tr['crownVideoUrl'] = url;
-      debugPrint('🎯 _setCrownVideo -> $url');
+      tr['heroVideoUrl'] = url;
+      debugPrint('🎯 _setHeroVideo -> $url');
       final updated = _avatarData!.copyWith(
         training: tr,
         updatedAt: DateTime.now(),
@@ -3197,7 +3181,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       debugPrint('🎯 updateAvatar returned $ok');
       if (ok) {
         _applyAvatar(updated);
-        await _initInlineFromCrown();
+        await _initInlineFromHero();
         _showSystemSnack(
           context.read<LocalizationService>().t('avatars.details.heroVideoSet'),
         );
@@ -3223,20 +3207,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (mounted) setState(() {});
   }
 
-  Future<void> _initInlineFromCrown() async {
-    final crown = _getCrownVideoUrl();
-    debugPrint('🎬 _initInlineFromCrown crown=$crown');
-    if (crown == null || crown.isEmpty) {
+  Future<void> _initInlineFromHero() async {
+    final hero = _getHeroVideoUrl();
+    debugPrint('🎬 _initInlineFromHero hero=$hero');
+    if (hero == null || hero.isEmpty) {
       await _clearInlinePlayer();
       return;
     }
     // Falls URL bereits aktiv, nichts tun
-    if (_currentInlineUrl == crown && _inlineVideoController != null) {
+    if (_currentInlineUrl == hero && _inlineVideoController != null) {
       return;
     }
     // Frische Download-URL sichern (kann ablaufen)
-    final fresh = await _refreshDownloadUrl(crown) ?? crown;
-    debugPrint('🎬 _initInlineFromCrown fresh=$fresh');
+    final fresh = await _refreshDownloadUrl(hero) ?? hero;
+    debugPrint('🎬 _initInlineFromHero fresh=$fresh');
     try {
       await _clearInlinePlayer();
       final ctrl = VideoPlayerController.networkUrl(Uri.parse(fresh));
@@ -3244,7 +3228,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await ctrl.setLooping(false); // kein Looping in Großansicht
       // nicht auto-play; zeigt erstes Frame
       _inlineVideoController = ctrl;
-      _currentInlineUrl = crown;
+      _currentInlineUrl = hero;
       debugPrint('✅ Hero-Video erfolgreich initialisiert');
       if (mounted) setState(() {});
     } catch (e) {
@@ -3257,16 +3241,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   // _deleteRemoteVideo ungenutzt entfernt
 
   Widget _videoTile(String url, double w, double h) {
-    final crownUrl = _getCrownVideoUrl();
-    final isCrown = crownUrl != null && url == crownUrl;
-    debugPrint(
-      '🎬 _videoTile url=$url | crownUrl=$crownUrl | isCrown=$isCrown',
-    );
+    final heroUrl = _getHeroVideoUrl();
+    final isHero = heroUrl != null && url == heroUrl;
+    debugPrint('🎬 _videoTile url=$url | heroUrl=$heroUrl | isHero=$isHero');
     return Stack(
       children: [
         Positioned.fill(child: _videoThumbNetwork(url)),
-        // Hero-Video-Overlay (star) – nur beim Crown-Video sichtbar
-        if (isCrown)
+        // Hero-Video-Overlay (star) – nur beim Hero-Video sichtbar
+        if (isHero)
           Positioned(
             top: 4,
             left: 6,
@@ -3331,7 +3313,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             Positioned.fill(
               child: Material(
                 color: Colors.transparent,
-                child: InkWell(onTap: () => _setCrownVideo(url)),
+                child: InkWell(onTap: () => _setHeroVideo(url)),
               ),
             ),
             Positioned(
@@ -5547,14 +5529,38 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.white70,
+            ),
             child: Text(
               context.read<LocalizationService>().t('avatars.details.cancel'),
             ),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: Text(
-              context.read<LocalizationService>().t('avatars.details.delete'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.white,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 12,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [AppColors.magenta, AppColors.lightBlue],
+              ).createShader(bounds),
+              child: Text(
+                context.read<LocalizationService>().t('avatars.details.delete'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
           ),
         ],
@@ -5626,20 +5632,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
     // Hero-Video sicherstellen: wenn Hero-Video gelöscht oder fehlt, nächstes setzen
     try {
-      final currentCrown = _getCrownVideoUrl();
-      final crownDeleted =
-          currentCrown != null && _selectedRemoteVideos.contains(currentCrown);
-      final crownMissing =
-          currentCrown != null && !_videoUrls.contains(currentCrown);
-      if (crownDeleted || crownMissing || currentCrown == null) {
+      final currentHero = _getHeroVideoUrl();
+      final heroDeleted =
+          currentHero != null && _selectedRemoteVideos.contains(currentHero);
+      final heroMissing =
+          currentHero != null && !_videoUrls.contains(currentHero);
+      if (heroDeleted || heroMissing || currentHero == null) {
         if (_videoUrls.isNotEmpty) {
-          await _setCrownVideo(_videoUrls.first);
+          await _setHeroVideo(_videoUrls.first);
         } else {
-          // Keine Videos mehr vorhanden: crownVideoUrl aus training entfernen
+          // Keine Videos mehr vorhanden: heroVideoUrl aus training entfernen
           if (_avatarData != null) {
             final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
-            if (tr.containsKey('crownVideoUrl')) {
-              tr.remove('crownVideoUrl');
+            if (tr.containsKey('heroVideoUrl')) {
+              tr.remove('heroVideoUrl');
               final updated = _avatarData!.copyWith(
                 training: tr,
                 updatedAt: DateTime.now(),
@@ -5735,8 +5741,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         child: Column(
           children: [
-            // Bottom-Navigation – keine Top-Nav mehr
-            const SizedBox.shrink(),
+            // Hero-Media Navigation (außerhalb des ScrollView-Paddings)
+            _buildHeroMediaNav(),
             // Scrollable Content
             Expanded(
               child: SingleChildScrollView(
@@ -5746,7 +5752,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildMediaSection(),
+                      _buildMediaContent(),
                       const SizedBox(height: 6),
                       _buildPersonDataTile(),
                       const SizedBox(height: 6),

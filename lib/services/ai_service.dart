@@ -123,7 +123,7 @@ class AIService {
       await comfyuiDir.create(recursive: true);
 
       final imageFile = File(
-        '/Users/hhsw/Desktop/sunriza26/ComfyUI/input/crown_image.jpg',
+        '/Users/hhsw/Desktop/sunriza26/ComfyUI/input/hero_image.jpg',
       );
       final audioFile = File(
         '/Users/hhsw/Desktop/sunriza26/ComfyUI/input/elevenlabs_audio.mp3',
@@ -142,7 +142,7 @@ class AIService {
       // JETZT mit ComfyUI Dateien
       final localWorkflow = Map<String, dynamic>.from(workflow);
       localWorkflow['2']['inputs']['audio'] = 'elevenlabs_audio.mp3';
-      localWorkflow['3']['inputs']['image'] = 'crown_image.jpg';
+      localWorkflow['3']['inputs']['image'] = 'hero_image.jpg';
 
       request.body = jsonEncode({
         "prompt": localWorkflow,
