@@ -2188,7 +2188,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     ),
                   );
                   if (ok == true) {
-                    await FirebaseStorageService.deleteFile(url);
+                    // Media-Dokument löschen (triggert Cloud Function für Storage-Cleanup)
+                    final mediaList = await _mediaSvc.list(_avatarData!.id);
+                    final mediaDoc = mediaList.firstWhere(
+                      (m) => m.url == url,
+                      orElse: () => AvatarMedia(
+                        id: '',
+                        avatarId: '',
+                        type: AvatarMediaType.audio,
+                        url: '',
+                        createdAt: 0,
+                      ),
+                    );
+                    if (mediaDoc.id.isNotEmpty) {
+                      // Media-Doc existiert → Cloud Function übernimmt Storage-Cleanup
+                      await _mediaSvc.delete(_avatarData!.id, mediaDoc.id);
+                    } else {
+                      // Kein Media-Doc → manuell Storage löschen (alte Uploads)
+                      await FirebaseStorageService.deleteFile(url);
+                    }
+                    // URL aus Avatar-Dokument entfernen
                     _avatarData!.audioUrls.remove(url);
                     await _persistTextFileUrls();
                     setState(() {});
@@ -4545,7 +4564,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 progress.value = (i * perFileWeight) + (v * perFileWeight);
               },
             );
-            if (url != null) uploaded.add(url);
+            if (url != null) {
+              uploaded.add(url);
+              // Media-Doc anlegen mit originalFileName
+              final origName = sel.name;
+              _addMediaDoc(
+                url,
+                AvatarMediaType.audio,
+                originalFileName: origName,
+              );
+            }
           }
 
           if (uploaded.isNotEmpty) {

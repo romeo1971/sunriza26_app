@@ -1601,7 +1601,7 @@ exports.onMediaDeleteCleanup = functions
         `avatars/${avatarId}/documents/thumbs/${mediaId}_`,
         `avatars/${avatarId}/images/thumbs/${mediaId}_`,
         `avatars/${avatarId}/videos/thumbs/${mediaId}_`,
-        `avatars/${avatarId}/audio/thumbs/${mediaId}_`,
+        `avatars/${avatarId}/audio/thumbs/${mediaId}`, // Audio: ohne Underscore!
     ];
     try {
         await Promise.all(prefixes.map(async (prefix) => {

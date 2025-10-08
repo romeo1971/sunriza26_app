@@ -420,6 +420,30 @@ class SunrizaApp extends StatelessWidget {
               contentTextStyle: TextStyle(color: Colors.white),
               behavior: SnackBarBehavior.floating,
             ),
+            dialogTheme: DialogThemeData(
+              backgroundColor: const Color(0xFF1A1A1A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(
+                  color: AppColors.magenta,
+                  width: 3,
+                ),
+              ),
+              elevation: 8,
+              shadowColor: AppColors.magenta.withOpacity(0.5),
+            ),
+            popupMenuTheme: PopupMenuThemeData(
+              color: const Color(0xFF1A1A1A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: const BorderSide(
+                  color: AppColors.magenta,
+                  width: 2,
+                ),
+              ),
+              elevation: 8,
+              shadowColor: AppColors.magenta.withOpacity(0.5),
+            ),
           ),
           home: const AuthGate(),
           debugShowCheckedModeBanner: false,
