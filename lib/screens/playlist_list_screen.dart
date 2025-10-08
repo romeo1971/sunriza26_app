@@ -755,9 +755,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
               }
             },
             icon: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [AppColors.magenta, AppColors.lightBlue],
-              ).createShader(bounds),
+              shaderCallback: (bounds) => Theme.of(
+                context,
+              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
               child: const Icon(
                 Icons.rule_folder_outlined,
                 color: Colors.white,
@@ -769,9 +769,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
             tooltip: loc.t('avatars.refreshTooltip'),
             onPressed: _load,
             icon: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [AppColors.magenta, AppColors.lightBlue],
-              ).createShader(bounds),
+              shaderCallback: (bounds) => Theme.of(
+                context,
+              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
               child: const Icon(
                 Icons.refresh_outlined,
                 color: Colors.white,
@@ -783,9 +783,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
             tooltip: loc.t('playlists.new'),
             onPressed: _create,
             icon: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [AppColors.magenta, AppColors.lightBlue],
-              ).createShader(bounds),
+              shaderCallback: (bounds) => Theme.of(
+                context,
+              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
               child: const Icon(
                 Icons.add_outlined,
                 color: Colors.white,

@@ -60,9 +60,11 @@ class AppGradients extends ThemeExtension<AppGradients> {
         end: Alignment.bottomRight,
         colors: [AppColors.primaryGreen, AppColors.greenBlue],
       ),
-      // Magenta → Blau
+      // GMBC: Magenta → LightBlue (CI-konform)
       magentaBlue: LinearGradient(
-        colors: [Color(0xFFE91E63), AppColors.lightBlue],
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [AppColors.magenta, AppColors.lightBlue],
       ),
     );
   }

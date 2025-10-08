@@ -103,9 +103,9 @@ class _SunrizaContentScreenState extends State<SunrizaContentScreen> {
               ),
             ),
             child: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [AppColors.magenta, AppColors.lightBlue],
-              ).createShader(bounds),
+              shaderCallback: (bounds) => Theme.of(
+                context,
+              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
               child: const Text(
                 'Jetzt starten',
                 style: TextStyle(
@@ -383,9 +383,9 @@ class _SunrizaContentScreenState extends State<SunrizaContentScreen> {
               ),
             ),
             child: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [AppColors.magenta, AppColors.lightBlue],
-              ).createShader(bounds),
+              shaderCallback: (bounds) => Theme.of(
+                context,
+              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
               child: const Text(
                 'Jetzt starten',
                 style: TextStyle(

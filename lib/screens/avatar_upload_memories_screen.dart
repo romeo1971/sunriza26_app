@@ -440,9 +440,9 @@ class _AvatarUploadMemoriesScreenState
           ),
         ),
         child: ShaderMask(
-          shaderCallback: (bounds) => const LinearGradient(
-            colors: [AppColors.magenta, AppColors.lightBlue],
-          ).createShader(bounds),
+          shaderCallback: (bounds) => Theme.of(
+            context,
+          ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
           child: Text(
             _isUploading
                 ? 'Wird hochgeladen...'

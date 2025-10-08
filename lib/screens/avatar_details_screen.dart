@@ -226,20 +226,40 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ),
           ],
         ),
-        Slider(
-          min: minAllowed,
-          max: maxAllowed,
-          divisions: ((maxAllowed - minAllowed) / 50).round(),
-          value: _targetTokens.clamp(minAllowed, maxAllowed),
-          onChanged: (v) => setState(() {
-            _targetTokens = v;
-            // minChunk sinnvoll nachführen (mind. 60% target, nicht größer als target)
-            final double min60 = (_targetTokens * 0.6);
-            if (_minChunkTokens < min60) _minChunkTokens = min60;
-            if (_minChunkTokens > _targetTokens) {
-              _minChunkTokens = _targetTokens;
-            }
-          }),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: AppColors.magenta.withOpacity(
+              0.8,
+            ), // GMBC Magenta
+            inactiveTrackColor: Colors.white.withOpacity(0.15),
+            overlayColor: AppColors.magenta.withOpacity(0.2),
+            thumbShape: const GradientSliderThumbShape(
+              thumbRadius: 8.0,
+            ), // GMBC Kugel
+            trackHeight: 4.0,
+            showValueIndicator: ShowValueIndicator.always,
+            valueIndicatorColor: Colors.white,
+            valueIndicatorTextStyle: const TextStyle(
+              color: AppColors.magenta,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          child: Slider(
+            min: minAllowed,
+            max: maxAllowed,
+            divisions: ((maxAllowed - minAllowed) / 50).round(),
+            value: _targetTokens.clamp(minAllowed, maxAllowed),
+            label: _targetTokens.round().toString(),
+            onChanged: (v) => setState(() {
+              _targetTokens = v;
+              // minChunk sinnvoll nachführen (mind. 60% target, nicht größer als target)
+              final double min60 = (_targetTokens * 0.6);
+              if (_minChunkTokens < min60) _minChunkTokens = min60;
+              if (_minChunkTokens > _targetTokens) {
+                _minChunkTokens = _targetTokens;
+              }
+            }),
+          ),
         ),
         const SizedBox(height: 6),
         // overlap (Prozent)
@@ -258,12 +278,32 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ),
           ],
         ),
-        Slider(
-          min: 0,
-          max: 40,
-          divisions: 40,
-          value: _overlapPercent.clamp(0, 40),
-          onChanged: (v) => setState(() => _overlapPercent = v),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: AppColors.magenta.withOpacity(
+              0.8,
+            ), // GMBC Magenta
+            inactiveTrackColor: Colors.white.withOpacity(0.15),
+            overlayColor: AppColors.magenta.withOpacity(0.2),
+            thumbShape: const GradientSliderThumbShape(
+              thumbRadius: 8.0,
+            ), // GMBC Kugel
+            trackHeight: 4.0,
+            showValueIndicator: ShowValueIndicator.always,
+            valueIndicatorColor: Colors.white,
+            valueIndicatorTextStyle: const TextStyle(
+              color: AppColors.magenta,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          child: Slider(
+            min: 0,
+            max: 40,
+            divisions: 40,
+            value: _overlapPercent.clamp(0, 40),
+            label: '${_overlapPercent.round()}%',
+            onChanged: (v) => setState(() => _overlapPercent = v),
+          ),
         ),
         const SizedBox(height: 6),
         // min_chunk_tokens
@@ -282,12 +322,32 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ),
           ],
         ),
-        Slider(
-          min: 1,
-          max: _targetTokens,
-          divisions: (_targetTokens / 10).round().clamp(1, 1000000),
-          value: _minChunkTokens.clamp(1, _targetTokens),
-          onChanged: (v) => setState(() => _minChunkTokens = v),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            activeTrackColor: AppColors.magenta.withOpacity(
+              0.8,
+            ), // GMBC Magenta
+            inactiveTrackColor: Colors.white.withOpacity(0.15),
+            overlayColor: AppColors.magenta.withOpacity(0.2),
+            thumbShape: const GradientSliderThumbShape(
+              thumbRadius: 8.0,
+            ), // GMBC Kugel
+            trackHeight: 4.0,
+            showValueIndicator: ShowValueIndicator.always,
+            valueIndicatorColor: Colors.white,
+            valueIndicatorTextStyle: const TextStyle(
+              color: AppColors.magenta,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          child: Slider(
+            min: 1,
+            max: _targetTokens,
+            divisions: (_targetTokens / 10).round().clamp(1, 1000000),
+            value: _minChunkTokens.clamp(1, _targetTokens),
+            label: _minChunkTokens.round().toString(),
+            onChanged: (v) => setState(() => _minChunkTokens = v),
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -603,10 +663,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     ),
                     child: Container(
                       height: double.infinity,
-                      decoration: const BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: [AppColors.magenta, AppColors.lightBlue],
-                        ),
+                      decoration: BoxDecoration(
+                        gradient: Theme.of(
+                          context,
+                        ).extension<AppGradients>()!.magentaBlue,
                       ),
                       padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: const Icon(
@@ -655,258 +715,310 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           data: Theme.of(context).copyWith(
             dividerColor: Colors.white24,
             listTileTheme: const ListTileThemeData(
-              iconColor: AppColors.accentGreenDark,
+              iconColor: AppColors.magenta, // GMBC
             ),
           ),
           child: Column(
             children: [
               // Begrüßungstext
-              ExpansionTile(
-                initiallyExpanded: false,
-                collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
-                backgroundColor: Colors.white.withValues(alpha: 0.06),
-                title: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      context.read<LocalizationService>().t('greetingText'),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    if (((_avatarData?.training?['voice']?['elevenVoiceId']
-                                as String?)
-                            ?.trim()
-                            .isNotEmpty ??
-                        false))
-                      IconButton(
-                        icon: const Icon(
-                          Icons.volume_up,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                        tooltip: context.read<LocalizationService>().t(
-                          'avatars.details.voiceTestTooltip',
-                        ),
-                        onPressed: _isTestingVoice ? null : _testVoicePlayback,
+              Theme(
+                data: Theme.of(context).copyWith(
+                  dividerColor: Colors.white24,
+                  listTileTheme: const ListTileThemeData(
+                    iconColor: AppColors.magenta, // GMBC Arrow
+                  ),
+                ),
+                child: ExpansionTile(
+                  initiallyExpanded: false,
+                  collapsedBackgroundColor: Colors.white.withValues(
+                    alpha: 0.04,
+                  ),
+                  backgroundColor: Colors.white.withValues(alpha: 0.06),
+                  collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
+                  iconColor: AppColors.lightBlue, // GMBC Arrow expanded
+                  title: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        context.read<LocalizationService>().t('greetingText'),
+                        style: const TextStyle(color: Colors.white),
                       ),
+                      if (((_avatarData?.training?['voice']?['elevenVoiceId']
+                                  as String?)
+                              ?.trim()
+                              .isNotEmpty ??
+                          false))
+                        IconButton(
+                          icon: const Icon(
+                            Icons.volume_up,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          tooltip: context.read<LocalizationService>().t(
+                            'avatars.details.voiceTestTooltip',
+                          ),
+                          onPressed: _isTestingVoice
+                              ? null
+                              : _testVoicePlayback,
+                        ),
+                    ],
+                  ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8.0,
+                        vertical: 6.0,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          CustomTextArea(
+                            label: context.read<LocalizationService>().t(
+                              'avatars.details.greetingLabel',
+                            ),
+                            controller: _greetingController,
+                            hintText: context.read<LocalizationService>().t(
+                              'avatars.details.greetingHint',
+                            ),
+                            minLines: 3,
+                            maxLines: 6,
+                            onChanged: (_) => _updateDirty(),
+                          ),
+                          const SizedBox(height: 16),
+                          _buildRoleDropdown(),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8.0,
-                      vertical: 6.0,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        CustomTextArea(
-                          label: context.read<LocalizationService>().t(
-                            'avatars.details.greetingLabel',
-                          ),
-                          controller: _greetingController,
-                          hintText: context.read<LocalizationService>().t(
-                            'avatars.details.greetingHint',
-                          ),
-                          minLines: 3,
-                          maxLines: 6,
-                          onChanged: (_) => _updateDirty(),
-                        ),
-                        const SizedBox(height: 16),
-                        _buildRoleDropdown(),
-                      ],
-                    ),
-                  ),
-                ],
               ),
               const SizedBox(height: 12),
               // Texte & Freitext
-              ExpansionTile(
-                initiallyExpanded: false,
-                collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
-                backgroundColor: Colors.white.withValues(alpha: 0.06),
-                title: Text(
-                  context.read<LocalizationService>().t('texts'),
-                  style: const TextStyle(color: Colors.white),
-                ),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _onAddTexts,
-                            style: ElevatedButton.styleFrom(
-                              alignment: Alignment.centerLeft,
-                              backgroundColor: AppColors.accentGreenDark,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  context.read<LocalizationService>().t(
-                                    'avatars.details.textUploadTitle',
-                                  ),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  context.read<LocalizationService>().t(
-                                    'avatars.details.textUploadSubtitle',
-                                  ),
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w300,
-                                    fontSize: 13,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        CustomTextArea(
-                          label: context.read<LocalizationService>().t(
-                            'avatars.details.freeTextLabel',
-                          ),
-                          controller: _textAreaController,
-                          hintText: context.read<LocalizationService>().t(
-                            'avatars.details.freeTextHint',
-                          ),
-                          minLines: 4,
-                          maxLines: 8,
-                          onChanged: (_) => _updateDirty(),
-                        ),
-                        const SizedBox(height: 12),
-                        // Chunking Parameter
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            context.read<LocalizationService>().t(
-                              'avatars.details.chunkingLabel',
-                            ),
-                            style: const TextStyle(color: Colors.white70),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        _buildChunkingControls(),
-                        const SizedBox(height: 12),
-                        if (_textFileUrls.isNotEmpty ||
-                            _newTextFiles.isNotEmpty)
-                          _buildTextFilesList(),
-                      ],
-                    ),
+              Theme(
+                data: Theme.of(context).copyWith(
+                  dividerColor: Colors.white24,
+                  listTileTheme: const ListTileThemeData(
+                    iconColor: AppColors.magenta, // GMBC Arrow
                   ),
-                ],
+                ),
+                child: ExpansionTile(
+                  initiallyExpanded: false,
+                  collapsedBackgroundColor: Colors.white.withValues(
+                    alpha: 0.04,
+                  ),
+                  backgroundColor: Colors.white.withValues(alpha: 0.06),
+                  collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
+                  iconColor: AppColors.lightBlue, // GMBC Arrow expanded
+                  title: Text(
+                    context.read<LocalizationService>().t('texts'),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _onAddTexts,
+                              style: ElevatedButton.styleFrom(
+                                alignment: Alignment.centerLeft,
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.white,
+                                shadowColor: Colors.transparent,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 18, // Mehr Padding oben/unten
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: ShaderMask(
+                                blendMode: BlendMode.srcIn,
+                                shaderCallback: (bounds) => Theme.of(context)
+                                    .extension<AppGradients>()!
+                                    .magentaBlue
+                                    .createShader(bounds),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      context.read<LocalizationService>().t(
+                                        'avatars.details.textUploadTitle',
+                                      ),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                        color: Colors.white,
+                                        height: 1.0,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      context.read<LocalizationService>().t(
+                                        'avatars.details.textUploadSubtitle',
+                                      ),
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w300,
+                                        fontSize: 13,
+                                        color: Colors.white,
+                                        height: 1.0,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 24),
+                          CustomTextArea(
+                            label: context.read<LocalizationService>().t(
+                              'avatars.details.freeTextLabel',
+                            ),
+                            controller: _textAreaController,
+                            hintText: context.read<LocalizationService>().t(
+                              'avatars.details.freeTextHint',
+                            ),
+                            minLines: 4,
+                            maxLines: 8,
+                            onChanged: (_) => _updateDirty(),
+                          ),
+                          const SizedBox(height: 12),
+                          // Chunking Parameter
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              context.read<LocalizationService>().t(
+                                'avatars.details.chunkingLabel',
+                              ),
+                              style: const TextStyle(color: Colors.white70),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          _buildChunkingControls(),
+                          const SizedBox(height: 12),
+                          if (_textFileUrls.isNotEmpty ||
+                              _newTextFiles.isNotEmpty)
+                            _buildTextFilesList(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
               // Audio (Stimmauswahl) inkl. Stimmeinstellungen
-              ExpansionTile(
-                initiallyExpanded: false,
-                collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
-                backgroundColor: Colors.white.withValues(alpha: 0.06),
-                title: Text(
-                  context.read<LocalizationService>().t('voiceSelection'),
-                  style: const TextStyle(color: Colors.white),
+              Theme(
+                data: Theme.of(context).copyWith(
+                  dividerColor: Colors.white24,
+                  listTileTheme: const ListTileThemeData(
+                    iconColor: AppColors.magenta, // GMBC Arrow
+                  ),
                 ),
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // ElevenLabs Voice Auswahl
-                        _buildVoiceSelect(),
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: _onAddAudio,
-                            style: ElevatedButton.styleFrom(
-                              alignment: Alignment.centerLeft,
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.white,
-                              shadowColor: Colors.transparent,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 18,
+                child: ExpansionTile(
+                  initiallyExpanded: false,
+                  collapsedBackgroundColor: Colors.white.withValues(
+                    alpha: 0.04,
+                  ),
+                  backgroundColor: Colors.white.withValues(alpha: 0.06),
+                  collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
+                  iconColor: AppColors.lightBlue, // GMBC Arrow expanded
+                  title: Text(
+                    context.read<LocalizationService>().t('voiceSelection'),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ElevenLabs Voice Auswahl
+                          _buildVoiceSelect(),
+                          const SizedBox(height: 12),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _onAddAudio,
+                              style: ElevatedButton.styleFrom(
+                                alignment: Alignment.centerLeft,
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.white,
+                                shadowColor: Colors.transparent,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 18,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
                               ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                            child: ShaderMask(
-                              shaderCallback: (bounds) => const LinearGradient(
-                                colors: [
-                                  AppColors.magenta,
-                                  AppColors.lightBlue,
-                                ],
-                              ).createShader(bounds),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    context.read<LocalizationService>().t(
-                                      'avatars.details.audioUploadTitle',
+                              child: ShaderMask(
+                                shaderCallback: (bounds) =>
+                                    const LinearGradient(
+                                      colors: [
+                                        AppColors.magenta,
+                                        AppColors.lightBlue,
+                                      ],
+                                    ).createShader(bounds),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      context.read<LocalizationService>().t(
+                                        'avatars.details.audioUploadTitle',
+                                      ),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                        color: Colors.white,
+                                      ),
                                     ),
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 16,
-                                      color: Colors.white,
+                                    SizedBox(height: 2),
+                                    Text(
+                                      context.read<LocalizationService>().t(
+                                        'avatars.details.audioUploadSubtitle',
+                                      ),
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w300,
+                                        fontSize: 13,
+                                        color: Colors.white,
+                                      ),
                                     ),
-                                  ),
-                                  SizedBox(height: 2),
-                                  Text(
-                                    context.read<LocalizationService>().t(
-                                      'avatars.details.audioUploadSubtitle',
-                                    ),
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w300,
-                                      fontSize: 13,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 12),
-                        if (_avatarData?.audioUrls.isNotEmpty == true)
-                          _buildAudioFilesList(),
+                          const SizedBox(height: 12),
+                          if (_avatarData?.audioUrls.isNotEmpty == true)
+                            _buildAudioFilesList(),
 
-                        const SizedBox(height: 12),
-                        // Stimmeinstellungen (nur anzeigen, wenn ein Klon/Voice-ID vorhanden ist)
-                        if (((_avatarData?.training?['voice']?['elevenVoiceId'])
-                                    as String?)
-                                ?.trim()
-                                .isNotEmpty ==
-                            true)
-                          _buildVoiceParams(),
-                      ],
+                          const SizedBox(height: 12),
+                          // Stimmeinstellungen (nur anzeigen, wenn ein Klon/Voice-ID vorhanden ist)
+                          if (((_avatarData
+                                          ?.training?['voice']?['elevenVoiceId'])
+                                      as String?)
+                                  ?.trim()
+                                  .isNotEmpty ==
+                              true)
+                            _buildVoiceParams(),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
             ],
@@ -2057,9 +2169,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                             ),
                           ),
                           child: ShaderMask(
-                            shaderCallback: (bounds) => const LinearGradient(
-                              colors: [AppColors.magenta, AppColors.lightBlue],
-                            ).createShader(bounds),
+                            shaderCallback: (bounds) => Theme.of(context)
+                                .extension<AppGradients>()!
+                                .magentaBlue
+                                .createShader(bounds),
                             child: Text(
                               context.read<LocalizationService>().t(
                                 'avatars.details.delete',
@@ -2146,7 +2259,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         colors: [
                           AppColors.magenta,
                           AppColors.lightBlue,
-                        ], // GMBC
+                        ], // GMBC wie Upload-Buttons
                         begin: Alignment.centerLeft,
                         end: Alignment.centerRight,
                       ),
@@ -2157,9 +2270,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 icon: _hasNoClonedVoice
                     ? ShaderMask(
                         blendMode: BlendMode.srcIn,
-                        shaderCallback: (bounds) => const LinearGradient(
-                          colors: [AppColors.magenta, AppColors.lightBlue],
-                        ).createShader(bounds),
+                        shaderCallback: (bounds) => Theme.of(context)
+                            .extension<AppGradients>()!
+                            .magentaBlue
+                            .createShader(bounds),
                         child: const Icon(
                           Icons.auto_fix_high,
                           color: Colors.white,
@@ -2169,9 +2283,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 label: _hasNoClonedVoice
                     ? ShaderMask(
                         blendMode: BlendMode.srcIn,
-                        shaderCallback: (bounds) => const LinearGradient(
-                          colors: [AppColors.magenta, AppColors.lightBlue],
-                        ).createShader(bounds),
+                        shaderCallback: (bounds) => Theme.of(context)
+                            .extension<AppGradients>()!
+                            .magentaBlue
+                            .createShader(bounds),
                         child: Text(
                           _isSaving
                               ? context.read<LocalizationService>().t(
@@ -2198,6 +2313,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   foregroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,
                   elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                 ),
               ),
             ),
@@ -2247,15 +2365,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: Colors.white.withOpacity(
-                    0.6,
-                  ), // White mit leichtem GMBC Schimmer
-                  inactiveTrackColor: Colors.white.withOpacity(0.2),
-                  overlayColor: AppColors.magenta.withOpacity(0.1),
+                  activeTrackColor: AppColors.magenta.withOpacity(
+                    0.8,
+                  ), // GMBC Magenta
+                  inactiveTrackColor: Colors.white.withOpacity(0.15),
+                  overlayColor: AppColors.magenta.withOpacity(
+                    0.2,
+                  ), // GMBC Magenta overlay
                   trackHeight: 4.0,
                   thumbShape: const GradientSliderThumbShape(
                     thumbRadius: 8.0,
                   ), // GMBC Kugel
+                  showValueIndicator: ShowValueIndicator.always,
+                  valueIndicatorColor: Colors.white,
+                  valueIndicatorTextStyle: const TextStyle(
+                    color: AppColors.magenta,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 child: Slider(
                   value: _voiceStability.clamp(0.0, 1.0),
@@ -2291,15 +2417,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: Colors.white.withOpacity(
-                    0.6,
-                  ), // White mit leichtem GMBC Schimmer
-                  inactiveTrackColor: Colors.white.withOpacity(0.2),
-                  overlayColor: AppColors.magenta.withOpacity(0.1),
+                  activeTrackColor: AppColors.magenta.withOpacity(
+                    0.8,
+                  ), // GMBC Magenta
+                  inactiveTrackColor: Colors.white.withOpacity(0.15),
+                  overlayColor: AppColors.magenta.withOpacity(
+                    0.2,
+                  ), // GMBC Magenta overlay
                   trackHeight: 4.0,
                   thumbShape: const GradientSliderThumbShape(
                     thumbRadius: 8.0,
                   ), // GMBC Kugel
+                  showValueIndicator: ShowValueIndicator.always,
+                  valueIndicatorColor: Colors.white,
+                  valueIndicatorTextStyle: const TextStyle(
+                    color: AppColors.magenta,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 child: Slider(
                   value: _voiceSimilarity.clamp(0.0, 1.0),
@@ -2335,15 +2469,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: Colors.white.withOpacity(
-                    0.6,
-                  ), // White mit leichtem GMBC Schimmer
-                  inactiveTrackColor: Colors.white.withOpacity(0.2),
-                  overlayColor: AppColors.magenta.withOpacity(0.1),
+                  activeTrackColor: AppColors.magenta.withOpacity(
+                    0.8,
+                  ), // GMBC Magenta
+                  inactiveTrackColor: Colors.white.withOpacity(0.15),
+                  overlayColor: AppColors.magenta.withOpacity(
+                    0.2,
+                  ), // GMBC Magenta overlay
                   trackHeight: 4.0,
                   thumbShape: const GradientSliderThumbShape(
                     thumbRadius: 8.0,
                   ), // GMBC Kugel
+                  showValueIndicator: ShowValueIndicator.always,
+                  valueIndicatorColor: Colors.white,
+                  valueIndicatorTextStyle: const TextStyle(
+                    color: AppColors.magenta,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
                 child: Slider(
                   value: _voiceTempo.clamp(0.5, 1.5),
@@ -2898,9 +3040,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ),
             ),
             child: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [AppColors.magenta, AppColors.lightBlue],
-              ).createShader(bounds),
+              shaderCallback: (bounds) => Theme.of(
+                context,
+              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
               child: Text(
                 context.read<LocalizationService>().t('avatars.details.delete'),
                 style: const TextStyle(
@@ -2953,9 +3095,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ),
             ),
             child: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [AppColors.magenta, AppColors.lightBlue],
-              ).createShader(bounds),
+              shaderCallback: (bounds) => Theme.of(
+                context,
+              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
               child: Text(
                 context.read<LocalizationService>().t('avatars.details.delete'),
                 style: const TextStyle(
@@ -3261,9 +3403,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 decoration: BoxDecoration(
                   color: selected ? null : const Color(0x30000000),
                   gradient: selected
-                      ? const LinearGradient(
-                          colors: [AppColors.magenta, AppColors.lightBlue],
-                        )
+                      ? Theme.of(context).extension<AppGradients>()!.magentaBlue
                       : null,
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
@@ -3466,9 +3606,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   decoration: BoxDecoration(
                     color: selected ? null : const Color(0x30000000),
                     gradient: selected
-                        ? const LinearGradient(
-                            colors: [AppColors.magenta, AppColors.lightBlue],
-                          )
+                        ? Theme.of(
+                            context,
+                          ).extension<AppGradients>()!.magentaBlue
                         : null,
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(
@@ -4524,12 +4664,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     if (success && mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(
-                            newValue
-                                ? '✓ Vorname wird im Chat angezeigt'
-                                : '✓ Vorname wird nicht im Chat angezeigt',
+                          backgroundColor: Colors.white,
+                          content: ShaderMask(
+                            blendMode: BlendMode.srcIn,
+                            shaderCallback: (bounds) => Theme.of(context)
+                                .extension<AppGradients>()!
+                                .magentaBlue
+                                .createShader(bounds),
+                            child: Text(
+                              newValue
+                                  ? '✓ Vorname wird im Chat angezeigt'
+                                  : '✓ Vorname wird nicht im Chat angezeigt',
+                              style: const TextStyle(color: Colors.white),
+                            ),
                           ),
-                          backgroundColor: Colors.green,
                           duration: const Duration(seconds: 2),
                         ),
                       );
@@ -4611,12 +4759,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     if (success && mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(
-                            newValue
-                                ? '✓ Nickname wird im Chat angezeigt'
-                                : '✓ Nickname wird nicht im Chat angezeigt',
+                          backgroundColor: Colors.white,
+                          content: ShaderMask(
+                            blendMode: BlendMode.srcIn,
+                            shaderCallback: (bounds) => Theme.of(context)
+                                .extension<AppGradients>()!
+                                .magentaBlue
+                                .createShader(bounds),
+                            child: Text(
+                              newValue
+                                  ? '✓ Nickname wird im Chat angezeigt'
+                                  : '✓ Nickname wird nicht im Chat angezeigt',
+                              style: const TextStyle(color: Colors.white),
+                            ),
                           ),
-                          backgroundColor: Colors.green,
                           duration: const Duration(seconds: 2),
                         ),
                       );
@@ -4698,12 +4854,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     if (success && mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text(
-                            newValue
-                                ? '✓ Nachname wird im Chat angezeigt'
-                                : '✓ Nachname wird nicht im Chat angezeigt',
+                          backgroundColor: Colors.white,
+                          content: ShaderMask(
+                            blendMode: BlendMode.srcIn,
+                            shaderCallback: (bounds) => Theme.of(context)
+                                .extension<AppGradients>()!
+                                .magentaBlue
+                                .createShader(bounds),
+                            child: Text(
+                              newValue
+                                  ? '✓ Nachname wird im Chat angezeigt'
+                                  : '✓ Nachname wird nicht im Chat angezeigt',
+                              style: const TextStyle(color: Colors.white),
+                            ),
                           ),
-                          backgroundColor: Colors.green,
                           duration: const Duration(seconds: 2),
                         ),
                       );
@@ -4772,7 +4936,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                           ? _confirmRegionSelection
                           : null,
                       style: TextButton.styleFrom(
-                        foregroundColor: AppColors.accentGreenDark,
+                        foregroundColor: AppColors.magenta, // GMBC
                       ),
                       child: Text(
                         context.read<LocalizationService>().t(
@@ -4780,7 +4944,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         ),
                         style: TextStyle(
                           color: _regionCanApply
-                              ? AppColors.accentGreenDark
+                              ? AppColors
+                                    .magenta // GMBC
                               : Colors.white24,
                         ),
                       ),
@@ -4917,12 +5082,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return Theme(
       data: Theme.of(context).copyWith(
         dividerColor: Colors.white24,
-        listTileTheme: const ListTileThemeData(iconColor: Colors.white70),
+        listTileTheme: const ListTileThemeData(
+          iconColor: AppColors.magenta, // GMBC Arrow
+        ),
       ),
       child: ExpansionTile(
         initiallyExpanded: false,
         collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
         backgroundColor: Colors.white.withValues(alpha: 0.06),
+        collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
+        iconColor: AppColors.lightBlue, // GMBC Arrow expanded
         title: Text(
           context.read<LocalizationService>().t(
             'avatars.details.personDataTitle',
@@ -4947,12 +5116,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         color: const Color(0x80FFFFFF),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: AppColors.accentGreenDark.withValues(alpha: 0.35),
+          color: AppColors.magenta.withValues(alpha: 0.35), // GMBC
         ),
       ),
       child: Row(
         children: [
-          const Icon(Icons.cake, color: AppColors.accentGreenDark),
+          const Icon(Icons.cake, color: AppColors.magenta), // GMBC
           const SizedBox(width: 12),
           Text(
             context.read<LocalizationService>().t(
@@ -4962,7 +5131,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w600,
-              color: AppColors.accentGreenDark,
+              color: AppColors.magenta, // GMBC
             ),
           ),
         ],
@@ -5691,9 +5860,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ),
             ),
             child: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [AppColors.magenta, AppColors.lightBlue],
-              ).createShader(bounds),
+              shaderCallback: (bounds) => Theme.of(
+                context,
+              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
               child: Text(
                 context.read<LocalizationService>().t('avatars.details.delete'),
                 style: const TextStyle(
@@ -5852,9 +6021,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ),
               onPressed: _isSaving ? null : _saveAvatarDetails,
               icon: ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [AppColors.magenta, AppColors.lightBlue],
-                ).createShader(bounds),
+                shaderCallback: (bounds) => Theme.of(
+                  context,
+                ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
                 child: Icon(
                   Icons.save_outlined,
                   color: _isSaving ? Colors.grey : Colors.white,
