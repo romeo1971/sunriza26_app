@@ -29,7 +29,6 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   final List<Key> _timelineKeys = [];
   final List<AvatarMedia> _assets = []; // rechte Seite: Timeline-Assets
   double _splitRatio = 0.38; // Anteil der linken Spalte (0..1)
-  static const double _minPaneWidth = 240.0;
   bool _showSearch = false;
   String _searchTerm = '';
   final TextEditingController _searchController = TextEditingController();
@@ -341,11 +340,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           if (_isDirty)
-            IconButton(
-              tooltip: 'Speichern',
-              onPressed: _saveTimeline,
-              icon: const Icon(Icons.save),
-            ),
+          IconButton(
+            tooltip: 'Speichern',
+            onPressed: _saveTimeline,
+            icon: const Icon(Icons.save),
+          ),
           const SizedBox(width: 4),
         ],
         // Keine Bottom‑Tabs hier – Tabs kommen unter den Header
@@ -466,12 +465,12 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
           const SizedBox(height: 8),
 
           // Call-to-Action: Medien hinzufügen (öffnet Asset-Auswahl)
-          Container(
-            height: 44,
+                    Container(
+                      height: 44,
             color: Colors.grey.shade900,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Row(
+                        children: [
                 InkWell(
                   onTap: _openAssetsPicker,
                   child: Row(
@@ -479,26 +478,26 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                     children: const [
                       Icon(Icons.add, color: Colors.white, size: 22),
                       SizedBox(width: 8),
-                      Text(
+                          Text(
                         'Medien hinzufügen',
                         style: TextStyle(color: Colors.white),
                       ),
                     ],
-                  ),
-                ),
-                const Spacer(),
+                            ),
+                          ),
+                          const Spacer(),
                 if (_assets.isNotEmpty)
                   Flexible(
                     child: SizedBox(
-                      height: 32,
+                            height: 32,
                       child: TextField(
                         controller: _assetsSearchCtl,
                         onChanged: (v) =>
                             setState(() => _assetsSearchTerm = v.toLowerCase()),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.white,
-                        ),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                ),
                         cursorColor: Colors.white,
                         decoration: const InputDecoration(
                           isDense: true,
@@ -508,17 +507,17 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                             fontSize: 12,
                           ),
                           prefixIcon: Padding(
-                            padding: EdgeInsets.only(left: 6),
-                            child: Icon(
-                              Icons.search,
-                              color: Colors.white70,
-                              size: 18,
-                            ),
-                          ),
+                                  padding: EdgeInsets.only(left: 6),
+                                  child: Icon(
+                                    Icons.search,
+                                    color: Colors.white70,
+                                    size: 18,
+                                  ),
+                                ),
                           prefixIconConstraints: BoxConstraints(
-                            minWidth: 24,
-                            maxWidth: 28,
-                          ),
+                                  minWidth: 24,
+                                  maxWidth: 28,
+                                ),
                           filled: true,
                           fillColor: Color(0x1FFFFFFF),
                           border: OutlineInputBorder(
@@ -531,21 +530,21 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                             borderSide: BorderSide(color: Colors.white24),
                           ),
                           contentPadding: EdgeInsets.symmetric(
-                            horizontal: 8,
+                                  horizontal: 8,
                             vertical: 8,
                           ),
                         ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-              ],
-            ),
-          ),
 
           // Kombinierter Container: FullWidth-Header, darunter links Timeline, rechts Assets mit Resizer
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
+                    Expanded(
+                            child: Container(
+                                    decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 // keine Border unten um den Split-Container
               ),
@@ -562,9 +561,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                           0.0,
                           double.infinity,
                         );
-                        // konstante Mindestbreite je Pane für maximale Beweglichkeit
-                        const double minPane = 32.0;
-                        if (available <= 2 * minPane) {
+                        // Mindestbreiten: Links kleiner, Rechts größer (für Navi-Icons)
+                        const double minLeftPane = 100.0;
+                        const double minRightPane =
+                            200.0; // für Timeline-Assets Navi
+                        if (available <= (minLeftPane + minRightPane)) {
                           // zu schmal: mittig teilen
                           final leftW = available / 2;
                           return Row(
@@ -578,8 +579,8 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                             ],
                           );
                         }
-                        final double minLeft = minPane;
-                        final double maxLeft = (available - minPane).clamp(
+                        final double minLeft = minLeftPane;
+                        final double maxLeft = (available - minRightPane).clamp(
                           minLeft,
                           available,
                         );
@@ -589,7 +590,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                           maxLeft,
                         );
                         return Row(
-                          children: [
+                                            children: [
                             // Timeline links
                             SizedBox(width: leftW, child: _buildTimelinePane()),
                             // Resizer
@@ -599,9 +600,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                           ],
                         );
                       },
-                    ),
-                  ),
-                ],
+                            ),
+                          ),
+                        ],
               ),
             ),
           ),
@@ -677,20 +678,20 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
               const Center(child: Icon(Icons.videocam, color: Colors.white70)),
         );
       } else {
-        content = const Center(
-          child: Icon(Icons.videocam, color: Colors.white70),
-        );
+      content = const Center(
+        child: Icon(Icons.videocam, color: Colors.white70),
+      );
       }
     } else if (m.type == AvatarMediaType.document) {
       if (m.thumbUrl != null && m.thumbUrl!.isNotEmpty) {
-        content = Image.network(
+      content = Image.network(
           m.thumbUrl!,
-          fit: BoxFit.cover,
+        fit: BoxFit.cover,
           errorBuilder: (_, __, ___) => const Center(
             child: Icon(Icons.description, color: Colors.white70),
           ),
-        );
-      } else {
+      );
+    } else {
         content = Container(
           color: const Color(0xFF101010),
           child: const Center(
@@ -701,9 +702,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     } else {
       // Audio: nur Name + Zeit (keine Icons IN der Kachel wie in media_assets)
       if (size != null) {
-        content = const Center(
-          child: Icon(Icons.audiotrack, color: Colors.white70),
-        );
+      content = const Center(
+        child: Icon(Icons.audiotrack, color: Colors.white70),
+      );
       } else {
         String fmt() {
           final ms = m.durationMs ?? 0;
@@ -944,6 +945,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                           setState(() {
                             _timeline.add(m);
                             _timelineKeys.add(UniqueKey());
+                            _syncKeysLength();
                             _isDirty = true;
                           });
                           await _persistTimelineItems();
@@ -1170,6 +1172,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                   setState(() {
                     _timeline.add(m);
                     _timelineKeys.add(UniqueKey());
+                    _syncKeysLength();
                     _isDirty = true;
                   });
                   await _persistTimelineItems();
@@ -1289,7 +1292,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => PlaylistMediaAssetsScreen(
-          avatarId: widget.playlist.avatarId,
+        avatarId: widget.playlist.avatarId,
           playlistId: widget.playlist.id,
           preselected: _assets,
         ),
@@ -1322,7 +1325,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
           docs,
         );
       } catch (e) {
-        if (mounted) {
+    if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('Fehler beim Speichern der Assets: $e')),
           );
@@ -1381,18 +1384,33 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                     buildDefaultDragHandles: true,
                     proxyDecorator: (child, index, animation) => child,
                     onReorder: (oldIndex, newIndex) async {
+                      // Defensive checks
                       if (oldIndex < 0 || oldIndex >= _timeline.length) return;
+                      if (oldIndex >= _timelineKeys.length) return;
                       if (newIndex > _timeline.length)
                         newIndex = _timeline.length;
                       if (newIndex > oldIndex) newIndex -= 1;
-                      final it = _timeline.removeAt(oldIndex);
-                      final k = _timelineKeys.removeAt(oldIndex);
-                      _timeline.insert(newIndex, it);
-                      _timelineKeys.insert(newIndex, k);
+
+                      // setState SOFORT aufrufen, BEVOR wir auf Listen zugreifen
                       setState(() {
+                        // Sync vor dem Verschieben
+                        _syncKeysLength();
+
+                        // Nochmal prüfen nach Sync
+                        if (oldIndex >= _timeline.length ||
+                            oldIndex >= _timelineKeys.length)
+                          return;
+
+                        final it = _timeline.removeAt(oldIndex);
+                        final k = _timelineKeys.removeAt(oldIndex);
+                        _timeline.insert(newIndex, it);
+                        _timelineKeys.insert(newIndex, k);
+
+                        // Final Sync
                         _syncKeysLength();
                         _isDirty = true;
                       });
+
                       await _persistTimelineItems();
                     },
                     children: [
@@ -1409,56 +1427,69 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                                 : _timelineKeys.length);
                         i++
                       )
-                        Material(
-                          key: _timelineKeys[i],
-                          color: Colors.transparent,
-                          child: Tooltip(
-                            message:
-                                '${_timeline[i].originalFileName ?? _timeline[i].url.split('/').last}\n${_timeline[i].type.name}  AR:${(_timeline[i].aspectRatio ?? 0).toStringAsFixed(2)}',
-                            child: ListTile(
-                              leading: _buildThumb(_timeline[i], size: 40),
-                              title: Text(
-                                _displayName(_timeline[i]),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              trailing: PopupMenuButton<String>(
-                                icon: const Icon(
-                                  Icons.more_vert,
-                                  color: Colors.white70,
+                        if (i < _timeline.length && i < _timelineKeys.length)
+                          Material(
+                            key: _timelineKeys[i],
+                            color: Colors.transparent,
+                            child: Tooltip(
+                              message:
+                                  '${_timeline[i].originalFileName ?? _timeline[i].url.split('/').last}\n${_timeline[i].type.name}  AR:${(_timeline[i].aspectRatio ?? 0).toStringAsFixed(2)}',
+                              child: ListTile(
+                                leading: _buildThumb(_timeline[i], size: 40),
+                                title: Text(
+                                  _displayName(_timeline[i]),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 3,
+                                  style: const TextStyle(fontSize: 10),
                                 ),
-                                onSelected: (v) async {
-                                  if (v == 'dup') {
-                                    setState(() {
-                                      _timeline.insert(i + 1, _timeline[i]);
-                                      _timelineKeys.insert(i + 1, UniqueKey());
-                                      _syncKeysLength();
-                                      _isDirty = true;
-                                    });
-                                    await _persistTimelineItems();
-                                  } else if (v == 'del') {
-                                    setState(() {
-                                      _timeline.removeAt(i);
-                                      _timelineKeys.removeAt(i);
-                                      _syncKeysLength();
-                                      _isDirty = true;
-                                    });
-                                    await _persistTimelineItems();
-                                  }
-                                },
-                                itemBuilder: (ctx) => [
-                                  const PopupMenuItem<String>(
-                                    value: 'dup',
-                                    child: Text('Duplizieren'),
+                                trailing: PopupMenuButton<String>(
+                                  icon: const Icon(
+                                    Icons.more_vert,
+                                    color: Colors.white70,
                                   ),
-                                  const PopupMenuItem<String>(
-                                    value: 'del',
-                                    child: Text('Aus Timeline entfernen'),
-                                  ),
-                                ],
+                                  onSelected: (v) async {
+                                    if (v == 'dup') {
+                                      setState(() {
+                                        // Defensive check
+                                        if (i < _timeline.length) {
+                                          _timeline.insert(i + 1, _timeline[i]);
+                                          _timelineKeys.insert(
+                                            i + 1,
+                                            UniqueKey(),
+                                          );
+                                          _syncKeysLength();
+                                          _isDirty = true;
+                                        }
+                                      });
+                                      await _persistTimelineItems();
+                                    } else if (v == 'del') {
+                                      setState(() {
+                                        // Defensive check
+                                        if (i < _timeline.length &&
+                                            i < _timelineKeys.length) {
+                                          _timeline.removeAt(i);
+                                          _timelineKeys.removeAt(i);
+                                          _syncKeysLength();
+                                          _isDirty = true;
+                                        }
+                                      });
+                                      await _persistTimelineItems();
+                                    }
+                                  },
+                                  itemBuilder: (ctx) => [
+                                    const PopupMenuItem<String>(
+                                      value: 'dup',
+                                      child: Text('Duplizieren'),
+                                    ),
+                                    const PopupMenuItem<String>(
+                                      value: 'del',
+                                      child: Text('Aus Timeline entfernen'),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
-                        ),
                     ],
                   ),
           );
@@ -1468,12 +1499,16 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
           return true;
         },
         onLeave: (m) => setState(() => _timelineHover = false),
-        onAccept: (m) => setState(() {
-          _timeline.add(m);
-          _timelineKeys.add(UniqueKey());
-          _syncKeysLength();
-          _isDirty = true;
-        }),
+        onAccept: (m) {
+          setState(() {
+            _timeline.add(m);
+            _timelineKeys.add(UniqueKey());
+            _syncKeysLength();
+            _isDirty = true;
+          });
+          // Persist nach dem Hinzufügen
+          _persistTimelineItems();
+        },
       ),
     );
   }
@@ -1591,11 +1626,12 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         onHorizontalDragUpdate: (d) {
           setState(() {
             final available2 = (totalW - resizerW).clamp(0.0, double.infinity);
-            const double minPane2 = 32.0;
-            if (available2 <= 2 * minPane2) return;
+            const double minLeftPane2 = 100.0;
+            const double minRightPane2 = 200.0;
+            if (available2 <= (minLeftPane2 + minRightPane2)) return;
             final double newLeft = (leftW + d.delta.dx).clamp(
-              minPane2,
-              available2 - minPane2,
+              minLeftPane2,
+              available2 - minRightPane2,
             );
             _splitRatio = available2 > 0 ? (newLeft / available2) : 0.5;
           });

@@ -1107,6 +1107,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             },
             child: const Text('Galerie (Mehrere)'),
           ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Abbrechen',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
         ],
       ),
     );
@@ -1133,6 +1140,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               _pickMultipleVideos(); // Multi für Galerie
             },
             child: const Text('Galerie (Mehrere)'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text(
+              'Abbrechen',
+              style: TextStyle(color: Colors.white54),
+            ),
           ),
         ],
       ),
@@ -2036,6 +2050,41 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       Icons.description_outlined,
                     ),
                     _buildTopTabAppbarBtn('audio', Icons.audiotrack),
+                    // Upload-Button
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: SizedBox(
+                        height: 35,
+                        child: TextButton(
+                          onPressed: _showUploadDialog,
+                          style: ButtonStyle(
+                            padding: const WidgetStatePropertyAll(
+                              EdgeInsets.zero,
+                            ),
+                            minimumSize: const WidgetStatePropertyAll(
+                              Size(40, 35),
+                            ),
+                          ),
+                          child: Container(
+                            height: double.infinity,
+                            decoration: const BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppColors.magenta,
+                                  AppColors.lightBlue,
+                                ],
+                              ),
+                            ),
+                            padding: const EdgeInsets.symmetric(horizontal: 8),
+                            child: const Icon(
+                              Icons.file_upload,
+                              size: 18,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                     const Spacer(),
                     // Portrait/Landscape Toggle (ausgeblendet bei Audio)
                     if (_mediaTab != 'audio')
@@ -2052,15 +2101,26 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               Size(40, 35),
                             ),
                           ),
-                          child: Icon(
-                            _portrait
-                                ? Icons.stay_primary_portrait
-                                : Icons.stay_primary_landscape,
-                            color: _portrait
-                                ? AppColors.lightBlue
-                                : Colors.white54,
-                            size: 18,
-                          ),
+                          child: _portrait
+                              ? ShaderMask(
+                                  shaderCallback: (bounds) =>
+                                      const LinearGradient(
+                                        colors: [
+                                          AppColors.magenta,
+                                          AppColors.lightBlue,
+                                        ],
+                                      ).createShader(bounds),
+                                  child: const Icon(
+                                    Icons.stay_primary_portrait,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.stay_primary_landscape,
+                                  size: 18,
+                                  color: Colors.white54,
+                                ),
                         ),
                       ),
                     // Suche rechts (Stil wie Tabs)
@@ -2174,102 +2234,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         ),
                         textAlign: TextAlign.center,
                       ),
-                    ),
-                  ),
-                ),
-                // Tool-Zeile direkt ÜBER den Medien: Upload + Portrait/Landscape (+ optionale Suche rechts)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                  child: SizedBox(
-                    height: 40,
-                    child: Row(
-                      children: [
-                        _buildUploadButton(),
-                        const SizedBox(width: 12),
-                        if (_mediaTab != 'audio')
-                          SizedBox(
-                            width: 40,
-                            height: 32,
-                            child: ElevatedButton(
-                              onPressed: () {
-                                setState(() {
-                                  _portrait = !_portrait;
-                                  _currentPage = 0;
-                                });
-                              },
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _portrait
-                                    ? Colors.white
-                                    : const Color(0x40FFFFFF),
-                                foregroundColor: _portrait
-                                    ? null
-                                    : Colors.white,
-                                shadowColor: Colors.transparent,
-                                padding: EdgeInsets.zero,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: _portrait
-                                  ? ShaderMask(
-                                      shaderCallback: (bounds) =>
-                                          const LinearGradient(
-                                            colors: [
-                                              AppColors.magenta,
-                                              AppColors.lightBlue,
-                                            ],
-                                          ).createShader(bounds),
-                                      child: const Icon(
-                                        Icons.stay_current_portrait,
-                                        size: 18,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(
-                                      Icons.stay_current_landscape,
-                                      size: 18,
-                                    ),
-                            ),
-                          ),
-                        const Spacer(),
-                        if (_showSearch)
-                          SizedBox(
-                            height: 32,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxWidth: 160,
-                                minWidth: 160,
-                              ),
-                              child: CustomTextField(
-                                label: 'Suche nach Medien...',
-                                controller: _searchController,
-                                style: const TextStyle(fontSize: 12),
-                                prefixIcon: const Padding(
-                                  padding: EdgeInsets.only(left: 6),
-                                  child: Icon(
-                                    Icons.search,
-                                    color: Colors.white70,
-                                    size: 18,
-                                  ),
-                                ),
-                                prefixIconConstraints: const BoxConstraints(
-                                  minWidth: 24,
-                                  maxWidth: 28,
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 10,
-                                ),
-                                onChanged: (value) {
-                                  setState(() {
-                                    _searchTerm = value.toLowerCase();
-                                    _currentPage = 0;
-                                  });
-                                },
-                              ),
-                            ),
-                          ),
-                      ],
                     ),
                   ),
                 ),
@@ -2680,45 +2644,18 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
   }
 
-  Widget _buildUploadButton() {
-    const double btnW = 40.0;
-    const double btnH = 32.0;
-    return SizedBox(
-      width: btnW,
-      height: btnH,
-      child: ElevatedButton(
-        onPressed: _isUploading
-            ? null
-            : () {
-                if (_mediaTab == 'images') {
-                  _showImageSourceDialog();
-                } else if (_mediaTab == 'videos') {
-                  _showVideoSourceDialog();
-                } else if (_mediaTab == 'documents') {
-                  _showDocumentSourceDialog();
-                } else {
-                  _pickAudio();
-                }
-              },
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.transparent,
-          shadowColor: Colors.transparent,
-          padding: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: Ink(
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [Color(0xFFE91E63), AppColors.lightBlue],
-            ),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: const Center(
-            child: Icon(Icons.file_upload, color: Colors.white),
-          ),
-        ),
-      ),
-    );
+  // Upload-Dialog öffnen (je nach aktuellem Tab)
+  void _showUploadDialog() {
+    if (_isUploading) return;
+    if (_mediaTab == 'images') {
+      _showImageSourceDialog();
+    } else if (_mediaTab == 'videos') {
+      _showVideoSourceDialog();
+    } else if (_mediaTab == 'documents') {
+      _showDocumentSourceDialog();
+    } else {
+      _pickAudio();
+    }
   }
 
   /// Responsive Media Card wie in avatar_details_screen

@@ -25,28 +25,26 @@ service firebase.storage {
     // Allgemein für alle Avatar-Uploads (Images/Videos/Audio/etc.)
     match /avatars/{avatarId}/{allPaths=**} {
       allow read: if true;
-      allow write: if signedIn() &&
+      allow write, delete: if signedIn() &&
                       (
                         (firestore.exists(/databases/(default)/documents/avatars/$(avatarId)) &&
                          firestore.get(/databases/(default)/documents/avatars/$(avatarId)).data.userId == request.auth.uid) ||
                         firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)/avatars/$(avatarId))
                       ) &&
-                      isValidFileType() &&
-                      isValidFileSize();
+                      (resource == null || true) && // allow delete without file type check
+                      (request.operation == 'delete' || (isValidFileType() && isValidFileSize()));
     }
 
     // Zusätzliche Auflage NUR für Dokumente: Content-Disposition muss gesetzt sein
     match /avatars/{avatarId}/documents/{file} {
       allow read: if true;
-      allow write: if signedIn() &&
+      allow write, delete: if signedIn() &&
                       (
                         (firestore.exists(/databases/(default)/documents/avatars/$(avatarId)) &&
                          firestore.get(/databases/(default)/documents/avatars/$(avatarId)).data.userId == request.auth.uid) ||
                         firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)/avatars/$(avatarId))
                       ) &&
-                      isValidFileType() &&
-                      isValidFileSize() &&
-                      request.resource.metadata.contentDisposition.matches('attachment; filename=.*');
+                      (request.operation == 'delete' || (isValidFileType() && isValidFileSize() && request.resource.metadata.contentDisposition.matches('attachment; filename=.*')));
     }
 
     // User Profile Images (Struppi-System)
