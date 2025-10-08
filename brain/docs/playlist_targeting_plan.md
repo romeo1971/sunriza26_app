@@ -1,6 +1,6 @@
 # Playlist Targeting & Selection Plan (v1)
 
-Ziel: Zwei parallele Pläne pro Playlist unterstützen, plus einfache Zielgruppen-Filter – UI konsistent mit „Zeitplan“, erweiterbar für Chat-Livebetrieb.
+Ziel: Zwei parallele Pläne pro Playlist unterstützen, plus einfache Zielgruppen-Filter – UI konsistent mit „Scheduler“, erweiterbar für Chat-Livebetrieb.
 
 ## Datenmodell
 - `weeklySchedules: WeeklySchedule[]` (bereits vorhanden)
@@ -9,8 +9,8 @@ Ziel: Zwei parallele Pläne pro Playlist unterstützen, plus einfache Zielgruppe
 - `priority?: number` (höher gewinnt bei Kollision)
 
 ## UI (Playlist Edit)
-- Dropdown: Zeitplan/Sondertermine → steuert, welche Ansicht angezeigt wird
-- Sondertermine: 1:1 „Zeitplan“-UI, aber über Datumsbereich; Wochentage disabled außerhalb des Bereichs
+- Dropdown: Scheduler/Sondertermine → steuert, welche Ansicht angezeigt wird
+- Sondertermine: 1:1 „Scheduler“-UI, aber über Datumsbereich; Wochentage disabled außerhalb des Bereichs
 - Rechts neben „Anlass“: lokalisiertes Datum
 - Zielgruppe (optional):
   - Gender Chips: Alle/Männlich/Weiblich

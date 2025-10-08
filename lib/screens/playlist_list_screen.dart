@@ -367,7 +367,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   Widget _buildScheduleSummary(Playlist p) {
     if (p.weeklySchedules.isEmpty && p.specialSchedules.isEmpty) {
       return const Text(
-        'Kein Zeitplan',
+        'Kein Scheduler',
         style: TextStyle(fontSize: 11, color: Colors.grey),
       );
     }
@@ -500,7 +500,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       return _buildScheduleSummary(p);
     } catch (_) {
       return const Text(
-        'Zeitplan kann nicht angezeigt werden',
+        'Scheduler kann nicht angezeigt werden',
         style: TextStyle(fontSize: 11, color: Colors.amber),
       );
     }
@@ -956,7 +956,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                             const SizedBox(height: 8),
                                             _buildSafeSummary(p),
                                             const SizedBox(height: 12),
-                                            // Zwei Buttons: Zeitplan & Timeline
+                                            // Zwei Buttons: Scheduler & Timeline
                                             Row(
                                               children: [
                                                 Expanded(
@@ -968,7 +968,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                       size: 16,
                                                     ),
                                                     label: const Text(
-                                                      'Zeitplan',
+                                                      'Scheduler',
                                                     ),
                                                     style: ElevatedButton.styleFrom(
                                                       backgroundColor: Colors

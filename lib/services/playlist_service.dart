@@ -417,7 +417,7 @@ class PlaylistService {
       }
     }
 
-    // 2. Prüfe wöchentlichen Zeitplan
+    // 2. Prüfe wöchentlichen Scheduler
     for (final weekly in p.weeklySchedules) {
       if (weekly.weekday == weekday && weekly.timeSlots.contains(currentSlot)) {
         return true;

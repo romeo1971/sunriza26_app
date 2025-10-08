@@ -24,7 +24,7 @@ Ziel: Für jeden Avatar eine Medien-Galerie, planbare Playlists und eine an den 
    - Auswahl für Playlist (Popup)
 2) Playlist-Management:
    - Liste, Neue Playlist, Items hinzufügen (aus Galerie), Reorder (Drag & Drop), Offset je Item
-   - Zeitplan: täglich/wöchentlich/monatlich/spezifisches Datum/Event-Tage (Geburtstag, Weihnachten etc.)
+   - Scheduler: täglich/wöchentlich/monatlich/spezifisches Datum/Event-Tage (Geburtstag, Weihnachten etc.)
 3) Chat-Overlay:
    - Scheduler prüft, welche Items fällig sind (Schedule + Item-Offsets), zeigt Item verpixelt
    - Buttons: Anzeigen/Ablehnen; bei Anzeigen max. 45s sichtbar, dann fade out
@@ -34,8 +34,8 @@ Ziel: Für jeden Avatar eine Medien-Galerie, planbare Playlists und eine an den 
 
 ## Akzeptanzkriterien
 - Galerie: Upload, Crop, Anzeige, Auswahl für Playlist funktioniert stabil.
-- Playlist: Erstellen, Hinzufügen, Reordering, Offsets, Zeitplan speichern und laden.
-- Chat: Overlay triggert korrekt nach Zeitplan/Offsets; Entscheidungen werden persistiert.
+- Playlist: Erstellen, Hinzufügen, Reordering, Offsets, Scheduler speichern und laden.
+- Chat: Overlay triggert korrekt nach Scheduler/Offsets; Entscheidungen werden persistiert.
 - Shared Moments: Übersicht mit Status; abgelehnte Inhalte weiterhin verpixelt.
 - Lokalisierungsschlüssel vorhanden; Fehlerbehandlung und Loading-States vorhanden.
 

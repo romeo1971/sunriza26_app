@@ -36,6 +36,45 @@ import '../widgets/custom_text_field.dart';
 import '../widgets/custom_date_field.dart';
 import '../widgets/custom_dropdown.dart';
 
+// Custom Gradient Thumb für Slider
+class GradientSliderThumbShape extends SliderComponentShape {
+  final double thumbRadius;
+
+  const GradientSliderThumbShape({this.thumbRadius = 8.0});
+
+  @override
+  Size getPreferredSize(bool isEnabled, bool isDiscrete) {
+    return Size.fromRadius(thumbRadius);
+  }
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset center, {
+    required Animation<double> activationAnimation,
+    required Animation<double> enableAnimation,
+    required bool isDiscrete,
+    required TextPainter labelPainter,
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required TextDirection textDirection,
+    required double value,
+    required double textScaleFactor,
+    required Size sizeWithOverflow,
+  }) {
+    final Canvas canvas = context.canvas;
+
+    final paint = Paint()
+      ..shader = const LinearGradient(
+        colors: [AppColors.magenta, AppColors.lightBlue],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(Rect.fromCircle(center: center, radius: thumbRadius));
+
+    canvas.drawCircle(center, thumbRadius, paint);
+  }
+}
+
 // Sticky Navigation Bar Delegate
 class _StickyNavBarDelegate extends SliverPersistentHeaderDelegate {
   final Widget child;
@@ -809,7 +848,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               shadowColor: Colors.transparent,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 16,
-                                vertical: 12,
+                                vertical: 18,
                               ),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(12),
@@ -817,7 +856,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                             ),
                             child: ShaderMask(
                               shaderCallback: (bounds) => const LinearGradient(
-                                colors: [AppColors.magenta, AppColors.lightBlue],
+                                colors: [
+                                  AppColors.magenta,
+                                  AppColors.lightBlue,
+                                ],
                               ).createShader(bounds),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -2087,25 +2129,76 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.start,
           children: [
-            ElevatedButton.icon(
-              onPressed: _isSaving ? null : _onCloneVoice,
-              icon: const Icon(Icons.auto_fix_high),
-              label: Text(
-                _isSaving
-                    ? context.read<LocalizationService>().t(
-                        'avatars.details.cloningInProgress',
-                      )
-                    : context.read<LocalizationService>().t(
-                        'avatars.details.cloneVoiceButton',
-                      ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _isSaving
-                    ? Colors.grey
+            Container(
+              decoration: BoxDecoration(
+                gradient: _isSaving
+                    ? null
                     : _hasNoClonedVoice
-                    ? const Color(0xFF9C27B0) // Magenta
-                    : AppColors.accentGreenDark,
-                foregroundColor: Colors.white,
+                    ? const LinearGradient(
+                        colors: [
+                          Color(0xFFBDBDBD),
+                          Color(0xFFFFFFFF),
+                        ], // Light grey + white
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      )
+                    : const LinearGradient(
+                        colors: [
+                          AppColors.magenta,
+                          AppColors.lightBlue,
+                        ], // GMBC
+                        begin: Alignment.centerLeft,
+                        end: Alignment.centerRight,
+                      ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ElevatedButton.icon(
+                onPressed: _isSaving ? null : _onCloneVoice,
+                icon: _hasNoClonedVoice
+                    ? ShaderMask(
+                        blendMode: BlendMode.srcIn,
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [AppColors.magenta, AppColors.lightBlue],
+                        ).createShader(bounds),
+                        child: const Icon(
+                          Icons.auto_fix_high,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.auto_fix_high, color: Colors.white),
+                label: _hasNoClonedVoice
+                    ? ShaderMask(
+                        blendMode: BlendMode.srcIn,
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [AppColors.magenta, AppColors.lightBlue],
+                        ).createShader(bounds),
+                        child: Text(
+                          _isSaving
+                              ? context.read<LocalizationService>().t(
+                                  'avatars.details.cloningInProgress',
+                                )
+                              : context.read<LocalizationService>().t(
+                                  'avatars.details.cloneVoiceButton',
+                                ),
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      )
+                    : Text(
+                        _isSaving
+                            ? context.read<LocalizationService>().t(
+                                'avatars.details.cloningInProgress',
+                              )
+                            : context.read<LocalizationService>().t(
+                                'avatars.details.cloneVoiceButton',
+                              ),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _isSaving ? Colors.grey : Colors.transparent,
+                  foregroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  elevation: 0,
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -2152,14 +2245,27 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ),
             ),
             Expanded(
-              child: Slider(
-                value: _voiceStability.clamp(0.0, 1.0),
-                min: 0.0,
-                max: 1.0,
-                divisions: 20,
-                label: _voiceStability.toStringAsFixed(2),
-                onChanged: (v) => setState(() => _voiceStability = v),
-                onChangeEnd: (_) => _saveVoiceParams(),
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: Colors.white.withOpacity(
+                    0.6,
+                  ), // White mit leichtem GMBC Schimmer
+                  inactiveTrackColor: Colors.white.withOpacity(0.2),
+                  overlayColor: AppColors.magenta.withOpacity(0.1),
+                  trackHeight: 4.0,
+                  thumbShape: const GradientSliderThumbShape(
+                    thumbRadius: 8.0,
+                  ), // GMBC Kugel
+                ),
+                child: Slider(
+                  value: _voiceStability.clamp(0.0, 1.0),
+                  min: 0.0,
+                  max: 1.0,
+                  divisions: 20,
+                  label: _voiceStability.toStringAsFixed(2),
+                  onChanged: (v) => setState(() => _voiceStability = v),
+                  onChangeEnd: (_) => _saveVoiceParams(),
+                ),
               ),
             ),
             SizedBox(
@@ -2183,14 +2289,27 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ),
             ),
             Expanded(
-              child: Slider(
-                value: _voiceSimilarity.clamp(0.0, 1.0),
-                min: 0.0,
-                max: 1.0,
-                divisions: 20,
-                label: _voiceSimilarity.toStringAsFixed(2),
-                onChanged: (v) => setState(() => _voiceSimilarity = v),
-                onChangeEnd: (_) => _saveVoiceParams(),
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: Colors.white.withOpacity(
+                    0.6,
+                  ), // White mit leichtem GMBC Schimmer
+                  inactiveTrackColor: Colors.white.withOpacity(0.2),
+                  overlayColor: AppColors.magenta.withOpacity(0.1),
+                  trackHeight: 4.0,
+                  thumbShape: const GradientSliderThumbShape(
+                    thumbRadius: 8.0,
+                  ), // GMBC Kugel
+                ),
+                child: Slider(
+                  value: _voiceSimilarity.clamp(0.0, 1.0),
+                  min: 0.0,
+                  max: 1.0,
+                  divisions: 20,
+                  label: _voiceSimilarity.toStringAsFixed(2),
+                  onChanged: (v) => setState(() => _voiceSimilarity = v),
+                  onChangeEnd: (_) => _saveVoiceParams(),
+                ),
               ),
             ),
             SizedBox(
@@ -2214,14 +2333,27 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ),
             ),
             Expanded(
-              child: Slider(
-                value: _voiceTempo.clamp(0.5, 1.5),
-                min: 0.5,
-                max: 1.5,
-                divisions: 20,
-                label: _voiceTempo.toStringAsFixed(2),
-                onChanged: (v) => setState(() => _voiceTempo = v),
-                onChangeEnd: (_) => _saveVoiceParams(),
+              child: SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  activeTrackColor: Colors.white.withOpacity(
+                    0.6,
+                  ), // White mit leichtem GMBC Schimmer
+                  inactiveTrackColor: Colors.white.withOpacity(0.2),
+                  overlayColor: AppColors.magenta.withOpacity(0.1),
+                  trackHeight: 4.0,
+                  thumbShape: const GradientSliderThumbShape(
+                    thumbRadius: 8.0,
+                  ), // GMBC Kugel
+                ),
+                child: Slider(
+                  value: _voiceTempo.clamp(0.5, 1.5),
+                  min: 0.5,
+                  max: 1.5,
+                  divisions: 20,
+                  label: _voiceTempo.toStringAsFixed(2),
+                  onChanged: (v) => setState(() => _voiceTempo = v),
+                  onChangeEnd: (_) => _saveVoiceParams(),
+                ),
               ),
             ),
             SizedBox(
@@ -2749,9 +2881,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white70,
-            ),
+            style: TextButton.styleFrom(foregroundColor: Colors.white70),
             child: Text(
               context.read<LocalizationService>().t('avatars.details.cancel'),
             ),
@@ -2762,10 +2892,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               backgroundColor: Colors.white,
               foregroundColor: Colors.white,
               shadowColor: Colors.transparent,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -2809,9 +2936,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white70,
-            ),
+            style: TextButton.styleFrom(foregroundColor: Colors.white70),
             child: Text(
               context.read<LocalizationService>().t('avatars.details.cancel'),
             ),
@@ -2822,10 +2947,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               backgroundColor: Colors.white,
               foregroundColor: Colors.white,
               shadowColor: Colors.transparent,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -2948,7 +3070,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   /// Erstellt ein media-Dokument via MediaService (triggert serverseitige Thumb-Generierung)
-  Future<void> _addMediaDoc(String url, AvatarMediaType type) async {
+  Future<void> _addMediaDoc(
+    String url,
+    AvatarMediaType type, {
+    String? originalFileName,
+  }) async {
     if (_avatarData == null) return;
     try {
       final ts = DateTime.now().millisecondsSinceEpoch;
@@ -2958,9 +3084,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         type: type,
         url: url,
         createdAt: ts,
+        originalFileName: originalFileName,
       );
       await _mediaSvc.add(_avatarData!.id, media);
-      debugPrint('✅ Media-Doc erstellt: $type → $url');
+      debugPrint(
+        '✅ Media-Doc erstellt: $type → $url (originalFileName: $originalFileName)',
+      );
     } catch (e) {
       debugPrint('❌ Fehler beim Erstellen des Media-Doc: $e');
     }
@@ -4003,7 +4132,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             // Sofort persistieren (Firestore aktualisieren)
             await _persistTextFileUrls();
             // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
-            _addMediaDoc(url, AvatarMediaType.image);
+            final origName = files[i].name;
+            _addMediaDoc(
+              url,
+              AvatarMediaType.image,
+              originalFileName: origName,
+            );
             debugPrint('🖼️ Bild ${i + 1} erfolgreich gespeichert!');
           } else {
             debugPrint('❌ Bild ${i + 1} Upload fehlgeschlagen!');
@@ -4064,7 +4198,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           // Sofort persistieren (Firestore aktualisieren)
           await _persistTextFileUrls();
           // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
-          _addMediaDoc(url, AvatarMediaType.image);
+          final origName = x.name;
+          _addMediaDoc(url, AvatarMediaType.image, originalFileName: origName);
         }
       }
     }
@@ -4118,7 +4253,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             // Sofort persistieren (Firestore aktualisieren)
             await _persistTextFileUrls();
             // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
-            _addMediaDoc(url, AvatarMediaType.video);
+            final origName = x.name;
+            _addMediaDoc(
+              url,
+              AvatarMediaType.video,
+              originalFileName: origName,
+            );
             debugPrint('🎬 Video erfolgreich gespeichert!');
 
             if (mounted) {
@@ -4169,7 +4309,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             // Sofort persistieren (Firestore aktualisieren)
             await _persistTextFileUrls();
             // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
-            _addMediaDoc(url, AvatarMediaType.video);
+            final origName = x.name;
+            _addMediaDoc(
+              url,
+              AvatarMediaType.video,
+              originalFileName: origName,
+            );
             debugPrint('🎬 Video erfolgreich gespeichert!');
 
             if (mounted) {
@@ -5529,9 +5674,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            style: TextButton.styleFrom(
-              foregroundColor: Colors.white70,
-            ),
+            style: TextButton.styleFrom(foregroundColor: Colors.white70),
             child: Text(
               context.read<LocalizationService>().t('avatars.details.cancel'),
             ),
@@ -5542,10 +5685,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               backgroundColor: Colors.white,
               foregroundColor: Colors.white,
               shadowColor: Colors.transparent,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 12,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),

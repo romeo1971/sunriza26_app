@@ -116,7 +116,7 @@ class Playlist {
   final String? coverImageUrl;
   // Originaler Dateiname des Cover-Bildes
   final String? coverOriginalFileName;
-  // Wöchentlicher Zeitplan: Wochentag + Zeitfenster
+  // Wöchentlicher Scheduler: Wochentag + Zeitfenster
   final List<WeeklySchedule> weeklySchedules;
   // Sondertermine: Datumsspannen + Zeitfenster (überschreiben weekly)
   final List<SpecialSchedule> specialSchedules;

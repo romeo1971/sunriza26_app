@@ -53,7 +53,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
   // UI State: Sondertermine – ausgewählter Wochentag
   int? _selectedSpecialWeekday;
 
-  // UI State: Wöchentlicher Zeitplan aufgeklappt?
+  // UI State: Wöchentlicher Scheduler aufgeklappt?
   bool _weeklyScheduleExpanded = true;
 
   // UI State: Ist "Eigener Tag" ausgewählt?
@@ -895,7 +895,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
                     children: const [
                       SizedBox(height: 8),
                       Text(
-                        'Du kannst einen allgemeinen Zeitplan mit Wochentagen und Zeitfenstern festlegen oder Sondertermine wie Weihnachten oder Geburtstage anlegen (reagiert dynamisch auf den Chat-Partner).',
+                        'Du kannst einen allgemeinen Scheduler mit Wochentagen und Zeitfenstern festlegen oder Sondertermine wie Weihnachten oder Geburtstage anlegen (reagiert dynamisch auf den Chat-Partner).',
                         style: TextStyle(height: 1.3),
                       ),
                       SizedBox(height: 8),
@@ -914,7 +914,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
 
                   const SizedBox(height: 16),
 
-                  // Zeitplan / Sondertermine Section
+                  // Scheduler / Sondertermine Section
                   // Dropdown für Typ-Auswahl
                   CustomDropdown<String>(
                     label: 'Typ',
@@ -923,7 +923,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
                       DropdownMenuItem(
                         value: 'weekly',
                         child: Text(
-                          'Zeitplan',
+                          'Scheduler',
                           style: TextStyle(color: Colors.white),
                         ),
                       ),
@@ -1563,7 +1563,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
           const SizedBox(height: 16),
         ],
 
-        // Wochentage-Matrix wie im Zeitplan, aber basierend auf gewähltem Zeitraum
+        // Wochentage-Matrix wie im Scheduler, aber basierend auf gewähltem Zeitraum
         if (_specialStartDate != null && _specialEndDate != null)
           _buildSpecialWeekdayMatrix(),
       ],
