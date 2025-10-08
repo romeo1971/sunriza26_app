@@ -351,11 +351,7 @@ async function runCleanerForAvatar(avatarId: string) {
   const db = admin.firestore();
   const bucket = admin.storage().bucket();
 
-  const mediaSnap = await db
-    .collection('avatars')
-    .doc(avatarId)
-    .collection('media')
-    .get();
+  const mediaSnap = await getAllMediaDocs(avatarId);
 
   const referencedPaths = new Set<string>();
   const mediaDocs: Array<{ id: string; type: string; url?: string; thumbUrl?: string }> = [];
@@ -380,9 +376,8 @@ async function runCleanerForAvatar(avatarId: string) {
     return null;
   };
 
-  mediaSnap.forEach((d) => {
-    const data = d.data() as any;
-    mediaDocs.push({ id: d.id, type: data.type, url: data.url, thumbUrl: data.thumbUrl });
+  mediaSnap.forEach((data) => {
+    mediaDocs.push({ id: data.id, type: data.type, url: data.url, thumbUrl: data.thumbUrl });
     const p1 = extractPath(data.url);
     const p2 = extractPath(data.thumbUrl);
     if (p1) referencedPaths.add(p1);
@@ -432,7 +427,7 @@ async function runCleanerForAvatar(avatarId: string) {
         const [url] = await latest.getSignedUrl({ action: 'read', expires: Date.now() + 365*24*3600*1000 });
         await db
           .collection('avatars').doc(avatarId)
-          .collection('media').doc(m.id)
+          .collection(getCollectionName(m.type)).doc(m.id)
           .update({ thumbUrl: url, aspectRatio: 9/16 });
         fixedThumbs++;
       } catch (e) {
@@ -508,19 +503,19 @@ export const cleanAllAvatarsNow = functions
 async function runBackfillThumbsForAvatar(avatarId: string) {
   const db = admin.firestore();
   const bucket = admin.storage().bucket();
-  const snap = await db.collection('avatars').doc(avatarId).collection('media').get();
+  const allMedia = await getAllMediaDocs(avatarId);
   let updated = 0;
-  for (const d of snap.docs) {
-    const m = d.data() as any;
+  for (const m of allMedia) {
     if (!m) continue;
     if ((!m.thumbUrl || m.thumbUrl.length === 0)) {
+      const docRef = db.collection('avatars').doc(avatarId).collection(getCollectionName(m.type)).doc(m.id);
       if (m.type === 'image' || m.type === 'video') {
         if (typeof m.url === 'string' && m.url.length > 0) {
-          await d.ref.update({ thumbUrl: m.url });
+          await docRef.update({ thumbUrl: m.url });
           updated++;
         }
       } else if (m.type === 'document') {
-        const prefix = `avatars/${avatarId}/documents/thumbs/${d.id}`;
+        const prefix = `avatars/${avatarId}/documents/thumbs/${m.id}`;
         const [tfs] = await bucket.getFiles({ prefix });
         if (tfs && tfs.length > 0) {
           let latest = tfs[0];
@@ -530,13 +525,13 @@ async function runBackfillThumbsForAvatar(avatarId: string) {
             if (b > a) latest = f;
           }
           const [url] = await latest.getSignedUrl({ action: 'read', expires: Date.now() + 365*24*3600*1000 });
-          await d.ref.update({ thumbUrl: url });
+          await docRef.update({ thumbUrl: url });
           updated++;
         }
       }
     }
   }
-  return { updatedThumbs: updated, mediaCount: snap.size };
+  return { updatedThumbs: updated, mediaCount: allMedia.length };
 }
 
 export const backfillThumbsAllAvatars = functions
@@ -574,8 +569,7 @@ export const scheduledBackfillThumbs = functions
 // Backfill: setzt fehlende Audio-Thumbs (Platzhalter: nutzt Audio-URL als thumbUrl)
 async function runBackfillAudioThumbsForAvatar(avatarId: string) {
   const db = admin.firestore();
-  const snap = await db.collection('avatars').doc(avatarId).collection('media')
-    .where('type','==','audio').get();
+  const snap = await db.collection('avatars').doc(avatarId).collection('audios').get();
   let updated = 0;
   for (const d of snap.docs) {
     const m = d.data() as any;
@@ -624,8 +618,9 @@ export const scheduledBackfillAudioThumbs = functions
 async function createWaveThumb(avatarId: string, mediaId: string, audioUrl: string) {
   if (ffmpegPath) (ffmpeg as any).setFfmpegPath(ffmpegPath);
   const tmpDir = os.tmpdir();
-  const src = path.join(tmpDir, `${mediaId}.audio`);
-  const out = path.join(tmpDir, `${mediaId}.png`);
+  const random = Math.random().toString(36).substring(7);
+  const src = path.join(tmpDir, `${mediaId}_${random}.audio`);
+  const out = path.join(tmpDir, `${mediaId}_${random}.png`);
   const res = await (fetch as any)(audioUrl);
   if (!(res as any).ok) throw new Error(`download audio failed ${res.status}`);
   const buf = Buffer.from(await (res as any).arrayBuffer());
@@ -649,7 +644,7 @@ async function createWaveThumb(avatarId: string, mediaId: string, audioUrl: stri
   try { fs.unlinkSync(src); } catch {}
   try { fs.unlinkSync(out); } catch {}
   await admin.firestore().collection('avatars').doc(avatarId)
-    .collection('media').doc(mediaId)
+    .collection('audios').doc(mediaId)
     .set({ thumbUrl: signed, aspectRatio: 800/180 }, { merge: true });
   return signed;
 }
@@ -663,8 +658,7 @@ export const backfillAudioWaveforms = functions
         const avatarId = (req.query.avatarId as string || '').trim();
         if (!avatarId) { res.status(400).json({ error: 'avatarId fehlt' }); return; }
         const db = admin.firestore();
-        const qs = await db.collection('avatars').doc(avatarId).collection('media')
-          .where('type','==','audio').get();
+        const qs = await db.collection('avatars').doc(avatarId).collection('audios').get();
         let created = 0;
         for (const d of qs.docs) {
           const m = d.data() as any;
@@ -684,8 +678,9 @@ export const backfillAudioWaveforms = functions
 async function createVideoThumbFromFirstFrame(avatarId: string, mediaId: string, videoUrl: string) {
   if (ffmpegPath) (ffmpeg as any).setFfmpegPath(ffmpegPath);
   const tmpDir = os.tmpdir();
-  const src = path.join(tmpDir, `${mediaId}.mp4`);
-  const out = path.join(tmpDir, `${mediaId}.jpg`);
+  const random = Math.random().toString(36).substring(7);
+  const src = path.join(tmpDir, `${mediaId}_${random}.mp4`);
+  const out = path.join(tmpDir, `${mediaId}_${random}.jpg`);
   // Download Video (kurz, reicht für Frame)
   const res = await (fetch as any)(videoUrl);
   if (!(res as any).ok) throw new Error(`download video failed ${(res as any).status}`);
@@ -732,15 +727,17 @@ async function createVideoThumbFromFirstFrame(avatarId: string, mediaId: string,
   try { fs.unlinkSync(src); } catch {}
   try { fs.unlinkSync(out); } catch {}
   await admin.firestore().collection('avatars').doc(avatarId)
-    .collection('media').doc(mediaId)
+    .collection('videos').doc(mediaId)
     .set({ thumbUrl: signed, aspectRatio }, { merge: true });
   return signed;
 }
 
-// STORAGE TRIGGERS: Thumbs für Details-Screen Uploads (direkter Storage-Upload)
+// DEPRECATED: Alte Storage-Triggers entfernt (ersetzt durch Firestore-Triggers)
+// Grund: Doppelte Thumb-Generierung vermeiden
+
+// Helper für Storage-Pfad-Parsing
 function parseAvatarPath(objectName: string | undefined) {
   if (!objectName) return null;
-  // erwartet: avatars/<avatarId>/(images|videos)/...
   const parts = objectName.split('/');
   if (parts.length < 4) return null;
   if (parts[0] !== 'avatars') return null;
@@ -749,63 +746,6 @@ function parseAvatarPath(objectName: string | undefined) {
   const inThumbs = parts.length >= 4 && parts[3] === 'thumbs';
   return { avatarId, kind, inThumbs, fileName: parts[parts.length - 1], objectName };
 }
-
-export const onImageObjectFinalize = functionsStorage.onObjectFinalized({ region: 'europe-west9' }, async (event) => {
-  try {
-    const obj = parseAvatarPath(event.data.name);
-    if (!obj) return;
-    if (obj.kind !== 'images') return;
-    if (obj.inThumbs) return; // keine Thumbs für Thumbs
-    const bucket = admin.storage().bucket(event.data.bucket);
-    const [bytes] = await bucket.file(obj.objectName!).download();
-    // Crop auf 9:16/16:9 wie in Galerie
-    const meta = await sharp(bytes).metadata();
-    const ar = (meta.width || 1) / (meta.height || 1);
-    const targetAR = ar < 1.0 ? 9/16 : 16/9;
-    let width = meta.width || 0;
-    let height = meta.height || 0;
-    if (width <= 0 || height <= 0) return;
-    let cropW = width;
-    let cropH = Math.round(width / targetAR);
-    if (cropH > height) { cropH = height; cropW = Math.round(cropH * targetAR); }
-    const left = Math.max(0, Math.floor((width - cropW) / 2));
-    const top = Math.max(0, Math.floor((height - cropH) / 2));
-    const out = await sharp(bytes).extract({ left, top, width: cropW, height: cropH }).resize(720).jpeg({ quality: 80 }).toBuffer();
-    const base = obj.fileName.replace(/\.[^.]+$/, '');
-    const dest = `avatars/${obj.avatarId}/images/thumbs/${base}_thumb.jpg`;
-    await bucket.file(dest).save(out, { contentType: 'image/jpeg', metadata: { cacheControl: 'public,max-age=31536000,immutable' }});
-  } catch (e) {
-    console.warn('onImageObjectFinalize error', e);
-  }
-});
-
-export const onVideoObjectFinalize = functionsStorage.onObjectFinalized({ region: 'europe-west9' }, async (event) => {
-  try {
-    const obj = parseAvatarPath(event.data.name);
-    if (!obj) return;
-    if (obj.kind !== 'videos') return;
-    if (obj.inThumbs) return;
-    const bucket = admin.storage().bucket(event.data.bucket);
-    const tmpDir = os.tmpdir();
-    const src = path.join(tmpDir, `${Date.now()}_${obj.fileName}`);
-    const out = path.join(tmpDir, `${Date.now()}_${obj.fileName}.jpg`);
-    await bucket.file(obj.objectName!).download({ destination: src });
-    if (ffmpegPath) (ffmpeg as any).setFfmpegPath(ffmpegPath);
-    await new Promise<void>((resolve, reject) => {
-      (ffmpeg as any)(src)
-        .on('end', () => resolve())
-        .on('error', (e: any) => reject(e))
-        .screenshots({ count: 1, timemarks: ['0.5'], filename: path.basename(out), folder: tmpDir });
-    });
-    const base = obj.fileName.replace(/\.[^.]+$/, '');
-    const dest = `avatars/${obj.avatarId}/videos/thumbs/${base}_thumb.jpg`;
-    await bucket.upload(out, { destination: dest, contentType: 'image/jpeg', metadata: { cacheControl: 'public,max-age=31536000,immutable' }});
-    try { fs.unlinkSync(src); } catch {}
-    try { fs.unlinkSync(out); } catch {}
-  } catch (e) {
-    console.warn('onVideoObjectFinalize error', e);
-  }
-});
 
 // Storage-Delete: zugehörige Thumbs löschen
 export const onMediaObjectDelete = functionsStorage.onObjectDeleted({ region: 'europe-west9' }, async (event) => {
@@ -838,17 +778,45 @@ async function copyExistingVideoThumbToStorage(avatarId: string, mediaId: string
   await bucket.file(dest).save(buf, { contentType: 'image/jpeg', metadata: { cacheControl: 'public,max-age=31536000,immutable' }});
   const [signed] = await bucket.file(dest).getSignedUrl({ action: 'read', expires: Date.now() + 365*24*3600*1000 });
   await admin.firestore().collection('avatars').doc(avatarId)
-    .collection('media').doc(mediaId)
+    .collection('videos').doc(mediaId)
     .set({ thumbUrl: signed }, { merge: true });
   return signed;
 }
 
 // Firestore Trigger: Wenn erstes Bild hochgeladen wird, setze es als avatarImageUrl
+// Helper: prüft ob Collection eine Media-Collection ist
+function isMediaCollection(collectionId: string): boolean {
+  return ['images', 'videos', 'documents', 'audios'].includes(collectionId);
+}
+
+// Helper: sammelt alle Media-Docs aus allen Media-Collections
+async function getAllMediaDocs(avatarId: string): Promise<Array<{ id: string; [key: string]: any }>> {
+  const db = admin.firestore();
+  const all: any[] = [];
+  for (const col of ['images', 'videos', 'documents', 'audios']) {
+    const snap = await db.collection('avatars').doc(avatarId).collection(col).get();
+    all.push(...snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+  }
+  return all;
+}
+
+// Helper: Collection-Namen aus Media-Type
+function getCollectionName(type: string): string {
+  if (type === 'image') return 'images';
+  if (type === 'video') return 'videos';
+  if (type === 'document') return 'documents';
+  if (type === 'audio') return 'audios';
+  if (type === 'voiceClone') return 'voiceClone';
+  return 'images'; // fallback
+}
+
 export const onMediaCreateSetAvatarImage = functions
   .region('us-central1')
-  .firestore.document('avatars/{avatarId}/media/{mediaId}')
+  .firestore.document('avatars/{avatarId}/{collectionId}/{mediaId}')
   .onCreate(async (snap, ctx) => {
     try {
+      const collectionId = ctx.params.collectionId as string;
+      if (!isMediaCollection(collectionId)) return;
       const data = snap.data() as any;
       const avatarId = ctx.params.avatarId as string;
       if (!data || data.type !== 'image') return;
@@ -858,7 +826,7 @@ export const onMediaCreateSetAvatarImage = functions
       const currentUrl = (avatar.data() as any)?.avatarImageUrl as string | undefined;
       if (currentUrl && currentUrl.trim().length > 0) return; // bereits gesetzt
       // Prüfe, ob dies das einzige Bild ist
-      const imgs = await avatarRef.collection('media').where('type','==','image').limit(2).get();
+      const imgs = await avatarRef.collection('images').limit(2).get();
       if (imgs.size === 1 && imgs.docs[0].id === snap.id) {
         const url = data.url as string | undefined;
         if (url && url.length > 0) {
@@ -873,31 +841,39 @@ export const onMediaCreateSetAvatarImage = functions
 // Firestore Trigger: Bei Audio-Upload fehlende thumbUrl sofort setzen (Platzhalter: url)
 export const onMediaCreateSetAudioThumb = functions
   .region('us-central1')
-  .firestore.document('avatars/{avatarId}/media/{mediaId}')
+  .runWith({ memory: '1GB', timeoutSeconds: 120 })
+  .firestore.document('avatars/{avatarId}/{collectionId}/{mediaId}')
   .onCreate(async (snap, ctx) => {
     try {
+      const collectionId = ctx.params.collectionId as string;
+      if (!isMediaCollection(collectionId)) return;
       const data = snap.data() as any;
       if (!data || data.type !== 'audio') return;
       const url = data.url as string | undefined;
       if (!url || url.length === 0) return;
+      console.log(`Audio thumb generation START for ${snap.id}`);
       // Erzeuge echte Waveform sofort
       try {
         await createWaveThumb(ctx.params.avatarId as string, snap.id, url);
+        console.log(`Audio thumb generation SUCCESS for ${snap.id}`);
       } catch (e) {
+        console.error(`Audio thumb generation FAILED for ${snap.id}:`, e);
         // Fallback: setze zumindest die Audio-URL als Thumb
         await snap.ref.set({ thumbUrl: url, aspectRatio: 16/9 }, { merge: true });
       }
     } catch (e) {
-      console.warn('onMediaCreateSetAudioThumb error', e);
+      console.error('onMediaCreateSetAudioThumb error', e);
     }
   });
 
 // Firestore Trigger: Bei Image-Upload erstelle Thumb (9:16 oder 16:9 zugeschnitten)
 export const onMediaCreateSetImageThumb = functions
   .region('us-central1')
-  .firestore.document('avatars/{avatarId}/media/{mediaId}')
+  .firestore.document('avatars/{avatarId}/{collectionId}/{mediaId}')
   .onCreate(async (snap, ctx) => {
     try {
+      const collectionId = ctx.params.collectionId as string;
+      if (!isMediaCollection(collectionId)) return;
       const data = snap.data() as any;
       if (!data || data.type !== 'image') return;
       if (data.thumbUrl) return;
@@ -956,9 +932,11 @@ export const onMediaCreateSetImageThumb = functions
 // Firestore Trigger: Bei Video-Upload versuche vorhandenes Storage-Thumb zu setzen
 export const onMediaCreateSetVideoThumb = functions
   .region('us-central1')
-  .firestore.document('avatars/{avatarId}/media/{mediaId}')
+  .firestore.document('avatars/{avatarId}/{collectionId}/{mediaId}')
   .onCreate(async (snap, ctx) => {
     try {
+      const collectionId = ctx.params.collectionId as string;
+      if (!isMediaCollection(collectionId)) return;
       const data = snap.data() as any;
       if (!data || data.type !== 'video') return;
       const avatarId = ctx.params.avatarId as string;
@@ -1004,8 +982,7 @@ export const fixVideoAspectRatios = functions
         for (const avatarDoc of avatars.docs) {
           const avatarId = avatarDoc.id;
           const mediaSnap = await db.collection('avatars').doc(avatarId)
-            .collection('media')
-            .where('type', '==', 'video')
+            .collection('videos')
             .get();
           
           for (const mediaDoc of mediaSnap.docs) {
@@ -1114,9 +1091,9 @@ export const restoreAvatarCovers = functions
             const b = new Date(f.metadata?.updated || f.metadata?.timeCreated || 0).getTime();
             if (b > a) chosen = f;
           }
-          // 2) Falls nichts gefunden, nimm erstes Bild aus media collection
+          // 2) Falls nichts gefunden, nimm erstes Bild aus images collection
           if (!chosen) {
-            const ms = await db.collection('avatars').doc(doc.id).collection('media').where('type','==','image').limit(1).get();
+            const ms = await db.collection('avatars').doc(doc.id).collection('images').limit(1).get();
             const m = ms.docs[0]?.data() as any;
             if (m?.url) {
               await doc.ref.update({ avatarImageUrl: m.url, updatedAt: Date.now() });
@@ -1443,8 +1420,10 @@ export const validateRAGSystem = functions
   */
 export const onMediaDeleteCleanup = functions
    .region('us-central1')
-  .firestore.document('avatars/{avatarId}/media/{mediaId}')
+  .firestore.document('avatars/{avatarId}/{collectionId}/{mediaId}')
   .onDelete(async (snap, context) => {
+    const collectionId = context.params.collectionId as string;
+    if (!isMediaCollection(collectionId)) return;
     const { avatarId, mediaId } = context.params as { avatarId: string; mediaId: string };
      const db = admin.firestore();
      const bucket = admin.storage().bucket();
@@ -1586,13 +1565,10 @@ export const backfillOriginalFileNames = functions
 
         for (const avatarDoc of avatars.docs) {
           const avatarId = avatarDoc.id;
-          const mediaSnap = await db.collection('avatars').doc(avatarId)
-            .collection('media')
-            .get();
+          const allMedia = await getAllMediaDocs(avatarId);
 
-          for (const mediaDoc of mediaSnap.docs) {
-            const data = mediaDoc.data() as any;
-            const mediaId = mediaDoc.id;
+          for (const data of allMedia) {
+            const mediaId = data.id;
             
             // Skip wenn originalFileName bereits vorhanden
             if (data.originalFileName && data.originalFileName.trim() !== '') {
@@ -1629,7 +1605,8 @@ export const backfillOriginalFileNames = functions
               }
 
               // Update in Firestore
-              await mediaDoc.ref.update({ originalFileName: filename });
+              const docRef = db.collection('avatars').doc(avatarId).collection(getCollectionName(data.type)).doc(mediaId);
+              await docRef.update({ originalFileName: filename });
               updated++;
 
               results.push({
@@ -1658,6 +1635,108 @@ export const backfillOriginalFileNames = functions
           results: results.slice(0, 100), // Nur erste 100 für Ausgabe
         });
       } catch (e: any) {
+        res.status(500).json({ error: e.message });
+      }
+    });
+  });
+
+// HTTP Function: Backfill fehlender Firestore-Einträge für Videos in Storage
+export const backfillVideoDocuments = functions
+  .runWith({ timeoutSeconds: 540, memory: '1GB' })
+  .https.onRequest(async (req, res) => {
+    const corsHandler = cors({ origin: true });
+    corsHandler(req, res, async () => {
+      try {
+        const db = admin.firestore();
+        const bucket = admin.storage().bucket();
+        const results: any[] = [];
+        let created = 0;
+        let skipped = 0;
+
+        // Hole alle Avatare
+        const avatarsSnapshot = await db.collection('avatars').get();
+        
+        for (const avatarDoc of avatarsSnapshot.docs) {
+          const avatarId = avatarDoc.id;
+          console.log(`📹 Prüfe Avatar: ${avatarId}`);
+
+          // Liste alle Videos in Storage für diesen Avatar
+          const [files] = await bucket.getFiles({
+            prefix: `avatars/${avatarId}/videos/`,
+          });
+
+          const videoFiles = files.filter(
+            (f) => !f.name.includes('/thumbs/') && 
+                   (f.name.endsWith('.mp4') || f.name.endsWith('.mov') || f.name.endsWith('.webm'))
+          );
+
+          console.log(`📹 Gefundene Videos in Storage: ${videoFiles.length}`);
+
+          for (const file of videoFiles) {
+            try {
+              const url = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media`;
+              
+              // Extrahiere mediaId aus Dateiname (Format: {timestamp}_{originalName}.mp4)
+              const filename = path.basename(file.name);
+              const parts = filename.split('_');
+              const mediaId = parts[0]; // Timestamp als ID
+
+              // Prüfe, ob Firestore-Doc bereits existiert
+              const docRef = db.collection('avatars').doc(avatarId).collection('videos').doc(mediaId);
+              const docSnap = await docRef.get();
+
+              if (docSnap.exists) {
+                console.log(`⏭️  Video-Doc existiert bereits: ${mediaId}`);
+                skipped++;
+                continue;
+              }
+
+              // Erstelle Firestore-Dokument
+              const originalFileName = filename.substring(filename.indexOf('_') + 1); // Alles nach erstem _
+              const createdAt = parseInt(mediaId, 10);
+
+              const videoDoc = {
+                id: mediaId,
+                avatarId,
+                type: 'video',
+                url,
+                createdAt: isNaN(createdAt) ? Date.now() : createdAt,
+                originalFileName,
+                tags: ['video'],
+              };
+
+              await docRef.set(videoDoc);
+              console.log(`✅ Video-Doc erstellt: ${mediaId}`);
+              created++;
+
+              results.push({
+                avatarId,
+                mediaId,
+                url,
+                originalFileName,
+                status: 'created',
+              });
+            } catch (e: any) {
+              console.error(`❌ Fehler bei Video ${file.name}: ${e.message}`);
+              results.push({
+                avatarId,
+                file: file.name,
+                status: 'error',
+                error: e.message,
+              });
+            }
+          }
+        }
+
+        res.status(200).json({
+          success: true,
+          created,
+          skipped,
+          total: created + skipped,
+          results: results.slice(0, 100),
+        });
+      } catch (e: any) {
+        console.error(`❌ Backfill-Fehler: ${e.message}`);
         res.status(500).json({ error: e.message });
       }
     });

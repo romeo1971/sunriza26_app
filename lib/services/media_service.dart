@@ -3,29 +3,58 @@ import '../models/media_models.dart';
 
 class MediaService {
   final FirebaseFirestore _fs = FirebaseFirestore.instance;
-  CollectionReference<Map<String, dynamic>> _col(String avatarId) =>
-      _fs.collection('avatars').doc(avatarId).collection('media');
+
+  // Neue Struktur: {type}/{mediaId} (ohne media/ prefix)
+  CollectionReference<Map<String, dynamic>> _col(
+    String avatarId,
+    AvatarMediaType type,
+  ) {
+    final typeFolder = _typeFolder(type);
+    return _fs.collection('avatars').doc(avatarId).collection(typeFolder);
+  }
+
+  String _typeFolder(AvatarMediaType type) {
+    switch (type) {
+      case AvatarMediaType.image:
+        return 'images';
+      case AvatarMediaType.video:
+        return 'videos';
+      case AvatarMediaType.document:
+        return 'documents';
+      case AvatarMediaType.audio:
+        return 'audios';
+    }
+  }
 
   Future<List<AvatarMedia>> list(String avatarId) async {
-    final qs = await _col(
-      avatarId,
-    ).orderBy('createdAt', descending: true).get();
-    return qs.docs
-        .map((d) => AvatarMedia.fromMap({'id': d.id, ...d.data()}))
-        .toList();
+    final List<AvatarMedia> all = [];
+    // Alle Typen durchlaufen
+    for (final type in AvatarMediaType.values) {
+      final qs = await _col(
+        avatarId,
+        type,
+      ).orderBy('createdAt', descending: true).get();
+      all.addAll(
+        qs.docs.map((d) => AvatarMedia.fromMap({'id': d.id, ...d.data()})),
+      );
+    }
+    // Nach createdAt sortieren
+    all.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return all;
   }
 
   Future<void> add(String avatarId, AvatarMedia m) async {
-    await _col(avatarId).doc(m.id).set(m.toMap());
+    await _col(avatarId, m.type).doc(m.id).set(m.toMap());
   }
 
-  Future<void> delete(String avatarId, String id) async {
-    await _col(avatarId).doc(id).delete();
+  Future<void> delete(String avatarId, String id, AvatarMediaType type) async {
+    await _col(avatarId, type).doc(id).delete();
   }
 
   Future<void> update(
     String avatarId,
-    String id, {
+    String id,
+    AvatarMediaType type, {
     String? url,
     double? aspectRatio,
     List<String>? tags,
@@ -35,7 +64,7 @@ class MediaService {
     if (aspectRatio != null) updates['aspectRatio'] = aspectRatio;
     if (tags != null) updates['tags'] = tags;
     if (updates.isNotEmpty) {
-      await _col(avatarId).doc(id).update(updates);
+      await _col(avatarId, type).doc(id).update(updates);
     }
   }
 }

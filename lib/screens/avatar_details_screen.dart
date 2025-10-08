@@ -2202,7 +2202,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     );
                     if (mediaDoc.id.isNotEmpty) {
                       // Media-Doc existiert → Cloud Function übernimmt Storage-Cleanup
-                      await _mediaSvc.delete(_avatarData!.id, mediaDoc.id);
+                      await _mediaSvc.delete(
+                        _avatarData!.id,
+                        mediaDoc.id,
+                        mediaDoc.type,
+                      );
                     } else {
                       // Kein Media-Doc → manuell Storage löschen (alte Uploads)
                       await FirebaseStorageService.deleteFile(url);
@@ -3235,25 +3239,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     String url,
     AvatarMediaType type, {
     String? originalFileName,
+    bool? voiceClone,
   }) async {
     if (_avatarData == null) return;
-    try {
-      final ts = DateTime.now().millisecondsSinceEpoch;
-      final media = AvatarMedia(
-        id: ts.toString(),
-        avatarId: _avatarData!.id,
-        type: type,
-        url: url,
-        createdAt: ts,
-        originalFileName: originalFileName,
-      );
-      await _mediaSvc.add(_avatarData!.id, media);
-      debugPrint(
-        '✅ Media-Doc erstellt: $type → $url (originalFileName: $originalFileName)',
-      );
-    } catch (e) {
-      debugPrint('❌ Fehler beim Erstellen des Media-Doc: $e');
-    }
+
+    await Future.delayed(const Duration(milliseconds: 10));
+    final ts = DateTime.now().millisecondsSinceEpoch;
+    final media = AvatarMedia(
+      id: ts.toString(),
+      avatarId: _avatarData!.id,
+      type: type,
+      url: url,
+      createdAt: ts,
+      originalFileName: originalFileName,
+      voiceClone: voiceClone,
+    );
+    await _mediaSvc.add(_avatarData!.id, media);
   }
 
   String pathFromLocalFile(String p) {
@@ -4290,9 +4291,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             );
             // Sofort persistieren (Firestore aktualisieren)
             await _persistTextFileUrls();
-            // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
+            // Media-Doc anlegen → triggert Thumb-Generierung
             final origName = files[i].name;
-            _addMediaDoc(
+            await _addMediaDoc(
               url,
               AvatarMediaType.image,
               originalFileName: origName,
@@ -4356,9 +4357,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           });
           // Sofort persistieren (Firestore aktualisieren)
           await _persistTextFileUrls();
-          // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
+          // Media-Doc anlegen → triggert Thumb-Generierung
           final origName = x.name;
-          _addMediaDoc(url, AvatarMediaType.image, originalFileName: origName);
+          await _addMediaDoc(
+            url,
+            AvatarMediaType.image,
+            originalFileName: origName,
+          );
         }
       }
     }
@@ -4366,131 +4371,219 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Future<void> _onAddVideos() async {
     debugPrint('🎬 _onAddVideos START');
-    ImageSource? source;
-    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
-      source = ImageSource.gallery;
-      debugPrint('🎬 Platform: Desktop → Galerie');
-    } else {
-      source = await _chooseSource('Videoquelle wählen');
-      debugPrint('🎬 Mobile source gewählt: $source');
-      if (source == null) {
-        debugPrint('🎬 Keine Quelle gewählt → Abbruch');
-        return;
-      }
-    }
 
     try {
-      if (source == ImageSource.gallery) {
-        debugPrint('🎬 Öffne Galerie-Picker...');
-        final x = await _picker.pickVideo(
-          source: ImageSource.gallery,
-          maxDuration: const Duration(minutes: 5),
+      // Direkt FilePicker für Desktop & Web (Mehrfachauswahl)
+      if (Platform.isMacOS ||
+          Platform.isWindows ||
+          Platform.isLinux ||
+          kIsWeb) {
+        debugPrint('🎬 Platform: Desktop/Web → Galerie (Mehrfachauswahl)');
+        // Galerie: Mehrfachauswahl mit FilePicker
+        debugPrint('🎬 Öffne Galerie-Picker (Mehrfachauswahl)...');
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.video,
+          allowMultiple: true,
         );
-        debugPrint('🎬 Video ausgewählt: ${x?.path}');
 
-        if (x != null && _avatarData != null) {
-          setState(() => _isDirty = true);
-          final String uid = FirebaseAuth.instance.currentUser!.uid;
-          final String avatarId = _avatarData!.id;
-          final File f = File(x.path);
-          final String path =
-              'avatars/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_gal.mp4';
+        if (result == null || result.files.isEmpty) {
+          debugPrint('🎬 Keine Videos ausgewählt');
+          return;
+        }
 
-          debugPrint('🎬 Starte Upload: $path');
-          final url = await FirebaseStorageService.uploadVideo(
-            f,
-            customPath: path,
-          );
-          debugPrint('🎬 Upload abgeschlossen: $url');
+        setState(() => _isDirty = true);
+        final String avatarId = _avatarData!.id;
+        int baseTimestamp = DateTime.now().millisecondsSinceEpoch;
 
-          if (url != null) {
-            if (!mounted) return;
-            setState(() {
-              _videoUrls.add(url);
-            });
-            debugPrint('🎬 Video zu Liste hinzugefügt, persistiere...');
-            // Sofort persistieren (Firestore aktualisieren)
-            await _persistTextFileUrls();
-            // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
-            final origName = x.name;
-            _addMediaDoc(
-              url,
-              AvatarMediaType.video,
-              originalFileName: origName,
+        for (int i = 0; i < result.files.length; i++) {
+          final file = result.files[i];
+          if (file.path == null) continue;
+
+          try {
+            final File f = File(file.path!);
+            final String origName = p.basename(file.path!);
+            final timestamp = baseTimestamp + i;
+            final String path =
+                'avatars/$avatarId/videos/${timestamp}_$origName';
+
+            debugPrint(
+              '🎬 Starte Upload ${i + 1}/${result.files.length}: $path',
             );
-            debugPrint('🎬 Video erfolgreich gespeichert!');
+            final url = await FirebaseStorageService.uploadVideo(
+              f,
+              customPath: path,
+            );
 
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Video erfolgreich hochgeladen')),
+            if (url != null) {
+              if (!mounted) return;
+              final isFirstVideo = _videoUrls.isEmpty;
+              setState(() {
+                _videoUrls.add(url);
+              });
+              await _persistTextFileUrls();
+              await _addMediaDoc(
+                url,
+                AvatarMediaType.video,
+                originalFileName: origName,
               );
+              // Erstes Video → automatisch als Hero setzen
+              if (isFirstVideo) {
+                await _setHeroVideo(url);
+              }
+            } else {
+              debugPrint('❌ Upload ${i + 1} fehlgeschlagen: url ist null');
             }
-          } else {
-            debugPrint('❌ Upload fehlgeschlagen: url ist null');
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Video-Upload fehlgeschlagen')),
-              );
-            }
+          } catch (e) {
+            debugPrint('❌ Fehler bei Video ${i + 1}: $e');
           }
-        } else {
-          debugPrint('🎬 Kein Video ausgewählt oder Avatar-Daten fehlen');
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '${result.files.length} Videos erfolgreich hochgeladen',
+              ),
+            ),
+          );
         }
       } else {
-        debugPrint('🎬 Öffne Kamera...');
-        final x = await _picker.pickVideo(
-          source: ImageSource.camera,
-          maxDuration: const Duration(minutes: 5),
-        );
-        debugPrint('🎬 Video aufgenommen: ${x?.path}');
+        // Mobile: Dialog für Kamera/Galerie
+        debugPrint('🎬 Mobile: Zeige Quellen-Dialog');
+        final source = await _chooseSource('Videoquelle wählen');
+        debugPrint('🎬 Mobile source gewählt: $source');
 
-        if (x != null && _avatarData != null) {
-          setState(() => _isDirty = true);
-          final String uid = FirebaseAuth.instance.currentUser!.uid;
-          final String avatarId = _avatarData!.id;
-          final File f = File(x.path);
-          final String path =
-              'avatars/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_cam.mp4';
+        if (source == null) {
+          debugPrint('🎬 Keine Quelle gewählt → Abbruch');
+          return;
+        }
 
-          debugPrint('🎬 Starte Upload: $path');
-          final url = await FirebaseStorageService.uploadVideo(
-            f,
-            customPath: path,
+        if (source == ImageSource.gallery) {
+          // Mobile Galerie: Mehrfachauswahl
+          debugPrint('🎬 Mobile Galerie: Mehrfachauswahl');
+          final result = await FilePicker.platform.pickFiles(
+            type: FileType.video,
+            allowMultiple: true,
           );
-          debugPrint('🎬 Upload abgeschlossen: $url');
 
-          if (url != null) {
-            if (!mounted) return;
-            setState(() {
-              _videoUrls.add(url);
-            });
-            debugPrint('🎬 Video zu Liste hinzugefügt, persistiere...');
-            // Sofort persistieren (Firestore aktualisieren)
-            await _persistTextFileUrls();
-            // Media-Doc anlegen (non-blocking) → triggert Thumb-Generierung
-            final origName = x.name;
-            _addMediaDoc(
-              url,
-              AvatarMediaType.video,
-              originalFileName: origName,
-            );
-            debugPrint('🎬 Video erfolgreich gespeichert!');
+          if (result == null || result.files.isEmpty) {
+            debugPrint('🎬 Keine Videos ausgewählt');
+            return;
+          }
 
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Video erfolgreich hochgeladen')),
+          setState(() => _isDirty = true);
+          final String avatarId = _avatarData!.id;
+          int baseTimestamp = DateTime.now().millisecondsSinceEpoch;
+
+          for (int i = 0; i < result.files.length; i++) {
+            final file = result.files[i];
+            if (file.path == null) continue;
+
+            try {
+              final File f = File(file.path!);
+              final String origName = p.basename(file.path!);
+              final timestamp = baseTimestamp + i;
+              final String path =
+                  'avatars/$avatarId/videos/${timestamp}_$origName';
+
+              debugPrint(
+                '🎬 Mobile: Starte Upload ${i + 1}/${result.files.length}: $path',
               );
-            }
-          } else {
-            debugPrint('❌ Upload fehlgeschlagen: url ist null');
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Video-Upload fehlgeschlagen')),
+              final url = await FirebaseStorageService.uploadVideo(
+                f,
+                customPath: path,
               );
+
+              if (url != null) {
+                if (!mounted) return;
+                final isFirstVideo = _videoUrls.isEmpty;
+                setState(() {
+                  _videoUrls.add(url);
+                });
+                await _persistTextFileUrls();
+                await _addMediaDoc(
+                  url,
+                  AvatarMediaType.video,
+                  originalFileName: origName,
+                );
+                // Erstes Video → automatisch als Hero setzen
+                if (isFirstVideo) {
+                  await _setHeroVideo(url);
+                }
+              }
+            } catch (e) {
+              debugPrint('❌ Mobile: Fehler bei Video ${i + 1}: $e');
             }
           }
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '${result.files.length} Videos erfolgreich hochgeladen',
+                ),
+              ),
+            );
+          }
         } else {
-          debugPrint('🎬 Kein Video aufgenommen oder Avatar-Daten fehlen');
+          // Mobile Kamera: Nur 1 Video
+          debugPrint('🎬 Öffne Kamera...');
+          final x = await _picker.pickVideo(
+            source: ImageSource.camera,
+            maxDuration: const Duration(minutes: 5),
+          );
+          debugPrint('🎬 Video aufgenommen: ${x?.path}');
+
+          if (x != null && _avatarData != null) {
+            setState(() => _isDirty = true);
+            final String avatarId = _avatarData!.id;
+            final File f = File(x.path);
+            final String path =
+                'avatars/$avatarId/videos/${DateTime.now().millisecondsSinceEpoch}_cam.mp4';
+
+            debugPrint('🎬 Starte Upload: $path');
+            final url = await FirebaseStorageService.uploadVideo(
+              f,
+              customPath: path,
+            );
+            debugPrint('🎬 Upload abgeschlossen: $url');
+
+            if (url != null) {
+              if (!mounted) return;
+              final isFirstVideo = _videoUrls.isEmpty;
+              setState(() {
+                _videoUrls.add(url);
+              });
+              await _persistTextFileUrls();
+              final origName = x.name;
+              await _addMediaDoc(
+                url,
+                AvatarMediaType.video,
+                originalFileName: origName,
+              );
+              // Erstes Video → automatisch als Hero setzen
+              if (isFirstVideo) {
+                await _setHeroVideo(url);
+              }
+
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Video erfolgreich hochgeladen'),
+                  ),
+                );
+              }
+            } else {
+              debugPrint('❌ Upload fehlgeschlagen: url ist null');
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Video-Upload fehlgeschlagen')),
+                );
+              }
+            }
+          } else {
+            debugPrint('🎬 Kein Video aufgenommen oder Avatar-Daten fehlen');
+          }
         }
       }
     } catch (e, stack) {
@@ -4566,12 +4659,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             );
             if (url != null) {
               uploaded.add(url);
-              // Media-Doc anlegen mit originalFileName
+              // Media-Doc anlegen mit originalFileName + voiceClone Flag
               final origName = sel.name;
-              _addMediaDoc(
+              await _addMediaDoc(
                 url,
                 AvatarMediaType.audio,
                 originalFileName: origName,
+                voiceClone: true, // Voice Clone Audio
               );
             }
           }
@@ -5942,6 +6036,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // Remote löschen (Videos) + Thumbs und Media-Dokumente
     for (final url in _selectedRemoteVideos) {
       try {
+        debugPrint('🗑️ Lösche Video: $url');
         await FirebaseStorageService.deleteFile(url);
         final originalPath = FirebaseStorageService.pathFromUrl(url);
         if (originalPath.isNotEmpty) {
@@ -5950,50 +6045,75 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           final prefix = '$dir/thumbs/${base}_';
           try {
             await FirebaseStorageService.deleteByPrefix(prefix);
-          } catch (_) {}
+            debugPrint('🗑️ Video-Thumbs gelöscht: $prefix');
+          } catch (e) {
+            debugPrint('⚠️ Fehler beim Löschen der Video-Thumbs: $e');
+          }
         }
         try {
           final avatarId = _avatarData!.id;
           final qs = await FirebaseFirestore.instance
               .collection('avatars')
               .doc(avatarId)
-              .collection('media')
+              .collection('videos')
               .where('url', isEqualTo: url)
               .get();
           for (final d in qs.docs) {
             await d.reference.delete();
+            debugPrint('🗑️ Firestore Video-Doc gelöscht: ${d.id}');
           }
-        } catch (_) {}
-      } catch (_) {}
-      _videoUrls.remove(url);
+        } catch (e) {
+          debugPrint('⚠️ Fehler beim Löschen des Video-Docs: $e');
+        }
+      } catch (e) {
+        debugPrint('❌ Fehler beim Löschen des Videos: $e');
+      }
+      final removed = _videoUrls.remove(url);
+      debugPrint(
+        '🗑️ Video aus Liste entfernt: $removed (verbleibend: ${_videoUrls.length})',
+      );
     }
-    // Hero-Video sicherstellen: wenn Hero-Video gelöscht oder fehlt, nächstes setzen
+    // Hero-Video sicherstellen: Nach jeder Video-Deletion prüfen
     try {
       final currentHero = _getHeroVideoUrl();
-      final heroDeleted =
-          currentHero != null && _selectedRemoteVideos.contains(currentHero);
-      final heroMissing =
-          currentHero != null && !_videoUrls.contains(currentHero);
-      if (heroDeleted || heroMissing || currentHero == null) {
+      debugPrint(
+        '🎬 Hero-Video-Check: currentHero=$currentHero, videoUrls=${_videoUrls.length}',
+      );
+
+      // Prüfe ob Hero noch existiert
+      final heroExists =
+          currentHero != null && _videoUrls.contains(currentHero);
+
+      if (!heroExists) {
         if (_videoUrls.isNotEmpty) {
+          // Hero fehlt, aber Videos da → erstes Video als Hero setzen
           await _setHeroVideo(_videoUrls.first);
+          debugPrint('🎬 Hero-Video neu gesetzt: ${_videoUrls.first}');
         } else {
-          // Keine Videos mehr vorhanden: heroVideoUrl aus training entfernen
+          // Keine Videos mehr → heroVideoUrl löschen
           if (_avatarData != null) {
             final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
             if (tr.containsKey('heroVideoUrl')) {
               tr.remove('heroVideoUrl');
+              debugPrint('🎬 HeroVideoUrl wird gelöscht (keine Videos mehr)');
               final updated = _avatarData!.copyWith(
                 training: tr,
                 updatedAt: DateTime.now(),
               );
               final ok = await _avatarService.updateAvatar(updated);
-              if (ok) _applyAvatar(updated);
+              if (ok) {
+                _applyAvatar(updated);
+                debugPrint(
+                  '🎬 HeroVideoUrl erfolgreich aus Firestore gelöscht!',
+                );
+              }
             }
           }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('❌ Fehler bei Hero-Video-Update: $e');
+    }
     // Local entfernen (Bilder)
     _newImageFiles.removeWhere((f) => _selectedLocalImages.contains(f.path));
     // Local entfernen (Videos)

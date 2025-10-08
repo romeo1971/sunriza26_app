@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'dart:io';
 import 'dart:async';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -60,6 +61,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   bool _isUploading = false;
   int _uploadProgress = 0;
   String _uploadStatus = '';
+  int _animationCycle = 0; // Für alternierende Wellen
 
   List<AvatarMedia> _items = [];
   Map<String, List<Playlist>> _mediaToPlaylists =
@@ -947,10 +949,16 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         }
       } catch (_) {}
 
-      // Filtere Hero-Images/Videos heraus
-      final filtered = list.where((m) => !heroUrls.contains(m.url)).toList();
+      // Filtere Hero-Images/Videos und voiceClone-Audios heraus
+      final filtered = list
+          .where(
+            (m) =>
+                !heroUrls.contains(m.url) &&
+                m.voiceClone != true, // Filtere voiceClone-Audios
+          )
+          .toList();
       print(
-        '📦 Medien geladen: ${filtered.length} Objekte (${list.length - filtered.length} Hero-Medien gefiltert)',
+        '📦 Medien geladen: ${filtered.length} Objekte (${list.length - filtered.length} Hero-Medien + voiceClone-Audios gefiltert)',
       );
       print(
         '  - Bilder: ${filtered.where((m) => m.type == AvatarMediaType.image).length}',
@@ -1587,13 +1595,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     for (int i = 0; i < _uploadQueue.length; i++) {
       final file = _uploadQueue[i];
-      // ext nicht benötigt – Content-Type wird unten aus Dateiendung abgeleitet
-
-      setState(() {
-        _uploadProgress = ((i + 1) / _uploadQueue.length * 100).round();
-        _uploadStatus =
-            'Lade Video ${i + 1} von ${_uploadQueue.length} hoch...';
-      });
 
       try {
         final timestamp =
@@ -1619,27 +1620,32 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           print('❌ Fehler bei Video-Dimensionen für Video ${i + 1}: $e');
         }
 
-        // Upload mit sicheren Metadaten
+        // Upload mit Echtzeit-Progress
         final rawBase = p.basename(file.path);
-        final base = _sanitizeName(rawBase);
-        final extOnly = p
-            .extension(file.path)
-            .toLowerCase()
-            .replaceFirst('.', '');
-        String ct = 'video/mp4';
-        if (extOnly == 'mov') ct = 'video/quicktime';
-        if (extOnly == 'webm') ct = 'video/webm';
-        final ref = FirebaseStorage.instance.ref().child(
-          'avatars/${widget.avatarId}/videos/${timestamp}_$base',
-        );
-        final task = await ref.putFile(
+        final videoPath =
+            'avatars/${widget.avatarId}/videos/${timestamp}_${_sanitizeName(rawBase)}';
+
+        final url = await FirebaseStorageService.uploadWithProgress(
           file,
-          SettableMetadata(
-            contentType: ct,
-            contentDisposition: 'attachment; filename="$base"',
-          ),
+          'video',
+          customPath: videoPath,
+          onProgress: (progress) {
+            final perFileWeight = 1.0 / _uploadQueue.length;
+            final totalProgress =
+                (i * perFileWeight) + (progress * perFileWeight);
+            setState(() {
+              _uploadProgress = (totalProgress * 100).toInt();
+              _uploadStatus =
+                  'Video ${i + 1}/${_uploadQueue.length} wird hochgeladen... ${(progress * 100).toInt()}%';
+            });
+          },
         );
-        final url = await task.ref.getDownloadURL();
+
+        if (url == null) {
+          print('❌ Video-Upload fehlgeschlagen: $rawBase');
+          continue;
+        }
+
           final media = AvatarMedia(
             id: timestamp.toString(),
             avatarId: widget.avatarId,
@@ -1651,6 +1657,16 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           originalFileName: rawBase, // Original, nicht sanitized
           );
           await _mediaSvc.add(widget.avatarId, media);
+
+        // Nach Upload: "Verarbeitung läuft..." anzeigen
+        setState(() {
+          _uploadProgress = 100;
+          _uploadStatus = 'Daten werden verarbeitet...';
+        });
+
+        // Warte kurz auf Cloud Function (Video-Thumbnail-Generierung)
+        await Future.delayed(const Duration(seconds: 2));
+
           print(
             '✅ Video ${i + 1} gespeichert: ID=${media.id}, URL=$url, AspectRatio=$videoAspectRatio',
           );
@@ -1893,17 +1909,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
 
       int uploaded = 0;
+      int baseTimestamp = DateTime.now().millisecondsSinceEpoch;
       for (int i = 0; i < result.files.length; i++) {
         final file = result.files[i];
         if (file.path == null) continue;
 
-        setState(() {
-          _uploadProgress = ((i / result.files.length) * 100).toInt();
-          _uploadStatus =
-              'Audio ${i + 1}/${result.files.length} wird hochgeladen...';
-        });
-
-        final timestamp = DateTime.now().millisecondsSinceEpoch;
         final rawBase = file.name.isNotEmpty
             ? file.name
             : p.basename(file.path!);
@@ -1914,35 +1924,67 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           debugPrint('Blockiert: Audio-Erweiterung nicht erlaubt: $ext');
           continue;
         }
-        String ct = 'audio/mpeg';
-        if (ext == 'wav') ct = 'audio/wav';
-        if (ext == 'm4a') ct = 'audio/mp4';
-        if (ext == 'aac') ct = 'audio/aac';
 
-        final ref = FirebaseStorage.instance.ref().child(
-          'avatars/${widget.avatarId}/audio/${timestamp}_$safeBase',
-        );
-        final task = await ref.putFile(
+        final timestamp = DateTime.now().millisecondsSinceEpoch;
+        final audioPath =
+            'avatars/${widget.avatarId}/audio/${timestamp}_$safeBase';
+
+        // Upload mit Echtzeit-Progress
+        final url = await FirebaseStorageService.uploadWithProgress(
           File(file.path!),
-          SettableMetadata(
-            contentType: ct,
-            contentDisposition: 'attachment; filename="$safeBase"',
-          ),
+          'audio',
+          customPath: audioPath,
+          onProgress: (progress) {
+            // Berechne Gesamt-Progress: vorherige Dateien + aktueller Upload
+            final perFileWeight = 1.0 / result.files.length;
+            final totalProgress =
+                (i * perFileWeight) + (progress * perFileWeight);
+            setState(() {
+              _uploadProgress = (totalProgress * 100).toInt();
+              _uploadStatus =
+                  'Audio ${i + 1}/${result.files.length} wird hochgeladen... ${(progress * 100).toInt()}%';
+            });
+          },
         );
-        final url = await task.ref.getDownloadURL();
 
-          // Firestore speichern
+        if (url == null) {
+          debugPrint('❌ Audio-Upload fehlgeschlagen: $safeBase');
+          continue;
+        }
+
+        // Firestore speichern - eindeutige ID mit Counter
+        final mediaId = '${baseTimestamp + i}';
           final m = AvatarMedia(
-            id: '${timestamp}_$i',
+          id: mediaId,
             avatarId: widget.avatarId,
             type: AvatarMediaType.audio,
             url: url,
-            createdAt: timestamp,
+          createdAt: baseTimestamp + i,
             tags: ['audio', file.name],
-            originalFileName: file.name, // Originaler Dateiname
+          originalFileName: file.name,
           );
           await _mediaSvc.add(widget.avatarId, m);
-          uploaded++;
+
+        // Nach Upload: "Verarbeitung läuft..." anzeigen
+        setState(() {
+          _uploadProgress = 100;
+          _uploadStatus = 'Daten werden verarbeitet...';
+        });
+
+        // Warten bis Cloud Function thumbUrl gesetzt hat
+        for (int retry = 0; retry < 50; retry++) {
+          await Future.delayed(const Duration(milliseconds: 300));
+          final doc = await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(widget.avatarId)
+              .collection('audios')
+              .doc(mediaId)
+              .get();
+          if (doc.exists && doc.data()?['thumbUrl'] != null) {
+            break;
+          }
+        }
+        uploaded++;
       }
 
       setState(() {
@@ -2240,7 +2282,86 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     ),
                     child: Column(
                       children: [
-                        Text(
+                        // Animierter Text bei "Daten werden verarbeitet..."
+                        _uploadStatus.contains('verarbeitet')
+                            ? TweenAnimationBuilder<double>(
+                                key: ValueKey(_animationCycle),
+                                tween: Tween(begin: 0.0, end: 1.0),
+                                duration: const Duration(milliseconds: 1500),
+                                builder: (context, value, child) {
+                                  // Alternierende Farben
+                                  final isReverse = _animationCycle % 2 == 1;
+                                  final waveColors = isReverse
+                                      ? [
+                                          AppColors.lightBlue,
+                                          AppColors.magenta,
+                                          AppColors.lightBlue,
+                                        ]
+                                      : [
+                                          AppColors.magenta,
+                                          AppColors.lightBlue,
+                                          AppColors.magenta,
+                                        ];
+
+                                  return Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: _uploadStatus
+                                        .split('')
+                                        .asMap()
+                                        .entries
+                                        .map((entry) {
+                                          final index = entry.key;
+                                          final char = entry.value;
+                                          // Wellenförmige Bewegung pro Buchstabe
+                                          final offset =
+                                              (value + (index * 0.1)) % 1.0;
+                                          final dy = sin(offset * 2 * pi) * 3;
+
+                                          return Transform.translate(
+                                            offset: Offset(0, dy),
+                                            child: ShaderMask(
+                                              shaderCallback: (bounds) {
+                                                return LinearGradient(
+                                                  begin: Alignment.centerLeft,
+                                                  end: Alignment.centerRight,
+                                                  colors: waveColors,
+                                                  stops: [
+                                                    (value - 0.3).clamp(
+                                                      0.0,
+                                                      1.0,
+                                                    ),
+                                                    value,
+                                                    (value + 0.3).clamp(
+                                                      0.0,
+                                                      1.0,
+                                                    ),
+                                                  ],
+                                                ).createShader(bounds);
+                                              },
+                                              child: Text(
+                                                char,
+                                                style: const TextStyle(
+                                                  color: Colors.white,
+                                                  fontWeight: FontWeight.w500,
+                                                ),
+                                              ),
+                                            ),
+                                          );
+                                        })
+                                        .toList(),
+                                  );
+                                },
+                                onEnd: () {
+                                  // Loop mit Farbwechsel
+                                  if (_isUploading &&
+                                      _uploadStatus.contains('verarbeitet')) {
+                                    setState(() {
+                                      _animationCycle++;
+                                    });
+                                  }
+                                },
+                              )
+                            : Text(
                           _uploadStatus,
                           style: const TextStyle(color: Colors.white),
                         ),
@@ -3306,7 +3427,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           });
         }
 
-        await _mediaSvc.delete(widget.avatarId, mediaId);
+        await _mediaSvc.delete(widget.avatarId, mediaId, media.type);
         // Lokalen Zustand sofort aktualisieren (kein Full-Reload)
         _items.removeWhere((m) => m.id == mediaId);
         _mediaToPlaylists.remove(mediaId);
@@ -3840,6 +3961,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         await _mediaSvc.update(
           widget.avatarId,
           media.id,
+          media.type,
           url: upload,
           aspectRatio: _cropAspect,
           tags: newTags.isNotEmpty ? newTags : null,
@@ -5143,6 +5265,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                           await _mediaSvc.update(
                                             widget.avatarId,
                                             media.id,
+                                            media.type,
                                             tags: newTags,
                                           );
                                           await _load();
@@ -5871,7 +5994,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
           if (tags.isNotEmpty) {
             // Aktualisiere in Firestore
-            await _mediaSvc.update(widget.avatarId, image.id, tags: tags);
+            await _mediaSvc.update(
+              widget.avatarId,
+              image.id,
+              image.type,
+              tags: tags,
+            );
             print('✅ Tags für Bild ${image.id} gespeichert: $tags');
           } else {
             print('⚠️ Keine Tags für Bild ${image.id} gefunden');

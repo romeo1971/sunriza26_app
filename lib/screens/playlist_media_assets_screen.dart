@@ -98,8 +98,14 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
     }
 
     final list = await _mediaSvc.list(widget.avatarId);
-    // Filtere Hero-Images/Videos heraus
-    final filtered = list.where((m) => !heroUrls.contains(m.url)).toList();
+    // Filtere Hero-Images/Videos und voiceClone-Audios heraus
+    final filtered = list
+        .where(
+          (m) =>
+              !heroUrls.contains(m.url) &&
+              m.voiceClone != true, // Filtere voiceClone-Audios
+        )
+        .toList();
     setState(() {
       _all = filtered;
       _selected.addAll(widget.preselected.map((e) => e.id));

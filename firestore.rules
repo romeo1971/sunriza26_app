@@ -100,10 +100,27 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data);
     }
 
-    // Avatar-Medien (Bilder/Videos)
-    match /avatars/{avatarId}/media/{mediaId} {
+    // Avatar-Medien (separate Collections pro Typ)
+    match /avatars/{avatarId}/images/{mediaId} {
       allow get, list: if ownsAvatar(avatarId);
       allow create, update, delete: if ownsAvatar(avatarId);
+    }
+    match /avatars/{avatarId}/videos/{mediaId} {
+      allow get, list: if ownsAvatar(avatarId);
+      allow create, update, delete: if ownsAvatar(avatarId);
+    }
+    match /avatars/{avatarId}/documents/{mediaId} {
+      allow get, list: if ownsAvatar(avatarId);
+      allow create, update, delete: if ownsAvatar(avatarId);
+    }
+    match /avatars/{avatarId}/audios/{mediaId} {
+      allow get, list: if ownsAvatar(avatarId);
+      allow create, update, delete: if ownsAvatar(avatarId);
+    }
+    // Legacy: alte media-Collection (falls noch vorhanden)
+    match /avatars/{avatarId}/media/{mediaId} {
+      allow get, list: if ownsAvatar(avatarId);
+      allow delete: if ownsAvatar(avatarId); // nur löschen erlaubt, kein create mehr
     }
 
     // Playlists
@@ -114,10 +131,8 @@ service cloud.firestore {
       // timelineAssets: Pool der auswählbaren Medien
       match /timelineAssets/{assetId} {
         allow get, list: if signedIn();
-        // DEV-friendly: erlauben für eingeloggte Nutzer; Datenintegrität bleibt gewahrt
-        allow create: if signedIn()
-          // mediaId muss existieren
-          && exists(/databases/$(db)/documents/avatars/$(avatarId)/media/$(request.resource.data.mediaId));
+        // DEV-friendly: erlauben für eingeloggte Nutzer; Cloud Functions prüfen Integrität
+        allow create: if signedIn();
         allow update: if signedIn();
         allow delete: if signedIn();
       }

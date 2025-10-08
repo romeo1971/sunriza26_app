@@ -16,6 +16,7 @@ class AvatarMedia {
   final double? price; // Preis (null wenn isFree oder kostenlos)
   final String? currency; // Währung (€ oder $), Default: €
   final double? platformFeePercent; // Platform-Provision (0-100), Default: 20%
+  final bool? voiceClone; // true = Voice Clone Audio für ElevenLabs
 
   const AvatarMedia({
     required this.id,
@@ -32,6 +33,7 @@ class AvatarMedia {
     this.price,
     this.currency,
     this.platformFeePercent,
+    this.voiceClone,
   });
 
   bool get isPortrait => aspectRatio != null && aspectRatio! < 1.0;
@@ -72,6 +74,7 @@ class AvatarMedia {
       price: (map['price'] as num?)?.toDouble(),
       currency: map['currency'] as String?,
       platformFeePercent: (map['platformFeePercent'] as num?)?.toDouble(),
+      voiceClone: map['voiceClone'] as bool?,
     );
   }
 
@@ -107,6 +110,7 @@ class AvatarMedia {
       if (price != null) 'price': price,
       if (currency != null) 'currency': currency,
       if (platformFeePercent != null) 'platformFeePercent': platformFeePercent,
+      if (voiceClone != null) 'voiceClone': voiceClone,
     };
   }
 }

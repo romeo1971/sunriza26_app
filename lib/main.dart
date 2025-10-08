@@ -424,10 +424,7 @@ class SunrizaApp extends StatelessWidget {
               backgroundColor: const Color(0xFF1A1A1A),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
-                side: const BorderSide(
-                  color: AppColors.magenta,
-                  width: 3,
-                ),
+                side: const BorderSide(color: AppColors.magenta, width: 3),
               ),
               elevation: 8,
               shadowColor: AppColors.magenta.withOpacity(0.5),
@@ -436,10 +433,7 @@ class SunrizaApp extends StatelessWidget {
               color: const Color(0xFF1A1A1A),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
-                side: const BorderSide(
-                  color: AppColors.magenta,
-                  width: 2,
-                ),
+                side: const BorderSide(color: AppColors.magenta, width: 2),
               ),
               elevation: 8,
               shadowColor: AppColors.magenta.withOpacity(0.5),
