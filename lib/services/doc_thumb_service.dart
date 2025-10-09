@@ -12,10 +12,26 @@ class DocThumbService {
     AvatarMedia media,
   ) async {
     try {
-      if (media.type != AvatarMediaType.document) return null;
+      if (kDebugMode) {
+        print('DocThumbService: START für ${media.id}');
+      }
+      if (media.type != AvatarMediaType.document) {
+        if (kDebugMode) {
+          print('DocThumbService: SKIP - kein Dokument');
+        }
+        return null;
+      }
 
       final bytes = await _loadPreviewBytes(media);
-      if (bytes == null) return null;
+      if (bytes == null) {
+        if (kDebugMode) {
+          print('DocThumbService: FAIL - keine Preview-Bytes');
+        }
+        return null;
+      }
+      if (kDebugMode) {
+        print('DocThumbService: Preview-Bytes geladen: ${bytes.length}');
+      }
 
       // decode
       final codec = await ui.instantiateImageCodec(bytes);
@@ -73,21 +89,28 @@ class DocThumbService {
         SettableMetadata(contentType: 'image/png'),
       );
       final thumbUrl = await task.ref.getDownloadURL();
+      if (kDebugMode) {
+        print('DocThumbService: Thumb hochgeladen: $thumbUrl');
+      }
 
       await FirebaseFirestore.instance
           .collection('avatars')
           .doc(avatarId)
-          .collection('media')
+          .collection('documents')
           .doc(media.id)
           .set({
             'thumbUrl': thumbUrl,
             'aspectRatio': targetAR,
           }, SetOptions(merge: true));
 
+      if (kDebugMode) {
+        print('DocThumbService: SUCCESS - Firestore aktualisiert');
+      }
       return thumbUrl;
-    } catch (e) {
+    } catch (e, stackTrace) {
       if (kDebugMode) {
         print('DocThumbService error: $e');
+        print('Stack: $stackTrace');
       }
       return null;
     }

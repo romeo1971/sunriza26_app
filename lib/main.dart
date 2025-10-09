@@ -5,8 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'firebase_options.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:audioplayers/audioplayers.dart';
-import 'services/audio_player_service.dart';
+// import 'package:flutter/services.dart';
 import 'auth_gate.dart';
 import 'services/ai_service.dart';
 import 'services/video_stream_service.dart';
@@ -64,19 +63,7 @@ class NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // WICHTIG: Stoppe evtl. laufenden Player beim App-Start (z.B. nach Hot-Restart)
-  // Service stoppen
-  await AudioPlayerService().stopAll();
-
-  // ZUSÄTZLICH: Versuche alle AudioPlayer-Instanzen zu stoppen
-  try {
-    // Release alle Audio-Ressourcen auf System-Ebene
-    final tempPlayer = AudioPlayer();
-    await tempPlayer.dispose();
-  } catch (e) {
-    debugPrint('Audio System Cleanup: $e');
-  }
+  // Hinweis: Keyboard-Assertion ist ein Flutter-Desktop-Issue; kein App-Code-Fix nötig
 
   // .env zwingend laden (fehlende Keys sollen hart fehlschlagen)
   await dotenv.load(fileName: '.env');

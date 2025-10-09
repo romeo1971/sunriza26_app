@@ -44,7 +44,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateMissingVideoThumbs = exports.extractVideoFrameAtPosition = exports.backfillVideoDocuments = exports.backfillOriginalFileNames = exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.fixVideoAspectRatios = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
+exports.generateMissingVideoThumbs = exports.extractVideoFrameAtPosition = exports.backfillVideoDocuments = exports.backfillOriginalFileNames = exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.fixVideoAspectRatios = exports.onMediaCreateSetDocumentThumb = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
 require("dotenv/config");
 const functions = __importStar(require("firebase-functions"));
 // admin ist bereits oben initialisiert
@@ -718,7 +718,7 @@ exports.backfillAudioWaveforms = functions
 });
 // Video: Thumb aus erstem Frame generieren, wenn nicht vorhanden
 async function createVideoThumbFromFirstFrame(avatarId, mediaId, videoUrl) {
-    var _a;
+    var _a, _b;
     if (ffmpeg_static_1.default)
         fluent_ffmpeg_1.default.setFfmpegPath(ffmpeg_static_1.default);
     const tmpDir = os.tmpdir();
@@ -801,14 +801,23 @@ async function createVideoThumbFromFirstFrame(avatarId, mediaId, videoUrl) {
     try {
         fs.unlinkSync(src);
     }
-    catch (_b) { }
+    catch (_c) { }
     try {
         fs.unlinkSync(selectedFrame);
     }
-    catch (_c) { }
-    await admin.firestore().collection('avatars').doc(avatarId)
-        .collection('videos').doc(mediaId)
-        .set({ thumbUrl: signed, aspectRatio }, { merge: true });
+    catch (_d) { }
+    // AspectRatio NUR setzen, wenn sie noch nicht existiert (verhindert Überschreiben der korrekten App-Werte)
+    const docSnap = await admin.firestore().collection('avatars').doc(avatarId)
+        .collection('videos').doc(mediaId).get();
+    const existingAspectRatio = (_b = docSnap.data()) === null || _b === void 0 ? void 0 : _b.aspectRatio;
+    if (existingAspectRatio) {
+        // App hat bereits korrekte aspectRatio gesetzt → nur thumbUrl aktualisieren
+        await docSnap.ref.set({ thumbUrl: signed }, { merge: true });
+    }
+    else {
+        // Keine aspectRatio vorhanden → setze FFprobe-Wert als Fallback
+        await docSnap.ref.set({ thumbUrl: signed, aspectRatio }, { merge: true });
+    }
     return signed;
 }
 // DEPRECATED: Alte Storage-Triggers entfernt (ersetzt durch Firestore-Triggers)
@@ -1072,6 +1081,49 @@ exports.onMediaCreateSetVideoThumb = functions
     }
     catch (e) {
         console.warn('onMediaCreateSetVideoThumb error', e);
+    }
+});
+// Firestore Trigger: Bei Document-Upload erstelle Platzhalter-Thumb (wird später vom Client überschrieben)
+exports.onMediaCreateSetDocumentThumb = functions
+    .region('us-central1')
+    .firestore.document('avatars/{avatarId}/{collectionId}/{mediaId}')
+    .onCreate(async (snap, ctx) => {
+    var _a, _b, _c, _d;
+    try {
+        const collectionId = ctx.params.collectionId;
+        if (!isMediaCollection(collectionId))
+            return;
+        const data = snap.data();
+        if (!data || data.type !== 'document')
+            return;
+        if (data.thumbUrl)
+            return; // bereits gesetzt
+        const avatarId = ctx.params.avatarId;
+        const mediaId = ctx.params.mediaId;
+        console.log(`📄 Document Thumb check for ${mediaId}`);
+        // Prüfe, ob bereits ein Thumb in Storage existiert (vom Client hochgeladen)
+        const bucket = admin.storage().bucket();
+        const prefix = `avatars/${avatarId}/documents/thumbs/${mediaId}`;
+        const [items] = await bucket.getFiles({ prefix });
+        if (items.length > 0) {
+            // Neuestes Thumb verwenden
+            let latest = items[0];
+            for (const f of items) {
+                const a = new Date(((_a = latest.metadata) === null || _a === void 0 ? void 0 : _a.updated) || ((_b = latest.metadata) === null || _b === void 0 ? void 0 : _b.timeCreated) || 0).getTime();
+                const b = new Date(((_c = f.metadata) === null || _c === void 0 ? void 0 : _c.updated) || ((_d = f.metadata) === null || _d === void 0 ? void 0 : _d.timeCreated) || 0).getTime();
+                if (b > a)
+                    latest = f;
+            }
+            const [signed] = await latest.getSignedUrl({ action: 'read', expires: Date.now() + 365 * 24 * 3600 * 1000 });
+            await snap.ref.set({ thumbUrl: signed }, { merge: true });
+            console.log(`✅ Document thumb set from storage: ${mediaId}`);
+            return;
+        }
+        // Falls kein Storage-Thumb: setze Platzhalter (wird vom Client später überschrieben)
+        console.log(`⏳ Document thumb will be generated by client: ${mediaId}`);
+    }
+    catch (e) {
+        console.warn('onMediaCreateSetDocumentThumb error', e);
     }
 });
 // Backfill: Korrigiere aspectRatio für alle Videos basierend auf echten Dimensionen

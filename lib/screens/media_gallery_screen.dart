@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -13,6 +14,7 @@ import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:image/image.dart' as img;
 import '../widgets/custom_price_field.dart';
 import '../widgets/custom_currency_select.dart';
 import '../widgets/image_video_pricing_box.dart';
@@ -20,6 +22,7 @@ import 'dart:ui' as ui;
 import '../services/media_service.dart';
 import '../services/firebase_storage_service.dart';
 import '../services/cloud_vision_service.dart';
+import '../services/doc_thumb_service.dart';
 import '../models/media_models.dart';
 import '../services/playlist_service.dart';
 import '../models/playlist_models.dart';
@@ -33,7 +36,6 @@ import '../theme/app_theme.dart';
 import '../widgets/video_player_widget.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
-import '../services/audio_player_service.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/gmbc_buttons.dart';
 
@@ -126,6 +128,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   final Map<String, Duration> _audioCurrentTime = {}; // url -> current time
   final Map<String, Duration> _audioTotalTime = {}; // url -> total time
   AudioPlayer? _audioPlayer;
+  StreamSubscription? _positionSubscription;
+  StreamSubscription? _completeSubscription;
+  StreamSubscription? _durationSubscription;
   final Set<String> _editingPriceMediaIds =
       {}; // IDs der Medien mit offenen Price-Inputs
   final Map<String, TextEditingController> _priceControllers =
@@ -135,15 +140,27 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   // Statische Referenz um Player über Hot-Reload hinweg zu tracken
   static AudioPlayer? _globalAudioPlayer;
   Future<void> _disposeAudioPlayers() async {
+    // Cancel alle Listener
+    await _positionSubscription?.cancel();
+    await _completeSubscription?.cancel();
+    await _durationSubscription?.cancel();
+    _positionSubscription = null;
+    _completeSubscription = null;
+    _durationSubscription = null;
+
     final local = _audioPlayer;
     final global = _globalAudioPlayer;
     if (local != null) {
-      await local.stop();
-      await local.dispose();
+      try {
+        await local.stop();
+        await local.dispose();
+      } catch (_) {}
     }
     if (global != null && !identical(global, local)) {
-      await global.stop();
-      await global.dispose();
+      try {
+        await global.stop();
+        await global.dispose();
+      } catch (_) {}
     }
     _audioPlayer = null;
     _globalAudioPlayer = null;
@@ -269,6 +286,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       // 1) Preview-Bytes laden
       Uint8List? bytes;
       final lower = (media.originalFileName ?? media.url).toLowerCase();
+      debugPrint('🖼️ Lade Preview-Bytes für $lower...');
       if (lower.endsWith('.pdf')) {
         bytes = await _fetchPdfPreviewBytes(media.url);
       } else if (lower.endsWith('.pptx')) {
@@ -276,7 +294,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       } else if (lower.endsWith('.docx')) {
         bytes = await _fetchDocxPreviewBytes(media.url);
       }
-      if (bytes == null) return;
+      if (bytes == null) {
+        debugPrint('❌ Keine Preview-Bytes für $lower verfügbar');
+        return;
+      }
+      debugPrint('✅ Preview-Bytes geladen: ${bytes.length} bytes');
 
       // 2) Bildmaße bestimmen
       final codec = await ui.instantiateImageCodec(bytes);
@@ -902,7 +924,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   /// Zentrale Methode zum Stoppen aller Player
   void _stopAllPlayers() {
     _disposeAudioPlayers();
-    AudioPlayerService().stopAll();
     _playingAudioUrl = null;
     _currentAudioUrl = null;
     _audioProgress.clear();
@@ -1735,6 +1756,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     );
     await _mediaSvc.add(widget.avatarId, m);
     await _load();
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -1899,6 +1921,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     );
     await _mediaSvc.add(widget.avatarId, m);
     await _load();
+
     if (mounted) {
       ScaffoldMessenger.of(
         context,
@@ -1964,19 +1987,27 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
 
     // Anderes Audio oder erstes Mal → Stop aktuelles und starte neues
-    await _audioPlayer?.stop();
-    await _audioPlayer?.dispose();
+    // WICHTIG: Listener canceln bevor Player disposed wird!
+    await _positionSubscription?.cancel();
+    await _completeSubscription?.cancel();
+    await _durationSubscription?.cancel();
+
+    if (_audioPlayer != null) {
+      try {
+        await _audioPlayer!.stop();
+        await _audioPlayer!.dispose();
+        _audioPlayer = null;
+      } catch (_) {}
+    }
+
     _audioPlayer = AudioPlayer();
-    _globalAudioPlayer = _audioPlayer; // Lokale Referenz setzen
-    AudioPlayerService().setCurrentPlayer(
-      _audioPlayer!,
-    ); // Service für Hot-Restart
+    _globalAudioPlayer = _audioPlayer;
 
     // Speichere aktuelle URL
     _currentAudioUrl = media.url;
 
-    // Listener für Fortschritt
-    _audioPlayer!.onPositionChanged.listen((position) {
+    // Listener für Fortschritt (mit StreamSubscription speichern!)
+    _positionSubscription = _audioPlayer!.onPositionChanged.listen((position) {
       if (mounted) {
         setState(() {
           _audioCurrentTime[media.url] = position;
@@ -1989,8 +2020,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
     });
 
-    // Listener für Ende
-    _audioPlayer!.onPlayerComplete.listen((_) {
+    // Listener für Ende (mit StreamSubscription speichern!)
+    _completeSubscription = _audioPlayer!.onPlayerComplete.listen((_) {
       if (mounted) {
         setState(() {
           _playingAudioUrl = null;
@@ -2001,8 +2032,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
     });
 
-    // Listener für Dauer
-    _audioPlayer!.onDurationChanged.listen((duration) {
+    // Listener für Dauer (mit StreamSubscription speichern!)
+    _durationSubscription = _audioPlayer!.onDurationChanged.listen((duration) {
       if (mounted) {
         setState(() => _audioTotalTime[media.url] = duration);
       }
@@ -2694,8 +2725,26 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                     ),
                                   );
 
+                            // Prüfe welche Medientypen selektiert sind
+                            final selectedMedia = _items
+                                .where((m) => _selectedMediaIds.contains(m.id))
+                                .toList();
+                            final hasImagesOrVideos = selectedMedia.any(
+                              (m) =>
+                                  m.type == AvatarMediaType.image ||
+                                  m.type == AvatarMediaType.video,
+                            );
+                            final hasDocsOrAudio = selectedMedia.any(
+                              (m) =>
+                                  m.type == AvatarMediaType.document ||
+                                  m.type == AvatarMediaType.audio,
+                            );
+
+                            // Verwende das richtige Delete-Popup basierend auf Medientypen
                             final Widget deleteBtn = TextButton(
-                              onPressed: _confirmDeleteSelected,
+                              onPressed: hasImagesOrVideos && !hasDocsOrAudio
+                                  ? _confirmDeleteSelectedComplete
+                                  : _confirmDeleteSelectedMinimal,
                               style: TextButton.styleFrom(
                                 backgroundColor: Colors.white,
                                 padding: const EdgeInsets.symmetric(
@@ -2918,18 +2967,61 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       int idx = 0;
       for (final picked in res.files) {
         final path = picked.path;
-        if (path == null) continue;
+        if (path == null) {
+          debugPrint('⚠️ Dokument ${idx + 1}: Kein Pfad verfügbar');
+          continue;
+        }
         final file = File(path);
+        debugPrint(
+          '📄 Dokument ${idx + 1}/${res.files.length}: ${p.basename(path)}',
+        );
         _uploadProgressNotifier.value = ((idx / res.files.length) * 100)
             .round();
         _uploadStatusNotifier.value = 'Upload ${idx + 1} / ${res.files.length}';
         final media = await _uploadDocumentFile(file);
         if (media != null) {
+          debugPrint(
+            '✅ Dokument ${idx + 1} in Firestore gespeichert: ${media.id}',
+          );
           // lokal hinzufügen, damit Crop sofort darauf arbeiten kann
           _items.add(media);
           setState(() {});
           // Automatisches Zuschneiden des Preview-Bildes (ohne manuellen Dialog)
-          await _autoGenerateDocThumb(media);
+          debugPrint('🖼️ Generiere Thumbnail für Dokument ${media.id}...');
+          final thumbUrl = await DocThumbService.generateAndStoreThumb(
+            widget.avatarId,
+            media,
+          );
+          if (thumbUrl != null) {
+            debugPrint(
+              '✅ Thumbnail für Dokument ${media.id} erstellt: $thumbUrl',
+            );
+            // Lokal aktualisieren
+            final itemIdx = _items.indexWhere((m) => m.id == media.id);
+            if (itemIdx != -1) {
+              _items[itemIdx] = AvatarMedia(
+                id: media.id,
+                avatarId: media.avatarId,
+                type: media.type,
+                url: media.url,
+                thumbUrl: thumbUrl,
+                createdAt: media.createdAt,
+                durationMs: media.durationMs,
+                aspectRatio: media.aspectRatio,
+                tags: media.tags,
+                originalFileName: media.originalFileName,
+                isFree: media.isFree,
+                price: media.price,
+                currency: media.currency,
+              );
+            }
+          } else {
+            debugPrint(
+              '⚠️ Thumbnail-Generierung fehlgeschlagen für ${media.id}',
+            );
+          }
+        } else {
+          debugPrint('❌ Dokument ${idx + 1} konnte nicht hochgeladen werden');
         }
         idx++;
       }
@@ -2945,14 +3037,18 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   Future<AvatarMedia?> _uploadDocumentFile(File file) async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) return null;
+      if (uid == null) {
+        debugPrint('❌ Kein User eingeloggt');
+        return null;
+      }
 
       final base = p.basename(file.path);
       final ext = p.extension(base).toLowerCase().replaceFirst('.', '');
+      debugPrint('📝 Prüfe Dokument: $base (.$ext)');
       // Clientseitige Allowlist
       const allowed = ['pdf', 'txt', 'docx', 'pptx', 'md', 'rtf'];
       if (!allowed.contains(ext)) {
-        debugPrint('Blockiert: nicht erlaubte Dokument-Erweiterung: .$ext');
+        debugPrint('❌ Blockiert: nicht erlaubte Dokument-Erweiterung: .$ext');
         if (mounted) {
           ScaffoldMessenger.of(
             context,
@@ -2962,8 +3058,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
 
       // Magic-Bytes Validierung – blocke getarnte Dateien
+      debugPrint('🔍 Magic-Bytes-Validierung für $base...');
       final isValidByMagic = await _validateDocumentFile(file);
       if (!isValidByMagic) {
+        debugPrint('❌ Magic-Bytes-Validierung fehlgeschlagen für $base');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -2975,6 +3073,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         }
         return null;
       }
+      debugPrint('✅ Magic-Bytes-Validierung erfolgreich für $base');
       // Content-Type Mapping
       String contentType;
       switch (ext) {
@@ -3003,6 +3102,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       final storageRef = FirebaseStorage.instance.ref().child(
         'avatars/${widget.avatarId}/documents/${ts}_$base',
       );
+      debugPrint('📤 Lade $base nach Storage hoch...');
       final task = await storageRef.putFile(
         file,
         SettableMetadata(
@@ -3012,14 +3112,18 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         ),
       );
       final url = await task.ref.getDownloadURL();
+      debugPrint('✅ Storage-Upload erfolgreich: $url');
 
-      // Firestore anlegen – identisch wie Bilder, nur type=document
+      // Firestore anlegen in documents-Collection
       final doc = FirebaseFirestore.instance
           .collection('avatars')
           .doc(widget.avatarId)
-          .collection('media')
+          .collection('documents')
           .doc();
 
+      debugPrint(
+        '💾 Speichere in Firestore: avatars/${widget.avatarId}/documents/${doc.id}',
+      );
       await doc.set({
         'id': doc.id,
         'avatarId': widget.avatarId,
@@ -3034,6 +3138,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         'originalFileName': base,
         // Preisfelder optional identisch wie Bilder
       });
+      debugPrint('✅ Firestore-Eintrag erstellt: ${doc.id}');
       return AvatarMedia(
         id: doc.id,
         avatarId: widget.avatarId,
@@ -3046,8 +3151,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         tags: null,
         originalFileName: base,
       );
-    } catch (e) {
-      debugPrint('Dokument-Upload fehlgeschlagen: $e');
+    } catch (e, stackTrace) {
+      debugPrint('❌ Dokument-Upload fehlgeschlagen: $e');
+      debugPrint('Stack: $stackTrace');
       return null;
     }
   }
@@ -3661,21 +3767,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         .where((m) => _selectedMediaIds.contains(m.id))
         .toList(growable: false);
 
-    // Timer für Live-Update der Play/Pause Icons
-    Timer? updateTimer;
+    // Vor dem Öffnen des Dialogs: laufende Audiowiedergabe kurz pausieren,
+    // um konkurrierende Kommandos (Pause/Stop/Dispose) zu vermeiden
+    bool pausedForDialog = false;
+    try {
+      if (_audioPlayer != null && _playingAudioUrl != null) {
+        await _audioPlayer!.pause();
+        pausedForDialog = true;
+      }
+    } catch (_) {}
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
-          // Timer starten für kontinuierliche Updates
-          updateTimer?.cancel();
-          updateTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
-            if (context.mounted) {
-              setDialogState(() {});
-            }
-          });
-
           return AlertDialog(
             title: const Text('Medien löschen?'),
             actionsAlignment:
@@ -3719,29 +3824,32 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               ),
                             );
                           } else if (m.type == AvatarMediaType.video) {
-                            thumb = FutureBuilder<VideoPlayerController?>(
-                              future: _videoControllerForThumb(m.url),
-                              builder: (context, snap) {
-                                if (snap.connectionState ==
-                                        ConnectionState.done &&
-                                    snap.hasData &&
-                                    snap.data != null &&
-                                    snap.data!.value.isInitialized) {
-                                  final c = snap.data!;
-                                  return SizedBox(
-                                    height: h,
-                                    child: AspectRatio(
-                                      aspectRatio: c.value.aspectRatio,
-                                      child: VideoPlayer(c),
-                                    ),
-                                  );
-                                }
-                                return Container(
-                                  height: h,
-                                  width: h * ar,
-                                  color: Colors.black26,
-                                );
-                              },
+                            // Im Bestätigungs-Popup KEIN VideoPlayer – nur statisches Thumbnail/Platzhalter
+                            thumb = SizedBox(
+                              height: h,
+                              child: AspectRatio(
+                                aspectRatio: ar,
+                                child: (m.thumbUrl != null)
+                                    ? Image.network(
+                                        m.thumbUrl!,
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stack) =>
+                                            Container(
+                                              color: Colors.black26,
+                                              child: const Icon(
+                                                Icons.play_circle,
+                                                color: Colors.white54,
+                                              ),
+                                            ),
+                                      )
+                                    : Container(
+                                        color: Colors.black26,
+                                        child: const Icon(
+                                          Icons.play_circle,
+                                          color: Colors.white54,
+                                        ),
+                                      ),
+                              ),
                             );
                           } else if (m.type == AvatarMediaType.document) {
                             thumb = SizedBox(
@@ -3752,169 +3860,47 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               ),
                             );
                           } else {
-                            // Audio: Zeige Waveform-Thumbnail + Play Controls + Name darunter
+                            // Audio: Nur statischer Preview + Dateiname (keine Player/Status-Bezüge)
                             final audioFileName =
                                 m.originalFileName ??
                                 Uri.parse(
                                   m.url,
                                 ).pathSegments.last.split('?').first;
-                            final isPlaying = _playingAudioUrl == m.url;
-                            final currentTime =
-                                _audioCurrentTime[m.url] ?? Duration.zero;
-                            final totalTime =
-                                _audioTotalTime[m.url] ?? Duration.zero;
-
                             thumb = SizedBox(
-                              width: h * 2.4, // Etwas breiter
+                              width: h * 2.0,
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Waveform mit Play Controls
                                   SizedBox(
-                                    height: h * 0.7, // Waveform Höhe reduziert
-                                    child: Stack(
-                                      alignment:
-                                          Alignment.center, // alles mittig
-                                      children: [
-                                        // Waveform Background
-                                        if (m.thumbUrl != null)
-                                          ClipRRect(
-                                            borderRadius: BorderRadius.circular(
-                                              4,
-                                            ),
-                                            child: Opacity(
-                                              opacity: 0.5,
-                                              child: Image.network(
-                                                m.thumbUrl!,
-                                                fit: BoxFit.cover,
-                                                width: double.infinity,
-                                                errorBuilder:
-                                                    (
-                                                      context,
-                                                      error,
-                                                      stackTrace,
-                                                    ) => Container(
-                                                      color: Colors.black26,
-                                                      child: const Icon(
-                                                        Icons.audiotrack,
-                                                        color: Colors.white54,
+                                    height: h * 0.7,
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(4),
+                                      child: (m.thumbUrl != null)
+                                          ? Image.network(
+                                              m.thumbUrl!,
+                                              fit: BoxFit.cover,
+                                              width: double.infinity,
+                                              errorBuilder:
+                                                  (context, error, s) =>
+                                                      Container(
+                                                        color: Colors.black26,
+                                                        child: const Icon(
+                                                          Icons.audiotrack,
+                                                          color: Colors.white54,
+                                                        ),
                                                       ),
-                                                    ),
+                                            )
+                                          : Container(
+                                              color: Colors.black26,
+                                              child: const Icon(
+                                                Icons.audiotrack,
+                                                color: Colors.white54,
                                               ),
                                             ),
-                                          ),
-                                        // Play/Pause/Reload Controls
-                                        Positioned.fill(
-                                          child: Center(
-                                            child: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                // Play/Pause (CI-Gradient) LINKS
-                                                InkWell(
-                                                  onTap: () =>
-                                                      _toggleAudioPlayback(m),
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.all(8),
-                                                    decoration:
-                                                        const BoxDecoration(
-                                                          shape:
-                                                              BoxShape.circle,
-                                                          gradient:
-                                                              LinearGradient(
-                                                                begin: Alignment
-                                                                    .topLeft,
-                                                                end: Alignment
-                                                                    .bottomRight,
-                                                                colors: [
-                                                                  Color(
-                                                                    0xFFE91E63,
-                                                                  ),
-                                                                  AppColors
-                                                                      .lightBlue,
-                                                                  Color(
-                                                                    0xFF00E5FF,
-                                                                  ),
-                                                                ],
-                                                                stops: [
-                                                                  0.0,
-                                                                  0.6,
-                                                                  1.0,
-                                                                ],
-                                                              ),
-                                                        ),
-                                                    child: Icon(
-                                                      isPlaying
-                                                          ? Icons.pause
-                                                          : Icons.play_arrow,
-                                                      color: Colors.white,
-                                                      size: 20,
-                                                    ),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                // Restart RECHTS
-                                                InkWell(
-                                                  onTap: () => _restartAudio(m),
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.all(6),
-                                                    decoration:
-                                                        const BoxDecoration(
-                                                          shape:
-                                                              BoxShape.circle,
-                                                          color: Color(
-                                                            0x50000000,
-                                                          ),
-                                                        ),
-                                                    child: const Icon(
-                                                      Icons.replay,
-                                                      color: Colors.white,
-                                                      size: 16,
-                                                    ),
-                                                  ),
-                                                ),
-                                                // Symmetrischer Spacer, damit Play/Pause exakt mittig bleibt
-                                                const SizedBox(width: 8),
-                                                Opacity(
-                                                  opacity: 0,
-                                                  child: Container(
-                                                    padding:
-                                                        const EdgeInsets.all(6),
-                                                    decoration:
-                                                        const BoxDecoration(
-                                                          shape:
-                                                              BoxShape.circle,
-                                                          color: Color(
-                                                            0x50000000,
-                                                          ),
-                                                        ),
-                                                    child: const Icon(
-                                                      Icons.replay,
-                                                      color: Colors.white,
-                                                      size: 16,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ],
                                     ),
                                   ),
                                   const SizedBox(height: 6),
-                                  // Zeit
-                                  Text(
-                                    '${_formatDuration(currentTime)} / ${_formatDuration(totalTime)}',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  // Dateiname UNTER der Waveform
                                   Text(
                                     audioFileName,
                                     style: const TextStyle(
@@ -3922,7 +3908,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                       fontSize: 13,
                                       fontWeight: FontWeight.w500,
                                     ),
-                                    textAlign: TextAlign.left,
                                   ),
                                 ],
                               ),
@@ -4021,10 +4006,15 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       ),
     );
 
-    // Timer cleanup
-    updateTimer?.cancel();
+    // Timer entfernt – keine Dialog-Rebuild-Ticks mehr
 
     if (confirmed != true) {
+      // Falls wir nur pausiert hatten: Wiedergabe fortsetzen
+      if (pausedForDialog) {
+        try {
+          await _audioPlayer?.resume();
+        } catch (_) {}
+      }
       // Bei Abbrechen: Delete-Mode beenden
       setState(() {
         _isDeleteMode = false;
@@ -4034,18 +4024,18 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
 
     try {
-      // Lösche alle selected Medien
+      bool playerTouched = false;
+      // Lösche alle selected Medien (robust, ohne auf _items.first zu fallen)
       for (final mediaId in _selectedMediaIds.toList()) {
-        // Prüfe ob dieses Medium gerade abgespielt wird
-        final media = _items.firstWhere(
-          (m) => m.id == mediaId,
-          orElse: () => _items.first,
-        );
+        // Prüfe ob dieses Medium in der Liste existiert
+        final int mediaIndex = _items.indexWhere((m) => m.id == mediaId);
+        if (mediaIndex == -1) {
+          continue; // bereits entfernt/neu geladen
+        }
+        final media = _items[mediaIndex];
         if (_playingAudioUrl == media.url || _currentAudioUrl == media.url) {
-          // Stoppe Audio Player
-          await _audioPlayer?.stop();
-          _audioPlayer?.dispose();
-          _audioPlayer = null;
+          // Merke: Player muss nach dem Löschen einmalig sauber entsorgt werden
+          playerTouched = true;
           setState(() {
             _playingAudioUrl = null;
             _currentAudioUrl = null;
@@ -4055,7 +4045,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           });
         }
 
-        await _mediaSvc.delete(widget.avatarId, mediaId, media.type);
+        try {
+          await _mediaSvc.delete(widget.avatarId, mediaId, media.type);
+        } catch (_) {}
         // Lokalen Zustand sofort aktualisieren (kein Full-Reload)
         _items.removeWhere((m) => m.id == mediaId);
         _mediaToPlaylists.remove(mediaId);
@@ -4064,6 +4056,427 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         _selectedMediaIds.clear();
         _isDeleteMode = false;
       });
+      // Falls das gelöschte Medium gerade spielte: Player sauber aufräumen (einmalig)
+      if (playerTouched) {
+        await _disposeAudioPlayers();
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$count ${count == 1 ? 'Medium' : 'Medien'} erfolgreich gelöscht',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Fehler beim Löschen: $e')));
+      }
+    }
+  }
+
+  /// Minimaler Delete-Flow ohne jegliche Dialog-Previews/Timer/Player-Bezüge
+  Future<void> _confirmDeleteSelectedMinimal() async {
+    final count = _selectedMediaIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Medien löschen?'),
+        content: Text(
+          'Möchtest du $count ${count == 1 ? 'Medium' : 'Medien'} wirklich löschen?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      setState(() {
+        _isDeleteMode = false;
+        _selectedMediaIds.clear();
+      });
+      return;
+    }
+
+    try {
+      bool playerTouched = false;
+      for (final mediaId in _selectedMediaIds.toList()) {
+        final int mediaIndex = _items.indexWhere((m) => m.id == mediaId);
+        if (mediaIndex == -1) {
+          continue;
+        }
+        final media = _items[mediaIndex];
+        if (_playingAudioUrl == media.url || _currentAudioUrl == media.url) {
+          playerTouched = true;
+          setState(() {
+            _playingAudioUrl = null;
+            _currentAudioUrl = null;
+            _audioProgress.remove(media.url);
+            _audioCurrentTime.remove(media.url);
+            _audioTotalTime.remove(media.url);
+          });
+        }
+        try {
+          await _mediaSvc.delete(widget.avatarId, mediaId, media.type);
+        } catch (_) {}
+        _items.removeWhere((m) => m.id == mediaId);
+        _mediaToPlaylists.remove(mediaId);
+      }
+      if (playerTouched) {
+        await _disposeAudioPlayers();
+      }
+      setState(() {
+        _selectedMediaIds.clear();
+        _isDeleteMode = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$count ${count == 1 ? 'Medium' : 'Medien'} erfolgreich gelöscht',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Fehler beim Löschen: $e')));
+      }
+    }
+  }
+
+  /// Neue gekapselte Delete-Funktion für Bilder und Videos (wie in details_screen)
+  /// - Zeigt Media-Vorschau im Dialog
+  /// - Löscht Thumbnails aus Storage
+  /// - Löscht Firestore-Dokumente
+  /// - Löscht Originale aus Storage
+  /// - Aktualisiert Avatar-Daten (imageUrls, videoUrls, heroVideoUrl)
+  Future<void> _confirmDeleteSelectedComplete() async {
+    // Selektierte Medien sammeln
+    final selectedMedia = _items
+        .where((m) => _selectedMediaIds.contains(m.id))
+        .toList();
+    final images = selectedMedia
+        .where((m) => m.type == AvatarMediaType.image)
+        .toList();
+    final videos = selectedMedia
+        .where((m) => m.type == AvatarMediaType.video)
+        .toList();
+    final count = selectedMedia.length;
+
+    if (count == 0) return;
+
+    final loc = context.read<LocalizationService>();
+
+    // Bestätigungsdialog MIT Media-Vorschau (wie in details_screen)
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('$count ${count == 1 ? 'Medium' : 'Medien'} löschen?'),
+        content: SizedBox(
+          width: 360,
+          child: SingleChildScrollView(
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                // Bilder
+                ...images.map(
+                  (media) => ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      media.thumbUrl ?? media.url,
+                      width: 54,
+                      height: 96,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        width: 54,
+                        height: 96,
+                        color: Colors.grey.shade800,
+                        child: const Icon(Icons.image, color: Colors.white54),
+                      ),
+                    ),
+                  ),
+                ),
+                // Videos
+                ...videos.map(
+                  (media) => ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 54,
+                      height: 96,
+                      child: media.thumbUrl != null
+                          ? Image.network(
+                              media.thumbUrl!,
+                              width: 54,
+                              height: 96,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(
+                                    width: 54,
+                                    height: 96,
+                                    color: Colors.grey.shade800,
+                                    child: const Icon(
+                                      Icons.videocam,
+                                      color: Colors.white54,
+                                    ),
+                                  ),
+                            )
+                          : Container(
+                              width: 54,
+                              height: 96,
+                              color: Colors.grey.shade800,
+                              child: const Icon(
+                                Icons.videocam,
+                                color: Colors.white54,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(foregroundColor: Colors.white70),
+            child: Text(loc.t('buttons.cancel')),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.white,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [AppColors.magenta, AppColors.lightBlue],
+              ).createShader(bounds),
+              child: const Text(
+                'Löschen',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      setState(() {
+        _isDeleteMode = false;
+        _selectedMediaIds.clear();
+      });
+      return;
+    }
+
+    try {
+      // Avatar-Daten laden
+      final avatarService = AvatarService();
+      final avatar = await avatarService.getAvatar(widget.avatarId);
+      if (avatar == null) {
+        throw Exception('Avatar nicht gefunden');
+      }
+
+      List<String> imageUrls = List.from(avatar.imageUrls);
+      List<String> videoUrls = List.from(avatar.videoUrls);
+
+      // BILDER löschen
+      for (final media in images) {
+        try {
+          debugPrint('DEL img start: ${media.url}');
+          // ERST: thumbUrl aus Firestore holen und löschen
+          String? thumbUrl;
+          try {
+            debugPrint('DEL images query for avatar=${widget.avatarId}');
+            final qs = await FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(widget.avatarId)
+                .collection('images')
+                .where('url', isEqualTo: media.url)
+                .get();
+            debugPrint('DEL images docs: ${qs.docs.length}');
+            for (final d in qs.docs) {
+              final data = d.data();
+              thumbUrl = (data['thumbUrl'] as String?);
+              if (thumbUrl != null && thumbUrl.isNotEmpty) {
+                debugPrint('DEL: Lösche Thumbnail: $thumbUrl');
+                try {
+                  await FirebaseStorageService.deleteFile(thumbUrl);
+                  debugPrint('DEL: Thumbnail gelöscht ✓');
+                } catch (e) {
+                  debugPrint('DEL: Thumbnail-Fehler: $e');
+                }
+              }
+              await d.reference.delete();
+            }
+          } catch (e) {
+            debugPrint('DEL: Firestore-Fehler: $e');
+          }
+          // Original löschen
+          await FirebaseStorageService.deleteFile(media.url);
+          debugPrint('DEL img storage OK');
+        } catch (e) {
+          debugPrint('DEL img error: $e');
+        }
+        imageUrls.remove(media.url);
+      }
+
+      // VIDEOS löschen
+      for (final media in videos) {
+        try {
+          debugPrint('🗑️ Lösche Video: ${media.url}');
+          await FirebaseStorageService.deleteFile(media.url);
+          final originalPath = FirebaseStorageService.pathFromUrl(media.url);
+          if (originalPath.isNotEmpty) {
+            final dir = p.dirname(originalPath); // avatars/<id>/videos
+            final base = p.basenameWithoutExtension(originalPath);
+            final prefix = '$dir/thumbs/${base}_';
+            debugPrint('🗑️ Video-Thumbs Prefix: $prefix');
+            try {
+              await FirebaseStorageService.deleteByPrefix(prefix);
+              debugPrint('🗑️ Video-Thumbs gelöscht: $prefix');
+            } catch (e) {
+              debugPrint('⚠️ Fehler beim Löschen der Video-Thumbs: $e');
+            }
+          }
+          try {
+            final qs = await FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(widget.avatarId)
+                .collection('videos')
+                .where('url', isEqualTo: media.url)
+                .get();
+            for (final d in qs.docs) {
+              await d.reference.delete();
+              debugPrint('🗑️ Firestore Video-Doc gelöscht: ${d.id}');
+            }
+          } catch (e) {
+            debugPrint('⚠️ Fehler beim Löschen des Video-Docs: $e');
+          }
+        } catch (e) {
+          debugPrint('❌ Fehler beim Löschen des Videos: $e');
+        }
+        videoUrls.remove(media.url);
+      }
+
+      // Hero-Video prüfen und aktualisieren
+      String? newHeroVideoUrl;
+      try {
+        final currentHero = avatar.training?['heroVideoUrl'] as String?;
+        debugPrint(
+          '🎬 Hero-Video-Check: currentHero=$currentHero, videoUrls=${videoUrls.length}',
+        );
+
+        // Prüfe ob Hero noch existiert
+        final heroExists =
+            currentHero != null && videoUrls.contains(currentHero);
+
+        if (!heroExists) {
+          if (videoUrls.isNotEmpty) {
+            // Hero fehlt, aber Videos da → erstes Video als neues Hero merken
+            newHeroVideoUrl = videoUrls.first;
+            debugPrint('🎬 Neues Hero-Video wird gesetzt: $newHeroVideoUrl');
+          } else {
+            // Keine Videos mehr → heroVideoUrl wird gelöscht (null)
+            newHeroVideoUrl = null;
+            debugPrint('🎬 HeroVideoUrl wird gelöscht (keine Videos mehr)');
+          }
+        } else {
+          // Hero existiert noch → behalten
+          newHeroVideoUrl = currentHero;
+        }
+      } catch (e) {
+        debugPrint('❌ Fehler bei Hero-Video-Check: $e');
+      }
+
+      // Avatar-Daten aktualisieren
+      final tr = Map<String, dynamic>.from(avatar.training ?? {});
+      if (newHeroVideoUrl != null) {
+        tr['heroVideoUrl'] = newHeroVideoUrl;
+        debugPrint(
+          '🎬 Training: heroVideoUrl wird gesetzt auf $newHeroVideoUrl',
+        );
+      } else {
+        // newHeroVideoUrl ist null → heroVideoUrl muss gelöscht werden
+        tr.remove('heroVideoUrl');
+        debugPrint('🎬 Training: heroVideoUrl wird entfernt');
+      }
+
+      // Profilbild prüfen (falls ein Bild gelöscht wurde, das als avatarImageUrl verwendet wird)
+      String? newAvatarImageUrl = avatar.avatarImageUrl;
+      if (newAvatarImageUrl != null && !imageUrls.contains(newAvatarImageUrl)) {
+        newAvatarImageUrl = imageUrls.isNotEmpty ? imageUrls.first : null;
+        debugPrint('🖼️ AvatarImageUrl wird aktualisiert: $newAvatarImageUrl');
+      }
+
+      final updated = avatar.copyWith(
+        imageUrls: imageUrls,
+        videoUrls: videoUrls,
+        avatarImageUrl: newAvatarImageUrl,
+        clearAvatarImageUrl: newAvatarImageUrl == null && imageUrls.isEmpty,
+        training: tr,
+        updatedAt: DateTime.now(),
+      );
+      final success = await avatarService.updateAvatar(updated);
+      if (success) {
+        debugPrint(
+          '✅ Avatar nach Delete aktualisiert: ${videoUrls.length} Videos, heroVideoUrl=$newHeroVideoUrl',
+        );
+      }
+
+      // Audio-Player aufräumen falls nötig
+      bool playerTouched = false;
+      for (final media in selectedMedia) {
+        if (_playingAudioUrl == media.url || _currentAudioUrl == media.url) {
+          playerTouched = true;
+          setState(() {
+            _playingAudioUrl = null;
+            _currentAudioUrl = null;
+            _audioProgress.remove(media.url);
+            _audioCurrentTime.remove(media.url);
+            _audioTotalTime.remove(media.url);
+          });
+        }
+      }
+      if (playerTouched) {
+        await _disposeAudioPlayers();
+      }
+
+      // Lokale Listen aktualisieren
+      _items.removeWhere((m) => _selectedMediaIds.contains(m.id));
+      for (final mediaId in _selectedMediaIds) {
+        _mediaToPlaylists.remove(mediaId);
+      }
+
+      setState(() {
+        _selectedMediaIds.clear();
+        _isDeleteMode = false;
+      });
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -4416,6 +4829,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       Uint8List? croppedBytes;
       final cropController =
           cyi.CropController(); // Neuer Controller für jeden Dialog
+      bool isCropping = false;
 
       await showDialog(
         context: context,
@@ -4538,7 +4952,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           MouseRegion(
                             cursor: SystemMouseCursors.click,
                             child: TextButton(
-                              onPressed: () => Navigator.pop(ctx),
+                              onPressed: isCropping
+                                  ? null
+                                  : () => Navigator.pop(ctx),
                               style: TextButton.styleFrom(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 8,
@@ -4556,16 +4972,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           ),
                           // Zuschneiden (disabled: GMBC text, enabled: white button + GMBC text)
                           TextButton(
-                            onPressed: () {
-                              // Force crop auch wenn nicht bewegt wurde
-                              try {
-                                cropController.crop();
-                              } catch (e) {
-                                // Fallback: Croppe das ganze Bild
-                                croppedBytes = bytes;
-                                Navigator.of(ctx).pop();
-                              }
-                            },
+                            onPressed: isCropping
+                                ? null
+                                : () {
+                                    // Busy-Spinner aktivieren
+                                    setLocal(() => isCropping = true);
+                                    // Force crop auch wenn nicht bewegt wurde
+                                    try {
+                                      cropController.crop();
+                                    } catch (e) {
+                                      // Fallback: Croppe das ganze Bild
+                                      croppedBytes = bytes;
+                                      Navigator.of(ctx).pop();
+                                    }
+                                  },
                             style: TextButton.styleFrom(
                               backgroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
@@ -4576,22 +4996,31 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            child: ShaderMask(
-                              shaderCallback: (bounds) => const LinearGradient(
-                                colors: [
-                                  Color(0xFFE91E63),
-                                  AppColors.lightBlue,
-                                  Color(0xFF00E5FF),
-                                ],
-                              ).createShader(bounds),
-                              child: const Text(
-                                'Zuschneiden',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ),
+                            child: isCropping
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : ShaderMask(
+                                    shaderCallback: (bounds) =>
+                                        const LinearGradient(
+                                          colors: [
+                                            Color(0xFFE91E63),
+                                            AppColors.lightBlue,
+                                            Color(0xFF00E5FF),
+                                          ],
+                                        ).createShader(bounds),
+                                    child: const Text(
+                                      'Zuschneiden',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
                           ),
                         ],
                       ),
@@ -4622,9 +5051,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         await FirebaseFirestore.instance
             .collection('avatars')
             .doc(widget.avatarId)
-            .collection('media')
+            .collection('documents')
             .doc(media.id)
-            .update({'thumbUrl': thumbUrl, 'aspectRatio': _cropAspect});
+            .set({
+              'thumbUrl': thumbUrl,
+              'aspectRatio': _cropAspect,
+            }, SetOptions(merge: true));
 
         // lokal aktualisieren
         final idx = _items.indexWhere((m) => m.id == media.id);
@@ -4672,29 +5104,233 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       final tempFile = File('${dir.path}/recrop_$timestamp$ext');
       await tempFile.writeAsBytes(croppedBytes!, flush: true);
 
-      // KI-Bildanalyse für neu gescroptes Bild (optional)
+      // KI-Bildanalyse nur für Bilder (nicht für Videos)
       List<String> newTags = [];
-      try {
-        newTags = await _visionSvc.analyzeImage(tempFile.path);
-      } catch (_) {}
+      if (media.type == AvatarMediaType.image) {
+        try {
+          newTags = await _visionSvc.analyzeImage(tempFile.path);
+        } catch (_) {}
+      }
 
+      // ERST: Altes thumbUrl aus Firestore holen UND alte Files aus Storage löschen
+      // (BEVOR Firestore geändert wird, wegen Storage Rules!)
+      String? oldThumbUrl;
+      try {
+        debugPrint('RECROP: Hole altes thumbUrl aus Firestore');
+        final collectionName = media.type == AvatarMediaType.image
+            ? 'images'
+            : 'videos';
+        final doc = await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(widget.avatarId)
+            .collection(collectionName)
+            .doc(media.id)
+            .get();
+        if (doc.exists) {
+          final data = doc.data();
+          oldThumbUrl = (data?['thumbUrl'] as String?);
+          debugPrint('RECROP: Altes thumbUrl gefunden: $oldThumbUrl');
+        }
+
+        debugPrint('RECROP: Lösche ALTE Files JETZT (vor Firestore-Update)');
+
+        // 1) Explizit altes thumbUrl löschen (wichtig für Storage Rules!)
+        if (oldThumbUrl != null && oldThumbUrl.isNotEmpty) {
+          debugPrint('RECROP: Lösche altes Thumbnail: $oldThumbUrl');
+          try {
+            await FirebaseStorageService.deleteFile(oldThumbUrl);
+            debugPrint('RECROP: Altes Thumbnail gelöscht ✓');
+          } catch (e) {
+            debugPrint('RECROP: Fehler beim Löschen: $e');
+          }
+        }
+
+        // 2) ALLE weiteren Thumbnails zum alten Bild/Video löschen (falls mehrere existieren)
+        final dir = p.dirname(originalPath); // avatars/<id>/images oder videos
+        final thumbsDir = '$dir/thumbs';
+
+        // Für Videos: media.id als Prefix (Cloud Function nutzt mediaId_timestamp.jpg)
+        // Für Bilder: Dateiname als Prefix
+        final searchPrefix = media.type == AvatarMediaType.video
+            ? '${media.id}_'
+            : p.basenameWithoutExtension(originalPath);
+
+        debugPrint(
+          'RECROP: Suche weitere Thumbnails in: $thumbsDir für Prefix: $searchPrefix',
+        );
+        try {
+          final ref = FirebaseStorage.instance.ref().child(thumbsDir);
+          final listResult = await ref.listAll();
+          for (final item in listResult.items) {
+            // Prüfe ob Dateiname mit searchPrefix beginnt
+            if (item.name.startsWith(searchPrefix)) {
+              debugPrint('RECROP: Lösche weiteres Thumbnail: ${item.fullPath}');
+              try {
+                await item.delete();
+                debugPrint('RECROP: Weiteres Thumbnail gelöscht ✓');
+              } catch (e) {
+                debugPrint('RECROP: Fehler beim Löschen: $e');
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('RECROP: Fehler beim Listen der Thumbnails: $e');
+        }
+
+        // Altes Original löschen
+        debugPrint('RECROP: Lösche altes Original: ${media.url}');
+        try {
+          await FirebaseStorageService.deleteFile(media.url);
+          debugPrint('RECROP: Altes Original gelöscht ✓');
+        } catch (e) {
+          debugPrint('RECROP: Original-Fehler: $e');
+        }
+      } catch (e) {
+        debugPrint('RECROP: Fehler beim Löschen alter Dateien: $e');
+      }
+
+      // Upload neues recrop Image
       final upload = await FirebaseStorageService.uploadImage(
         tempFile,
         customPath: newPath,
       );
 
       if (upload != null && mounted) {
-        await _mediaSvc.update(
-          widget.avatarId,
-          media.id,
-          media.type,
-          url: upload,
-          aspectRatio: _cropAspect,
-          tags: newTags.isNotEmpty ? newTags : null,
-        );
+        // ERST neues Thumbnail erstellen, DANN Firestore updaten
+        String? newThumbUrl;
+        try {
+          final mediaFolder = media.type == AvatarMediaType.image
+              ? 'images'
+              : 'videos';
+          final thumbPath =
+              'avatars/${widget.avatarId}/$mediaFolder/thumbs/recrop_${timestamp}.jpg';
+          final imgBytes = await tempFile.readAsBytes();
+          final decoded = img.decodeImage(imgBytes);
+          if (decoded != null) {
+            final resized = img.copyResize(decoded, width: 360);
+            final jpg = img.encodeJpg(resized, quality: 70);
+            final dir2 = await getTemporaryDirectory();
+            final thumbFile = await File(
+              '${dir2.path}/thumb_${timestamp}.jpg',
+            ).create();
+            await thumbFile.writeAsBytes(jpg, flush: true);
+            newThumbUrl = await FirebaseStorageService.uploadImage(
+              thumbFile,
+              customPath: thumbPath,
+            );
+            debugPrint('RECROP: Neues Thumbnail erstellt: $newThumbUrl');
+          }
+        } catch (e) {
+          debugPrint('RECROP: Fehler beim Thumbnail-Erstellen: $e');
+        }
+
+        // 1) Firestore: Media-Dokument DELETE + SET MIT thumbUrl (verhindert Cloud Function onCreate!)
+        try {
+          final collectionName = media.type == AvatarMediaType.image
+              ? 'images'
+              : 'videos';
+          final docRef = FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(widget.avatarId)
+              .collection(collectionName)
+              .doc(media.id);
+
+          // Alte Daten für Neuanlage sichern
+          final oldDoc = await docRef.get();
+          final oldData = oldDoc.data() ?? {};
+          final createdAt =
+              (oldData['createdAt'] as num?)?.toInt() ??
+              DateTime.now().millisecondsSinceEpoch;
+          final existingTags = (oldData['tags'] as List?)?.cast<String>() ?? [];
+          final finalTags = newTags.isNotEmpty ? newTags : existingTags;
+
+          // Für Bilder: neues Crop-Aspect-Ratio verwenden
+          // Für Videos: Original-Aspect-Ratio beibehalten (nur Thumbnail wird gecroppt)
+          final newAspectRatio = media.type == AvatarMediaType.image
+              ? _cropAspect
+              : media.aspectRatio;
+
+          // DELETE + SET (verhindert onCreate-Trigger!)
+          try {
+            await docRef.delete();
+          } catch (_) {}
+
+          await docRef.set({
+            'avatarId': widget.avatarId,
+            'type': media.type == AvatarMediaType.image ? 'image' : 'video',
+            'url': upload,
+            'thumbUrl': newThumbUrl, // Direkt das neue Thumbnail setzen!
+            'createdAt': createdAt,
+            'id': media.id,
+            if (newAspectRatio != null) 'aspectRatio': newAspectRatio,
+            if (finalTags.isNotEmpty) 'tags': finalTags,
+            if (media.originalFileName != null)
+              'originalFileName': media.originalFileName,
+            if (media.durationMs != null) 'durationMs': media.durationMs,
+            if (media.isFree != null) 'isFree': media.isFree,
+            if (media.price != null) 'price': media.price,
+            if (media.currency != null) 'currency': media.currency,
+          });
+          debugPrint(
+            'RECROP: Firestore-Dokument ($collectionName) DELETE+SET mit thumbUrl',
+          );
+        } catch (e) {
+          debugPrint('RECROP: Firestore-Update-Fehler: $e');
+        }
+
+        // 2) Firestore Avatar: imageUrls/videoUrls-Eintrag (falls vorhanden) von alt→neu ersetzen
+        try {
+          final avatarRef = FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(widget.avatarId);
+          final snap = await avatarRef.get();
+          final data = snap.data();
+
+          if (media.type == AvatarMediaType.image) {
+            final List<dynamic>? arr = data != null
+                ? data['imageUrls'] as List<dynamic>?
+                : null;
+            if (arr != null && arr.isNotEmpty) {
+              final List<String> updated = arr
+                  .map((e) => e.toString())
+                  .toList();
+              final idx = updated.indexOf(media.url);
+              if (idx != -1) {
+                updated[idx] = upload;
+                await avatarRef.set({
+                  'imageUrls': updated,
+                }, SetOptions(merge: true));
+                debugPrint('RECROP: Avatar imageUrls aktualisiert');
+              }
+            }
+          } else if (media.type == AvatarMediaType.video) {
+            final List<dynamic>? arr = data != null
+                ? data['videoUrls'] as List<dynamic>?
+                : null;
+            if (arr != null && arr.isNotEmpty) {
+              final List<String> updated = arr
+                  .map((e) => e.toString())
+                  .toList();
+              final idx = updated.indexOf(media.url);
+              if (idx != -1) {
+                updated[idx] = upload;
+                await avatarRef.set({
+                  'videoUrls': updated,
+                }, SetOptions(merge: true));
+                debugPrint('RECROP: Avatar videoUrls aktualisiert');
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('RECROP: Avatar-Update-Fehler: $e');
+        }
+
         await _load();
+        final mediaTypeName = media.type == AvatarMediaType.image
+            ? 'Bild'
+            : 'Video';
         ScaffoldMessenger.of(context).showSnackBar(
-          buildSuccessSnackBar('Bild erfolgreich neu zugeschnitten'),
+          buildSuccessSnackBar('$mediaTypeName erfolgreich neu zugeschnitten'),
         );
       }
     } catch (e) {
@@ -7388,6 +8024,28 @@ class _VideoThumbnailSelectorDialogState
 
     try {
       final timeInSeconds = _controller!.value.position.inSeconds;
+
+      // ERST: Alte Thumbnails löschen (BEVOR Cloud Function neues erstellt!)
+      try {
+        debugPrint('🗑️ Lösche alte Video-Thumbnails für: ${widget.mediaId}');
+        final thumbsPath = 'avatars/${widget.avatarId}/videos/thumbs';
+        final ref = FirebaseStorage.instance.ref().child(thumbsPath);
+        final listResult = await ref.listAll();
+        for (final item in listResult.items) {
+          // Lösche alle Thumbnails mit mediaId-Prefix
+          if (item.name.startsWith('${widget.mediaId}_')) {
+            debugPrint('🗑️ Lösche: ${item.fullPath}');
+            try {
+              await item.delete();
+              debugPrint('🗑️ Gelöscht ✓');
+            } catch (e) {
+              debugPrint('⚠️ Fehler beim Löschen: $e');
+            }
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ Fehler beim Listen/Löschen der Thumbnails: $e');
+      }
 
       // Call Cloud Function
       final response = await http.post(
