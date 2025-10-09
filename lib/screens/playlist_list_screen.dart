@@ -16,6 +16,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'dart:io';
 import 'dart:typed_data';
+import '../services/firebase_storage_service.dart';
+import 'package:image/image.dart' as img;
 
 class PlaylistListScreen extends StatefulWidget {
   final String avatarId;
@@ -320,16 +322,56 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     f = cropped;
 
     try {
+      // ERST: Altes Cover + Thumbnail löschen (wenn vorhanden)
+      if (playlist.coverImageUrl != null &&
+          playlist.coverImageUrl!.isNotEmpty) {
+        try {
+          await FirebaseStorageService.deleteFile(playlist.coverImageUrl!);
+          debugPrint('Altes Cover gelöscht');
+        } catch (_) {}
+        // Altes Thumbnail löschen
+        if (playlist.coverThumbUrl != null &&
+            playlist.coverThumbUrl!.isNotEmpty) {
+          try {
+            await FirebaseStorageService.deleteFile(playlist.coverThumbUrl!);
+            debugPrint('Altes Cover-Thumbnail gelöscht');
+          } catch (_) {}
+        }
+      }
+
       final ts = DateTime.now().millisecondsSinceEpoch;
+
+      // Cover hochladen
       final ref = FirebaseStorage.instance.ref().child(
         'avatars/${playlist.avatarId}/playlists/${playlist.id}/cover_$ts.jpg',
       );
-
       await ref.putFile(f);
-      var url = await ref.getDownloadURL();
-      url = '$url?v=$ts';
+      final url = await ref.getDownloadURL();
 
-      // Update playlist
+      // Thumbnail erstellen und hochladen
+      String? thumbUrl;
+      try {
+        final imgBytes = await f.readAsBytes();
+        final decoded = img.decodeImage(imgBytes);
+        if (decoded != null) {
+          final resized = img.copyResize(decoded, width: 360);
+          final jpg = img.encodeJpg(resized, quality: 70);
+          final dir = await getTemporaryDirectory();
+          final thumbFile = await File('${dir.path}/thumb_$ts.jpg').create();
+          await thumbFile.writeAsBytes(jpg, flush: true);
+
+          final thumbRef = FirebaseStorage.instance.ref().child(
+            'avatars/${playlist.avatarId}/playlists/${playlist.id}/thumbs/cover_$ts.jpg',
+          );
+          await thumbRef.putFile(thumbFile);
+          thumbUrl = await thumbRef.getDownloadURL();
+          debugPrint('Cover-Thumbnail erstellt: $thumbUrl');
+        }
+      } catch (e) {
+        debugPrint('Fehler bei Thumbnail-Erstellung: $e');
+      }
+
+      // Update playlist mit Cover + Thumbnail
       final updated = Playlist(
         id: playlist.id,
         avatarId: playlist.avatarId,
@@ -337,6 +379,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
         showAfterSec: playlist.showAfterSec,
         highlightTag: playlist.highlightTag,
         coverImageUrl: url,
+        coverThumbUrl: thumbUrl,
         coverOriginalFileName: originalFileName,
         weeklySchedules: playlist.weeklySchedules,
         specialSchedules: playlist.specialSchedules,
@@ -360,6 +403,81 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('Fehler beim Upload: $e')));
+      }
+    }
+  }
+
+  Future<void> _deleteCoverImage(Playlist playlist) async {
+    // Bestätigung
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cover löschen?'),
+        content: const Text('Soll das Cover-Bild gelöscht werden?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    try {
+      // Cover aus Storage löschen
+      if (playlist.coverImageUrl != null &&
+          playlist.coverImageUrl!.isNotEmpty) {
+        try {
+          await FirebaseStorageService.deleteFile(playlist.coverImageUrl!);
+          debugPrint('Cover gelöscht');
+        } catch (_) {}
+      }
+      // Thumbnail aus Storage löschen
+      if (playlist.coverThumbUrl != null &&
+          playlist.coverThumbUrl!.isNotEmpty) {
+        try {
+          await FirebaseStorageService.deleteFile(playlist.coverThumbUrl!);
+          debugPrint('Cover-Thumbnail gelöscht');
+        } catch (_) {}
+      }
+
+      // Update playlist ohne Cover (zurück zu default)
+      final updated = Playlist(
+        id: playlist.id,
+        avatarId: playlist.avatarId,
+        name: playlist.name,
+        showAfterSec: playlist.showAfterSec,
+        highlightTag: playlist.highlightTag,
+        coverImageUrl: null,
+        coverThumbUrl: null,
+        coverOriginalFileName: null,
+        weeklySchedules: playlist.weeklySchedules,
+        specialSchedules: playlist.specialSchedules,
+        targeting: playlist.targeting,
+        priority: playlist.priority,
+        scheduleMode: playlist.scheduleMode,
+        createdAt: playlist.createdAt,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      );
+
+      await _svc.update(updated);
+      await _load(); // Reload list
+
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Cover-Bild gelöscht')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Fehler beim Löschen: $e')));
       }
     }
   }
@@ -901,6 +1019,38 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                 ),
                                               ),
                                             ),
+                                            // Delete-Icon (nur wenn Cover vorhanden)
+                                            if (p.coverImageUrl != null &&
+                                                p.coverImageUrl!.isNotEmpty)
+                                              Positioned(
+                                                top: 4,
+                                                right: 4,
+                                                child: MouseRegion(
+                                                  cursor:
+                                                      SystemMouseCursors.click,
+                                                  child: GestureDetector(
+                                                    onTap: () =>
+                                                        _deleteCoverImage(p),
+                                                    child: Container(
+                                                      width: 28,
+                                                      height: 28,
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.red
+                                                            .withOpacity(0.8),
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              14,
+                                                            ),
+                                                      ),
+                                                      child: const Icon(
+                                                        Icons.delete,
+                                                        color: Colors.white,
+                                                        size: 16,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
                                           ],
                                         ),
                                       ),

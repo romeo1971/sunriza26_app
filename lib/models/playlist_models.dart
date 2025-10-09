@@ -114,6 +114,8 @@ class Playlist {
   final String? highlightTag;
   // Cover-Bild URL (9:16 Format)
   final String? coverImageUrl;
+  // Cover-Thumbnail URL
+  final String? coverThumbUrl;
   // Originaler Dateiname des Cover-Bildes
   final String? coverOriginalFileName;
   // Wöchentlicher Scheduler: Wochentag + Zeitfenster
@@ -139,6 +141,7 @@ class Playlist {
     required this.showAfterSec,
     this.highlightTag,
     this.coverImageUrl,
+    this.coverThumbUrl,
     this.coverOriginalFileName,
     this.weeklySchedules = const [],
     this.specialSchedules = const [],
@@ -215,6 +218,7 @@ class Playlist {
       showAfterSec: parseInt(map['showAfterSec']),
       highlightTag: parseString(map['highlightTag']),
       coverImageUrl: parseString(map['coverImageUrl']),
+      coverThumbUrl: parseString(map['coverThumbUrl']),
       coverOriginalFileName: parseString(map['coverOriginalFileName']),
       weeklySchedules: weekly,
       specialSchedules: specials,
@@ -241,6 +245,8 @@ class Playlist {
         'highlightTag': highlightTag,
       if (coverImageUrl != null && coverImageUrl!.isNotEmpty)
         'coverImageUrl': coverImageUrl,
+      if (coverThumbUrl != null && coverThumbUrl!.isNotEmpty)
+        'coverThumbUrl': coverThumbUrl,
       if (coverOriginalFileName != null && coverOriginalFileName!.isNotEmpty)
         'coverOriginalFileName': coverOriginalFileName,
       'weeklySchedules': weeklySchedules.map((s) => s.toMap()).toList(),
