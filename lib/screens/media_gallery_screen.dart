@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'dart:io';
 import 'dart:async';
 import 'dart:math';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -58,9 +59,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
   // Multi-Upload Variablen
   List<File> _uploadQueue = [];
-  bool _isUploading = false;
-  int _uploadProgress = 0;
-  String _uploadStatus = '';
+  final ValueNotifier<bool> _isUploadingNotifier = ValueNotifier(false);
+  final ValueNotifier<int> _uploadProgressNotifier = ValueNotifier(0);
+  final ValueNotifier<String> _uploadStatusNotifier = ValueNotifier('');
   int _animationCycle = 0; // Für alternierende Wellen
 
   List<AvatarMedia> _items = [];
@@ -474,12 +475,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               children: [
                 const Text(
                   'Globale Preise',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
                     fontSize: 16,
-                height: 1.0,
-              ),
+                    height: 1.0,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 MouseRegion(
@@ -700,53 +701,53 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
       child: Container(
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white24),
-      ),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1E1E1E),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white24),
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+          children: [
             // Kopfzeile: Icon + Label links, Eye rechts mit GMBC-Farbfüllung
             Padding(
               padding: const EdgeInsets.fromLTRB(14, 10, 10, 8),
-            child: Row(
+              child: Row(
                 mainAxisSize: MainAxisSize.min,
-              children: [
+                children: [
                   Icon(icon, color: Colors.white, size: 18),
-                const SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       label,
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
-          InkResponse(
-            onTap: () => onToggle(!enabled),
-            radius: 18,
-            child: SizedBox(
-              width: 28,
-              height: 28,
-              child: Center(
-                child: enabled
-                    ? ShaderMask(
+                  InkResponse(
+                    onTap: () => onToggle(!enabled),
+                    radius: 18,
+                    child: SizedBox(
+                      width: 28,
+                      height: 28,
+                      child: Center(
+                        child: enabled
+                            ? ShaderMask(
                                 shaderCallback: (bounds) =>
                                     const LinearGradient(
-                          colors: [
-                            Color(0xFFE91E63),
-                            AppColors.lightBlue,
-                            Color(0xFF00E5FF),
-                          ],
-                        ).createShader(bounds),
-                        child: const Icon(
-                          Icons.visibility,
+                                      colors: [
+                                        Color(0xFFE91E63),
+                                        AppColors.lightBlue,
+                                        Color(0xFF00E5FF),
+                                      ],
+                                    ).createShader(bounds),
+                                child: const Icon(
+                                  Icons.visibility,
                                   size: 22,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(
-                        Icons.visibility_off,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
+                                Icons.visibility_off,
                                 size: 22,
                                 color: Colors.white54,
                               ),
@@ -812,22 +813,22 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           Text(
                             c.toString(),
                             style: const TextStyle(
-                        color: Colors.white70,
+                              color: Colors.white70,
                               fontSize: 13,
-                      ),
-              ),
+                            ),
+                          ),
                           const SizedBox(width: 2),
                           const Icon(
                             Icons.diamond,
                             size: 12,
                             color: Colors.white,
-            ),
+                          ),
                         ],
                       );
                     },
-          ),
+                  ),
                   // float-left Verhalten: kein Spacer am Ende
-        ],
+                ],
               ),
             ),
           ],
@@ -862,6 +863,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    // ValueNotifiers aufräumen
+    _isUploadingNotifier.dispose();
+    _uploadProgressNotifier.dispose();
+    _uploadStatusNotifier.dispose();
     // Thumbnail-Controller aufräumen
     for (final controller in _thumbControllers.values) {
       controller.dispose();
@@ -921,30 +926,30 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
           // Globale Preise
           if (data.containsKey('globalPricing')) {
-          final gp = data['globalPricing'] as Map<String, dynamic>;
-          _globalPricing = {
-            'image': {
-              'enabled': (gp['image']?['enabled'] as bool?) ?? false,
-              'price': (gp['image']?['price'] as num?)?.toDouble() ?? 0.0,
-              'currency': _normalizeCurrencyToSymbol(
-                gp['image']?['currency'] as String?,
-              ),
-            },
-            'video': {
-              'enabled': (gp['video']?['enabled'] as bool?) ?? false,
-              'price': (gp['video']?['price'] as num?)?.toDouble() ?? 0.0,
-              'currency': _normalizeCurrencyToSymbol(
-                gp['video']?['currency'] as String?,
-              ),
-            },
-            'audio': {
-              'enabled': (gp['audio']?['enabled'] as bool?) ?? false,
-              'price': (gp['audio']?['price'] as num?)?.toDouble() ?? 0.0,
-              'currency': _normalizeCurrencyToSymbol(
-                gp['audio']?['currency'] as String?,
-              ),
-            },
-          };
+            final gp = data['globalPricing'] as Map<String, dynamic>;
+            _globalPricing = {
+              'image': {
+                'enabled': (gp['image']?['enabled'] as bool?) ?? false,
+                'price': (gp['image']?['price'] as num?)?.toDouble() ?? 0.0,
+                'currency': _normalizeCurrencyToSymbol(
+                  gp['image']?['currency'] as String?,
+                ),
+              },
+              'video': {
+                'enabled': (gp['video']?['enabled'] as bool?) ?? false,
+                'price': (gp['video']?['price'] as num?)?.toDouble() ?? 0.0,
+                'currency': _normalizeCurrencyToSymbol(
+                  gp['video']?['currency'] as String?,
+                ),
+              },
+              'audio': {
+                'enabled': (gp['audio']?['enabled'] as bool?) ?? false,
+                'price': (gp['audio']?['price'] as num?)?.toDouble() ?? 0.0,
+                'currency': _normalizeCurrencyToSymbol(
+                  gp['audio']?['currency'] as String?,
+                ),
+              },
+            };
           }
         }
       } catch (_) {}
@@ -1166,12 +1171,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final List<XFile> images = await _picker.pickMultiImage();
     if (images.isEmpty) return;
 
-    setState(() {
-      _uploadQueue = images.map((x) => File(x.path)).toList();
-      _isUploading = true;
-      _uploadProgress = 0;
-      _uploadStatus = 'Bilder werden hochgeladen...';
-    });
+    _uploadQueue = images.map((x) => File(x.path)).toList();
+    _isUploadingNotifier.value = true;
+    _uploadProgressNotifier.value = 0;
+    _uploadStatusNotifier.value = 'Bilder werden hochgeladen...';
 
     await _processUploadQueue();
   }
@@ -1200,12 +1203,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         return;
       }
 
-      setState(() {
-        _uploadQueue = videos;
-        _isUploading = true;
-        _uploadProgress = 0;
-        _uploadStatus = 'Videos werden hochgeladen...';
-      });
+      _uploadQueue = videos;
+      _isUploadingNotifier.value = true;
+      _uploadProgressNotifier.value = 0;
+      _uploadStatusNotifier.value = 'Videos werden hochgeladen...';
 
       await _processVideoUploadQueue();
     } catch (e) {
@@ -1225,10 +1226,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       final file = _uploadQueue[i];
       final ext = p.extension(file.path).toLowerCase();
 
-      setState(() {
-        _uploadProgress = ((i + 1) / _uploadQueue.length * 100).round();
-        _uploadStatus = 'Lade Bild ${i + 1} von ${_uploadQueue.length} hoch...';
-      });
+      _uploadProgressNotifier.value = ((i + 1) / _uploadQueue.length * 100)
+          .round();
+      _uploadStatusNotifier.value =
+          'Lade Bild ${i + 1} von ${_uploadQueue.length} hoch...';
 
       try {
         // Direkt hochladen ohne Cropping
@@ -1275,12 +1276,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // Upload abgeschlossen
     final uploadedCount =
         _uploadQueue.length; // Speichere Anzahl VOR dem Leeren
-    setState(() {
-      _isUploading = false;
-      _uploadQueue.clear();
-      _uploadProgress = 0;
-      _uploadStatus = '';
-    });
+    _isUploadingNotifier.value = false;
+    _uploadQueue.clear();
+    _uploadProgressNotifier.value = 0;
+    _uploadStatusNotifier.value = '';
 
     await _load();
 
@@ -1343,10 +1342,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     for (int i = 0; i < images.length; i++) {
       final image = images[i];
 
-      setState(() {
-        _uploadStatus = 'Zuschneide Bild ${i + 1} von ${images.length}...';
-        _isUploading = true;
-      });
+      _uploadStatusNotifier.value = 'Zuschneide Bild ${i + 1} von ${images.length}...';
+      _isUploadingNotifier.value = true;
 
       try {
         // Lade Bild herunter
@@ -1633,11 +1630,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             final perFileWeight = 1.0 / _uploadQueue.length;
             final totalProgress =
                 (i * perFileWeight) + (progress * perFileWeight);
-            setState(() {
-              _uploadProgress = (totalProgress * 100).toInt();
-              _uploadStatus =
-                  'Video ${i + 1}/${_uploadQueue.length} wird hochgeladen... ${(progress * 100).toInt()}%';
-            });
+            _uploadProgressNotifier.value = (totalProgress * 100).toInt();
+            _uploadStatusNotifier.value =
+                'Video ${i + 1}/${_uploadQueue.length} wird hochgeladen... ${(progress * 100).toInt()}%';
           },
         );
 
@@ -1646,30 +1641,28 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           continue;
         }
 
-          final media = AvatarMedia(
-            id: timestamp.toString(),
-            avatarId: widget.avatarId,
-            type: AvatarMediaType.video,
-            url: url,
-            createdAt: timestamp,
-            aspectRatio: videoAspectRatio,
-            tags: tags,
+        final media = AvatarMedia(
+          id: timestamp.toString(),
+          avatarId: widget.avatarId,
+          type: AvatarMediaType.video,
+          url: url,
+          createdAt: timestamp,
+          aspectRatio: videoAspectRatio,
+          tags: tags,
           originalFileName: rawBase, // Original, nicht sanitized
-          );
-          await _mediaSvc.add(widget.avatarId, media);
+        );
+        await _mediaSvc.add(widget.avatarId, media);
 
         // Nach Upload: "Verarbeitung läuft..." anzeigen
-        setState(() {
-          _uploadProgress = 100;
-          _uploadStatus = 'Daten werden verarbeitet...';
-        });
+        _uploadProgressNotifier.value = 100;
+        _uploadStatusNotifier.value = 'Daten werden verarbeitet...';
 
         // Warte kurz auf Cloud Function (Video-Thumbnail-Generierung)
         await Future.delayed(const Duration(seconds: 2));
 
-          print(
-            '✅ Video ${i + 1} gespeichert: ID=${media.id}, URL=$url, AspectRatio=$videoAspectRatio',
-          );
+        print(
+          '✅ Video ${i + 1} gespeichert: ID=${media.id}, URL=$url, AspectRatio=$videoAspectRatio',
+        );
       } catch (e) {
         print('❌ Fehler beim Upload von Video ${i + 1}: $e');
       }
@@ -1677,12 +1670,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     // Upload abgeschlossen
     final uploadedCount = _uploadQueue.length;
-    setState(() {
-      _isUploading = false;
-      _uploadQueue.clear();
-      _uploadProgress = 0;
-      _uploadStatus = '';
-    });
+    _isUploadingNotifier.value = false;
+    _uploadQueue.clear();
+    _uploadProgressNotifier.value = 0;
+    _uploadStatusNotifier.value = '';
 
     await _load();
 
@@ -1897,11 +1888,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       if (result == null || result.files.isEmpty) return;
 
-      setState(() {
-        _isUploading = true;
-        _uploadProgress = 0;
-        _uploadStatus = 'Audio-Dateien werden hochgeladen...';
-      });
+      _isUploadingNotifier.value = true;
+      _uploadProgressNotifier.value = 0;
+      _uploadStatusNotifier.value = 'Audio-Dateien werden hochgeladen...';
 
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) {
@@ -1939,11 +1928,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             final perFileWeight = 1.0 / result.files.length;
             final totalProgress =
                 (i * perFileWeight) + (progress * perFileWeight);
-            setState(() {
-              _uploadProgress = (totalProgress * 100).toInt();
-              _uploadStatus =
-                  'Audio ${i + 1}/${result.files.length} wird hochgeladen... ${(progress * 100).toInt()}%';
-            });
+            _uploadProgressNotifier.value = (totalProgress * 100).toInt();
+            _uploadStatusNotifier.value =
+                'Audio ${i + 1}/${result.files.length} wird hochgeladen... ${(progress * 100).toInt()}%';
           },
         );
 
@@ -1954,22 +1941,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
         // Firestore speichern - eindeutige ID mit Counter
         final mediaId = '${baseTimestamp + i}';
-          final m = AvatarMedia(
+        final m = AvatarMedia(
           id: mediaId,
-            avatarId: widget.avatarId,
-            type: AvatarMediaType.audio,
-            url: url,
+          avatarId: widget.avatarId,
+          type: AvatarMediaType.audio,
+          url: url,
           createdAt: baseTimestamp + i,
-            tags: ['audio', file.name],
+          tags: ['audio', file.name],
           originalFileName: file.name,
-          );
-          await _mediaSvc.add(widget.avatarId, m);
+        );
+        await _mediaSvc.add(widget.avatarId, m);
 
         // Nach Upload: "Verarbeitung läuft..." anzeigen
-        setState(() {
-          _uploadProgress = 100;
-          _uploadStatus = 'Daten werden verarbeitet...';
-        });
+        _uploadProgressNotifier.value = 100;
+        _uploadStatusNotifier.value = 'Daten werden verarbeitet...';
 
         // Warten bis Cloud Function thumbUrl gesetzt hat
         for (int retry = 0; retry < 50; retry++) {
@@ -1987,11 +1972,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         uploaded++;
       }
 
-      setState(() {
-        _isUploading = false;
-        _uploadProgress = 0;
-        _uploadStatus = '';
-      });
+      _isUploadingNotifier.value = false;
+      _uploadProgressNotifier.value = 0;
+      _uploadStatusNotifier.value = '';
 
       await _load();
 
@@ -2003,11 +1986,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         );
       }
     } catch (e) {
-      setState(() {
-        _isUploading = false;
-        _uploadProgress = 0;
-        _uploadStatus = '';
-      });
+      _isUploadingNotifier.value = false;
+      _uploadProgressNotifier.value = 0;
+      _uploadStatusNotifier.value = '';
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -2130,7 +2111,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     const Spacer(),
                     // Portrait/Landscape Toggle (ausgeblendet bei Audio)
                     if (_mediaTab != 'audio')
-                    SizedBox(
+                      SizedBox(
                         height: 35,
                         child: TextButton(
                           onPressed: () =>
@@ -2144,20 +2125,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             ),
                           ),
                           child: _portrait
-                            ? ShaderMask(
-                                shaderCallback: (bounds) =>
-                                    const LinearGradient(
-                                      colors: [
-                                        AppColors.magenta,
-                                        AppColors.lightBlue,
-                                      ],
-                                    ).createShader(bounds),
-                                child: const Icon(
+                              ? ShaderMask(
+                                  shaderCallback: (bounds) =>
+                                      const LinearGradient(
+                                        colors: [
+                                          AppColors.magenta,
+                                          AppColors.lightBlue,
+                                        ],
+                                      ).createShader(bounds),
+                                  child: const Icon(
                                     Icons.stay_primary_portrait,
                                     size: 18,
-                                  color: Colors.white,
-                                ),
-                              )
+                                    color: Colors.white,
+                                  ),
+                                )
                               : const Icon(
                                   Icons.stay_primary_landscape,
                                   size: 18,
@@ -2172,14 +2153,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         onPressed: _items.isEmpty
                             ? null
                             : () {
-                              setState(() {
+                                setState(() {
                                   _showSearch = !_showSearch;
                                   if (!_showSearch) {
                                     _searchController.clear();
                                     _searchTerm = '';
                                   }
-                              });
-                            },
+                                });
+                              },
                         style: ButtonStyle(
                           padding: const WidgetStatePropertyAll(
                             EdgeInsets.zero,
@@ -2224,29 +2205,29 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                   borderRadius: BorderRadius.circular(8),
                                 );
                               }),
-                                ),
+                        ),
                         child: _showSearch
-                                  ? ShaderMask(
-                                      shaderCallback: (bounds) =>
-                                          const LinearGradient(
-                                            colors: [
-                                              AppColors.magenta,
-                                              AppColors.lightBlue,
-                                            ],
-                                          ).createShader(bounds),
-                                      child: const Icon(
+                            ? ShaderMask(
+                                shaderCallback: (bounds) =>
+                                    const LinearGradient(
+                                      colors: [
+                                        AppColors.magenta,
+                                        AppColors.lightBlue,
+                                      ],
+                                    ).createShader(bounds),
+                                child: const Icon(
                                   Icons.search,
                                   size: 22,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(
                                 Icons.search,
                                 size: 22,
                                 color: Colors.white54,
-                                    ),
-                            ),
-                          ),
+                              ),
+                      ),
+                    ),
                     // Orientierungs-Button wird unten angezeigt
                   ],
                 ),
@@ -2261,7 +2242,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               children: [
                 // Info-Text (wie in details_screen)
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
                   child: Text(
                     'Verlinkbare Medien für Deine Playlists',
                     style: TextStyle(
@@ -2271,174 +2252,234 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   ),
                 ),
 
-                // Upload-Fortschrittsanzeige
-                if (_isUploading)
-                  Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 16),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      children: [
-                        // Animierter Text bei "Daten werden verarbeitet..."
-                        _uploadStatus.contains('verarbeitet')
-                            ? TweenAnimationBuilder<double>(
-                                key: ValueKey(_animationCycle),
-                                tween: Tween(begin: 0.0, end: 1.0),
-                                duration: const Duration(milliseconds: 1500),
-                                builder: (context, value, child) {
-                                  // Alternierende Farben
-                                  final isReverse = _animationCycle % 2 == 1;
-                                  final waveColors = isReverse
-                                      ? [
-                                          AppColors.lightBlue,
-                                          AppColors.magenta,
-                                          AppColors.lightBlue,
-                                        ]
-                                      : [
-                                          AppColors.magenta,
-                                          AppColors.lightBlue,
-                                          AppColors.magenta,
-                                        ];
+                // Upload-Fortschrittsanzeige (ValueListenableBuilder verhindert Flackern)
+                ValueListenableBuilder<bool>(
+                  valueListenable: _isUploadingNotifier,
+                  builder: (context, isUploading, child) {
+                    if (!isUploading) return const SizedBox.shrink();
 
-                                  return Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: _uploadStatus
-                                        .split('')
-                                        .asMap()
-                                        .entries
-                                        .map((entry) {
-                                          final index = entry.key;
-                                          final char = entry.value;
-                                          // Wellenförmige Bewegung pro Buchstabe
-                                          final offset =
-                                              (value + (index * 0.1)) % 1.0;
-                                          final dy = sin(offset * 2 * pi) * 3;
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ValueListenableBuilder<String>(
+                        valueListenable: _uploadStatusNotifier,
+                        builder: (ctx, uploadStatus, _) {
+                          return ValueListenableBuilder<int>(
+                            valueListenable: _uploadProgressNotifier,
+                            builder: (ctx, uploadProgress, _) {
+                              return Column(
+                                children: [
+                                  // Animierter Text bei "Daten werden verarbeitet..."
+                                  uploadStatus.contains('verarbeitet')
+                                      ? TweenAnimationBuilder<double>(
+                                          key: ValueKey(_animationCycle),
+                                          tween: Tween(begin: 0.0, end: 1.0),
+                                          duration: const Duration(
+                                            milliseconds: 1500,
+                                          ),
+                                          builder: (context, value, child) {
+                                            // Alternierende Farben
+                                            final isReverse =
+                                                _animationCycle % 2 == 1;
+                                            final waveColors = isReverse
+                                                ? [
+                                                    AppColors.lightBlue,
+                                                    AppColors.magenta,
+                                                    AppColors.lightBlue,
+                                                  ]
+                                                : [
+                                                    AppColors.magenta,
+                                                    AppColors.lightBlue,
+                                                    AppColors.magenta,
+                                                  ];
 
-                                          return Transform.translate(
-                                            offset: Offset(0, dy),
-                                            child: ShaderMask(
-                                              shaderCallback: (bounds) {
-                                                return LinearGradient(
-                                                  begin: Alignment.centerLeft,
-                                                  end: Alignment.centerRight,
-                                                  colors: waveColors,
-                                                  stops: [
-                                                    (value - 0.3).clamp(
-                                                      0.0,
-                                                      1.0,
-                                                    ),
-                                                    value,
-                                                    (value + 0.3).clamp(
-                                                      0.0,
-                                                      1.0,
-                                                    ),
-                                                  ],
-                                                ).createShader(bounds);
-                                              },
-                                              child: Text(
-                                                char,
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontWeight: FontWeight.w500,
-                                                ),
-                                              ),
-                                            ),
-                                          );
-                                        })
-                                        .toList(),
-                                  );
-                                },
-                                onEnd: () {
-                                  // Loop mit Farbwechsel
-                                  if (_isUploading &&
-                                      _uploadStatus.contains('verarbeitet')) {
-                                    setState(() {
-                                      _animationCycle++;
-                                    });
-                                  }
-                                },
-                              )
-                            : Text(
-                          _uploadStatus,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                        const SizedBox(height: 8),
-                        LinearProgressIndicator(
-                          value: _uploadProgress / 100,
-                          backgroundColor: Colors.white.withValues(alpha: 0.3),
-                          valueColor: const AlwaysStoppedAnimation<Color>(
-                            AppColors.lightBlue,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '$_uploadProgress%',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                                            return Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: uploadStatus
+                                                  .split('')
+                                                  .asMap()
+                                                  .entries
+                                                  .map((entry) {
+                                                    final index = entry.key;
+                                                    final char = entry.value;
+                                                    // Wellenförmige Bewegung pro Buchstabe
+                                                    final offset =
+                                                        (value +
+                                                            (index * 0.1)) %
+                                                        1.0;
+                                                    final dy =
+                                                        sin(offset * 2 * pi) *
+                                                        3;
 
-                if (_isUploading) const SizedBox(height: 16),
+                                                    return Transform.translate(
+                                                      offset: Offset(0, dy),
+                                                      child: ShaderMask(
+                                                        shaderCallback: (bounds) {
+                                                          return LinearGradient(
+                                                            begin: Alignment
+                                                                .centerLeft,
+                                                            end: Alignment
+                                                                .centerRight,
+                                                            colors: waveColors,
+                                                            stops: [
+                                                              (value - 0.3)
+                                                                  .clamp(
+                                                                    0.0,
+                                                                    1.0,
+                                                                  ),
+                                                              value,
+                                                              (value + 0.3)
+                                                                  .clamp(
+                                                                    0.0,
+                                                                    1.0,
+                                                                  ),
+                                                            ],
+                                                          ).createShader(
+                                                            bounds,
+                                                          );
+                                                        },
+                                                        child: Text(
+                                                          char,
+                                                          style:
+                                                              const TextStyle(
+                                                                color: Colors
+                                                                    .white,
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w500,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    );
+                                                  })
+                                                  .toList(),
+                                            );
+                                          },
+                                          onEnd: () {
+                                            // Loop mit Farbwechsel
+                                            if (_isUploadingNotifier.value &&
+                                                uploadStatus.contains(
+                                                  'verarbeitet',
+                                                )) {
+                                              setState(() {
+                                                _animationCycle++;
+                                              });
+                                            }
+                                          },
+                                        )
+                                      : Text(
+                                          uploadStatus,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                  const SizedBox(height: 8),
+                                  LinearProgressIndicator(
+                                    value: uploadProgress / 100,
+                                    backgroundColor: Colors.white.withValues(
+                                      alpha: 0.3,
+                                    ),
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                          AppColors.lightBlue,
+                                        ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '$uploadProgress%',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    );
+                  },
+                ),
+
+                // Spacing nach Upload (auch mit ValueListenableBuilder)
+                ValueListenableBuilder<bool>(
+                  valueListenable: _isUploadingNotifier,
+                  builder: (context, isUploading, child) {
+                    return isUploading
+                        ? const SizedBox(height: 16)
+                        : const SizedBox.shrink();
+                  },
+                ),
 
                 // Delete-Toolbar NUR bei aktivem Delete-Mode
                 _isDeleteMode && _selectedMediaIds.isNotEmpty
                     ? Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        child: SizedBox(
-                          height: 40,
-                          child: Container(
-                            width: double.infinity,
-                            decoration: BoxDecoration(
-                              color: Colors.black,
-                              borderRadius: BorderRadius.circular(8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Abbrechen als einfacher Text-Link (light grey)
+                            TextButton(
+                              onPressed: () {
+                                setState(() {
+                                  _isDeleteMode = false;
+                                  _selectedMediaIds.clear();
+                                });
+                              },
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 12,
+                                ),
+                              ),
+                              child: Text(
+                                'Abbrechen',
+                                style: TextStyle(
+                                  color: Colors.grey.shade400,
+                                  fontSize: 14,
+                                ),
+                              ),
                             ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              children: [
-                                Expanded(
-                                  child: ElevatedButton(
-                                    onPressed: () {
-                                      setState(() {
-                                        _isDeleteMode = false;
-                                        _selectedMediaIds.clear();
-                                      });
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.grey,
-                                      foregroundColor: Colors.white,
-                                      padding: EdgeInsets.zero,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                    child: const Text('Abbrechen'),
+                            // Endgültig löschen mit weißem Background und GMBC Text
+                            TextButton(
+                              onPressed: _confirmDeleteSelected,
+                              style: TextButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 20,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: ShaderMask(
+                                shaderCallback: (bounds) =>
+                                    const LinearGradient(
+                                      colors: [
+                                        Color(0xFFE91E63),
+                                        AppColors.lightBlue,
+                                        Color(0xFF00E5FF),
+                                      ],
+                                    ).createShader(bounds),
+                                child: const Text(
+                                  'Endgültig löschen',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: ElevatedButton(
-                                    onPressed: _confirmDeleteSelected,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.redAccent,
-                                      foregroundColor: Colors.white,
-                                      padding: EdgeInsets.zero,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                    ),
-                                    child: const Text('Endgültig löschen'),
-                                  ),
-                                ),
-                              ],
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       )
                     : const SizedBox.shrink(),
@@ -2611,20 +2652,18 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       );
       if (res == null || res.files.isEmpty) return;
 
-      setState(() {
-        _isUploading = true;
-        _uploadProgress = 0;
-        _uploadStatus = 'Dokumente werden hochgeladen...';
-      });
+      _isUploadingNotifier.value = true;
+      _uploadProgressNotifier.value = 0;
+      _uploadStatusNotifier.value = 'Dokumente werden hochgeladen...';
 
       int idx = 0;
       for (final picked in res.files) {
         final path = picked.path;
         if (path == null) continue;
         final file = File(path);
-        _uploadProgress = ((idx / res.files.length) * 100).round();
-        _uploadStatus = 'Upload ${idx + 1} / ${res.files.length}';
-        setState(() {});
+        _uploadProgressNotifier.value = ((idx / res.files.length) * 100)
+            .round();
+        _uploadStatusNotifier.value = 'Upload ${idx + 1} / ${res.files.length}';
         final media = await _uploadDocumentFile(file);
         if (media != null) {
           // lokal hinzufügen, damit Crop sofort darauf arbeiten kann
@@ -2636,11 +2675,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         idx++;
       }
 
-      setState(() {
-        _isUploading = false;
-        _uploadProgress = 100;
-        _uploadStatus = '';
-      });
+      _isUploadingNotifier.value = false;
+      _uploadProgressNotifier.value = 100;
+      _uploadStatusNotifier.value = '';
     } catch (e) {
       debugPrint('Dokumentauswahl fehlgeschlagen: $e');
     }
@@ -2758,16 +2795,16 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
   // Upload-Dialog öffnen (je nach aktuellem Tab)
   void _showUploadDialog() {
-    if (_isUploading) return;
-                if (_mediaTab == 'images') {
-                  _showImageSourceDialog();
-                } else if (_mediaTab == 'videos') {
-                  _showVideoSourceDialog();
+    if (_isUploadingNotifier.value) return;
+    if (_mediaTab == 'images') {
+      _showImageSourceDialog();
+    } else if (_mediaTab == 'videos') {
+      _showVideoSourceDialog();
     } else if (_mediaTab == 'documents') {
       _showDocumentSourceDialog();
-                } else {
-                  _pickAudio();
-                }
+    } else {
+      _pickAudio();
+    }
   }
 
   /// Responsive Media Card wie in avatar_details_screen
@@ -2814,11 +2851,16 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             videoAR = snapshot.data!.value.aspectRatio;
           }
 
+          // Validierung: Falls videoAR ungültig, nutze Fallback
+          if (videoAR <= 0 || videoAR.isNaN || videoAR.isInfinite) {
+            videoAR = 16 / 9; // Fallback
+          }
+
           bool isPortrait = videoAR < 1.0;
-    double baseWidth = cardWidth;
+          double baseWidth = cardWidth;
           if (!isPortrait) {
-      baseWidth = cardWidth * 2;
-    }
+            baseWidth = cardWidth * 2;
+          }
           double actualHeight = baseWidth / videoAR;
           double actualWidth = baseWidth;
 
@@ -2836,6 +2878,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
 
     // Für Bilder/Dokumente: Nutze gespeichertes aspectRatio
+    // Validierung: Falls aspectRatio ungültig, nutze Fallback
+    if (aspectRatio <= 0 || aspectRatio.isNaN || aspectRatio.isInfinite) {
+      aspectRatio = _portrait
+          ? 9 / 16
+          : 16 / 9; // Fallback basierend auf Portrait/Landscape Toggle
+    }
+
     bool isPortrait = aspectRatio < 1.0;
     double baseWidth = cardWidth;
     if (!isPortrait) {
@@ -2903,26 +2952,53 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   : (it.type == AvatarMediaType.document)
                   ? _buildDocumentPreviewBackground(it)
                   : it.type == AvatarMediaType.video
-                  ? FutureBuilder<VideoPlayerController?>(
-                      future: _videoControllerForThumb(it.url),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.done &&
-                            snapshot.hasData &&
-                            snapshot.data != null) {
-                          final controller = snapshot.data!;
-                          if (controller.value.isInitialized) {
-                            // Nutze ECHTE Video-Dimensionen vom Controller statt DB-Wert
-                            final videoAR = controller.value.aspectRatio;
-                            return AspectRatio(
-                              aspectRatio: videoAR,
-                                child: VideoPlayer(controller),
-                            );
-                          }
-                        }
-                        // Während des Ladens: schwarzer Container
-                        return Container(color: Colors.black26);
-                      },
-                    )
+                  ? (it.thumbUrl != null
+                        ? Image.network(
+                            it.thumbUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stack) {
+                              // Fallback zu VideoPlayer wenn Thumb nicht lädt
+                              return FutureBuilder<VideoPlayerController?>(
+                                future: _videoControllerForThumb(it.url),
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState ==
+                                          ConnectionState.done &&
+                                      snapshot.hasData &&
+                                      snapshot.data != null) {
+                                    final controller = snapshot.data!;
+                                    if (controller.value.isInitialized) {
+                                      final videoAR =
+                                          controller.value.aspectRatio;
+                                      return AspectRatio(
+                                        aspectRatio: videoAR,
+                                        child: VideoPlayer(controller),
+                                      );
+                                    }
+                                  }
+                                  return Container(color: Colors.black26);
+                                },
+                              );
+                            },
+                          )
+                        : FutureBuilder<VideoPlayerController?>(
+                            future: _videoControllerForThumb(it.url),
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState ==
+                                      ConnectionState.done &&
+                                  snapshot.hasData &&
+                                  snapshot.data != null) {
+                                final controller = snapshot.data!;
+                                if (controller.value.isInitialized) {
+                                  final videoAR = controller.value.aspectRatio;
+                                  return AspectRatio(
+                                    aspectRatio: videoAR,
+                                    child: VideoPlayer(controller),
+                                  );
+                                }
+                              }
+                              return Container(color: Colors.black26);
+                            },
+                          ))
                   : Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
@@ -3013,60 +3089,60 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       // Popup öffnen
                       _openMediaPricingDialog(it);
                     },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 3,
-                  ),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [
-                        Color(0xFFE91E63), // Magenta
-                        AppColors.lightBlue, // Blue
-                        Color(0xFF00E5FF), // Cyan
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.white, width: 1),
-                  ),
-                  child: Text(
-                    (() {
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFFE91E63), // Magenta
+                            AppColors.lightBlue, // Blue
+                            Color(0xFF00E5FF), // Cyan
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white, width: 1),
+                      ),
+                      child: Text(
+                        (() {
                           final isFree = it.isFree ?? false;
                           if (isFree) return 'Kostenlos';
 
-                      final typeKey = it.type == AvatarMediaType.image
-                          ? 'image'
+                          final typeKey = it.type == AvatarMediaType.image
+                              ? 'image'
                               : (it.type == AvatarMediaType.video
                                     ? 'video'
                                     : 'document');
-                      final overridePrice = it.price;
-                      final overrideCur = _normalizeCurrencyToSymbol(
-                        it.currency,
-                      );
-                      final gp =
-                          _globalPricing[typeKey] as Map<String, dynamic>?;
-                      final gpEnabled = (gp?['enabled'] as bool?) ?? false;
+                          final overridePrice = it.price;
+                          final overrideCur = _normalizeCurrencyToSymbol(
+                            it.currency,
+                          );
+                          final gp =
+                              _globalPricing[typeKey] as Map<String, dynamic>?;
+                          final gpEnabled = (gp?['enabled'] as bool?) ?? false;
                           final gpPrice =
                               (gp?['price'] as num?)?.toDouble() ?? 0.0;
-                      final gpCur = _normalizeCurrencyToSymbol(
-                        gp?['currency'] as String?,
-                      );
+                          final gpCur = _normalizeCurrencyToSymbol(
+                            gp?['currency'] as String?,
+                          );
 
-                      final effectivePrice =
-                          overridePrice ?? (gpEnabled ? gpPrice : 0.0);
-                      final symbol =
+                          final effectivePrice =
+                              overridePrice ?? (gpEnabled ? gpPrice : 0.0);
+                          final symbol =
                               (overridePrice != null ? overrideCur : gpCur) ==
                                   '\$'
-                          ? '\$'
-                          : '€';
-                      return '$symbol${effectivePrice.toStringAsFixed(2).replaceAll('.', ',')}';
-                    })(),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      height: 1.0,
-                      letterSpacing: 0,
+                              ? '\$'
+                              : '€';
+                          return '$symbol${effectivePrice.toStringAsFixed(2).replaceAll('.', ',')}';
+                        })(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          height: 1.0,
+                          letterSpacing: 0,
                         ),
                       ),
                     ),
@@ -3157,6 +3233,68 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 ),
               ),
 
+            // Video Thumbnail Button unten mitte (alle Videos)
+            if (it.type == AvatarMediaType.video && !_isDeleteMode)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 6,
+                child: Center(
+                  child: InkWell(
+                    onTap: () => _selectVideoThumbnail(it),
+                    child: Container(
+                      padding: (it.aspectRatio ?? 1.0) < 1.0
+                          ? const EdgeInsets.all(8)
+                          : const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [AppColors.magenta, AppColors.lightBlue],
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: AppColors.lightBlue.withValues(alpha: 0.7),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.magenta.withValues(alpha: 0.3),
+                            blurRadius: 8,
+                            spreadRadius: 1,
+                          ),
+                        ],
+                      ),
+                      child: (it.aspectRatio ?? 1.0) < 1.0
+                          ? const Icon(
+                              Icons.photo_camera,
+                              color: Colors.white,
+                              size: 18,
+                            )
+                          : const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.photo_camera,
+                                  color: Colors.white,
+                                  size: 14,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Vorschaubild',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
+                  ),
+                ),
+              ),
+
             // Delete Button unten rechts
             Positioned(
               right: 6,
@@ -3199,6 +3337,34 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Video Thumbnail Auswahl Dialog
+  Future<void> _selectVideoThumbnail(AvatarMedia media) async {
+    if (media.type != AvatarMediaType.video) return;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _VideoThumbnailSelectorDialog(
+        videoUrl: media.url,
+        avatarId: widget.avatarId,
+        mediaId: media.id,
+        onComplete: () async {
+          // WICHTIG: Video-Controller clearen damit neue Thumbs geladen werden
+          for (final controller in _thumbControllers.values) {
+            controller.dispose();
+          }
+          _thumbControllers.clear();
+
+          // Reload nach erfolgreichem Thumbnail-Update
+          await _load();
+
+          // Extra: Force rebuild um neue Thumbs anzuzeigen
+          if (mounted) setState(() {});
+        },
       ),
     );
   }
@@ -3312,7 +3478,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-          'Möchtest du $count ${count == 1 ? 'Medium' : 'Medien'} wirklich löschen?',
+                'Möchtest du $count ${count == 1 ? 'Medium' : 'Medien'} wirklich löschen?',
               ),
               const SizedBox(height: 12),
               SizedBox(
@@ -3392,14 +3558,43 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           ),
         ),
         actions: [
+          // Abbrechen als einfacher Text-Link (light grey)
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
+            style: TextButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+            ),
+            child: Text(
+              'Abbrechen',
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+            ),
           ),
-          ElevatedButton(
+          // Löschen mit weißem Background und GMBC Text
+          TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.redAccent),
-            child: const Text('Löschen'),
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [
+                  Color(0xFFE91E63),
+                  AppColors.lightBlue,
+                  Color(0xFF00E5FF),
+                ],
+              ).createShader(bounds),
+              child: const Text(
+                'Löschen',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -3757,7 +3952,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           bytes = null;
         }
       } else {
-      final source = await _downloadToTemp(media.url, suffix: '.png');
+        final source = await _downloadToTemp(media.url, suffix: '.png');
         bytes = await source?.readAsBytes();
       }
 
@@ -4048,28 +4243,28 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // Wenn EDITING: Zeige Input-Container mit GMBC-Gradient
     if (isEditing) {
       return Container(
-          height: 40,
-          decoration: const BoxDecoration(
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(7),
-              bottomRight: Radius.circular(7),
-            ),
-            gradient: LinearGradient(
-              begin: Alignment.centerLeft,
-              end: Alignment.centerRight,
-              colors: [
-                Color(0xFFE91E63), // Magenta
-                AppColors.lightBlue, // Blue
-                Color(0xFF00E5FF), // Cyan
-              ],
-              stops: [0.0, 0.5, 1.0],
-            ),
+        height: 40,
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.only(
+            bottomLeft: Radius.circular(7),
+            bottomRight: Radius.circular(7),
           ),
-          padding: EdgeInsets.zero,
-          child: Row(
-            children: [
+          gradient: LinearGradient(
+            begin: Alignment.centerLeft,
+            end: Alignment.centerRight,
+            colors: [
+              Color(0xFFE91E63), // Magenta
+              AppColors.lightBlue, // Blue
+              Color(0xFF00E5FF), // Cyan
+            ],
+            stops: [0.0, 0.5, 1.0],
+          ),
+        ),
+        padding: EdgeInsets.zero,
+        child: Row(
+          children: [
             // LINKS: Input-Feld für Preis-Bearbeitung
-              Expanded(child: _buildPriceField(media, isEditing)),
+            Expanded(child: _buildPriceField(media, isEditing)),
             // MITTE: "Zurück zu Global" Button (wenn individueller Preis gesetzt)
             if (media.price != null)
               MouseRegion(
@@ -4120,13 +4315,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     height: 40,
                     alignment: Alignment.center,
                     child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                         Icon(Icons.refresh, size: 16, color: Colors.white70),
                         SizedBox(width: 4),
                         Text(
                           'Global',
-                      style: TextStyle(
+                          style: TextStyle(
                             color: Colors.white70,
                             fontSize: 11,
                             fontWeight: FontWeight.w500,
@@ -4142,121 +4337,116 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 // X-Button (Abbrechen)
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () {
-                          // Abbrechen ohne Speichern - alte Werte wiederherstellen
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () {
+                      // Abbrechen ohne Speichern - alte Werte wiederherstellen
                       // Falls kein individueller Preis: Globalen Preis verwenden
                       final gp =
                           _globalPricing['audio'] as Map<String, dynamic>?;
                       final gpPrice = (gp?['price'] as num?)?.toDouble() ?? 0.0;
                       final price = media.price ?? gpPrice;
-                          final priceText = price
-                              .toStringAsFixed(2)
-                              .replaceAll('.', ',');
-                          _priceControllers[media.id]?.text = priceText;
-                          _tempCurrency[media.id] = media.currency ?? '\$';
-                          _editingPriceMediaIds.remove(media.id);
-                          setState(() {});
-                        },
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          alignment: Alignment.center,
-                          decoration: const BoxDecoration(
-                            color: Colors.transparent,
-                          ),
-                          child: const Icon(
-                            Icons.close,
-                            size: 20,
-                            color: Colors.white,
-                          ),
-                        ),
+                      final priceText = price
+                          .toStringAsFixed(2)
+                          .replaceAll('.', ',');
+                      _priceControllers[media.id]?.text = priceText;
+                      _tempCurrency[media.id] = media.currency ?? '\$';
+                      _editingPriceMediaIds.remove(media.id);
+                      setState(() {});
+                    },
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: const BoxDecoration(
+                        color: Colors.transparent,
+                      ),
+                      child: const Icon(
+                        Icons.close,
+                        size: 20,
+                        color: Colors.white,
                       ),
                     ),
+                  ),
+                ),
                 // Hook Icon (Speichern)
-                    MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () async {
-                          // Preis aus Input parsen
-                          final inputText =
-                              _priceControllers[media.id]?.text ?? '0,00';
-                          final cleanText = inputText.replaceAll(',', '.');
-                          final newPrice = double.tryParse(cleanText) ?? 0.0;
-                          final newCurrency = _tempCurrency[media.id] ?? '\$';
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () async {
+                      // Preis aus Input parsen
+                      final inputText =
+                          _priceControllers[media.id]?.text ?? '0,00';
+                      final cleanText = inputText.replaceAll(',', '.');
+                      final newPrice = double.tryParse(cleanText) ?? 0.0;
+                      final newCurrency = _tempCurrency[media.id] ?? '\$';
 
-                          // Firestore Update
-                          try {
-                            await FirebaseFirestore.instance
-                                .collection('avatars')
-                                .doc(widget.avatarId)
-                                .collection('media')
-                                .doc(media.id)
-                                .update({
-                                  'price': newPrice,
-                                  'currency': newCurrency,
-                                });
+                      // Firestore Update
+                      try {
+                        await FirebaseFirestore.instance
+                            .collection('avatars')
+                            .doc(widget.avatarId)
+                            .collection('media')
+                            .doc(media.id)
+                            .update({
+                              'price': newPrice,
+                              'currency': newCurrency,
+                            });
 
-                            // Lokale Liste aktualisieren
-                            final index = _items.indexWhere(
-                              (m) => m.id == media.id,
-                            );
-                            if (index != -1) {
-                              _items[index] = AvatarMedia(
-                                id: media.id,
-                                avatarId: media.avatarId,
-                                type: media.type,
-                                url: media.url,
-                                thumbUrl: media.thumbUrl,
-                                createdAt: media.createdAt,
-                                durationMs: media.durationMs,
-                                aspectRatio: media.aspectRatio,
-                                tags: media.tags,
-                                originalFileName: media.originalFileName,
-                                isFree: media.isFree,
-                                price: newPrice,
-                                currency: newCurrency,
-                              );
-                            }
+                        // Lokale Liste aktualisieren
+                        final index = _items.indexWhere(
+                          (m) => m.id == media.id,
+                        );
+                        if (index != -1) {
+                          _items[index] = AvatarMedia(
+                            id: media.id,
+                            avatarId: media.avatarId,
+                            type: media.type,
+                            url: media.url,
+                            thumbUrl: media.thumbUrl,
+                            createdAt: media.createdAt,
+                            durationMs: media.durationMs,
+                            aspectRatio: media.aspectRatio,
+                            tags: media.tags,
+                            originalFileName: media.originalFileName,
+                            isFree: media.isFree,
+                            price: newPrice,
+                            currency: newCurrency,
+                          );
+                        }
 
-                            // Input schließen
-                            _editingPriceMediaIds.remove(media.id);
-                            setState(() {});
-                          } catch (e) {
-                            debugPrint('Fehler beim Speichern des Preises: $e');
-                          }
-                        },
-                        child: Container(
-                          width: 40,
-                          height: 40,
-                          decoration: const BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.only(
-                              bottomRight: Radius.circular(7),
-                            ),
-                          ),
-                          child: ShaderMask(
-                            shaderCallback: (bounds) => const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                Color(0xFFE91E63), // Magenta
-                                Color(0xFFE91E63), // Mehr Magenta
-                                AppColors.lightBlue, // Blue
-                                Color(0xFF00E5FF), // Cyan
-                              ],
-                              stops: [0.0, 0.4, 0.7, 1.0],
-                            ).createShader(bounds),
-                            child: const Icon(
-                              Icons.check,
-                              size: 24,
-                              color: Colors.white,
-                            ),
-                          ),
+                        // Input schließen
+                        _editingPriceMediaIds.remove(media.id);
+                        setState(() {});
+                      } catch (e) {
+                        debugPrint('Fehler beim Speichern des Preises: $e');
+                      }
+                    },
+                    child: Container(
+                      width: 40,
+                      height: 40,
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            Color(0xFFE91E63), // Magenta
+                            AppColors.lightBlue, // Blue
+                            Color(0xFF00E5FF), // Cyan
+                          ],
+                        ),
+                        borderRadius: BorderRadius.only(
+                          bottomRight: Radius.circular(7),
                         ),
                       ),
+                      child: const Icon(
+                        Icons.check,
+                        size: 24,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -5171,7 +5361,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // Fallback je nach Typ
     if (tags.isEmpty) {
       if (media.type == AvatarMediaType.audio)
-      tags.add('audio');
+        tags.add('audio');
       else if (media.type == AvatarMediaType.video)
         tags.add('video');
       else if (media.type == AvatarMediaType.image)
@@ -5249,11 +5439,25 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
+                                // Abbrechen als einfacher Text-Link
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx),
-                                  child: const Text('Abbrechen'),
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 12,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Abbrechen',
+                                    style: TextStyle(
+                                      color: Colors.grey.shade400,
+                                      fontSize: 14,
+                                    ),
+                                  ),
                                 ),
-                                ElevatedButton(
+                                // Speichern mit weißem Background wenn aktiv
+                                TextButton(
                                   onPressed: hasChanged
                                       ? () async {
                                           final newTags = controller.text
@@ -5283,29 +5487,35 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                             );
                                           }
                                         }
-                                      : null, // Disabled wenn keine Änderung
-                                  child: Container(
+                                      : null,
+                                  style: TextButton.styleFrom(
+                                    backgroundColor: hasChanged
+                                        ? Colors.white
+                                        : Colors.transparent,
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 16,
-                                      vertical: 10,
+                                      vertical: 12,
                                     ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(color: Colors.white24),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
-                                    child: ShaderMask(
-                                      shaderCallback: (bounds) =>
-                                          const LinearGradient(
-                                            colors: [
-                                              Color(0xFFE91E63),
-                                              AppColors.lightBlue,
-                                              Color(0xFF00E5FF),
-                                            ],
-                                          ).createShader(bounds),
-                                      child: const Text(
-                                        'Speichern',
-                                        style: TextStyle(color: Colors.white),
+                                  ),
+                                  child: ShaderMask(
+                                    shaderCallback: (bounds) =>
+                                        const LinearGradient(
+                                          colors: [
+                                            Color(0xFFE91E63),
+                                            AppColors.lightBlue,
+                                            Color(0xFF00E5FF),
+                                          ],
+                                        ).createShader(bounds),
+                                    child: Text(
+                                      'Speichern',
+                                      style: TextStyle(
+                                        color: hasChanged
+                                            ? Colors.white
+                                            : Colors.white30,
+                                        fontWeight: FontWeight.w600,
                                       ),
                                     ),
                                   ),
@@ -5319,32 +5529,84 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             else
                               SizedBox(
                                 child: media.type == AvatarMediaType.video
-                                    ? FutureBuilder<VideoPlayerController?>(
-                                        future: _videoControllerForThumb(
-                                          media.url,
-                                        ),
-                                        builder: (context, snapshot) {
-                                          if (snapshot.connectionState ==
-                                                  ConnectionState.done &&
-                                              snapshot.hasData &&
-                                              snapshot.data != null) {
-                                            final controller = snapshot.data!;
-                                            if (controller
-                                                .value
-                                                .isInitialized) {
-                                              return AspectRatio(
-                                                aspectRatio: controller
-                                                    .value
-                                                    .aspectRatio,
-                                                child: VideoPlayer(controller),
-                                              );
-                                            }
-                                          }
-                                          return Container(
-                                            color: Colors.black26,
-                                          );
-                                        },
-                                      )
+                                    ? (media.thumbUrl != null
+                                          ? ClipRRect(
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              child: Image.network(
+                                                media.thumbUrl!,
+                                                fit: BoxFit.cover,
+                                                errorBuilder: (context, error, stack) {
+                                                  // Fallback zu VideoPlayer
+                                                  return FutureBuilder<
+                                                    VideoPlayerController?
+                                                  >(
+                                                    future:
+                                                        _videoControllerForThumb(
+                                                          media.url,
+                                                        ),
+                                                    builder: (context, snapshot) {
+                                                      if (snapshot.connectionState ==
+                                                              ConnectionState
+                                                                  .done &&
+                                                          snapshot.hasData &&
+                                                          snapshot.data !=
+                                                              null) {
+                                                        final controller =
+                                                            snapshot.data!;
+                                                        if (controller
+                                                            .value
+                                                            .isInitialized) {
+                                                          return AspectRatio(
+                                                            aspectRatio:
+                                                                controller
+                                                                    .value
+                                                                    .aspectRatio,
+                                                            child: VideoPlayer(
+                                                              controller,
+                                                            ),
+                                                          );
+                                                        }
+                                                      }
+                                                      return Container(
+                                                        color: Colors.black26,
+                                                      );
+                                                    },
+                                                  );
+                                                },
+                                              ),
+                                            )
+                                          : FutureBuilder<
+                                              VideoPlayerController?
+                                            >(
+                                              future: _videoControllerForThumb(
+                                                media.url,
+                                              ),
+                                              builder: (context, snapshot) {
+                                                if (snapshot.connectionState ==
+                                                        ConnectionState.done &&
+                                                    snapshot.hasData &&
+                                                    snapshot.data != null) {
+                                                  final controller =
+                                                      snapshot.data!;
+                                                  if (controller
+                                                      .value
+                                                      .isInitialized) {
+                                                    return AspectRatio(
+                                                      aspectRatio: controller
+                                                          .value
+                                                          .aspectRatio,
+                                                      child: VideoPlayer(
+                                                        controller,
+                                                      ),
+                                                    );
+                                                  }
+                                                }
+                                                return Container(
+                                                  color: Colors.black26,
+                                                );
+                                              },
+                                            ))
                                     : LayoutBuilder(
                                         builder: (context, cons) {
                                           final ar =
@@ -5363,10 +5625,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                                       AvatarMediaType.document
                                                   ? _buildDocumentPreviewBackground(
                                                       media,
-                                      )
-                                    : Image.network(
-                                        media.url,
-                                        fit: BoxFit.cover,
+                                                    )
+                                                  : Image.network(
+                                                      media.url,
+                                                      fit: BoxFit.cover,
                                                     ),
                                             ),
                                           );
@@ -6272,28 +6534,28 @@ class _MediaViewerDialogState extends State<_MediaViewerDialog> {
           }
         }),
         child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
               colors: [
                 Color(0xFFE91E63),
                 AppColors.lightBlue,
                 Color(0xFF00E5FF),
               ],
-        ),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white, width: 1),
-      ),
-      child: Text(
+            ),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.white, width: 1),
+          ),
+          child: Text(
             isFree
                 ? 'Kostenlos'
                 : '$symbol${effectivePrice!.toStringAsFixed(2).replaceAll('.', ',')}',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          height: 1.0,
-          letterSpacing: 0,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              height: 1.0,
+              letterSpacing: 0,
             ),
           ),
         ),
@@ -6403,6 +6665,410 @@ class _VideoDialogState extends State<_VideoDialog> {
                 ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// Video Thumbnail Selector Dialog Widget
+class _VideoThumbnailSelectorDialog extends StatefulWidget {
+  final String videoUrl;
+  final String avatarId;
+  final String mediaId;
+  final VoidCallback onComplete;
+
+  const _VideoThumbnailSelectorDialog({
+    required this.videoUrl,
+    required this.avatarId,
+    required this.mediaId,
+    required this.onComplete,
+  });
+
+  @override
+  State<_VideoThumbnailSelectorDialog> createState() =>
+      _VideoThumbnailSelectorDialogState();
+}
+
+class _VideoThumbnailSelectorDialogState
+    extends State<_VideoThumbnailSelectorDialog> {
+  VideoPlayerController? _controller;
+  bool _isLoading = true;
+  bool _isGenerating = false;
+  double _currentPosition = 0.0;
+  String _currentTimeLabel = '0:00';
+
+  @override
+  void initState() {
+    super.initState();
+    _initVideo();
+  }
+
+  Future<void> _initVideo() async {
+    try {
+      _controller = VideoPlayerController.networkUrl(
+        Uri.parse(widget.videoUrl),
+      );
+      await _controller!.initialize();
+      setState(() {
+        _isLoading = false;
+      });
+
+      // Listen to position changes
+      _controller!.addListener(() {
+        if (mounted && _controller!.value.isInitialized) {
+          final pos = _controller!.value.position.inMilliseconds.toDouble();
+          final duration = _controller!.value.duration.inMilliseconds
+              .toDouble();
+          setState(() {
+            _currentPosition = duration > 0 ? pos / duration : 0.0;
+            _currentTimeLabel = _formatDuration(_controller!.value.position);
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('❌ Video-Initialisierung fehlgeschlagen: $e');
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _formatDuration(Duration d) {
+    final minutes = d.inMinutes;
+    final seconds = d.inSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _generateThumbnail() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+
+    setState(() {
+      _isGenerating = true;
+    });
+
+    try {
+      final timeInSeconds = _controller!.value.position.inSeconds;
+
+      // Call Cloud Function
+      final response = await http.post(
+        Uri.parse(
+          'https://us-central1-sunriza26.cloudfunctions.net/extractVideoFrameAtPosition',
+        ),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'avatarId': widget.avatarId,
+          'mediaId': widget.mediaId,
+          'videoUrl': widget.videoUrl,
+          'timeInSeconds': timeInSeconds,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['success'] == true) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [
+                          Color(0xFFE91E63),
+                          AppColors.lightBlue,
+                          Color(0xFF00E5FF),
+                        ],
+                      ).createShader(bounds),
+                      child: const Icon(
+                        Icons.check_circle,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Vorschaubild erfolgreich erstellt!',
+                        style: TextStyle(color: Colors.black87),
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.white,
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+            widget.onComplete();
+            Navigator.pop(context);
+          }
+        } else {
+          throw Exception(data['error'] ?? 'Unbekannter Fehler');
+        }
+      } else {
+        throw Exception('HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('❌ Thumbnail-Generierung fehlgeschlagen: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ Fehler: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGenerating = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: const Color(0xFF1A1A1A),
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        constraints: const BoxConstraints(maxWidth: 1100),
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [AppColors.magenta, AppColors.lightBlue],
+                      ).createShader(bounds),
+                      child: const Text(
+                        'Vorschaubild',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    const Text(
+                      'wählen',
+                      style: TextStyle(fontSize: 14, color: Colors.white54),
+                    ),
+                  ],
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close, color: Colors.white),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Video Player
+            if (_isLoading)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(80.0),
+                  child: CircularProgressIndicator(color: AppColors.magenta),
+                ),
+              )
+            else if (_controller != null && _controller!.value.isInitialized)
+              AspectRatio(
+                aspectRatio: _controller!.value.aspectRatio,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: VideoPlayer(_controller!),
+                ),
+              )
+            else
+              Container(
+                height: 300,
+                decoration: BoxDecoration(
+                  color: Colors.black26,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Center(
+                  child: Icon(
+                    Icons.error_outline,
+                    color: Colors.white54,
+                    size: 64,
+                  ),
+                ),
+              ),
+
+            const SizedBox(height: 20),
+
+            // Play/Pause Buttons
+            if (_controller != null && _controller!.value.isInitialized)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    onPressed: () {
+                      setState(() {
+                        if (_controller!.value.isPlaying) {
+                          _controller!.pause();
+                        } else {
+                          _controller!.play();
+                        }
+                      });
+                    },
+                    icon: Icon(
+                      _controller!.value.isPlaying
+                          ? Icons.pause_circle_filled
+                          : Icons.play_circle_filled,
+                      size: 48,
+                    ),
+                    color: AppColors.magenta,
+                  ),
+                ],
+              ),
+
+            const SizedBox(height: 12),
+
+            // Seek Bar
+            if (_controller != null && _controller!.value.isInitialized)
+              Column(
+                children: [
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: AppColors.magenta,
+                      inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
+                      thumbColor: AppColors.lightBlue,
+                      overlayColor: AppColors.magenta.withValues(alpha: 0.2),
+                      trackHeight: 4.0,
+                    ),
+                    child: Slider(
+                      value: _currentPosition.clamp(0.0, 1.0),
+                      min: 0.0,
+                      max: 1.0,
+                      onChanged: (value) {
+                        if (_controller!.value.isInitialized) {
+                          final duration = _controller!.value.duration;
+                          final newPosition = duration * value;
+                          _controller!.seekTo(newPosition);
+                        }
+                      },
+                    ),
+                  ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _currentTimeLabel,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                      Text(
+                        _formatDuration(_controller!.value.duration),
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+
+            const SizedBox(height: 32),
+
+            // Info Text
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppColors.magenta.withValues(alpha: 0.3),
+                ),
+              ),
+              child: const Text(
+                '💡 Spule zu dem gewünschten Bild im Video und klicke "Dieses Bild verwenden"',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+                textAlign: TextAlign.center,
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            // Action Buttons
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Abbrechen Button (light grey, mehr nach links)
+                TextButton(
+                  onPressed: _isGenerating
+                      ? null
+                      : () => Navigator.pop(context),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 12,
+                    ),
+                  ),
+                  child: Text(
+                    'Abbrechen',
+                    style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                  ),
+                ),
+                // Verwenden Button (white background + GMBC text, ohne icon)
+                TextButton(
+                  onPressed: _isGenerating ? null : _generateThumbnail,
+                  style: TextButton.styleFrom(
+                    backgroundColor: _isGenerating ? Colors.grey : Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  child: _isGenerating
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : ShaderMask(
+                          shaderCallback: (bounds) => const LinearGradient(
+                            colors: [
+                              Color(0xFFE91E63),
+                              AppColors.lightBlue,
+                              Color(0xFF00E5FF),
+                            ],
+                          ).createShader(bounds),
+                          child: const Text(
+                            'OK',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                ),
+              ],
+            ),
+          ],
         ),
       ),
     );

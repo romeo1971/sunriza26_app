@@ -44,7 +44,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.backfillVideoDocuments = exports.backfillOriginalFileNames = exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.fixVideoAspectRatios = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
+exports.generateMissingVideoThumbs = exports.extractVideoFrameAtPosition = exports.backfillVideoDocuments = exports.backfillOriginalFileNames = exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.fixVideoAspectRatios = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
 require("dotenv/config");
 const functions = __importStar(require("firebase-functions"));
 // admin ist bereits oben initialisiert
@@ -724,7 +724,6 @@ async function createVideoThumbFromFirstFrame(avatarId, mediaId, videoUrl) {
     const tmpDir = os.tmpdir();
     const random = Math.random().toString(36).substring(7);
     const src = path.join(tmpDir, `${mediaId}_${random}.mp4`);
-    const out = path.join(tmpDir, `${mediaId}_${random}.jpg`);
     // Download Video (kurz, reicht für Frame)
     const res = await node_fetch_1.default(videoUrl);
     if (!res.ok)
@@ -751,31 +750,60 @@ async function createVideoThumbFromFirstFrame(avatarId, mediaId, videoUrl) {
     catch (e) {
         console.warn('Failed to extract video dimensions, using fallback 16/9', e);
     }
-    await new Promise((resolve, reject) => {
-        fluent_ffmpeg_1.default(src)
-            .on('end', () => resolve())
-            .on('error', (e) => reject(e))
-            .screenshots({
-            count: 1,
-            timemarks: ['0.5'],
-            filename: path.basename(out),
-            folder: tmpDir,
+    // Vereinfachte Logik: Extrahiere Frame bei 2s (überspringt meist schwarze Intros)
+    const framePath = path.join(tmpDir, `${mediaId}_${random}_thumb.jpg`);
+    console.log('📹 Extrahiere Video-Thumbnail bei 2s...');
+    try {
+        await new Promise((resolve, reject) => {
+            fluent_ffmpeg_1.default(src)
+                .on('end', () => {
+                console.log('✅ Frame erfolgreich extrahiert');
+                resolve();
+            })
+                .on('error', (e) => {
+                console.error('❌ FFmpeg Fehler:', e);
+                reject(e);
+            })
+                .screenshots({
+                count: 1,
+                timemarks: ['2'], // 2 Sekunden = überspringt meist schwarze Intros
+                filename: path.basename(framePath),
+                folder: tmpDir,
+            });
         });
-    });
+    }
+    catch (e) {
+        // Fallback: Versuche bei 0.5s
+        console.warn('⚠️ Frame bei 2s fehlgeschlagen, versuche 0.5s...', e);
+        await new Promise((resolve, reject) => {
+            fluent_ffmpeg_1.default(src)
+                .on('end', () => resolve())
+                .on('error', (e) => reject(e))
+                .screenshots({
+                count: 1,
+                timemarks: ['0.5'],
+                filename: path.basename(framePath),
+                folder: tmpDir,
+            });
+        });
+    }
+    const selectedFrame = framePath;
     const bucket = admin.storage().bucket();
     const dest = `avatars/${avatarId}/videos/thumbs/${mediaId}_${Date.now()}.jpg`;
-    await bucket.upload(out, {
+    await bucket.upload(selectedFrame, {
         destination: dest,
         contentType: 'image/jpeg',
         metadata: { cacheControl: 'public,max-age=31536000,immutable' },
     });
     const [signed] = await bucket.file(dest).getSignedUrl({ action: 'read', expires: Date.now() + 365 * 24 * 3600 * 1000 });
+    console.log(`✅ Video-Thumbnail erstellt: ${dest}`);
+    // Cleanup
     try {
         fs.unlinkSync(src);
     }
     catch (_b) { }
     try {
-        fs.unlinkSync(out);
+        fs.unlinkSync(selectedFrame);
     }
     catch (_c) { }
     await admin.firestore().collection('avatars').doc(avatarId)
@@ -1826,6 +1854,151 @@ exports.backfillVideoDocuments = functions
         }
         catch (e) {
             console.error(`❌ Backfill-Fehler: ${e.message}`);
+            res.status(500).json({ error: e.message });
+        }
+    });
+});
+// HTTP Function: Extrahiere Frame an bestimmter Position für Video-Thumbnail
+exports.extractVideoFrameAtPosition = functions
+    .runWith({ timeoutSeconds: 180, memory: '2GB' })
+    .https.onRequest(async (req, res) => {
+    const corsHandler = (0, cors_1.default)({ origin: true });
+    corsHandler(req, res, async () => {
+        try {
+            const { avatarId, mediaId, videoUrl, timeInSeconds } = req.body;
+            if (!avatarId || !mediaId || !videoUrl || timeInSeconds === undefined) {
+                res.status(400).json({
+                    error: 'Missing required parameters: avatarId, mediaId, videoUrl, timeInSeconds'
+                });
+                return;
+            }
+            console.log(`🎬 Extrahiere Frame für Video ${mediaId} bei ${timeInSeconds}s`);
+            // Download Video
+            if (ffmpeg_static_1.default)
+                fluent_ffmpeg_1.default.setFfmpegPath(ffmpeg_static_1.default);
+            const tmpDir = os.tmpdir();
+            const random = Math.random().toString(36).substring(7);
+            const src = path.join(tmpDir, `${mediaId}_${random}.mp4`);
+            const framePath = path.join(tmpDir, `${mediaId}_${random}_custom.jpg`);
+            const videoRes = await node_fetch_1.default(videoUrl);
+            if (!videoRes.ok) {
+                throw new Error(`Video download failed: ${videoRes.status}`);
+            }
+            const buf = Buffer.from(await videoRes.arrayBuffer());
+            fs.writeFileSync(src, buf);
+            // Extrahiere Frame an gewünschter Position
+            await new Promise((resolve, reject) => {
+                fluent_ffmpeg_1.default(src)
+                    .on('end', () => {
+                    console.log(`✅ Frame extrahiert bei ${timeInSeconds}s`);
+                    resolve();
+                })
+                    .on('error', (e) => {
+                    console.error(`❌ FFmpeg Fehler:`, e);
+                    reject(e);
+                })
+                    .screenshots({
+                    count: 1,
+                    timemarks: [timeInSeconds.toString()],
+                    filename: path.basename(framePath),
+                    folder: tmpDir,
+                });
+            });
+            // Upload zu Storage
+            const bucket = admin.storage().bucket();
+            const dest = `avatars/${avatarId}/videos/thumbs/${mediaId}_custom_${Date.now()}.jpg`;
+            await bucket.upload(framePath, {
+                destination: dest,
+                contentType: 'image/jpeg',
+                metadata: { cacheControl: 'public,max-age=31536000,immutable' },
+            });
+            const [signed] = await bucket.file(dest).getSignedUrl({
+                action: 'read',
+                expires: Date.now() + 365 * 24 * 3600 * 1000
+            });
+            console.log(`✅ Custom Thumbnail erstellt: ${dest}`);
+            // Update Firestore
+            await admin.firestore()
+                .collection('avatars').doc(avatarId)
+                .collection('videos').doc(mediaId)
+                .update({ thumbUrl: signed });
+            // Cleanup
+            try {
+                fs.unlinkSync(src);
+            }
+            catch (_a) { }
+            try {
+                fs.unlinkSync(framePath);
+            }
+            catch (_b) { }
+            res.status(200).json({
+                success: true,
+                thumbUrl: signed,
+                message: `Thumbnail erstellt bei ${timeInSeconds}s`,
+            });
+        }
+        catch (e) {
+            console.error(`❌ Frame-Extraktion Fehler:`, e);
+            res.status(500).json({ error: e.message });
+        }
+    });
+});
+// HTTP Function: Generiere Thumbnails für alle Videos ohne thumbUrl
+exports.generateMissingVideoThumbs = functions
+    .runWith({ timeoutSeconds: 540, memory: '2GB' })
+    .https.onRequest(async (req, res) => {
+    const corsHandler = (0, cors_1.default)({ origin: true });
+    corsHandler(req, res, async () => {
+        try {
+            const db = admin.firestore();
+            const results = [];
+            let processed = 0;
+            // Hole alle Avatare
+            const avatarsSnapshot = await db.collection('avatars').get();
+            for (const avatarDoc of avatarsSnapshot.docs) {
+                const avatarId = avatarDoc.id;
+                console.log(`🎬 Prüfe Avatar: ${avatarId}`);
+                // Hole alle Videos ohne thumbUrl
+                const videosSnapshot = await db.collection('avatars')
+                    .doc(avatarId)
+                    .collection('videos')
+                    .get();
+                for (const videoDoc of videosSnapshot.docs) {
+                    const data = videoDoc.data();
+                    const mediaId = videoDoc.id;
+                    // Prüfe ob thumbUrl fehlt
+                    if (!data.thumbUrl && data.url) {
+                        console.log(`🎬 Generiere Thumbnail für Video: ${mediaId}`);
+                        try {
+                            await createVideoThumbFromFirstFrame(avatarId, mediaId, data.url);
+                            processed++;
+                            results.push({
+                                avatarId,
+                                mediaId,
+                                status: 'success',
+                            });
+                            console.log(`✅ Thumbnail generiert für: ${mediaId}`);
+                        }
+                        catch (e) {
+                            console.error(`❌ Fehler bei Thumbnail-Generierung für ${mediaId}:`, e);
+                            results.push({
+                                avatarId,
+                                mediaId,
+                                status: 'error',
+                                error: e.message,
+                            });
+                        }
+                    }
+                }
+            }
+            res.status(200).json({
+                success: true,
+                processed,
+                results: results.slice(0, 100),
+            });
+        }
+        catch (e) {
+            console.error(`❌ Generate-Thumbnails-Fehler: ${e.message}`);
             res.status(500).json({ error: e.message });
         }
     });
