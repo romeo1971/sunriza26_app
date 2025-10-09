@@ -16,9 +16,16 @@ class AudioPlayerService {
   }
 
   Future<void> stopAll() async {
-    await _currentPlayer?.stop();
-    _currentPlayer?.dispose();
-    _currentPlayer = null;
+    final p = _currentPlayer;
+    _currentPlayer = null; // Guard: entferne Referenz vor dem Dispose
+    if (p != null) {
+      try {
+        await p.stop();
+      } catch (_) {}
+      try {
+        await p.dispose();
+      } catch (_) {}
+    }
   }
 
   AudioPlayer? get currentPlayer => _currentPlayer;

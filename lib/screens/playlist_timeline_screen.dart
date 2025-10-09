@@ -29,13 +29,13 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   final List<Key> _timelineKeys = [];
   final List<AvatarMedia> _assets = []; // rechte Seite: Timeline-Assets
   double _splitRatio = 0.38; // Anteil der linken Spalte (0..1)
-  bool _showSearch = false;
-  String _searchTerm = '';
+  final bool _showSearch = false;
+  final String _searchTerm = '';
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _intervalCtl = TextEditingController();
   bool _timelineHover = false;
   bool _resizerHover = false;
-  String _assetSort = 'name'; // 'name' | 'type'
+  final String _assetSort = 'name'; // 'name' | 'type'
   final TextEditingController _assetsSearchCtl = TextEditingController();
   String _assetsSearchTerm = '';
   bool _isDirty = false; // Trackt ob Änderungen vorgenommen wurden
@@ -49,8 +49,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   Timer? _audioTicker;
 
   String _displayName(AvatarMedia m) {
-    if ((m.originalFileName ?? '').trim().isNotEmpty)
+    if ((m.originalFileName ?? '').trim().isNotEmpty) {
       return m.originalFileName!.trim();
+    }
     try {
       final uri = Uri.parse(m.url);
       String last = uri.pathSegments.isNotEmpty ? uri.pathSegments.last : m.url;
@@ -131,10 +132,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
             final isHover =
                 states.contains(WidgetState.hovered) ||
                 states.contains(WidgetState.focused);
-            if (selected || isHover)
+            if (selected || isHover) {
               return const RoundedRectangleBorder(
                 borderRadius: BorderRadius.zero,
               );
+            }
             return RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
             );
@@ -206,10 +208,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                       final isHover =
                           states.contains(WidgetState.hovered) ||
                           states.contains(WidgetState.focused);
-                      if (isHover)
+                      if (isHover) {
                         return const RoundedRectangleBorder(
                           borderRadius: BorderRadius.zero,
                         );
+                      }
                       return RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
                       );
@@ -1356,8 +1359,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                       // Defensive checks
                       if (oldIndex < 0 || oldIndex >= _timeline.length) return;
                       if (oldIndex >= _timelineKeys.length) return;
-                      if (newIndex > _timeline.length)
+                      if (newIndex > _timeline.length) {
                         newIndex = _timeline.length;
+                      }
                       if (newIndex > oldIndex) newIndex -= 1;
 
                       // setState SOFORT aufrufen, BEVOR wir auf Listen zugreifen
@@ -1367,8 +1371,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
 
                         // Nochmal prüfen nach Sync
                         if (oldIndex >= _timeline.length ||
-                            oldIndex >= _timelineKeys.length)
+                            oldIndex >= _timelineKeys.length) {
                           return;
+                        }
 
                         final it = _timeline.removeAt(oldIndex);
                         final k = _timelineKeys.removeAt(oldIndex);
@@ -1463,14 +1468,14 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                   ),
           );
         },
-        onWillAccept: (m) {
+        onWillAcceptWithDetails: (m) {
           setState(() => _timelineHover = true);
           return true;
         },
         onLeave: (m) => setState(() => _timelineHover = false),
-        onAccept: (m) {
+        onAcceptWithDetails: (m) {
           setState(() {
-            _timeline.add(m);
+            _timeline.add(m.data);
             _timelineKeys.add(UniqueKey());
             _syncKeysLength();
             _isDirty = true;

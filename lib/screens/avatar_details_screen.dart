@@ -237,7 +237,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               thumbRadius: 8.0,
             ), // GMBC Kugel
             trackHeight: 4.0,
-            showValueIndicator: ShowValueIndicator.always,
+            showValueIndicator: ShowValueIndicator.onDrag,
             valueIndicatorColor: Colors.white,
             valueIndicatorTextStyle: const TextStyle(
               color: AppColors.magenta,
@@ -289,7 +289,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               thumbRadius: 8.0,
             ), // GMBC Kugel
             trackHeight: 4.0,
-            showValueIndicator: ShowValueIndicator.always,
+            showValueIndicator: ShowValueIndicator.onDrag,
             valueIndicatorColor: Colors.white,
             valueIndicatorTextStyle: const TextStyle(
               color: AppColors.magenta,
@@ -333,7 +333,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               thumbRadius: 8.0,
             ), // GMBC Kugel
             trackHeight: 4.0,
-            showValueIndicator: ShowValueIndicator.always,
+            showValueIndicator: ShowValueIndicator.onDrag,
             valueIndicatorColor: Colors.white,
             valueIndicatorTextStyle: const TextStyle(
               color: AppColors.magenta,
@@ -2399,7 +2399,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   thumbShape: const GradientSliderThumbShape(
                     thumbRadius: 8.0,
                   ), // GMBC Kugel
-                  showValueIndicator: ShowValueIndicator.always,
+                  showValueIndicator: ShowValueIndicator.onDrag,
                   valueIndicatorColor: Colors.white,
                   valueIndicatorTextStyle: const TextStyle(
                     color: AppColors.magenta,
@@ -2451,7 +2451,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   thumbShape: const GradientSliderThumbShape(
                     thumbRadius: 8.0,
                   ), // GMBC Kugel
-                  showValueIndicator: ShowValueIndicator.always,
+                  showValueIndicator: ShowValueIndicator.onDrag,
                   valueIndicatorColor: Colors.white,
                   valueIndicatorTextStyle: const TextStyle(
                     color: AppColors.magenta,
@@ -2503,7 +2503,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   thumbShape: const GradientSliderThumbShape(
                     thumbRadius: 8.0,
                   ), // GMBC Kugel
-                  showValueIndicator: ShowValueIndicator.always,
+                  showValueIndicator: ShowValueIndicator.onDrag,
                   valueIndicatorColor: Colors.white,
                   valueIndicatorTextStyle: const TextStyle(
                     color: AppColors.magenta,

@@ -119,7 +119,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       {}; // Cache für Bild-Aspekt-Verhältnisse
 
   // Audio Player State
-  String? _playingAudioUrl;
+  String?
+  _playingAudioUrl; // URL des aktuell spielenden Audios (null wenn pausiert)
+  String? _currentAudioUrl; // URL des aktuellen Players (auch wenn pausiert)
   final Map<String, double> _audioProgress = {}; // url -> progress (0.0 - 1.0)
   final Map<String, Duration> _audioCurrentTime = {}; // url -> current time
   final Map<String, Duration> _audioTotalTime = {}; // url -> total time
@@ -132,6 +134,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
   // Statische Referenz um Player über Hot-Reload hinweg zu tracken
   static AudioPlayer? _globalAudioPlayer;
+  Future<void> _disposeAudioPlayers() async {
+    final local = _audioPlayer;
+    final global = _globalAudioPlayer;
+    if (local != null) {
+      await local.stop();
+      await local.dispose();
+    }
+    if (global != null && !identical(global, local)) {
+      await global.stop();
+      await global.dispose();
+    }
+    _audioPlayer = null;
+    _globalAudioPlayer = null;
+  }
 
   // Globale Preise pro Medientyp (image, video, audio, document)
   Map<String, dynamic> _globalPricing = const {
@@ -177,7 +193,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       if (res.statusCode != 200) return '';
       final raw = res.body;
       final text = isRtf ? _extractPlainTextFromRtf(raw) : raw;
-      return text.length > 300 ? text.substring(0, 300) + '…' : text;
+      return text.length > 300 ? '${text.substring(0, 300)}…' : text;
     } catch (_) {
       return '';
     }
@@ -885,14 +901,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
   /// Zentrale Methode zum Stoppen aller Player
   void _stopAllPlayers() {
-    _audioPlayer?.stop();
-    _audioPlayer?.dispose();
-    _audioPlayer = null;
-    _globalAudioPlayer?.stop();
-    _globalAudioPlayer?.dispose();
-    _globalAudioPlayer = null;
+    _disposeAudioPlayers();
     AudioPlayerService().stopAll();
     _playingAudioUrl = null;
+    _currentAudioUrl = null;
     _audioProgress.clear();
     _audioCurrentTime.clear();
     _audioTotalTime.clear();
@@ -916,23 +928,17 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
     _priceControllers.clear();
     // Audio Player STOPPEN und aufräumen
-    _audioPlayer?.stop();
-    _audioPlayer?.dispose();
-    _audioPlayer = null;
-    _globalAudioPlayer?.stop();
-    _globalAudioPlayer?.dispose();
-    _globalAudioPlayer = null;
+    _disposeAudioPlayers();
     super.dispose();
   }
 
   Future<void> _load() async {
     // Audio-Player stoppen bei Screen-Refresh
-    _audioPlayer?.stop();
-    _audioPlayer?.dispose();
-    _audioPlayer = null;
+    _disposeAudioPlayers();
     if (mounted) {
       setState(() {
         _playingAudioUrl = null;
+        _currentAudioUrl = null;
         _audioProgress.clear();
         _audioCurrentTime.clear();
         _audioTotalTime.clear();
@@ -1559,23 +1565,26 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             // Abbrechen (light grey)
-                            TextButton(
-                              onPressed: isCropping
-                                  ? null
-                                  : () => Navigator.pop(ctx),
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 12,
+                            MouseRegion(
+                              cursor: SystemMouseCursors.click,
+                              child: TextButton(
+                                onPressed: isCropping
+                                    ? null
+                                    : () => Navigator.pop(ctx),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 12,
+                                  ),
                                 ),
-                              ),
-                              child: Text(
-                                'Abbrechen',
-                                style: TextStyle(
-                                  color: isCropping
-                                      ? Colors.grey.shade600
-                                      : Colors.grey.shade400,
-                                  fontSize: 14,
+                                child: Text(
+                                  'Abbrechen',
+                                  style: TextStyle(
+                                    color: isCropping
+                                        ? Colors.grey.shade600
+                                        : Colors.grey.shade400,
+                                    fontSize: 14,
+                                  ),
                                 ),
                               ),
                             ),
@@ -1885,14 +1894,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
   void _handleBackNavigation(BuildContext context) async {
     // WICHTIG: Audio Player STOPPEN beim Verlassen des Screens
-    await _audioPlayer?.stop();
-    _audioPlayer?.dispose();
-    _audioPlayer = null;
-    await _globalAudioPlayer?.stop();
-    _globalAudioPlayer?.dispose();
-    _globalAudioPlayer = null;
+    await _disposeAudioPlayers();
     setState(() {
       _playingAudioUrl = null;
+      _currentAudioUrl = null;
       _audioProgress.clear();
       _audioCurrentTime.clear();
       _audioTotalTime.clear();
@@ -1930,9 +1935,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       return;
     }
 
-    // Wenn dasselbe Audio pausiert ist → Resume
+    // Wenn dasselbe Audio pausiert ist → Resume (nur wenn kein anderes Audio!)
     if (_playingAudioUrl == null &&
         _audioPlayer != null &&
+        _currentAudioUrl == media.url &&
         (_audioCurrentTime[media.url]?.inMilliseconds ?? 0) > 0) {
       try {
         await _audioPlayer!.resume();
@@ -1943,14 +1949,17 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
     }
 
-    // Anderes Audio → Stop aktuelles und starte neues
+    // Anderes Audio oder erstes Mal → Stop aktuelles und starte neues
     await _audioPlayer?.stop();
-    _audioPlayer?.dispose();
+    await _audioPlayer?.dispose();
     _audioPlayer = AudioPlayer();
     _globalAudioPlayer = _audioPlayer; // Lokale Referenz setzen
     AudioPlayerService().setCurrentPlayer(
       _audioPlayer!,
     ); // Service für Hot-Restart
+
+    // Speichere aktuelle URL
+    _currentAudioUrl = media.url;
 
     // Listener für Fortschritt
     _audioPlayer!.onPositionChanged.listen((position) {
@@ -1971,6 +1980,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       if (mounted) {
         setState(() {
           _playingAudioUrl = null;
+          _currentAudioUrl = null;
           _audioProgress[media.url] = 0.0;
           _audioCurrentTime[media.url] = Duration.zero;
         });
@@ -2003,6 +2013,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       _audioProgress[media.url] = 0.0;
       _audioCurrentTime[media.url] = Duration.zero;
       _playingAudioUrl = null;
+      _currentAudioUrl = null;
     });
 
     // Neu starten
@@ -2284,88 +2295,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                 ),
                         ),
                       ),
-                    // Suche rechts (Stil wie Tabs) - nur aktiv wenn Medien vorhanden
-                    SizedBox(
-                      height: 35,
-                      child: TextButton(
-                        onPressed: _items.isEmpty
-                            ? null
-                            : () {
-                                setState(() {
-                                  _showSearch = !_showSearch;
-                                  if (!_showSearch) {
-                                    _searchController.clear();
-                                    _searchTerm = '';
-                                  }
-                                });
-                              },
-                        style: ButtonStyle(
-                          padding: const WidgetStatePropertyAll(
-                            EdgeInsets.zero,
-                          ),
-                          minimumSize: const WidgetStatePropertyAll(
-                            Size(60, 35),
-                          ),
-                          backgroundColor: WidgetStatePropertyAll(
-                            _showSearch ? Colors.white : Colors.transparent,
-                          ),
-                          foregroundColor: WidgetStatePropertyAll(
-                            _showSearch ? AppColors.darkSurface : Colors.white,
-                          ),
-                          overlayColor: WidgetStateProperty.resolveWith<Color?>(
-                            (states) {
-                              if (states.contains(WidgetState.hovered) ||
-                                  states.contains(WidgetState.focused) ||
-                                  states.contains(WidgetState.pressed)) {
-                                final mix = Color.lerp(
-                                  AppColors.magenta,
-                                  AppColors.lightBlue,
-                                  0.5,
-                                )!;
-                                return mix.withValues(alpha: 0.12);
-                              }
-                              return null;
-                            },
-                          ),
-                          shape:
-                              WidgetStateProperty.resolveWith<OutlinedBorder>((
-                                states,
-                              ) {
-                                final isHover =
-                                    states.contains(WidgetState.hovered) ||
-                                    states.contains(WidgetState.focused);
-                                if (_showSearch || isHover) {
-                                  return const RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.zero,
-                                  );
-                                }
-                                return RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                );
-                              }),
-                        ),
-                        child: _showSearch
-                            ? ShaderMask(
-                                shaderCallback: (bounds) =>
-                                    const LinearGradient(
-                                      colors: [
-                                        AppColors.magenta,
-                                        AppColors.lightBlue,
-                                      ],
-                                    ).createShader(bounds),
-                                child: const Icon(
-                                  Icons.search,
-                                  size: 22,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Icon(
-                                Icons.search,
-                                size: 22,
-                                color: Colors.white54,
-                              ),
-                      ),
-                    ),
                     // Orientierungs-Button wird unten angezeigt
                   ],
                 ),
@@ -2378,14 +2307,124 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
-                // Info-Text (wie in details_screen)
+                // Info-Text/Suchfeld (centered) + Lupe (fixed right)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
-                  child: Text(
-                    'Verlinkbare Medien für Deine Playlists',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.85),
-                      fontSize: 12, // gleiche fontSize wie details_screen
+                  child: SizedBox(
+                    height: 40,
+                    child: Stack(
+                      children: [
+                        // Zentrierter Inhalt (Infotext ODER Suchfeld)
+                        Center(
+                          child: !_showSearch
+                              ? Text(
+                                  'Verlinkbare Medien für Deine Playlists',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.85),
+                                    fontSize: 12,
+                                  ),
+                                )
+                              : ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxWidth: 400,
+                                  ),
+                                  child: TextField(
+                                    controller: _searchController,
+                                    autofocus: true,
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                    ),
+                                    cursorColor: Colors.white,
+                                    decoration: InputDecoration(
+                                      hintText: 'Suche nach Medien',
+                                      hintStyle: TextStyle(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.4,
+                                        ),
+                                        fontSize: 13,
+                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 10,
+                                          ),
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                        borderSide: BorderSide(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.6,
+                                          ),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(6),
+                                        borderSide: const BorderSide(
+                                          color: Colors.white,
+                                          width: 1,
+                                        ),
+                                      ),
+                                      hoverColor: Colors.transparent,
+                                      fillColor: Colors.transparent,
+                                      isDense: true,
+                                    ),
+                                    onChanged: (val) {
+                                      setState(() {
+                                        _searchTerm = val.toLowerCase();
+                                      });
+                                    },
+                                  ),
+                                ),
+                        ),
+                        // Lupe - IMMER rechts (fixed position)
+                        Positioned(
+                          right: 0,
+                          top: 0,
+                          bottom: 0,
+                          child: Center(
+                            child: InkWell(
+                              onTap: _items.isEmpty
+                                  ? null
+                                  : () {
+                                      setState(() {
+                                        _showSearch = !_showSearch;
+                                        if (!_showSearch) {
+                                          _searchController.clear();
+                                          _searchTerm = '';
+                                        }
+                                      });
+                                    },
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: _showSearch
+                                    ? ShaderMask(
+                                        shaderCallback: (bounds) =>
+                                            const LinearGradient(
+                                              colors: [
+                                                AppColors.magenta,
+                                                AppColors.lightBlue,
+                                              ],
+                                            ).createShader(bounds),
+                                        child: const Icon(
+                                          Icons.search,
+                                          size: 18,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : Icon(
+                                        Icons.search,
+                                        size: 18,
+                                        color: _items.isEmpty
+                                            ? Colors.grey.shade700
+                                            : Colors.grey.shade500,
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -2561,33 +2600,85 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           horizontal: 16,
                           vertical: 8,
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            // Abbrechen als einfacher Text-Link (light grey)
-                            TextButton(
-                              onPressed: () {
-                                setState(() {
-                                  _isDeleteMode = false;
-                                  _selectedMediaIds.clear();
-                                });
-                              },
-                              style: TextButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 12,
-                                ),
-                              ),
-                              child: Text(
-                                'Abbrechen',
-                                style: TextStyle(
-                                  color: Colors.grey.shade400,
-                                  fontSize: 14,
-                                ),
-                              ),
-                            ),
-                            // Endgültig löschen mit weißem Background und GMBC Text
-                            TextButton(
+                        child: LayoutBuilder(
+                          builder: (ctx, cons) {
+                            double measureTextWidth(
+                              String text,
+                              TextStyle style,
+                            ) {
+                              final tp = TextPainter(
+                                text: TextSpan(text: text, style: style),
+                                maxLines: 1,
+                                textScaleFactor: MediaQuery.of(
+                                  ctx,
+                                ).textScaleFactor,
+                                textDirection: TextDirection.ltr,
+                              )..layout();
+                              return tp.width;
+                            }
+
+                            final TextStyle cancelStyle = TextStyle(
+                              color: Colors.grey.shade400,
+                              fontSize: 14,
+                            );
+                            const TextStyle deleteStyle = TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            );
+
+                            final double cancelWidth =
+                                measureTextWidth('Abbrechen', cancelStyle) +
+                                16; // padding h=8*2
+                            final double deleteWidth =
+                                measureTextWidth(
+                                  'Endgültig löschen',
+                                  deleteStyle,
+                                ) +
+                                40; // padding h=20*2
+                            final bool compact =
+                                (cancelWidth + deleteWidth) > cons.maxWidth;
+
+                            final Widget cancelBtn = compact
+                                ? IconButton(
+                                    tooltip: 'Abbrechen',
+                                    onPressed: () {
+                                      setState(() {
+                                        _isDeleteMode = false;
+                                        _selectedMediaIds.clear();
+                                      });
+                                    },
+                                    icon: const Icon(
+                                      Icons.close,
+                                      color: Colors.white70,
+                                    ),
+                                  )
+                                : MouseRegion(
+                                    cursor: SystemMouseCursors.click,
+                                    child: TextButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          _isDeleteMode = false;
+                                          _selectedMediaIds.clear();
+                                        });
+                                      },
+                                      style: TextButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 12,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        'Abbrechen',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade400,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+
+                            final Widget deleteBtn = TextButton(
                               onPressed: _confirmDeleteSelected,
                               style: TextButton.styleFrom(
                                 backgroundColor: Colors.white,
@@ -2616,8 +2707,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
+                            );
+
+                            return Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [cancelBtn, deleteBtn],
+                            );
+                          },
                         ),
                       )
                     : const SizedBox.shrink(),
@@ -2634,49 +2730,58 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       : _mediaTab == 'audio'
                       ? SingleChildScrollView(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Wrap(
-                            alignment: WrapAlignment.start,
-                            spacing: 12.0,
-                            runSpacing: 12.0,
-                            children: _pageItems.map((it) {
-                              return _buildResponsiveMediaCard(
-                                it,
-                                0, // Unused for audio
-                                0, // Unused for audio
-                              );
-                            }).toList(),
+                          child: Center(
+                            child: Wrap(
+                              alignment: WrapAlignment.center,
+                              spacing: 12.0,
+                              runSpacing: 12.0,
+                              children: _pageItems.map((it) {
+                                return _buildResponsiveMediaCard(
+                                  it,
+                                  0, // Unused for audio
+                                  0, // Unused for audio
+                                );
+                              }).toList(),
+                            ),
                           ),
                         )
                       : SingleChildScrollView(
                           padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: LayoutBuilder(
-                            builder: (ctx, cons) {
-                              const double spacing = 16.0;
-                              const double minThumbWidth = 120.0;
-                              const double gridSpacing = 12.0;
-                              const double cardHeight = 150.0;
+                          child: Center(
+                            child: LayoutBuilder(
+                              builder: (ctx, cons) {
+                                const double spacing = 16.0;
+                                const double minThumbWidth = 120.0;
+                                const double gridSpacing = 12.0;
+                                const double cardHeight = 150.0;
 
-                              // Rechts mindestens 2 Thumbs: 2 * min + Zwischenabstand
-                              final double minRightWidth =
-                                  (2 * minThumbWidth) + gridSpacing;
-                              double leftW =
-                                  cons.maxWidth - spacing - minRightWidth;
-                              // Begrenze links sinnvoll - 25% weniger als avatar_details_screen
-                              if (leftW > 180) leftW = 180; // 240 * 0.75 = 180
-                              if (leftW < 120) leftW = 120; // 160 * 0.75 = 120
+                                // Rechts mindestens 2 Thumbs: 2 * min + Zwischenabstand
+                                final double minRightWidth =
+                                    (2 * minThumbWidth) + gridSpacing;
+                                double leftW =
+                                    cons.maxWidth - spacing - minRightWidth;
+                                // Begrenze links sinnvoll - 25% weniger als avatar_details_screen
+                                if (leftW > 180) {
+                                  leftW = 180; // 240 * 0.75 = 180
+                                }
+                                if (leftW < 120) {
+                                  leftW = 120; // 160 * 0.75 = 120
+                                }
 
-                              return Wrap(
-                                spacing: gridSpacing,
-                                runSpacing: gridSpacing,
-                                children: _pageItems.map((it) {
-                                  return _buildResponsiveMediaCard(
-                                    it,
-                                    leftW,
-                                    cardHeight,
-                                  );
-                                }).toList(),
-                              );
-                            },
+                                return Wrap(
+                                  alignment: WrapAlignment.center,
+                                  spacing: gridSpacing,
+                                  runSpacing: gridSpacing,
+                                  children: _pageItems.map((it) {
+                                    return _buildResponsiveMediaCard(
+                                      it,
+                                      leftW,
+                                      cardHeight,
+                                    );
+                                  }).toList(),
+                                );
+                              },
+                            ),
                           ),
                         ),
                 ),
@@ -3146,72 +3251,29 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                 return Container(color: Colors.black26);
                               },
                             ))
-                    : Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
-                          ),
-                        ),
-                        child: Stack(
-                          children: [
-                            // Moderne Waveform-Visualisierung
-                            Center(child: _buildWaveform()),
-                            // Audio Icon mit Gradient
-                            Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      gradient: const LinearGradient(
-                                        colors: [
-                                          Color(0xFFE91E63), // Magenta
-                                          AppColors.lightBlue, // Blue
-                                          Color(0xFF00E5FF), // Cyan
-                                        ],
-                                        stops: [0.0, 0.5, 1.0],
-                                      ),
-                                    ),
-                                    child: const Icon(
-                                      Icons.music_note,
-                                      size: 32,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.5,
-                                      ),
-                                      borderRadius: BorderRadius.circular(12),
-                                    ),
-                                    child: Text(
-                                      it.tags?.isNotEmpty == true
-                                          ? it.tags!.first
-                                          : 'Audio',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w500,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
+                    : Stack(
+                        fit: StackFit.expand,
+                        children: [
+                          // Dark gradient background
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                          // Statische Waveform als Hintergrund
+                          Center(
+                            child: CustomPaint(
+                              size: Size(actualWidth * 0.8, actualHeight * 0.6),
+                              painter: _StaticWaveformPainter(),
+                            ),
+                          ),
+                          // Play/Pause/Reload Controls in der Mitte
+                          Center(child: _buildAudioControls(it)),
+                        ],
                       ),
               ),
             ),
@@ -3352,14 +3414,16 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 ),
               ),
 
-            // Tag-Icon unten links (für Videos und Audio)
+            // Tag-Icon unten links (für Videos und Dokumente) ODER rechts oben (für Audio)
             if ((it.type == AvatarMediaType.video ||
                     it.type == AvatarMediaType.audio ||
                     it.type == AvatarMediaType.document) &&
                 !_isDeleteMode)
               Positioned(
-                left: 6,
-                bottom: 6,
+                left: it.type == AvatarMediaType.audio ? null : 6,
+                right: it.type == AvatarMediaType.audio ? 6 : null,
+                top: it.type == AvatarMediaType.audio ? 6 : null,
+                bottom: it.type == AvatarMediaType.audio ? null : 6,
                 child: InkWell(
                   onTap: () => _showTagsDialog(it),
                   child: Container(
@@ -3445,10 +3509,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 ),
               ),
 
-            // Delete Button unten rechts
+            // Delete Button unten rechts (oder rechts oben unter Tags für Audio)
             Positioned(
               right: 6,
-              bottom: 6,
+              top: it.type == AvatarMediaType.audio ? 50 : null,
+              bottom: it.type == AvatarMediaType.audio ? null : 6,
               child: InkWell(
                 onTap: () {
                   setState(() {
@@ -3615,139 +3680,378 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final selectedMedia = _items
         .where((m) => _selectedMediaIds.contains(m.id))
         .toList(growable: false);
+
+    // Timer für Live-Update der Play/Pause Icons
+    Timer? updateTimer;
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Medien löschen?'),
-        content: SizedBox(
-          width: 480,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Möchtest du $count ${count == 1 ? 'Medium' : 'Medien'} wirklich löschen?',
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 140,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: selectedMedia.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) {
-                    final m = selectedMedia[i];
-                    final double h = 120.0;
-                    final double ar =
-                        (m.aspectRatio ??
-                        (m.type == AvatarMediaType.document
-                            ? (9 / 16)
-                            : (16 / 9)));
-                    Widget thumb;
-                    if (m.type == AvatarMediaType.image) {
-                      thumb = SizedBox(
-                        height: h,
-                        child: AspectRatio(
-                          aspectRatio: ar,
-                          child: Image.network(m.url, fit: BoxFit.cover),
-                        ),
-                      );
-                    } else if (m.type == AvatarMediaType.video) {
-                      thumb = FutureBuilder<VideoPlayerController?>(
-                        future: _videoControllerForThumb(m.url),
-                        builder: (context, snap) {
-                          if (snap.connectionState == ConnectionState.done &&
-                              snap.hasData &&
-                              snap.data != null &&
-                              snap.data!.value.isInitialized) {
-                            final c = snap.data!;
-                            return SizedBox(
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          // Timer starten für kontinuierliche Updates
+          updateTimer?.cancel();
+          updateTimer = Timer.periodic(const Duration(milliseconds: 100), (_) {
+            if (context.mounted) {
+              setDialogState(() {});
+            }
+          });
+
+          return AlertDialog(
+            title: const Text('Medien löschen?'),
+            actionsAlignment:
+                MainAxisAlignment.spaceBetween, // Buttons weit auseinander
+            content: SizedBox(
+              width:
+                  MediaQuery.of(context).size.width * 0.95, // responsive Breite
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: 760,
+                ), // Maximalbreite
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Möchtest du $count ${count == 1 ? 'Medium' : 'Medien'} wirklich löschen?',
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 170, // Erhöht für Play Controls + Zeit + Name
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: selectedMedia.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        itemBuilder: (_, i) {
+                          final m = selectedMedia[i];
+                          final double h = 120.0;
+                          final double ar =
+                              (m.aspectRatio ??
+                              (m.type == AvatarMediaType.document
+                                  ? (9 / 16)
+                                  : (16 / 9)));
+                          Widget thumb;
+                          if (m.type == AvatarMediaType.image) {
+                            thumb = SizedBox(
                               height: h,
                               child: AspectRatio(
-                                aspectRatio: c.value.aspectRatio,
-                                child: VideoPlayer(c),
+                                aspectRatio: ar,
+                                child: Image.network(m.url, fit: BoxFit.cover),
+                              ),
+                            );
+                          } else if (m.type == AvatarMediaType.video) {
+                            thumb = FutureBuilder<VideoPlayerController?>(
+                              future: _videoControllerForThumb(m.url),
+                              builder: (context, snap) {
+                                if (snap.connectionState ==
+                                        ConnectionState.done &&
+                                    snap.hasData &&
+                                    snap.data != null &&
+                                    snap.data!.value.isInitialized) {
+                                  final c = snap.data!;
+                                  return SizedBox(
+                                    height: h,
+                                    child: AspectRatio(
+                                      aspectRatio: c.value.aspectRatio,
+                                      child: VideoPlayer(c),
+                                    ),
+                                  );
+                                }
+                                return Container(
+                                  height: h,
+                                  width: h * ar,
+                                  color: Colors.black26,
+                                );
+                              },
+                            );
+                          } else if (m.type == AvatarMediaType.document) {
+                            thumb = SizedBox(
+                              height: h,
+                              child: AspectRatio(
+                                aspectRatio: ar,
+                                child: _buildDocumentPreview(m),
+                              ),
+                            );
+                          } else {
+                            // Audio: Zeige Waveform-Thumbnail + Play Controls + Name darunter
+                            final audioFileName =
+                                m.originalFileName ??
+                                Uri.parse(
+                                  m.url,
+                                ).pathSegments.last.split('?').first;
+                            final isPlaying = _playingAudioUrl == m.url;
+                            final currentTime =
+                                _audioCurrentTime[m.url] ?? Duration.zero;
+                            final totalTime =
+                                _audioTotalTime[m.url] ?? Duration.zero;
+
+                            thumb = SizedBox(
+                              width: h * 2.4, // Etwas breiter
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // Waveform mit Play Controls
+                                  SizedBox(
+                                    height: h * 0.7, // Waveform Höhe reduziert
+                                    child: Stack(
+                                      alignment:
+                                          Alignment.center, // alles mittig
+                                      children: [
+                                        // Waveform Background
+                                        if (m.thumbUrl != null)
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                            child: Opacity(
+                                              opacity: 0.5,
+                                              child: Image.network(
+                                                m.thumbUrl!,
+                                                fit: BoxFit.cover,
+                                                width: double.infinity,
+                                                errorBuilder:
+                                                    (
+                                                      context,
+                                                      error,
+                                                      stackTrace,
+                                                    ) => Container(
+                                                      color: Colors.black26,
+                                                      child: const Icon(
+                                                        Icons.audiotrack,
+                                                        color: Colors.white54,
+                                                      ),
+                                                    ),
+                                              ),
+                                            ),
+                                          ),
+                                        // Play/Pause/Reload Controls
+                                        Positioned.fill(
+                                          child: Center(
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                // Play/Pause (CI-Gradient) LINKS
+                                                InkWell(
+                                                  onTap: () =>
+                                                      _toggleAudioPlayback(m),
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.all(8),
+                                                    decoration:
+                                                        const BoxDecoration(
+                                                          shape:
+                                                              BoxShape.circle,
+                                                          gradient:
+                                                              LinearGradient(
+                                                                begin: Alignment
+                                                                    .topLeft,
+                                                                end: Alignment
+                                                                    .bottomRight,
+                                                                colors: [
+                                                                  Color(
+                                                                    0xFFE91E63,
+                                                                  ),
+                                                                  AppColors
+                                                                      .lightBlue,
+                                                                  Color(
+                                                                    0xFF00E5FF,
+                                                                  ),
+                                                                ],
+                                                                stops: [
+                                                                  0.0,
+                                                                  0.6,
+                                                                  1.0,
+                                                                ],
+                                                              ),
+                                                        ),
+                                                    child: Icon(
+                                                      isPlaying
+                                                          ? Icons.pause
+                                                          : Icons.play_arrow,
+                                                      color: Colors.white,
+                                                      size: 20,
+                                                    ),
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                // Restart RECHTS
+                                                InkWell(
+                                                  onTap: () => _restartAudio(m),
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.all(6),
+                                                    decoration:
+                                                        const BoxDecoration(
+                                                          shape:
+                                                              BoxShape.circle,
+                                                          color: Color(
+                                                            0x50000000,
+                                                          ),
+                                                        ),
+                                                    child: const Icon(
+                                                      Icons.replay,
+                                                      color: Colors.white,
+                                                      size: 16,
+                                                    ),
+                                                  ),
+                                                ),
+                                                // Symmetrischer Spacer, damit Play/Pause exakt mittig bleibt
+                                                const SizedBox(width: 8),
+                                                Opacity(
+                                                  opacity: 0,
+                                                  child: Container(
+                                                    padding:
+                                                        const EdgeInsets.all(6),
+                                                    decoration:
+                                                        const BoxDecoration(
+                                                          shape:
+                                                              BoxShape.circle,
+                                                          color: Color(
+                                                            0x50000000,
+                                                          ),
+                                                        ),
+                                                    child: const Icon(
+                                                      Icons.replay,
+                                                      color: Colors.white,
+                                                      size: 16,
+                                                    ),
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  // Zeit
+                                  Text(
+                                    '${_formatDuration(currentTime)} / ${_formatDuration(totalTime)}',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  // Dateiname UNTER der Waveform
+                                  Text(
+                                    audioFileName,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    textAlign: TextAlign.left,
+                                  ),
+                                ],
                               ),
                             );
                           }
-                          return Container(
-                            height: h,
-                            width: h * ar,
-                            color: Colors.black26,
+                          return ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: thumb,
                           );
                         },
-                      );
-                    } else if (m.type == AvatarMediaType.document) {
-                      thumb = SizedBox(
-                        height: h,
-                        child: AspectRatio(
-                          aspectRatio: ar,
-                          child: _buildDocumentPreview(m),
-                        ),
-                      );
-                    } else {
-                      thumb = Container(
-                        height: h,
-                        alignment: Alignment.center,
-                        color: Colors.black26,
-                        child: const Icon(
-                          Icons.audiotrack,
-                          color: Colors.white70,
-                        ),
-                      );
-                    }
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: thumb,
-                    );
-                  },
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+            ),
+            actions: [
+              LayoutBuilder(
+                builder: (ctx2, cons) {
+                  final bool stackVertical = cons.maxWidth < 380;
+
+                  final Widget cancel = TextButton(
+                    onPressed: () => Navigator.pop(ctx, false),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      overlayColor: Colors.transparent,
+                    ),
+                    child: Text(
+                      'Abbrechen',
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 14,
+                      ),
+                    ),
+                  );
+
+                  final Widget delete = TextButton(
+                    onPressed: () => Navigator.pop(ctx, true),
+                    style: TextButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 12,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    child: ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [
+                          Color(0xFFE91E63),
+                          AppColors.lightBlue,
+                          Color(0xFF00E5FF),
+                        ],
+                      ).createShader(bounds),
+                      child: const Text(
+                        'Löschen',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  );
+
+                  if (stackVertical) {
+                    return SizedBox(
+                      width: double.infinity,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(height: 44, child: cancel),
+                          const SizedBox(height: 10),
+                          SizedBox(height: 44, child: delete),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [cancel, delete],
+                  );
+                },
               ),
             ],
-          ),
-        ),
-        actions: [
-          // Abbrechen als einfacher Text-Link (light grey)
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-            ),
-            child: Text(
-              'Abbrechen',
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-            ),
-          ),
-          // Löschen mit weißem Background und GMBC Text
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(
-              backgroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [
-                  Color(0xFFE91E63),
-                  AppColors.lightBlue,
-                  Color(0xFF00E5FF),
-                ],
-              ).createShader(bounds),
-              child: const Text(
-                'Löschen',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ),
-        ],
+          );
+        },
       ),
     );
-    if (confirmed != true) return;
+
+    // Timer cleanup
+    updateTimer?.cancel();
+
+    if (confirmed != true) {
+      // Bei Abbrechen: Delete-Mode beenden
+      setState(() {
+        _isDeleteMode = false;
+        _selectedMediaIds.clear();
+      });
+      return;
+    }
 
     try {
       // Lösche alle selected Medien
@@ -3757,13 +4061,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           (m) => m.id == mediaId,
           orElse: () => _items.first,
         );
-        if (_playingAudioUrl == media.url) {
+        if (_playingAudioUrl == media.url || _currentAudioUrl == media.url) {
           // Stoppe Audio Player
           await _audioPlayer?.stop();
           _audioPlayer?.dispose();
           _audioPlayer = null;
           setState(() {
             _playingAudioUrl = null;
+            _currentAudioUrl = null;
             _audioProgress.remove(media.url);
             _audioCurrentTime.remove(media.url);
             _audioTotalTime.remove(media.url);
@@ -4118,7 +4423,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       // Bildmaße ermitteln, um Portrait/Landscape zu erkennen
       bool isPortraitImage = true;
       try {
-        final codec = await ui.instantiateImageCodec(bytes!);
+        final codec = await ui.instantiateImageCodec(bytes);
         final frame = await codec.getNextFrame();
         final img = frame.image;
         final ar = img.width / img.height;
@@ -4250,19 +4555,22 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           // Abbrechen (light grey)
-                          TextButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            style: TextButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 12,
+                          MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 12,
+                                ),
                               ),
-                            ),
-                            child: Text(
-                              'Abbrechen',
-                              style: TextStyle(
-                                color: Colors.grey.shade400,
-                                fontSize: 14,
+                              child: Text(
+                                'Abbrechen',
+                                style: TextStyle(
+                                  color: Colors.grey.shade400,
+                                  fontSize: 14,
+                                ),
                               ),
                             ),
                           ),
@@ -5399,7 +5707,34 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       ),
       child: Stack(
         children: [
-          // Waveform - volle Breite, VERTIKAL MITTIG (ZUERST, damit Buttons darüber liegen)
+          // Waveform Thumbnail aus DB (0.5 opacity)
+          if (media.thumbUrl != null)
+            Positioned(
+              left: 20,
+              right: 20,
+              top: 0,
+              bottom: 32,
+              child: Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: Opacity(
+                    opacity: 0.5,
+                    child: Image.network(
+                      media.thumbUrl!,
+                      fit: BoxFit.contain,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        color: Colors.black26,
+                        child: const Icon(
+                          Icons.audiotrack,
+                          color: Colors.white54,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          // Progress-Waveform ÜBER dem Thumbnail
           Positioned(
             left: 20,
             right: 20,
@@ -5443,10 +5778,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       // Timer wird Dialog automatisch aktualisieren
                     },
                     child: Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
                         shape: BoxShape.circle,
-                        gradient: const LinearGradient(
+                        gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                           colors: [
@@ -5459,7 +5794,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       ),
                       child: Icon(
                         isPlaying ? Icons.pause : Icons.play_arrow,
-                        size: 32,
+                        size: 20,
                         color: Colors.white,
                       ),
                     ),
@@ -5474,19 +5809,36 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           // Timer wird Dialog automatisch aktualisieren
                         },
                         child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
+                          padding: const EdgeInsets.all(6),
+                          decoration: const BoxDecoration(
                             shape: BoxShape.circle,
-                            color: const Color(0x60FFFFFF),
+                            color: Color(0x50000000),
                           ),
                           child: const Icon(
                             Icons.replay,
-                            size: 22,
+                            size: 16,
                             color: Colors.white,
                           ),
                         ),
                       ),
                     ),
+                  // Symmetrischer Spacer + unsichtbarer Platzhalter für exakte Zentrierung
+                  const SizedBox(width: 8),
+                  Opacity(
+                    opacity: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: const BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color(0x50000000),
+                      ),
+                      child: const Icon(
+                        Icons.replay,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -5603,9 +5955,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     // Fallback je nach Typ
     if (tags.isEmpty) {
-      if (media.type == AvatarMediaType.audio)
+      if (media.type == AvatarMediaType.audio) {
         tags.add('audio');
-      else if (media.type == AvatarMediaType.video)
+      } else if (media.type == AvatarMediaType.video)
         tags.add('video');
       else if (media.type == AvatarMediaType.image)
         tags.add('image');
@@ -5683,19 +6035,22 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 // Abbrechen als einfacher Text-Link
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx),
-                                  style: TextButton.styleFrom(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 12,
+                                MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  child: TextButton(
+                                    onPressed: () => Navigator.pop(ctx),
+                                    style: TextButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 12,
+                                      ),
                                     ),
-                                  ),
-                                  child: Text(
-                                    'Abbrechen',
-                                    style: TextStyle(
-                                      color: Colors.grey.shade400,
-                                      fontSize: 14,
+                                    child: Text(
+                                      'Abbrechen',
+                                      style: TextStyle(
+                                        color: Colors.grey.shade400,
+                                        fontSize: 14,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -6025,63 +6380,74 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min, // Auto-Height!
             children: [
-              // OBERER CONTAINER: Play, Waveform, Icons
+              // OBERER CONTAINER: Waveform + Controls
               SizedBox(
-                height: 78, // Feste Höhe für Waveform-Bereich
+                height: 78,
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 8), // 0.5rem
+                  padding: const EdgeInsets.only(top: 8),
                   child: Stack(
                     children: [
-                      // Waveform - ZENTRIERT (5px nach links)
-                      Positioned(
-                        left: 30, // 35 - 5 = 30px
-                        right: 80, // 75 + 5 = 80px (bleibt gleich breit)
-                        top: 0,
-                        bottom: 0,
-                        child: Center(
-                          child: GestureDetector(
-                            onTap: () => _toggleAudioPlayback(it),
-                            child: ClipRect(
-                              clipBehavior: Clip.hardEdge,
-                              child: LayoutBuilder(
-                                builder: (context, constraints) {
-                                  return _buildCompactWaveform(
-                                    availableWidth: constraints.maxWidth,
-                                    progress: progress,
-                                  );
-                                },
+                      // Waveform Thumbnail aus DB (0.5 opacity)
+                      if (it.thumbUrl != null)
+                        Positioned.fill(
+                          left: 8,
+                          right: 8,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: Opacity(
+                              opacity: 0.5,
+                              child: Image.network(
+                                it.thumbUrl!,
+                                fit: BoxFit.contain,
+                                errorBuilder: (context, error, stackTrace) =>
+                                    Container(
+                                      color: Colors.black26,
+                                      child: const Icon(
+                                        Icons.audiotrack,
+                                        color: Colors.white54,
+                                      ),
+                                    ),
                               ),
                             ),
                           ),
                         ),
+                      // Progress-Overlay (LIGHTBLUE)
+                      Positioned.fill(
+                        left: 8,
+                        right: 8,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              return _buildCompactWaveform(
+                                availableWidth: constraints.maxWidth,
+                                progress: progress,
+                              );
+                            },
+                          ),
+                        ),
                       ),
-                      // Play-Button ÜBER Waveform - LINKS (5px nach rechts)
+                      // Play/Pause + Restart Controls (links)
                       Positioned(
-                        left: 13, // 8 + 5 = 13px
+                        left: 8,
                         top: 0,
                         bottom: 0,
-                        child: Align(
-                          alignment: Alignment.center,
+                        child: Center(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Play/Pause Button
                               GestureDetector(
                                 onTap: () => _toggleAudioPlayback(it),
                                 child: Container(
                                   padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
+                                  decoration: const BoxDecoration(
                                     shape: BoxShape.circle,
-                                    gradient: const LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
+                                    gradient: LinearGradient(
                                       colors: [
-                                        Color(0xFFE91E63), // Magenta
-                                        Color(0xFFE91E63), // Mehr Magenta
-                                        AppColors.lightBlue, // Blau
-                                        Color(0xFF00E5FF), // Cyan
+                                        Color(0xFFE91E63),
+                                        AppColors.lightBlue,
+                                        Color(0xFF00E5FF),
                                       ],
-                                      stops: [0.0, 0.4, 0.7, 1.0],
                                     ),
                                   ),
                                   child: Icon(
@@ -6091,7 +6457,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                   ),
                                 ),
                               ),
-                              // Restart Button (nur anzeigen wenn Audio läuft oder pausiert)
                               if (progress > 0.0 || isPlaying)
                                 Padding(
                                   padding: const EdgeInsets.only(left: 4),
@@ -6099,9 +6464,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                     onTap: () => _restartAudio(it),
                                     child: Container(
                                       padding: const EdgeInsets.all(6),
-                                      decoration: BoxDecoration(
+                                      decoration: const BoxDecoration(
                                         shape: BoxShape.circle,
-                                        color: const Color(0x40FFFFFF),
+                                        color: Color(0x40FFFFFF),
                                       ),
                                       child: const Icon(
                                         Icons.replay,
@@ -6115,56 +6480,27 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           ),
                         ),
                       ),
-                      // Tag + Delete Icons RECHTS (10px nach links)
+                      // Tag + Delete Icons (rechts) - HORIZONTAL - DELETE ZUERST!
                       Positioned(
-                        right: 13, // 3 + 10 = 13px
+                        right: 8,
                         top: 0,
                         bottom: 0,
-                        child: Align(
-                          alignment: Alignment.center,
+                        child: Center(
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              // Tag Icon
-                              if (!_isDeleteMode)
-                                InkWell(
-                                  onTap: () => _showTagsDialog(it),
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      color: const Color(0x25FFFFFF),
-                                      border: Border.all(
-                                        color: const Color(0x66FFFFFF),
-                                      ),
-                                    ),
-                                    child: ShaderMask(
-                                      shaderCallback: (bounds) =>
-                                          const LinearGradient(
-                                            colors: [
-                                              Color(0xFFE91E63),
-                                              AppColors.lightBlue,
-                                            ],
-                                          ).createShader(bounds),
-                                      child: const Icon(
-                                        Icons.label_outline,
-                                        color: Colors.white,
-                                        size: 14,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              if (!_isDeleteMode) const SizedBox(width: 4),
-                              // Delete Icon
+                              // DELETE ICON ZUERST (ganz rechts)
                               InkWell(
                                 onTap: () {
                                   setState(() {
-                                    _isDeleteMode = true;
                                     if (selected) {
                                       _selectedMediaIds.remove(it.id);
                                     } else {
                                       _selectedMediaIds.add(it.id);
                                     }
+                                    // Delete-Mode nur aktiv, wenn mind. 1 Element ausgewählt ist
+                                    _isDeleteMode =
+                                        _selectedMediaIds.isNotEmpty;
                                   });
                                 },
                                 child: Container(
@@ -6197,14 +6533,37 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                   ),
                                 ),
                               ),
+                              // TAG ICON LINKS DAVON
+                              if (!_isDeleteMode) const SizedBox(width: 4),
+                              if (!_isDeleteMode)
+                                InkWell(
+                                  onTap: () => _showTagsDialog(it),
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: const Color(
+                                        0x30000000,
+                                      ), // Wie Trash
+                                      border: Border.all(
+                                        color: const Color(0x66FFFFFF),
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.label_outline,
+                                      color: Colors.white, // Weiß ohne Gradient
+                                      size: 14,
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
                       ),
-                      // Playlist Icon oben links (5px nach links)
+                      // Playlist Icon (oben links)
                       if (isInPlaylist && !_isDeleteMode)
                         Positioned(
-                          left: 1, // 6 - 5 = 1px
+                          left: 6,
                           top: 6,
                           child: Container(
                             width: 24,
@@ -6237,13 +6596,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 padding: const EdgeInsets.only(
                   left: 8,
                   right: 8,
-                  bottom: 0, // Kein bottom padding, da Setup-Container folgt
+                  bottom: 0,
                   top: 5,
-                ), // top reduziert um 40%
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Dateiname
                     Text(
                       fileName,
                       style: const TextStyle(
@@ -6256,7 +6614,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 2),
-                    // Zeit
                     Text(
                       '${_formatDuration(currentTime)} / ${_formatDuration(totalTime)}',
                       style: const TextStyle(
@@ -6266,7 +6623,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    // Tags (wenn vorhanden) - mit MBC Gradient (OHNE Grün!)
                     if (it.tags != null && it.tags!.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       ShaderMask(
@@ -6274,17 +6630,16 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           begin: Alignment.centerLeft,
                           end: Alignment.centerRight,
                           colors: [
-                            Color(0xFFE91E63), // Magenta
-                            AppColors.lightBlue, // Blue
-                            Color(0xFF00E5FF), // Cyan
+                            Color(0xFFE91E63),
+                            AppColors.lightBlue,
+                            Color(0xFF00E5FF),
                           ],
                           stops: [0.0, 0.5, 1.0],
                         ).createShader(bounds),
                         child: Text(
                           it.tags!.join(', '),
                           style: const TextStyle(
-                            color: Colors
-                                .white, // Wird durch Gradient überschrieben
+                            color: Colors.white,
                             fontSize: 10,
                             fontWeight: FontWeight.w300,
                           ),
@@ -6297,8 +6652,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   ],
                 ),
               ),
-              const SizedBox(height: 15), // Abstand nach oben
-              // PREIS-SETUP CONTAINER: Klickbar, zeigt Input-Ansicht
+              const SizedBox(height: 15),
               _buildPriceSetupContainer(it),
             ],
           ),
@@ -6394,16 +6748,79 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       const Color(0xFF00E5FF).withValues(alpha: 0.9),
                     ]
                   : [
-                      // Weiß für noch nicht abgespielte Striche
-                      Colors.white.withValues(alpha: 0.2),
-                      Colors.white.withValues(alpha: 0.5),
-                      Colors.white.withValues(alpha: 0.7),
+                      // Transparent für noch nicht abgespielte Striche
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.transparent,
                     ],
               stops: const [0.0, 0.5, 1.0],
             ),
           ),
         );
       }),
+    );
+  }
+
+  /// Audio Controls (Play/Pause/Reload) - zentriert auf Waveform
+  Widget _buildAudioControls(AvatarMedia it) {
+    final isPlaying = _playingAudioUrl == it.url;
+    final progress = _audioProgress[it.url] ?? 0.0;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Play/Pause Button (größer, da zentral)
+        GestureDetector(
+          onTap: () => _toggleAudioPlayback(it),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFE91E63), // Magenta
+                  AppColors.lightBlue, // Blue
+                  Color(0xFF00E5FF), // Cyan
+                ],
+                stops: [0.0, 0.5, 1.0],
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+            child: Icon(
+              isPlaying ? Icons.pause : Icons.play_arrow,
+              size: 32,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        // Reload Button (nur wenn bereits gespielt)
+        if (progress > 0.0 || isPlaying) ...[
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: () => _restartAudio(it),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.black.withValues(alpha: 0.6),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.3),
+                  width: 2,
+                ),
+              ),
+              child: const Icon(Icons.replay, size: 20, color: Colors.white),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -7225,19 +7642,25 @@ class _VideoThumbnailSelectorDialogState
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 // Abbrechen Button (light grey, mehr nach links)
-                TextButton(
-                  onPressed: _isGenerating
-                      ? null
-                      : () => Navigator.pop(context),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 12,
+                MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: TextButton(
+                    onPressed: _isGenerating
+                        ? null
+                        : () => Navigator.pop(context),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 12,
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    'Abbrechen',
-                    style: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                    child: Text(
+                      'Abbrechen',
+                      style: TextStyle(
+                        color: Colors.grey.shade400,
+                        fontSize: 14,
+                      ),
+                    ),
                   ),
                 ),
                 // Verwenden Button (white background + GMBC text, ohne icon)
@@ -7286,4 +7709,59 @@ class _VideoThumbnailSelectorDialogState
       ),
     );
   }
+}
+
+// CustomPainter für statische Waveform (WIE Original-Thumbnail!)
+class _StaticWaveformPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = Colors.black.withValues(alpha: 0.6)
+      ..strokeWidth = 1.0
+      ..strokeCap = StrokeCap.square;
+
+    // Wie Original: Sehr dünn, sehr eng, viele Bars
+    final barWidth = 1.0;
+    final spacing = 1.5;
+    final totalBars = (size.width / (barWidth + spacing)).floor();
+
+    // Fixed seed für konsistentes Aussehen (wie ein echtes Audio-Thumbnail)
+    final random = Random(12345);
+
+    // Generiere Waveform-Muster mit realistischer Variation
+    for (int i = 0; i < totalBars; i++) {
+      final x = i * (barWidth + spacing);
+
+      // Realistische Höhenverteilung (wie echte Audio-Wellen)
+      double heightFactor;
+      final randomVal = random.nextDouble();
+
+      // Meistens mittlere bis niedrige Höhen (wie echte Audioformen)
+      if (randomVal < 0.05) {
+        // 5% sehr hohe Peaks
+        heightFactor = 0.85 + random.nextDouble() * 0.15;
+      } else if (randomVal < 0.15) {
+        // 10% hohe Peaks
+        heightFactor = 0.65 + random.nextDouble() * 0.2;
+      } else if (randomVal < 0.40) {
+        // 25% mittlere Höhen
+        heightFactor = 0.4 + random.nextDouble() * 0.25;
+      } else if (randomVal < 0.70) {
+        // 30% niedrig-mittlere Höhen
+        heightFactor = 0.25 + random.nextDouble() * 0.15;
+      } else {
+        // 30% sehr niedrige Höhen
+        heightFactor = 0.1 + random.nextDouble() * 0.15;
+      }
+
+      final barHeight = size.height * heightFactor;
+      final y1 = (size.height - barHeight) / 2;
+      final y2 = y1 + barHeight;
+
+      canvas.drawLine(Offset(x, y1), Offset(x, y2), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
