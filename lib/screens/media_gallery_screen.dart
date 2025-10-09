@@ -1155,14 +1155,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               Navigator.pop(ctx);
               _pickImageFrom(ImageSource.camera); // Single für Kamera
             },
-            child: const Text('Kamera (1 Bild)'),
+            child: const Text(
+              'Kamera (1 Bild)',
+              style: TextStyle(color: AppColors.lightBlue),
+            ),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
               _pickMultipleImages(); // Multi für Galerie
             },
-            child: const Text('Galerie (Mehrere)'),
+            child: const Text(
+              'Galerie (Mehrere)',
+              style: TextStyle(color: AppColors.lightBlue),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -1189,14 +1195,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               Navigator.pop(ctx);
               _pickVideoFrom(ImageSource.camera); // Single für Kamera
             },
-            child: const Text('Kamera (1 Video)'),
+            child: const Text(
+              'Kamera (1 Video)',
+              style: TextStyle(color: AppColors.lightBlue),
+            ),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
               _pickMultipleVideos(); // Multi für Galerie
             },
-            child: const Text('Galerie (Mehrere)'),
+            child: const Text(
+              'Galerie (Mehrere)',
+              style: TextStyle(color: AppColors.lightBlue),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx),
@@ -1653,7 +1665,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            CircularProgressIndicator(),
+                            CircularProgressIndicator(
+                              color: AppColors.lightBlue,
+                            ),
                             SizedBox(height: 16),
                             Text(
                               'Bild wird hochgeladen...',
@@ -2304,7 +2318,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: CircularProgressIndicator(color: AppColors.lightBlue),
+            )
           : Column(
               children: [
                 // Info-Text/Suchfeld (centered) + Lupe (fixed right)
@@ -3457,53 +3473,17 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   child: InkWell(
                     onTap: () => _selectVideoThumbnail(it),
                     child: Container(
-                      padding: (it.aspectRatio ?? 1.0) < 1.0
-                          ? const EdgeInsets.all(8)
-                          : const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
+                      padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [AppColors.magenta, AppColors.lightBlue],
-                        ),
+                        color: const Color(0x30000000),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: AppColors.lightBlue.withValues(alpha: 0.7),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.magenta.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            spreadRadius: 1,
-                          ),
-                        ],
+                        border: Border.all(color: const Color(0x66FFFFFF)),
                       ),
-                      child: (it.aspectRatio ?? 1.0) < 1.0
-                          ? const Icon(
-                              Icons.photo_camera,
-                              color: Colors.white,
-                              size: 18,
-                            )
-                          : const Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.photo_camera,
-                                  color: Colors.white,
-                                  size: 14,
-                                ),
-                                SizedBox(width: 4),
-                                Text(
-                                  'Vorschaubild',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
+                      child: const Icon(
+                        Icons.photo_camera,
+                        color: Colors.white,
+                        size: 16,
+                      ),
                     ),
                   ),
                 ),
@@ -7355,6 +7335,7 @@ class _VideoThumbnailSelectorDialogState
   bool _isGenerating = false;
   double _currentPosition = 0.0;
   String _currentTimeLabel = '0:00';
+  bool _showInfo = false;
 
   @override
   void initState() {
@@ -7466,245 +7447,343 @@ class _VideoThumbnailSelectorDialogState
       backgroundColor: const Color(0xFF1A1A1A),
       child: Container(
         width: MediaQuery.of(context).size.width * 0.9,
-        constraints: const BoxConstraints(maxWidth: 1100),
+        constraints: BoxConstraints(
+          maxWidth: 1100,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+        ),
         padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Header
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [AppColors.magenta, AppColors.lightBlue],
-                      ).createShader(bounds),
-                      child: const Text(
-                        'Vorschaubild',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    const Text(
-                      'wählen',
-                      style: TextStyle(fontSize: 14, color: Colors.white54),
-                    ),
-                  ],
-                ),
-                IconButton(
-                  onPressed: () => Navigator.pop(context),
-                  icon: const Icon(Icons.close, color: Colors.white),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Video Player
-            if (_isLoading)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(80.0),
-                  child: CircularProgressIndicator(color: AppColors.magenta),
-                ),
-              )
-            else if (_controller != null && _controller!.value.isInitialized)
-              AspectRatio(
-                aspectRatio: _controller!.value.aspectRatio,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: VideoPlayer(_controller!),
-                ),
-              )
-            else
-              Container(
-                height: 300,
-                decoration: BoxDecoration(
-                  color: Colors.black26,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Center(
-                  child: Icon(
-                    Icons.error_outline,
-                    color: Colors.white54,
-                    size: 64,
-                  ),
-                ),
-              ),
-
-            const SizedBox(height: 20),
-
-            // Play/Pause Buttons
-            if (_controller != null && _controller!.value.isInitialized)
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Header
               Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  IconButton(
-                    onPressed: () {
-                      setState(() {
-                        if (_controller!.value.isPlaying) {
-                          _controller!.pause();
-                        } else {
-                          _controller!.play();
-                        }
-                      });
-                    },
-                    icon: Icon(
-                      _controller!.value.isPlaying
-                          ? Icons.pause_circle_filled
-                          : Icons.play_circle_filled,
-                      size: 48,
-                    ),
-                    color: AppColors.magenta,
-                  ),
-                ],
-              ),
-
-            const SizedBox(height: 12),
-
-            // Seek Bar
-            if (_controller != null && _controller!.value.isInitialized)
-              Column(
-                children: [
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: AppColors.magenta,
-                      inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
-                      thumbColor: AppColors.lightBlue,
-                      overlayColor: AppColors.magenta.withValues(alpha: 0.2),
-                      trackHeight: 4.0,
-                    ),
-                    child: Slider(
-                      value: _currentPosition.clamp(0.0, 1.0),
-                      min: 0.0,
-                      max: 1.0,
-                      onChanged: (value) {
-                        if (_controller!.value.isInitialized) {
-                          final duration = _controller!.value.duration;
-                          final newPosition = duration * value;
-                          _controller!.seekTo(newPosition);
-                        }
-                      },
-                    ),
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        _currentTimeLabel,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
+                      ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [AppColors.magenta, AppColors.lightBlue],
+                        ).createShader(bounds),
+                        child: const Text(
+                          'Vorschaubild',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
-                      Text(
-                        _formatDuration(_controller!.value.duration),
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
+                      const SizedBox(height: 2),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text(
+                            'wählen',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.white54,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            width: 26,
+                            height: 26,
+                            decoration: const BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Color(0xFFE91E63),
+                                  AppColors.lightBlue,
+                                  Color(0xFF00E5FF),
+                                ],
+                                stops: [0.0, 0.6, 1.0],
+                              ),
+                            ),
+                            child: IconButton(
+                              padding: EdgeInsets.zero,
+                              iconSize: 16,
+                              tooltip: 'Info',
+                              icon: const Icon(
+                                Icons.help_outline,
+                                color: Colors.white,
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _showInfo = !_showInfo;
+                                });
+                              },
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                  ),
                 ],
               ),
+              const SizedBox(height: 20),
 
-            const SizedBox(height: 32),
-
-            // Info Text
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: AppColors.magenta.withValues(alpha: 0.3),
-                ),
-              ),
-              child: const Text(
-                '💡 Spule zu dem gewünschten Bild im Video und klicke "Dieses Bild verwenden"',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
-                textAlign: TextAlign.center,
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Action Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                // Abbrechen Button (light grey, mehr nach links)
-                MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: TextButton(
-                    onPressed: _isGenerating
-                        ? null
-                        : () => Navigator.pop(context),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 12,
+              // Info Box (inline, wenn _showInfo true)
+              if (_showInfo)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          Color(0xFFE91E63),
+                          AppColors.lightBlue,
+                          Color(0xFF00E5FF),
+                        ],
+                        stops: [0.0, 0.6, 1.0],
                       ),
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    child: Text(
-                      'Abbrechen',
-                      style: TextStyle(
-                        color: Colors.grey.shade400,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ),
-                ),
-                // Verwenden Button (white background + GMBC text, ohne icon)
-                TextButton(
-                  onPressed: _isGenerating ? null : _generateThumbnail,
-                  style: TextButton.styleFrom(
-                    backgroundColor: _isGenerating ? Colors.grey : Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 12,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: _isGenerating
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
-                        )
-                      : ShaderMask(
-                          shaderCallback: (bounds) => const LinearGradient(
-                            colors: [
-                              Color(0xFFE91E63),
-                              AppColors.lightBlue,
-                              Color(0xFF00E5FF),
-                            ],
-                          ).createShader(bounds),
-                          child: const Text(
-                            'OK',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Text(
+                          'Spule zu dem gewünschten Bild im Video und tippe oben auf "Verwenden".',
+                          style: TextStyle(color: Colors.white, fontSize: 13),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 12),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () {
+                              setState(() {
+                                _showInfo = false;
+                              });
+                            },
+                            style: TextButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: ShaderMask(
+                              shaderCallback: (bounds) => const LinearGradient(
+                                colors: [
+                                  Color(0xFFE91E63),
+                                  AppColors.lightBlue,
+                                  Color(0xFF00E5FF),
+                                ],
+                              ).createShader(bounds),
+                              child: const Text(
+                                'Schließen',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
                             ),
                           ),
                         ),
+                      ],
+                    ),
+                  ),
                 ),
-              ],
-            ),
-          ],
+
+              // Video Player mit Overlay-Play unten rechts
+              if (_isLoading)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(80.0),
+                    child: CircularProgressIndicator(color: AppColors.magenta),
+                  ),
+                )
+              else if (_controller != null && _controller!.value.isInitialized)
+                AspectRatio(
+                  aspectRatio: _controller!.value.aspectRatio,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        VideoPlayer(_controller!),
+                        Positioned(
+                          right: 12,
+                          bottom: 12,
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                if (_controller!.value.isPlaying) {
+                                  _controller!.pause();
+                                } else {
+                                  _controller!.play();
+                                }
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(22),
+                            child: Container(
+                              width: 36,
+                              height: 36,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Color(0xFFE91E63),
+                                    AppColors.lightBlue,
+                                    Color(0xFF00E5FF),
+                                  ],
+                                  stops: [0.0, 0.6, 1.0],
+                                ),
+                              ),
+                              child: Icon(
+                                _controller!.value.isPlaying
+                                    ? Icons.pause
+                                    : Icons.play_arrow,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Verwenden-Button oben mittig im Bild
+                        Positioned(
+                          top: 12,
+                          left: 0,
+                          right: 0,
+                          child: Center(
+                            child: TextButton(
+                              onPressed: _isGenerating
+                                  ? null
+                                  : _generateThumbnail,
+                              style: TextButton.styleFrom(
+                                backgroundColor: _isGenerating
+                                    ? Colors.grey
+                                    : Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: _isGenerating
+                                  ? const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : ShaderMask(
+                                      shaderCallback: (bounds) =>
+                                          const LinearGradient(
+                                            colors: [
+                                              Color(0xFFE91E63),
+                                              AppColors.lightBlue,
+                                              Color(0xFF00E5FF),
+                                            ],
+                                          ).createShader(bounds),
+                                      child: const Text(
+                                        'Verwenden',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  height: 300,
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Center(
+                    child: Icon(
+                      Icons.error_outline,
+                      color: Colors.white54,
+                      size: 64,
+                    ),
+                  ),
+                ),
+
+              const SizedBox(height: 20),
+
+              const SizedBox(height: 12),
+
+              // Seek Bar
+              if (_controller != null && _controller!.value.isInitialized)
+                Column(
+                  children: [
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        activeTrackColor: AppColors.magenta,
+                        inactiveTrackColor: Colors.white.withValues(alpha: 0.2),
+                        thumbColor: AppColors.lightBlue,
+                        overlayColor: AppColors.magenta.withValues(alpha: 0.2),
+                        trackHeight: 4.0,
+                      ),
+                      child: Slider(
+                        value: _currentPosition.clamp(0.0, 1.0),
+                        min: 0.0,
+                        max: 1.0,
+                        onChanged: (value) {
+                          if (_controller!.value.isInitialized) {
+                            final duration = _controller!.value.duration;
+                            final newPosition = duration * value;
+                            _controller!.seekTo(newPosition);
+                          }
+                        },
+                      ),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _currentTimeLabel,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                        Text(
+                          _formatDuration(_controller!.value.duration),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+
+              // Keine unteren Hinweise – Info über (i)-Button im Header
+            ],
+          ),
         ),
       ),
     );
