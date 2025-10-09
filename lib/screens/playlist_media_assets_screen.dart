@@ -798,11 +798,11 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
       final existing = await _findDocThumbFromStorage(widget.avatarId, m.id);
       if (existing != null && existing.isNotEmpty) return existing;
       // 2) neu generieren und speichern
-      final generated = await DocThumbService.generateAndStoreThumb(
+      final result = await DocThumbService.generateAndStoreThumb(
         widget.avatarId,
         m,
       );
-      return generated;
+      return result?['thumbUrl'] as String?;
     } catch (_) {
       return null;
     }

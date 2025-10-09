@@ -1093,13 +1093,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       // Orientierungsfilter: IMMER filtern, nie gemischt (außer Audio)
       if (it.type != AvatarMediaType.audio) {
-        // Für Bilder/Dokumente ohne aspectRatio: nicht ausfiltern (als Portrait behandeln)
+        // Für Dokumente ohne aspectRatio: standardmäßig Portrait (9:16)
+        // Für Bilder ohne aspectRatio: asynchron ermitteln (siehe unten)
         bool itemIsPortrait =
             it.isPortrait ||
             (it.aspectRatio == null && it.type == AvatarMediaType.document);
-        bool itemIsLandscape =
-            it.isLandscape ||
-            (it.aspectRatio == null && it.type == AvatarMediaType.document);
+        bool itemIsLandscape = it.isLandscape;
 
         if (it.aspectRatio == null && it.type == AvatarMediaType.image) {
           // Prüfe Cache für bereits ermittelte Aspect Ratios
@@ -2975,51 +2974,31 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         debugPrint(
           '📄 Dokument ${idx + 1}/${res.files.length}: ${p.basename(path)}',
         );
-        _uploadProgressNotifier.value = ((idx / res.files.length) * 100)
-            .round();
-        _uploadStatusNotifier.value = 'Upload ${idx + 1} / ${res.files.length}';
-        final media = await _uploadDocumentFile(file);
+
+        final media = await _uploadDocumentFile(
+          file,
+          onProgress: (progress) {
+            // Berechne Gesamt-Progress: vorherige Dateien + aktueller Upload
+            final perFileWeight = 1.0 / res.files.length;
+            final totalProgress =
+                (idx * perFileWeight) + (progress * perFileWeight);
+            _uploadProgressNotifier.value = (totalProgress * 100).toInt();
+            _uploadStatusNotifier.value =
+                'Dokument ${idx + 1}/${res.files.length} wird hochgeladen... ${(progress * 100).toInt()}%';
+          },
+        );
         if (media != null) {
           debugPrint(
             '✅ Dokument ${idx + 1} in Firestore gespeichert: ${media.id}',
           );
-          // lokal hinzufügen, damit Crop sofort darauf arbeiten kann
+          // Lokal hinzufügen (ohne Thumbnail)
           _items.add(media);
           setState(() {});
-          // Automatisches Zuschneiden des Preview-Bildes (ohne manuellen Dialog)
-          debugPrint('🖼️ Generiere Thumbnail für Dokument ${media.id}...');
-          final thumbUrl = await DocThumbService.generateAndStoreThumb(
-            widget.avatarId,
-            media,
-          );
-          if (thumbUrl != null) {
-            debugPrint(
-              '✅ Thumbnail für Dokument ${media.id} erstellt: $thumbUrl',
-            );
-            // Lokal aktualisieren
-            final itemIdx = _items.indexWhere((m) => m.id == media.id);
-            if (itemIdx != -1) {
-              _items[itemIdx] = AvatarMedia(
-                id: media.id,
-                avatarId: media.avatarId,
-                type: media.type,
-                url: media.url,
-                thumbUrl: thumbUrl,
-                createdAt: media.createdAt,
-                durationMs: media.durationMs,
-                aspectRatio: media.aspectRatio,
-                tags: media.tags,
-                originalFileName: media.originalFileName,
-                isFree: media.isFree,
-                price: media.price,
-                currency: media.currency,
-              );
-            }
-          } else {
-            debugPrint(
-              '⚠️ Thumbnail-Generierung fehlgeschlagen für ${media.id}',
-            );
-          }
+
+          // SOFORT Crop-Dialog öffnen (User wählt 9:16 oder 16:9)
+          _isUploadingNotifier.value = false;
+          await _reopenCrop(media);
+          _isUploadingNotifier.value = true;
         } else {
           debugPrint('❌ Dokument ${idx + 1} konnte nicht hochgeladen werden');
         }
@@ -3034,7 +3013,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
   }
 
-  Future<AvatarMedia?> _uploadDocumentFile(File file) async {
+  Future<AvatarMedia?> _uploadDocumentFile(
+    File file, {
+    Function(double)? onProgress,
+  }) async {
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) {
@@ -3103,7 +3085,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         'avatars/${widget.avatarId}/documents/${ts}_$base',
       );
       debugPrint('📤 Lade $base nach Storage hoch...');
-      final task = await storageRef.putFile(
+
+      final uploadTask = storageRef.putFile(
         file,
         SettableMetadata(
           contentType: contentType,
@@ -3111,10 +3094,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           customMetadata: {'type': 'document', 'ext': ext},
         ),
       );
+
+      // Upload-Fortschritt überwachen
+      uploadTask.snapshotEvents.listen((snapshot) {
+        final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+        if (onProgress != null) {
+          onProgress(progress);
+        }
+      });
+
+      final task = await uploadTask;
       final url = await task.ref.getDownloadURL();
       debugPrint('✅ Storage-Upload erfolgreich: $url');
 
-      // Firestore anlegen in documents-Collection
+      // Firestore OHNE Thumbnail erstellen (User croppt manuell!)
       final doc = FirebaseFirestore.instance
           .collection('avatars')
           .doc(widget.avatarId)
@@ -3129,16 +3122,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         'avatarId': widget.avatarId,
         'type': 'document',
         'url': url,
-        'thumbUrl': null,
+        'thumbUrl': null, // User croppt manuell!
         'createdAt': ts,
         'durationMs': null,
-        // AspectRatio wird nach Preview-Erzeugung gesetzt (natürliches Verhältnis)
-        'aspectRatio': null,
+        'aspectRatio': null, // Wird beim Crop gesetzt
         'tags': null,
         'originalFileName': base,
-        // Preisfelder optional identisch wie Bilder
       });
-      debugPrint('✅ Firestore-Eintrag erstellt: ${doc.id}');
+      debugPrint('✅ Firestore-Eintrag erstellt (ohne Thumbnail): ${doc.id}');
       return AvatarMedia(
         id: doc.id,
         avatarId: widget.avatarId,
@@ -3509,14 +3500,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   ),
                 ),
               ),
-            // Cropping Icon unten links: Bilder immer, Dokumente nur bis Thumb existiert
-            if (((it.type == AvatarMediaType.image) ||
-                    (it.type == AvatarMediaType.document &&
-                        it.thumbUrl == null)) &&
-                !_isDeleteMode)
+            // Cropping Icon unten links: nur für Bilder (Dokumente werden direkt nach Upload gecroppt)
+            if (it.type == AvatarMediaType.image && !_isDeleteMode)
               Positioned(
                 left: 6,
-                bottom: 6,
+                bottom: 50,
                 child: InkWell(
                   onTap: () => _reopenCrop(it),
                   onLongPress: () => _showTagsDialog(it),
@@ -3595,11 +3583,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 ),
               ),
 
-            // Delete Button unten rechts (oder rechts oben unter Tags für Audio)
+            // Delete Button unten rechts (für alle Medientypen)
             Positioned(
               right: 6,
-              top: it.type == AvatarMediaType.audio ? 50 : null,
-              bottom: it.type == AvatarMediaType.audio ? null : 6,
+              bottom: 6,
               child: InkWell(
                 onTap: () {
                   setState(() {
