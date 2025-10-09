@@ -37,6 +37,44 @@ import '../services/audio_player_service.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/gmbc_buttons.dart';
 
+// Custom SnackBar Helper
+SnackBar buildSuccessSnackBar(String message) {
+  return SnackBar(
+    content: Row(
+      children: [
+        ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
+          ).createShader(bounds),
+          child: const Icon(Icons.check_circle, color: Colors.white, size: 32),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(message, style: const TextStyle(color: Colors.grey)),
+        ),
+      ],
+    ),
+    backgroundColor: Colors.white,
+    behavior: SnackBarBehavior.floating,
+  );
+}
+
+SnackBar buildErrorSnackBar(String message) {
+  return SnackBar(
+    content: Row(
+      children: [
+        const Icon(Icons.error_outline, color: Colors.red, size: 32),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(message, style: const TextStyle(color: Colors.grey)),
+        ),
+      ],
+    ),
+    backgroundColor: Colors.white,
+    behavior: SnackBarBehavior.floating,
+  );
+}
+
 class MediaGalleryScreen extends StatefulWidget {
   final String avatarId;
   final String? fromScreen; // 'avatar-list' oder null
@@ -1197,9 +1235,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           .toList();
 
       if (videos.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Keine Videos ausgewählt')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(buildErrorSnackBar('Keine Videos ausgewählt'));
         return;
       }
 
@@ -1285,9 +1323,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$uploadedCount Bilder erfolgreich hochgeladen!'),
-        ),
+        buildSuccessSnackBar('$uploadedCount Bilder erfolgreich hochgeladen!'),
       );
     }
   }
@@ -1306,9 +1342,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     if (recentImages.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Keine neuen Bilder zum Zuschneiden gefunden'),
-        ),
+        buildErrorSnackBar('Keine neuen Bilder zum Zuschneiden gefunden'),
       );
       return;
     }
@@ -1374,7 +1408,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Batch-Cropping abgeschlossen!')),
+        buildSuccessSnackBar('Batch-Cropping abgeschlossen!'),
       );
     }
   } */
@@ -1396,40 +1430,97 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         return StatefulBuilder(
           builder: (ctx, setLocal) => AlertDialog(
             contentPadding: EdgeInsets.zero,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: const BorderSide(color: AppColors.magenta, width: 3),
+            ),
             content: SizedBox(
-              width: 380,
+              width: 480,
               height: 560,
               child: Stack(
                 children: [
                   Column(
                     children: [
                       Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                         child: Row(
                           children: [
                             const Icon(Icons.crop, color: Colors.white70),
                             const SizedBox(width: 8),
-                            ChoiceChip(
-                              label: const Text('9:16'),
-                              selected: currentAspect == 9 / 16,
-                              onSelected: isCropping
+                            InkWell(
+                              onTap: isCropping
                                   ? null
-                                  : (_) {
-                                      setLocal(() => currentAspect = 9 / 16);
-                                    },
+                                  : () =>
+                                        setLocal(() => currentAspect = 9 / 16),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: currentAspect == 9 / 16
+                                      ? const LinearGradient(
+                                          colors: [
+                                            Color(0xFFE91E63),
+                                            AppColors.lightBlue,
+                                            Color(0xFF00E5FF),
+                                          ],
+                                        )
+                                      : null,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.white24,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: Text(
+                                  '9:16',
+                                  style: TextStyle(
+                                    color: currentAspect == 9 / 16
+                                        ? Colors.white
+                                        : Colors.white70,
+                                  ),
+                                ),
+                              ),
                             ),
                             const SizedBox(width: 8),
-                            ChoiceChip(
-                              label: const Text('16:9'),
-                              selected: currentAspect == 16 / 9,
-                              onSelected: isCropping
+                            InkWell(
+                              onTap: isCropping
                                   ? null
-                                  : (_) {
-                                      setLocal(() => currentAspect = 16 / 9);
-                                    },
+                                  : () =>
+                                        setLocal(() => currentAspect = 16 / 9),
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: currentAspect == 16 / 9
+                                      ? const LinearGradient(
+                                          colors: [
+                                            Color(0xFFE91E63),
+                                            AppColors.lightBlue,
+                                            Color(0xFF00E5FF),
+                                          ],
+                                        )
+                                      : null,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: Colors.white24,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: Text(
+                                  '16:9',
+                                  style: TextStyle(
+                                    color: currentAspect == 16 / 9
+                                        ? Colors.white
+                                        : Colors.white70,
+                                  ),
+                                ),
+                              ),
                             ),
                           ],
                         ),
@@ -1462,37 +1553,86 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           },
                         ),
                       ),
-                      Row(
-                        children: [
-                          TextButton(
-                            onPressed: isCropping
-                                ? null
-                                : () => Navigator.pop(ctx),
-                            child: const Text('Abbrechen'),
-                          ),
-                          const Spacer(),
-                          ElevatedButton(
-                            onPressed: isCropping
-                                ? null
-                                : () {
-                                    // Force crop auch wenn nicht bewegt wurde
-                                    try {
-                                      cropController.crop();
-                                    } catch (e) {
-                                      // Fallback: Croppe das ganze Bild
-                                      setLocal(() => isCropping = true);
-                                      _uploadImage(
-                                        imageBytes,
-                                        ext,
-                                        originalFileName,
-                                      ).then((_) {
-                                        if (mounted) Navigator.of(ctx).pop();
-                                      });
-                                    }
-                                  },
-                            child: const Text('Zuschneiden'),
-                          ),
-                        ],
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            // Abbrechen (light grey)
+                            TextButton(
+                              onPressed: isCropping
+                                  ? null
+                                  : () => Navigator.pop(ctx),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 12,
+                                ),
+                              ),
+                              child: Text(
+                                'Abbrechen',
+                                style: TextStyle(
+                                  color: isCropping
+                                      ? Colors.grey.shade600
+                                      : Colors.grey.shade400,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ),
+                            // Zuschneiden (white button + GMBC text when enabled)
+                            TextButton(
+                              onPressed: isCropping
+                                  ? null
+                                  : () {
+                                      // Force crop auch wenn nicht bewegt wurde
+                                      try {
+                                        cropController.crop();
+                                      } catch (e) {
+                                        // Fallback: Croppe das ganze Bild
+                                        setLocal(() => isCropping = true);
+                                        _uploadImage(
+                                          imageBytes,
+                                          ext,
+                                          originalFileName,
+                                        ).then((_) {
+                                          if (mounted) Navigator.of(ctx).pop();
+                                        });
+                                      }
+                                    },
+                              style: TextButton.styleFrom(
+                                backgroundColor: isCropping
+                                    ? Colors.transparent
+                                    : Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 24,
+                                  vertical: 12,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: ShaderMask(
+                                shaderCallback: (bounds) =>
+                                    const LinearGradient(
+                                      colors: [
+                                        Color(0xFFE91E63),
+                                        AppColors.lightBlue,
+                                        Color(0xFF00E5FF),
+                                      ],
+                                    ).createShader(bounds),
+                                child: Text(
+                                  'Zuschneiden',
+                                  style: TextStyle(
+                                    color: isCropping
+                                        ? Colors.white30
+                                        : Colors.white,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -1679,9 +1819,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$uploadedCount Videos erfolgreich hochgeladen!'),
-        ),
+        buildSuccessSnackBar('$uploadedCount Videos erfolgreich hochgeladen!'),
       );
     }
   }
@@ -1739,9 +1877,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     await _mediaSvc.add(widget.avatarId, m);
     await _load();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Video erfolgreich hochgeladen')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(buildSuccessSnackBar('Video erfolgreich hochgeladen'));
     }
   }
 
@@ -1980,8 +2118,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$uploaded Audio-Dateien erfolgreich hochgeladen!'),
+          buildSuccessSnackBar(
+            '$uploaded Audio-Dateien erfolgreich hochgeladen!',
           ),
         );
       }
@@ -2695,9 +2833,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       if (!allowed.contains(ext)) {
         debugPrint('Blockiert: nicht erlaubte Dokument-Erweiterung: .$ext');
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Dateityp nicht erlaubt.')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(buildErrorSnackBar('Dateityp nicht erlaubt.'));
         }
         return null;
       }
@@ -2932,138 +3070,150 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: (it.type == AvatarMediaType.image)
-                  ? Image.network(
-                      it.url,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stack) {
-                        return Container(
-                          color: Colors.black26,
-                          alignment: Alignment.center,
-                          child: const Icon(
-                            Icons.image_not_supported,
-                            color: Colors.white54,
-                          ),
-                        );
-                      },
-                    )
-                  : (it.type == AvatarMediaType.document)
-                  ? _buildDocumentPreviewBackground(it)
-                  : it.type == AvatarMediaType.video
-                  ? (it.thumbUrl != null
-                        ? Image.network(
-                            it.thumbUrl!,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stack) {
-                              // Fallback zu VideoPlayer wenn Thumb nicht lädt
-                              return FutureBuilder<VideoPlayerController?>(
-                                future: _videoControllerForThumb(it.url),
-                                builder: (context, snapshot) {
-                                  if (snapshot.connectionState ==
-                                          ConnectionState.done &&
-                                      snapshot.hasData &&
-                                      snapshot.data != null) {
-                                    final controller = snapshot.data!;
-                                    if (controller.value.isInitialized) {
-                                      final videoAR =
-                                          controller.value.aspectRatio;
-                                      return AspectRatio(
-                                        aspectRatio: videoAR,
-                                        child: VideoPlayer(controller),
-                                      );
+            Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  width: 1,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: (it.type == AvatarMediaType.image)
+                    ? Image.network(
+                        it.url,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stack) {
+                          return Container(
+                            color: Colors.black26,
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.image_not_supported,
+                              color: Colors.white54,
+                            ),
+                          );
+                        },
+                      )
+                    : (it.type == AvatarMediaType.document)
+                    ? _buildDocumentPreviewBackground(it)
+                    : it.type == AvatarMediaType.video
+                    ? (it.thumbUrl != null
+                          ? Image.network(
+                              it.thumbUrl!,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stack) {
+                                // Fallback zu VideoPlayer wenn Thumb nicht lädt
+                                return FutureBuilder<VideoPlayerController?>(
+                                  future: _videoControllerForThumb(it.url),
+                                  builder: (context, snapshot) {
+                                    if (snapshot.connectionState ==
+                                            ConnectionState.done &&
+                                        snapshot.hasData &&
+                                        snapshot.data != null) {
+                                      final controller = snapshot.data!;
+                                      if (controller.value.isInitialized) {
+                                        final videoAR =
+                                            controller.value.aspectRatio;
+                                        return AspectRatio(
+                                          aspectRatio: videoAR,
+                                          child: VideoPlayer(controller),
+                                        );
+                                      }
                                     }
+                                    return Container(color: Colors.black26);
+                                  },
+                                );
+                              },
+                            )
+                          : FutureBuilder<VideoPlayerController?>(
+                              future: _videoControllerForThumb(it.url),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState ==
+                                        ConnectionState.done &&
+                                    snapshot.hasData &&
+                                    snapshot.data != null) {
+                                  final controller = snapshot.data!;
+                                  if (controller.value.isInitialized) {
+                                    final videoAR =
+                                        controller.value.aspectRatio;
+                                    return AspectRatio(
+                                      aspectRatio: videoAR,
+                                      child: VideoPlayer(controller),
+                                    );
                                   }
-                                  return Container(color: Colors.black26);
-                                },
-                              );
-                            },
-                          )
-                        : FutureBuilder<VideoPlayerController?>(
-                            future: _videoControllerForThumb(it.url),
-                            builder: (context, snapshot) {
-                              if (snapshot.connectionState ==
-                                      ConnectionState.done &&
-                                  snapshot.hasData &&
-                                  snapshot.data != null) {
-                                final controller = snapshot.data!;
-                                if (controller.value.isInitialized) {
-                                  final videoAR = controller.value.aspectRatio;
-                                  return AspectRatio(
-                                    aspectRatio: videoAR,
-                                    child: VideoPlayer(controller),
-                                  );
                                 }
-                              }
-                              return Container(color: Colors.black26);
-                            },
-                          ))
-                  : Container(
-                      decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
+                                return Container(color: Colors.black26);
+                              },
+                            ))
+                    : Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFF1A1A1A), Color(0xFF0A0A0A)],
+                          ),
+                        ),
+                        child: Stack(
+                          children: [
+                            // Moderne Waveform-Visualisierung
+                            Center(child: _buildWaveform()),
+                            // Audio Icon mit Gradient
+                            Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: const LinearGradient(
+                                        colors: [
+                                          Color(0xFFE91E63), // Magenta
+                                          AppColors.lightBlue, // Blue
+                                          Color(0xFF00E5FF), // Cyan
+                                        ],
+                                        stops: [0.0, 0.5, 1.0],
+                                      ),
+                                    ),
+                                    child: const Icon(
+                                      Icons.music_note,
+                                      size: 32,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(
+                                        alpha: 0.5,
+                                      ),
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Text(
+                                      it.tags?.isNotEmpty == true
+                                          ? it.tags!.first
+                                          : 'Audio',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      child: Stack(
-                        children: [
-                          // Moderne Waveform-Visualisierung
-                          Center(child: _buildWaveform()),
-                          // Audio Icon mit Gradient
-                          Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(12),
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: const LinearGradient(
-                                      colors: [
-                                        Color(0xFFE91E63), // Magenta
-                                        AppColors.lightBlue, // Blue
-                                        Color(0xFF00E5FF), // Cyan
-                                      ],
-                                      stops: [0.0, 0.5, 1.0],
-                                    ),
-                                  ),
-                                  child: const Icon(
-                                    Icons.music_note,
-                                    size: 32,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withValues(alpha: 0.5),
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    it.tags?.isNotEmpty == true
-                                        ? it.tags!.first
-                                        : 'Audio',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+              ),
             ),
             // Preis-Badge oben rechts (Bild/Video/Dokument): Override ODER globaler Preis wenn aktiviert
             if ((it.type == AvatarMediaType.image ||
@@ -3433,9 +3583,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       if (mounted) {
                         Navigator.pop(ctx);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Aus Playlist entfernt'),
-                          ),
+                          buildSuccessSnackBar('Aus Playlist entfernt'),
                         );
                       }
                     } catch (e) {
@@ -3959,9 +4107,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       if (bytes == null || bytes.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Kein Preview-Bild zum Zuschneiden verfügbar.'),
-            ),
+            buildErrorSnackBar('Kein Preview-Bild zum Zuschneiden verfügbar.'),
           );
         }
         return;
@@ -3992,36 +4138,91 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           return StatefulBuilder(
             builder: (ctx, setLocal) => AlertDialog(
               contentPadding: EdgeInsets.zero,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: AppColors.magenta, width: 3),
+              ),
               content: SizedBox(
-                width: isPortraitImage ? 420 : 380,
+                width: isPortraitImage ? 520 : 480,
                 height: isPortraitImage
                     ? (MediaQuery.of(ctx).size.height * 0.82)
                     : 560,
                 child: Column(
                   children: [
                     Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                       child: Row(
                         children: [
                           const Icon(Icons.crop, color: Colors.white70),
                           const SizedBox(width: 8),
-                          ChoiceChip(
-                            label: const Text('9:16'),
-                            selected: currentAspect == 9 / 16,
-                            onSelected: (_) {
-                              setLocal(() => currentAspect = 9 / 16);
-                            },
+                          InkWell(
+                            onTap: () => setLocal(() => currentAspect = 9 / 16),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: currentAspect == 9 / 16
+                                    ? const LinearGradient(
+                                        colors: [
+                                          Color(0xFFE91E63),
+                                          AppColors.lightBlue,
+                                          Color(0xFF00E5FF),
+                                        ],
+                                      )
+                                    : null,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.white24,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Text(
+                                '9:16',
+                                style: TextStyle(
+                                  color: currentAspect == 9 / 16
+                                      ? Colors.white
+                                      : Colors.white70,
+                                ),
+                              ),
+                            ),
                           ),
                           const SizedBox(width: 8),
-                          ChoiceChip(
-                            label: const Text('16:9'),
-                            selected: currentAspect == 16 / 9,
-                            onSelected: (_) {
-                              setLocal(() => currentAspect = 16 / 9);
-                            },
+                          InkWell(
+                            onTap: () => setLocal(() => currentAspect = 16 / 9),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: currentAspect == 16 / 9
+                                    ? const LinearGradient(
+                                        colors: [
+                                          Color(0xFFE91E63),
+                                          AppColors.lightBlue,
+                                          Color(0xFF00E5FF),
+                                        ],
+                                      )
+                                    : null,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.white24,
+                                  width: 2,
+                                ),
+                              ),
+                              child: Text(
+                                '16:9',
+                                style: TextStyle(
+                                  color: currentAspect == 16 / 9
+                                      ? Colors.white
+                                      : Colors.white70,
+                                ),
+                              ),
+                            ),
                           ),
                         ],
                       ),
@@ -4043,27 +4244,69 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         },
                       ),
                     ),
-                    Row(
-                      children: [
-                        TextButton(
-                          onPressed: () => Navigator.pop(ctx),
-                          child: const Text('Abbrechen'),
-                        ),
-                        const Spacer(),
-                        ElevatedButton(
-                          onPressed: () {
-                            // Force crop auch wenn nicht bewegt wurde
-                            try {
-                              cropController.crop();
-                            } catch (e) {
-                              // Fallback: Croppe das ganze Bild
-                              croppedBytes = bytes;
-                              Navigator.of(ctx).pop();
-                            }
-                          },
-                          child: const Text('Zuschneiden'),
-                        ),
-                      ],
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          // Abbrechen (light grey)
+                          TextButton(
+                            onPressed: () => Navigator.pop(ctx),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 12,
+                              ),
+                            ),
+                            child: Text(
+                              'Abbrechen',
+                              style: TextStyle(
+                                color: Colors.grey.shade400,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          // Zuschneiden (disabled: GMBC text, enabled: white button + GMBC text)
+                          TextButton(
+                            onPressed: () {
+                              // Force crop auch wenn nicht bewegt wurde
+                              try {
+                                cropController.crop();
+                              } catch (e) {
+                                // Fallback: Croppe das ganze Bild
+                                croppedBytes = bytes;
+                                Navigator.of(ctx).pop();
+                              }
+                            },
+                            style: TextButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 24,
+                                vertical: 12,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                            child: ShaderMask(
+                              shaderCallback: (bounds) => const LinearGradient(
+                                colors: [
+                                  Color(0xFFE91E63),
+                                  AppColors.lightBlue,
+                                  Color(0xFF00E5FF),
+                                ],
+                              ).createShader(bounds),
+                              child: const Text(
+                                'Zuschneiden',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 ),
@@ -4163,14 +4406,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         );
         await _load();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bild erfolgreich neu zugeschnitten')),
+          buildSuccessSnackBar('Bild erfolgreich neu zugeschnitten'),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Fehler beim Zuschneiden: $e')));
+        ).showSnackBar(buildErrorSnackBar('Fehler beim Zuschneiden: $e'));
       }
     }
   }
@@ -5479,10 +5722,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                             ScaffoldMessenger.of(
                                               context,
                                             ).showSnackBar(
-                                              SnackBar(
-                                                content: Text(
-                                                  '${newTags.length} Tags gespeichert',
-                                                ),
+                                              buildSuccessSnackBar(
+                                                '${newTags.length} Tags gespeichert',
                                               ),
                                             );
                                           }
@@ -6769,35 +7010,7 @@ class _VideoThumbnailSelectorDialogState
         if (data['success'] == true) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Row(
-                  children: [
-                    ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [
-                          Color(0xFFE91E63),
-                          AppColors.lightBlue,
-                          Color(0xFF00E5FF),
-                        ],
-                      ).createShader(bounds),
-                      child: const Icon(
-                        Icons.check_circle,
-                        color: Colors.white,
-                        size: 32,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    const Expanded(
-                      child: Text(
-                        'Vorschaubild erfolgreich erstellt!',
-                        style: TextStyle(color: Colors.black87),
-                      ),
-                    ),
-                  ],
-                ),
-                backgroundColor: Colors.white,
-                behavior: SnackBarBehavior.floating,
-              ),
+              buildSuccessSnackBar('Vorschaubild erfolgreich erstellt!'),
             );
             widget.onComplete();
             Navigator.pop(context);
@@ -6811,9 +7024,9 @@ class _VideoThumbnailSelectorDialogState
     } catch (e) {
       debugPrint('❌ Thumbnail-Generierung fehlgeschlagen: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Fehler: $e'), backgroundColor: Colors.red),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(buildErrorSnackBar('Fehler: $e'));
       }
     } finally {
       if (mounted) {
