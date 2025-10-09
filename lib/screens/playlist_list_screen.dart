@@ -321,21 +321,35 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
 
     f = cropped;
 
+    // Loading-Dialog anzeigen
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+
     try {
-      // ERST: Altes Cover + Thumbnail löschen (wenn vorhanden)
+      // ERST: Altes Cover + ALLE Thumbnails löschen
       if (playlist.coverImageUrl != null &&
           playlist.coverImageUrl!.isNotEmpty) {
         try {
           await FirebaseStorageService.deleteFile(playlist.coverImageUrl!);
           debugPrint('Altes Cover gelöscht');
         } catch (_) {}
-        // Altes Thumbnail löschen
-        if (playlist.coverThumbUrl != null &&
-            playlist.coverThumbUrl!.isNotEmpty) {
-          try {
-            await FirebaseStorageService.deleteFile(playlist.coverThumbUrl!);
-            debugPrint('Altes Cover-Thumbnail gelöscht');
-          } catch (_) {}
+        // ALLE Thumbnails im thumbs-Ordner für diese Playlist löschen
+        try {
+          final thumbsPath =
+              'avatars/${playlist.avatarId}/playlists/${playlist.id}/thumbs';
+          debugPrint('Lösche ALLE Thumbnails in: $thumbsPath');
+          final ref = FirebaseStorage.instance.ref().child(thumbsPath);
+          final listResult = await ref.listAll();
+          for (final item in listResult.items) {
+            await item.delete();
+            debugPrint('Thumbnail gelöscht: ${item.name}');
+          }
+        } catch (e) {
+          debugPrint('Fehler beim Löschen der Thumbnails: $e');
         }
       }
 
@@ -393,12 +407,18 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       await _svc.update(updated);
       await _load(); // Reload list
 
+      // Loading-Dialog schließen
+      if (mounted) Navigator.pop(context);
+
       if (mounted) {
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Cover-Bild hochgeladen')));
       }
     } catch (e) {
+      // Loading-Dialog schließen
+      if (mounted) Navigator.pop(context);
+
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -437,13 +457,19 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
           debugPrint('Cover gelöscht');
         } catch (_) {}
       }
-      // Thumbnail aus Storage löschen
-      if (playlist.coverThumbUrl != null &&
-          playlist.coverThumbUrl!.isNotEmpty) {
-        try {
-          await FirebaseStorageService.deleteFile(playlist.coverThumbUrl!);
-          debugPrint('Cover-Thumbnail gelöscht');
-        } catch (_) {}
+      // ALLE Thumbnails aus thumbs-Ordner löschen
+      try {
+        final thumbsPath =
+            'avatars/${playlist.avatarId}/playlists/${playlist.id}/thumbs';
+        debugPrint('Lösche ALLE Thumbnails in: $thumbsPath');
+        final ref = FirebaseStorage.instance.ref().child(thumbsPath);
+        final listResult = await ref.listAll();
+        for (final item in listResult.items) {
+          await item.delete();
+          debugPrint('Thumbnail gelöscht: ${item.name}');
+        }
+      } catch (e) {
+        debugPrint('Fehler beim Löschen der Thumbnails: $e');
       }
 
       // Update playlist ohne Cover (zurück zu default)
@@ -1035,8 +1061,14 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                       width: 28,
                                                       height: 28,
                                                       decoration: BoxDecoration(
-                                                        color: Colors.red
-                                                            .withOpacity(0.8),
+                                                        color: const Color(
+                                                          0x60000000,
+                                                        ),
+                                                        border: Border.all(
+                                                          color: Colors.white
+                                                              .withOpacity(0.3),
+                                                          width: 1,
+                                                        ),
                                                         borderRadius:
                                                             BorderRadius.circular(
                                                               14,
