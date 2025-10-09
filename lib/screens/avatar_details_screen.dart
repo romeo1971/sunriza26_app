@@ -6082,7 +6082,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         '🗑️ Video aus Liste entfernt: $removed (verbleibend: ${_videoUrls.length})',
       );
     }
-    // Hero-Video sicherstellen: Nach jeder Video-Deletion prüfen
+    // Hero-Video sicherstellen: Nach jeder Video-Deletion prüfen (NUR lokal!)
+    String? newHeroVideoUrl;
     try {
       final currentHero = _getHeroVideoUrl();
       debugPrint(
@@ -6095,33 +6096,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       if (!heroExists) {
         if (_videoUrls.isNotEmpty) {
-          // Hero fehlt, aber Videos da → erstes Video als Hero setzen
-          await _setHeroVideo(_videoUrls.first);
-          debugPrint('🎬 Hero-Video neu gesetzt: ${_videoUrls.first}');
+          // Hero fehlt, aber Videos da → erstes Video als neues Hero merken
+          newHeroVideoUrl = _videoUrls.first;
+          debugPrint('🎬 Neues Hero-Video wird gesetzt: $newHeroVideoUrl');
         } else {
-          // Keine Videos mehr → heroVideoUrl löschen
-          if (_avatarData != null) {
-            final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
-            if (tr.containsKey('heroVideoUrl')) {
-              tr.remove('heroVideoUrl');
-              debugPrint('🎬 HeroVideoUrl wird gelöscht (keine Videos mehr)');
-              final updated = _avatarData!.copyWith(
-                training: tr,
-                updatedAt: DateTime.now(),
-              );
-              final ok = await _avatarService.updateAvatar(updated);
-              if (ok) {
-                _applyAvatar(updated);
-                debugPrint(
-                  '🎬 HeroVideoUrl erfolgreich aus Firestore gelöscht!',
-                );
-              }
-            }
-          }
+          // Keine Videos mehr → heroVideoUrl wird gelöscht (null)
+          newHeroVideoUrl = null;
+          debugPrint('🎬 HeroVideoUrl wird gelöscht (keine Videos mehr)');
         }
+      } else {
+        // Hero existiert noch → behalten
+        newHeroVideoUrl = currentHero;
       }
     } catch (e) {
-      debugPrint('❌ Fehler bei Hero-Video-Update: $e');
+      debugPrint('❌ Fehler bei Hero-Video-Check: $e');
     }
     // Local entfernen (Bilder)
     _newImageFiles.removeWhere((f) => _selectedLocalImages.contains(f.path));
@@ -6132,21 +6120,32 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _selectedRemoteVideos.clear();
     _selectedLocalVideos.clear();
     // Persistiere Änderungen sofort (Storage + Firestore)
-    // Spezialsituation: Hero-Image wurde gelöscht und es gibt KEINE weiteren Bilder → avatarImageUrl muss auf null
-    if (_profileImageUrl == null && _imageUrls.isEmpty) {
-      // Erzwinge Clear des Hero-Image-Feldes in Firestore
-      final updated = _avatarData!.copyWith(
-        imageUrls: [],
-        videoUrls: [..._videoUrls],
-        textFileUrls: [..._textFileUrls],
-        avatarImageUrl: null,
-        clearAvatarImageUrl: true,
-        updatedAt: DateTime.now(),
-      );
-      await _avatarService.updateAvatar(updated);
-      _applyAvatar(updated);
+    // WICHTIG: imageUrls, videoUrls, heroVideoUrl UND textFileUrls müssen aktualisiert werden!
+    final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
+    if (newHeroVideoUrl != null) {
+      tr['heroVideoUrl'] = newHeroVideoUrl;
+      debugPrint('🎬 Training: heroVideoUrl wird gesetzt auf $newHeroVideoUrl');
     } else {
-      await _persistTextFileUrls();
+      // newHeroVideoUrl ist null → heroVideoUrl muss gelöscht werden
+      tr.remove('heroVideoUrl');
+      debugPrint('🎬 Training: heroVideoUrl wird entfernt');
+    }
+
+    final updated = _avatarData!.copyWith(
+      imageUrls: [..._imageUrls],
+      videoUrls: [..._videoUrls],
+      textFileUrls: [..._textFileUrls],
+      avatarImageUrl: _profileImageUrl,
+      clearAvatarImageUrl: _profileImageUrl == null && _imageUrls.isEmpty,
+      training: tr,
+      updatedAt: DateTime.now(),
+    );
+    final success = await _avatarService.updateAvatar(updated);
+    if (success) {
+      _applyAvatar(updated);
+      debugPrint(
+        '✅ Avatar nach Delete aktualisiert: ${_videoUrls.length} Videos, heroVideoUrl=$newHeroVideoUrl',
+      );
     }
     _isDeleteMode = false;
     if (mounted) setState(() {});

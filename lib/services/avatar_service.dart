@@ -201,6 +201,8 @@ class AvatarService {
 
       final updatedAvatar = avatar.copyWith(updatedAt: DateTime.now());
       final payload = updatedAvatar.toMap();
+      bool shouldDeleteHeroVideoUrl = false;
+
       // Wenn greetingText geleert wurde, Feld in Firestore entfernen → Standard greift
       try {
         if ((updatedAvatar.greetingText != null) &&
@@ -211,6 +213,20 @@ class AvatarService {
         if (updatedAvatar.avatarImageUrl == null ||
             (updatedAvatar.avatarImageUrl?.isEmpty ?? true)) {
           payload['avatarImageUrl'] = FieldValue.delete();
+        }
+        // Falls heroVideoUrl aus training entfernt wurde, Variable für separates Update merken
+        if (payload['training'] is Map) {
+          final training = payload['training'] as Map;
+          print('🎬 Service: training keys = ${training.keys.toList()}');
+          print(
+            '🎬 Service: training.heroVideoUrl = ${training['heroVideoUrl']}',
+          );
+          // Wenn heroVideoUrl fehlt ODER null ist → merken für separates Update
+          if (!training.containsKey('heroVideoUrl') ||
+              training['heroVideoUrl'] == null) {
+            shouldDeleteHeroVideoUrl = true;
+            print('🎬 Service: heroVideoUrl soll gelöscht werden');
+          }
         }
       } catch (_) {}
       try {
@@ -231,6 +247,17 @@ class AvatarService {
       await _avatarsCollection
           .doc(avatar.id)
           .set(payload, SetOptions(merge: true));
+
+      // Separates Update für heroVideoUrl-Löschung (dot-notation funktioniert nur mit update())
+      if (shouldDeleteHeroVideoUrl) {
+        await _avatarsCollection.doc(avatar.id).update({
+          'training.heroVideoUrl': FieldValue.delete(),
+        });
+        print(
+          '🎬 Service: training.heroVideoUrl mit separatem update() gelöscht',
+        );
+      }
+
       return true;
     } catch (e) {
       print('Fehler beim Aktualisieren des Avatars: $e');
