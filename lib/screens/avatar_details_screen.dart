@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:ui' as ui;
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -364,6 +365,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   bool _isTestingVoice = false;
   final AudioPlayer _voiceTestPlayer = AudioPlayer();
   bool _isGeneratingAvatar = false;
+  // Entfernt: dispose hier, da es unten bereits eine vollständige dispose()-Methode gibt
 
   double _mediaWidth(BuildContext context) {
     final double available =
@@ -6002,31 +6004,37 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // Remote löschen (Bilder) + zugehörige Thumbs und evtl. Media-Dokumente
     for (final url in _selectedRemoteImages) {
       try {
-        // Original löschen
-        await FirebaseStorageService.deleteFile(url);
-        // Zugehörige Thumbs unter images/thumbs/<basename>_*
-        final originalPath = FirebaseStorageService.pathFromUrl(url);
-        if (originalPath.isNotEmpty) {
-          final dir = p.dirname(originalPath); // avatars/<id>/images
-          final base = p.basenameWithoutExtension(originalPath);
-          final prefix = '$dir/thumbs/${base}_';
-          try {
-            await FirebaseStorageService.deleteByPrefix(prefix);
-          } catch (_) {}
-        }
-        // Firestore media docs entfernen (falls vorhanden)
+        debugPrint('DEL img start: $url');
+        // ERST: thumbUrl aus Firestore holen und löschen
+        String? thumbUrl;
         try {
           final avatarId = _avatarData!.id;
+          debugPrint('DEL images query for avatar=$avatarId');
           final qs = await FirebaseFirestore.instance
               .collection('avatars')
               .doc(avatarId)
-              .collection('media')
+              .collection('images')
               .where('url', isEqualTo: url)
               .get();
+          debugPrint('DEL images docs: ${qs.docs.length}');
           for (final d in qs.docs) {
+            final data = d.data();
+            thumbUrl = (data['thumbUrl'] as String?);
+            if (thumbUrl != null && thumbUrl.isNotEmpty) {
+              debugPrint('DEL: Lösche Thumbnail: $thumbUrl');
+              try {
+                await FirebaseStorageService.deleteFile(thumbUrl);
+                debugPrint('DEL: Thumbnail gelöscht ✓');
+              } catch (e) {
+                debugPrint('DEL: Thumbnail-Fehler: $e');
+              }
+            }
             await d.reference.delete();
           }
         } catch (_) {}
+        // Original löschen
+        await FirebaseStorageService.deleteFile(url);
+        debugPrint('DEL img storage OK');
       } catch (_) {}
       _imageUrls.remove(url);
       if (_profileImageUrl == url) {
@@ -6043,6 +6051,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           final dir = p.dirname(originalPath); // avatars/<id>/videos
           final base = p.basenameWithoutExtension(originalPath);
           final prefix = '$dir/thumbs/${base}_';
+          debugPrint('🗑️ Video-Thumbs gelöscht: $prefix');
           try {
             await FirebaseStorageService.deleteByPrefix(prefix);
             debugPrint('🗑️ Video-Thumbs gelöscht: $prefix');
@@ -6242,6 +6251,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _deathDateController.dispose();
     _regionInputController.dispose();
     _inlineVideoController?.dispose();
+    // Audio-Testplayer sauber beenden
+    try {
+      _voiceTestPlayer.stop();
+    } catch (_) {}
+    try {
+      _voiceTestPlayer.dispose();
+    } catch (_) {}
     // Thumbnail-Controller aufräumen
     for (final controller in _thumbControllers.values) {
       controller.dispose();
@@ -6283,28 +6299,36 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         );
         return;
       }
-      final baseDir = p.dirname(originalPath);
-      final ext = p.extension(originalPath).isNotEmpty
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final origExt = p.extension(originalPath).isNotEmpty
           ? p.extension(originalPath)
           : '.jpg';
-      final newPath =
-          '$baseDir/recrop_${DateTime.now().millisecondsSinceEpoch}$ext';
+      // Verwende die tatsächliche Extension des gecroppten Files, nicht zwingend die des Originals
+      final cropExt = p.extension(cached.path).isNotEmpty
+          ? p.extension(cached.path)
+          : origExt;
+      final avatarIdNew = _avatarData!.id;
+      final newPath = 'avatars/$avatarIdNew/images/recrop_${ts}$cropExt';
 
-      final upload = await FirebaseStorageService.uploadImage(
-        cached,
-        customPath: newPath,
-      );
-      if (upload != null && mounted) {
-        String newUrl;
-        try {
-          newUrl = await FirebaseStorage.instance
-              .ref()
-              .child(newPath)
-              .getDownloadURL();
-        } catch (_) {
-          newUrl = upload;
-        }
-
+      // Upload recrop direkt mit korrektem Content-Type
+      String newUrl;
+      try {
+        debugPrint('RECROP: Starte Upload nach: $newPath');
+        final ref = FirebaseStorage.instance.ref().child(newPath);
+        final bytesUp = await cached.readAsBytes();
+        debugPrint('RECROP: Bytes gelesen: ${bytesUp.length}');
+        final ct = cropExt.toLowerCase() == '.png' ? 'image/png' : 'image/jpeg';
+        await ref.putData(bytesUp, SettableMetadata(contentType: ct));
+        newUrl = await ref.getDownloadURL();
+        debugPrint('RECROP: Upload erfolgreich! URL: $newUrl');
+      } catch (e) {
+        debugPrint('RECROP: Upload FEHLER: $e');
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Upload fehlgeschlagen: $e')));
+        return;
+      }
+      if (mounted) {
         PaintingBinding.instance.imageCache
           ..evict(NetworkImage(url))
           ..evict(NetworkImage(newUrl));
@@ -6320,9 +6344,116 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
         await _persistTextFileUrls();
 
+        // ERST: Altes thumbUrl aus Firestore holen UND alte Files aus Storage löschen
+        // (BEVOR Firestore geändert wird, wegen Storage Rules!)
+        String? oldThumbUrl;
         try {
-          await FirebaseStorageService.deleteFile(url);
+          final avatarId = _avatarData!.id;
+          final qs = await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(avatarId)
+              .collection('images')
+              .where('url', isEqualTo: url)
+              .get();
+          debugPrint('RECROP: Query ergab ${qs.docs.length} Dokumente');
+          for (final d in qs.docs) {
+            final data = d.data();
+            debugPrint('RECROP: Dokument-Daten: ${data.keys.join(", ")}');
+            oldThumbUrl = (data['thumbUrl'] as String?);
+            debugPrint('RECROP: Altes thumbUrl gefunden: $oldThumbUrl');
+          }
+          debugPrint('RECROP: Lösche ALTE Files JETZT (vor Firestore-Update)');
+          // ALLE Thumbnails zum alten Bild löschen (nicht nur das eine aus Firestore!)
+          final originalPath = FirebaseStorageService.pathFromUrl(url);
+          if (originalPath.isNotEmpty) {
+            final dir = p.dirname(originalPath); // avatars/<id>/images
+            final base = p.basenameWithoutExtension(originalPath);
+            // Lösche ALLE thumbs die mit diesem Basename beginnen
+            final thumbsDir = '$dir/thumbs';
+            debugPrint(
+              'RECROP: Suche alle Thumbnails in: $thumbsDir für Basis: $base',
+            );
+            try {
+              final ref = FirebaseStorage.instance.ref().child(thumbsDir);
+              final listResult = await ref.listAll();
+              for (final item in listResult.items) {
+                // Prüfe ob Dateiname mit base beginnt
+                if (item.name.startsWith(base)) {
+                  debugPrint('RECROP: Lösche Thumbnail: ${item.fullPath}');
+                  try {
+                    await item.delete();
+                    debugPrint('RECROP: Thumbnail gelöscht ✓');
+                  } catch (e) {
+                    debugPrint('RECROP: Fehler beim Löschen: $e');
+                  }
+                }
+              }
+            } catch (e) {
+              debugPrint('RECROP: Fehler beim Listen der Thumbnails: $e');
+            }
+          }
+          // Altes Original löschen
+          debugPrint('RECROP: Lösche altes Original: $url');
+          try {
+            await FirebaseStorageService.deleteFile(url);
+            debugPrint('RECROP: Altes Original gelöscht ✓');
+          } catch (e) {
+            debugPrint('RECROP: Original-Fehler: $e');
+          }
+          // ERST Thumbnail erstellen, DANN Firestore mit thumbUrl updaten
+          String? newThumbUrl;
+          try {
+            final thumbPath =
+                'avatars/$avatarIdNew/images/thumbs/recrop_${ts}.jpg';
+            final imgBytes = await cached.readAsBytes();
+            final decoded = img.decodeImage(imgBytes);
+            if (decoded != null) {
+              final resized = img.copyResize(decoded, width: 360);
+              final jpg = img.encodeJpg(resized, quality: 70);
+              final dir2 = await getTemporaryDirectory();
+              final thumbFile = await File(
+                '${dir2.path}/thumb_${ts}.jpg',
+              ).create();
+              await thumbFile.writeAsBytes(jpg, flush: true);
+              newThumbUrl = await FirebaseStorageService.uploadImage(
+                thumbFile,
+                customPath: thumbPath,
+              );
+              debugPrint('RECROP: Neues Thumbnail erstellt: $newThumbUrl');
+            }
+          } catch (e) {
+            debugPrint('RECROP: Fehler beim Thumbnail-Erstellen: $e');
+          }
+
+          // JETZT Firestore updaten MIT thumbUrl (verhindert auto-Generierung!)
+          double? ar;
+          try {
+            ar = await _calculateAspectRatio(File(cached.path));
+          } catch (_) {}
+          for (final d in qs.docs) {
+            final data = d.data();
+            final createdAt =
+                (data['createdAt'] as num?)?.toInt() ??
+                DateTime.now().millisecondsSinceEpoch;
+            final tags = (data['tags'] as List?)?.cast<String>();
+            final avatarIdField = (data['avatarId'] as String?) ?? avatarId;
+            try {
+              await d.reference.delete();
+            } catch (_) {}
+            await d.reference.set({
+              'avatarId': avatarIdField,
+              'type': 'image',
+              'url': newUrl,
+              'thumbUrl': newThumbUrl, // Direkt das neue Thumbnail setzen!
+              'createdAt': createdAt,
+              if (ar != null) 'aspectRatio': ar,
+              if (tags != null) 'tags': tags,
+            });
+            debugPrint('RECROP: Firestore-Dokument mit thumbUrl erstellt');
+          }
         } catch (_) {}
+
+        // Temp-Datei aufräumen
         try {
           await cached.delete();
         } catch (_) {}
@@ -6352,6 +6483,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     } catch (_) {
     } finally {
       _refreshingImages.remove(url);
+    }
+  }
+
+  // Berechnet das Seitenverhältnis (width/height) aus Bildbytes einer Datei
+  Future<double?> _calculateAspectRatio(File file) async {
+    try {
+      final bytes = await file.readAsBytes();
+      final codec = await ui.instantiateImageCodec(bytes);
+      final frame = await codec.getNextFrame();
+      final image = frame.image;
+      final ar = image.width / image.height;
+      image.dispose();
+      return ar;
+    } catch (_) {
+      return null;
     }
   }
 

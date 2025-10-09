@@ -25,14 +25,20 @@ service firebase.storage {
     // Allgemein für alle Avatar-Uploads (Images/Videos/Audio/etc.)
     match /avatars/{avatarId}/{allPaths=**} {
       allow read: if true;
-      allow write, delete: if signedIn() &&
+      allow write: if signedIn() &&
                       (
                         (firestore.exists(/databases/(default)/documents/avatars/$(avatarId)) &&
                          firestore.get(/databases/(default)/documents/avatars/$(avatarId)).data.userId == request.auth.uid) ||
                         firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)/avatars/$(avatarId))
                       ) &&
-                      (resource == null || true) && // allow delete without file type check
-                      (request.operation == 'delete' || (isValidFileType() && isValidFileSize()));
+                      isValidFileType() && isValidFileSize();
+      allow delete: if signedIn() &&
+                      (
+                        (firestore.exists(/databases/(default)/documents/avatars/$(avatarId)) &&
+                         firestore.get(/databases/(default)/documents/avatars/$(avatarId)).data.userId == request.auth.uid) ||
+                        firestore.exists(/databases/(default)/documents/users/$(request.auth.uid)/avatars/$(avatarId)) ||
+                        resource != null  // Erlaube Löschen wenn Datei existiert (keine Firestore-Prüfung)
+                      );
     }
 
     // Zusätzliche Auflage NUR für Dokumente: Content-Disposition muss gesetzt sein

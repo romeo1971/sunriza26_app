@@ -43,7 +43,15 @@ class FirebaseStorageService {
 
       final ref = _storage.ref().child(filePath);
       debugPrint('⏳ Starte Firebase Upload...');
-      final uploadTask = ref.putFile(imageFile);
+      // Content-Type anhand Dateiendung setzen
+      final String ext = path.extension(filePath).toLowerCase();
+      String contentType = 'image/jpeg';
+      if (ext == '.png') contentType = 'image/png';
+      if (ext == '.webp') contentType = 'image/webp';
+      final uploadTask = ref.putFile(
+        imageFile,
+        SettableMetadata(contentType: contentType),
+      );
 
       // Progress Monitoring
       uploadTask.snapshotEvents.listen((snapshot) {
@@ -320,12 +328,57 @@ class FirebaseStorageService {
   /// Lösche eine Datei aus Firebase Storage
   static Future<bool> deleteFile(String downloadUrl) async {
     try {
-      final ref = _storage.refFromURL(downloadUrl);
-      await ref.delete();
-      return true;
+      // Versuche zuerst normale URL
+      try {
+        final ref = _storage.refFromURL(downloadUrl);
+        await ref.delete();
+        return true;
+      } catch (e) {
+        debugPrint('refFromURL fehlgeschlagen, versuche Pfad-Extraktion: $e');
+        // Fallback: Extrahiere Pfad aus signierter URL
+        // Format: https://storage.googleapis.com/BUCKET/PATH?params
+        final path = _extractPathFromSignedUrl(downloadUrl);
+        if (path.isNotEmpty) {
+          debugPrint('Extrahierter Pfad: $path');
+          final ref = _storage.ref().child(path);
+          await ref.delete();
+          debugPrint('Datei mit Pfad gelöscht: $path');
+          return true;
+        }
+        throw Exception('Konnte Pfad nicht extrahieren');
+      }
     } catch (e) {
       debugPrint('Fehler beim Löschen der Datei: $e');
       return false;
+    }
+  }
+
+  /// Extrahiere Storage-Pfad aus signierter URL
+  static String _extractPathFromSignedUrl(String url) {
+    try {
+      // Format: https://firebasestorage.googleapis.com/v0/b/BUCKET/o/PATH?params
+      // Oder: https://storage.googleapis.com/BUCKET/PATH?params
+      if (url.contains('/o/')) {
+        // Firebase Format: alles nach /o/ ist der Pfad
+        final oIndex = url.indexOf('/o/');
+        final pathPart = url.substring(oIndex + 3);
+        // Entferne Query-Parameter
+        final qIndex = pathPart.indexOf('?');
+        final path = qIndex > 0 ? pathPart.substring(0, qIndex) : pathPart;
+        // URL-decode
+        return Uri.decodeComponent(path);
+      } else if (url.contains('storage.googleapis.com/')) {
+        // Alte Format
+        final uri = Uri.parse(url);
+        final segments = uri.pathSegments;
+        if (segments.length > 1) {
+          return segments.sublist(1).join('/');
+        }
+      }
+      return '';
+    } catch (e) {
+      debugPrint('Fehler beim Extrahieren des Pfads: $e');
+      return '';
     }
   }
 
