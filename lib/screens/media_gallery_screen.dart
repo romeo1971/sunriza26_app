@@ -2728,20 +2728,19 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             final selectedMedia = _items
                                 .where((m) => _selectedMediaIds.contains(m.id))
                                 .toList();
-                            final hasImagesOrVideos = selectedMedia.any(
+                            final hasImagesVideosOrDocs = selectedMedia.any(
                               (m) =>
                                   m.type == AvatarMediaType.image ||
-                                  m.type == AvatarMediaType.video,
+                                  m.type == AvatarMediaType.video ||
+                                  m.type == AvatarMediaType.document,
                             );
-                            final hasDocsOrAudio = selectedMedia.any(
-                              (m) =>
-                                  m.type == AvatarMediaType.document ||
-                                  m.type == AvatarMediaType.audio,
+                            final hasAudio = selectedMedia.any(
+                              (m) => m.type == AvatarMediaType.audio,
                             );
 
                             // Verwende das richtige Delete-Popup basierend auf Medientypen
                             final Widget deleteBtn = TextButton(
-                              onPressed: hasImagesOrVideos && !hasDocsOrAudio
+                              onPressed: hasImagesVideosOrDocs && !hasAudio
                                   ? _confirmDeleteSelectedComplete
                                   : _confirmDeleteSelectedMinimal,
                               style: TextButton.styleFrom(
@@ -4162,6 +4161,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final videos = selectedMedia
         .where((m) => m.type == AvatarMediaType.video)
         .toList();
+    final documents = selectedMedia
+        .where((m) => m.type == AvatarMediaType.document)
+        .toList();
     final count = selectedMedia.length;
 
     if (count == 0) return;
@@ -4228,6 +4230,42 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               color: Colors.grey.shade800,
                               child: const Icon(
                                 Icons.videocam,
+                                color: Colors.white54,
+                              ),
+                            ),
+                    ),
+                  ),
+                ),
+                // Dokumente
+                ...documents.map(
+                  (media) => ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: SizedBox(
+                      width: 54,
+                      height: 96,
+                      child: media.thumbUrl != null
+                          ? Image.network(
+                              media.thumbUrl!,
+                              width: 54,
+                              height: 96,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Container(
+                                    width: 54,
+                                    height: 96,
+                                    color: Colors.grey.shade800,
+                                    child: const Icon(
+                                      Icons.description,
+                                      color: Colors.white54,
+                                    ),
+                                  ),
+                            )
+                          : Container(
+                              width: 54,
+                              height: 96,
+                              color: Colors.grey.shade800,
+                              child: const Icon(
+                                Icons.description,
                                 color: Colors.white54,
                               ),
                             ),
@@ -4368,6 +4406,42 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           debugPrint('❌ Fehler beim Löschen des Videos: $e');
         }
         videoUrls.remove(media.url);
+      }
+
+      // DOKUMENTE löschen
+      for (final media in documents) {
+        try {
+          debugPrint('📄 Lösche Dokument: ${media.url}');
+          // Thumbnail löschen
+          if (media.thumbUrl != null && media.thumbUrl!.isNotEmpty) {
+            try {
+              await FirebaseStorageService.deleteFile(media.thumbUrl!);
+              debugPrint('📄 Dokument-Thumb gelöscht ✓');
+            } catch (e) {
+              debugPrint('⚠️ Fehler beim Löschen des Dokument-Thumbs: $e');
+            }
+          }
+          // Original löschen
+          await FirebaseStorageService.deleteFile(media.url);
+          debugPrint('📄 Dokument Storage gelöscht ✓');
+          // Firestore löschen
+          try {
+            final qs = await FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(widget.avatarId)
+                .collection('documents')
+                .where('url', isEqualTo: media.url)
+                .get();
+            for (final d in qs.docs) {
+              await d.reference.delete();
+              debugPrint('📄 Firestore Dokument-Doc gelöscht: ${d.id}');
+            }
+          } catch (e) {
+            debugPrint('⚠️ Fehler beim Löschen des Dokument-Docs: $e');
+          }
+        } catch (e) {
+          debugPrint('❌ Fehler beim Löschen des Dokuments: $e');
+        }
       }
 
       // Hero-Video prüfen und aktualisieren
