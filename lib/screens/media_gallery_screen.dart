@@ -5585,8 +5585,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     onTap: () {
                       // Abbrechen ohne Speichern - alte Werte wiederherstellen
                       // Falls kein individueller Preis: Globalen Preis verwenden
-                      final gp =
-                          _globalPricing['audio'] as Map<String, dynamic>?;
+                      final mediaTypeKey = media.type == AvatarMediaType.audio ? 'audio' 
+                          : media.type == AvatarMediaType.image ? 'image'
+                          : media.type == AvatarMediaType.video ? 'video'
+                          : 'document';
+                      final gp = _globalPricing[mediaTypeKey] as Map<String, dynamic>?;
                       final gpPrice = (gp?['price'] as num?)?.toDouble() ?? 0.0;
                       final price = media.price ?? gpPrice;
                       final priceText = price
@@ -5699,7 +5702,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     // STANDARD-ANSICHT: Preis + "Kostenpflichtig/Kostenlos" Toggle + Credits + Edit-Stift
     // Berechne effektiven Preis (individuelle Überschreibung oder global)
-    final gp = _globalPricing['audio'] as Map<String, dynamic>?;
+    final mediaTypeKey = media.type == AvatarMediaType.audio ? 'audio' 
+        : media.type == AvatarMediaType.image ? 'image'
+        : media.type == AvatarMediaType.video ? 'video'
+        : 'document';
+    final gp = _globalPricing[mediaTypeKey] as Map<String, dynamic>?;
     final gpEnabled = (gp?['enabled'] as bool?) ?? false;
     final gpPrice = (gp?['price'] as num?)?.toDouble() ?? 0.0;
     final gpCur = _normalizeCurrencyToSymbol(gp?['currency'] as String?);
@@ -6300,7 +6307,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   /// Preis-Feld: Zeigt Preis + Credits oder Input
   Widget _buildPriceField(AvatarMedia media, bool isEditing) {
     // Falls kein individueller Preis: Globalen Preis verwenden
-    final gp = _globalPricing['audio'] as Map<String, dynamic>?;
+    final mediaTypeKey = media.type == AvatarMediaType.audio ? 'audio' 
+        : media.type == AvatarMediaType.image ? 'image'
+        : media.type == AvatarMediaType.video ? 'video'
+        : 'document';
+    final gp = _globalPricing[mediaTypeKey] as Map<String, dynamic>?;
     final gpPrice = (gp?['price'] as num?)?.toDouble() ?? 0.0;
     final price = media.price ?? gpPrice;
     final priceText = price.toStringAsFixed(2).replaceAll('.', ',');
