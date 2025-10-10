@@ -7331,6 +7331,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               ),
               const SizedBox(height: 15),
               _buildPriceSetupContainer(it),
+            ],
+          ),
+        ),
       ),
     );
   }
