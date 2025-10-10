@@ -216,6 +216,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
   }
 
+  /// Helper: Gibt den richtigen Collection-Namen für den Media-Typ zurück
+  String _getCollectionNameForMediaType(AvatarMediaType type) {
+    switch (type) {
+      case AvatarMediaType.image:
+        return 'images';
+      case AvatarMediaType.video:
+        return 'videos';
+      case AvatarMediaType.audio:
+        return 'audios';
+      case AvatarMediaType.document:
+        return 'documents';
+    }
+  }
+
   Future<Uint8List?> _fetchPptxPreviewBytes(String url) async {
     try {
       final res = await http.get(Uri.parse(url));
@@ -362,7 +376,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       await FirebaseFirestore.instance
           .collection('avatars')
           .doc(widget.avatarId)
-          .collection('media')
+          .collection(_getCollectionNameForMediaType(media.type))
           .doc(media.id)
           .update({'thumbUrl': thumbUrl, 'aspectRatio': targetAR});
 
@@ -5504,7 +5518,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       await FirebaseFirestore.instance
                           .collection('avatars')
                           .doc(widget.avatarId)
-                          .collection('media')
+                          .collection(_getCollectionNameForMediaType(media.type))
                           .doc(media.id)
                           .update({
                             'price': FieldValue.delete(),
@@ -5615,7 +5629,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         await FirebaseFirestore.instance
                             .collection('avatars')
                             .doc(widget.avatarId)
-                            .collection('media')
+                            .collection(_getCollectionNameForMediaType(media.type))
                             .doc(media.id)
                             .update({
                               'price': newPrice,
@@ -5730,7 +5744,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     await FirebaseFirestore.instance
                         .collection('avatars')
                         .doc(widget.avatarId)
-                        .collection('media')
+                        .collection(_getCollectionNameForMediaType(media.type))
                         .doc(media.id)
                         .update({'isFree': newIsFree});
 
@@ -6107,7 +6121,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           await FirebaseFirestore.instance
                               .collection('avatars')
                               .doc(widget.avatarId)
-                              .collection('media')
+                              .collection(_getCollectionNameForMediaType(media.type))
                               .doc(currentMedia.id)
                               .update({'isFree': newIsFree});
 
@@ -6176,7 +6190,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           await FirebaseFirestore.instance
                               .collection('avatars')
                               .doc(widget.avatarId)
-                              .collection('media')
+                              .collection(_getCollectionNameForMediaType(media.type))
                               .doc(currentMedia.id)
                               .update({
                                 'price': newPrice,
@@ -6233,7 +6247,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           await FirebaseFirestore.instance
                               .collection('avatars')
                               .doc(widget.avatarId)
-                              .collection('media')
+                              .collection(_getCollectionNameForMediaType(media.type))
                               .doc(currentMedia.id)
                               .update({
                                 'price': FieldValue.delete(),
@@ -7581,7 +7595,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       await FirebaseFirestore.instance
           .collection('avatars')
           .doc(media.avatarId)
-          .collection('media')
+          .collection(_getCollectionNameForMediaType(media.type))
           .doc(media.id)
           .update({
             'isFree': isFree,
