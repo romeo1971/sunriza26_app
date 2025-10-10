@@ -140,7 +140,86 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final List<String> _imageUrls = [];
   final List<String> _videoUrls = [];
   final List<String> _textFileUrls = [];
+  final Map<String, String> _mediaOriginalNames = {}; // URL -> originalFileName
+  final Map<String, int> _imageDurations =
+      {}; // URL -> duration in seconds (default 5)
+  bool _isImageLoopMode = true; // Kreislauf (true) oder Ende (false)
+  bool _isTimelineEnabled = true; // Timeline generell aktiviert/deaktiviert
+  final Map<String, bool> _imageActive =
+      {}; // URL -> aktiv (true) oder inaktiv (false)
   final TextEditingController _textAreaController = TextEditingController();
+
+  // Timeline-Daten in Firebase speichern
+  Future<void> _saveTimelineData() async {
+    if (_avatarData == null) return;
+    try {
+      await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .update({
+            'imageTimeline': {
+              'durations': _imageDurations,
+              'loopMode': _isImageLoopMode,
+              'enabled': _isTimelineEnabled,
+              'active': _imageActive,
+            },
+          });
+      debugPrint('✅ Timeline-Daten gespeichert');
+    } catch (e) {
+      debugPrint('❌ Fehler beim Speichern der Timeline-Daten: $e');
+    }
+  }
+
+  // Timeline-Daten aus Firebase laden
+  Future<void> _loadTimelineData(String avatarId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(avatarId)
+          .get();
+      if (doc.exists && doc.data() != null) {
+        final timeline = doc.data()!['imageTimeline'] as Map<String, dynamic>?;
+        if (timeline != null) {
+          // Durations laden (URL -> Sekunden)
+          final durationsMap = timeline['durations'] as Map<String, dynamic>?;
+          if (durationsMap != null) {
+            _imageDurations.clear();
+            durationsMap.forEach((key, value) {
+              if (value is int) {
+                _imageDurations[key] = value;
+              }
+            });
+          }
+          // LoopMode laden
+          final loopMode = timeline['loopMode'];
+          if (loopMode is bool) {
+            _isImageLoopMode = loopMode;
+          }
+          // Timeline Enabled laden
+          final enabled = timeline['enabled'];
+          if (enabled is bool) {
+            _isTimelineEnabled = enabled;
+          }
+          // Active-Status laden
+          final activeMap = timeline['active'] as Map<String, dynamic>?;
+          if (activeMap != null) {
+            _imageActive.clear();
+            activeMap.forEach((key, value) {
+              if (value is bool) {
+                _imageActive[key] = value;
+              }
+            });
+          }
+          debugPrint(
+            '✅ Timeline-Daten geladen: ${_imageDurations.length} Bilder, Loop: $_isImageLoopMode, Enabled: $_isTimelineEnabled',
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Fehler beim Laden der Timeline-Daten: $e');
+    }
+  }
+
   final TextEditingController _textFilterController = TextEditingController();
   // Chunking-Einstellungen (UI)
   double _targetTokens = 400; // Empfehlung: 200–500 (bis 1000)
@@ -176,6 +255,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   // Rect? _cropArea; // ungenutzt
   // Medien-Tab: 'images' oder 'videos'
   String _mediaTab = 'images';
+  // Hero-View-Mode: 'grid' (Kacheln) oder 'list' (drag&drop sortierbar)
+  String _heroViewMode = 'grid';
   // Cache für Video-Provider-Auswahl, verhindert Zurückspringen nach Fehlern/Reloads
   // String? _cachedVideoProvider; // entfernt (nur BitHuman)
   // ElevenLabs Voice-Parameter (per Avatar speicherbar)
@@ -389,6 +470,56 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return _countryController.text.trim().isNotEmpty;
   }
 
+  // Berechne Start-Zeit für ein Image (basierend auf akkumulierter Duration)
+  String _getImageStartTime(int index) {
+    int totalSeconds = 0;
+    for (int i = 0; i < index; i++) {
+      if (i < _imageUrls.length) {
+        final url = _imageUrls[i];
+        // Nur aktive Bilder zählen für die Timeline
+        if (_imageActive[url] ?? true) {
+          totalSeconds += _imageDurations[url] ?? 5;
+        }
+      }
+    }
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  // Berechne die Gesamt-Endzeit aller aktiven Bilder
+  String _getTotalEndTime() {
+    int totalSeconds = 0;
+    for (int i = 0; i < _imageUrls.length; i++) {
+      final url = _imageUrls[i];
+      if (_imageActive[url] ?? true) {
+        totalSeconds += _imageDurations[url] ?? 5;
+      }
+    }
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  // Lade OriginalFileNames aus Firestore Media-Docs
+  Future<void> _loadMediaOriginalNames(String avatarId) async {
+    try {
+      final mediaList = await _mediaSvc.list(avatarId);
+      if (!mounted) return;
+      setState(() {
+        _mediaOriginalNames.clear();
+        for (final media in mediaList) {
+          if (media.originalFileName != null &&
+              media.originalFileName!.isNotEmpty) {
+            _mediaOriginalNames[media.url] = media.originalFileName!;
+          }
+        }
+      });
+    } catch (e) {
+      debugPrint('❌ Fehler beim Laden der OriginalFileNames: $e');
+    }
+  }
+
   void _updateDirty() {
     final current = _avatarData;
     if (current == null) {
@@ -523,7 +654,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
-  void _applyAvatar(AvatarData data) {
+  Future<void> _applyAvatar(AvatarData data) async {
     setState(() {
       _avatarData = data;
       _firstNameController.text = data.firstName;
@@ -620,6 +751,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
       _isDirty = false;
     });
+    // OriginalFileNames aus Firestore laden - AWAIT!
+    await _loadMediaOriginalNames(data.id);
+    // Timeline-Daten laden
+    await _loadTimelineData(data.id);
     // Greeting vorbelegen
     _greetingController.text =
         _avatarData?.greetingText?.trim().isNotEmpty == true
@@ -678,6 +813,88 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                       ),
                     ),
                   ),
+                ),
+              ),
+              const Spacer(),
+              // Toggle View-Mode (Kacheln / Liste) - ganz rechts
+              SizedBox(
+                height: 35,
+                width: 35,
+                child: TextButton(
+                  onPressed: () {
+                    setState(() {
+                      _heroViewMode = _heroViewMode == 'grid' ? 'list' : 'grid';
+                    });
+                  },
+                  style: ButtonStyle(
+                    padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                    minimumSize: const WidgetStatePropertyAll(Size(35, 35)),
+                    backgroundColor: WidgetStatePropertyAll(
+                      _heroViewMode == 'grid'
+                          ? Colors.transparent
+                          : Colors.transparent,
+                    ),
+                    foregroundColor: const WidgetStatePropertyAll(Colors.white),
+                    overlayColor: WidgetStateProperty.resolveWith<Color?>((
+                      states,
+                    ) {
+                      if (states.contains(WidgetState.hovered) ||
+                          states.contains(WidgetState.focused) ||
+                          states.contains(WidgetState.pressed)) {
+                        final mix = Color.lerp(
+                          AppColors.magenta,
+                          AppColors.lightBlue,
+                          0.5,
+                        )!;
+                        return mix.withValues(alpha: 0.12);
+                      }
+                      return null;
+                    }),
+                    shape: const WidgetStatePropertyAll(
+                      RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    ),
+                  ),
+                  child: _heroViewMode == 'grid'
+                      ? Container(
+                          width: 35,
+                          height: 35,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                Color(0xFFE91E63),
+                                AppColors.lightBlue,
+                                Color(0xFF00E5FF),
+                              ],
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.view_headline,
+                            size: 20,
+                            color: Colors.white,
+                          ),
+                        )
+                      : SizedBox(
+                          width: 35,
+                          height: 35,
+                          child: Center(
+                            child: ShaderMask(
+                              shaderCallback: (bounds) => const LinearGradient(
+                                colors: [
+                                  Color(0xFFE91E63),
+                                  AppColors.lightBlue,
+                                  Color(0xFF00E5FF),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ).createShader(bounds),
+                              child: const Icon(
+                                Icons.window,
+                                size: 22,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -1429,41 +1646,490 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Widget _buildImagesRowLayout([double? mediaW]) {
-    final List<String> remoteFour = _imageUrls.take(4).toList();
+    // Verwende unterschiedliche Layouts je nach View-Mode
+    if (_heroViewMode == 'list') {
+      return _buildHeroImagesListView();
+    } else {
+      return _buildHeroImagesGridView();
+    }
+  }
+
+  // Listen-View: Drag & Drop sortierbare Liste
+  Widget _buildHeroImagesListView() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: LayoutBuilder(
+        builder: (ctx, cons) {
+          const double leftH = 223.0; // Container-Höhe
+          const double listItemHeight = 80.0; // Höhe jedes Listen-Items
+          const double toggleBarHeight = 40.0; // Höhe der Toggle-Leiste
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Toggle-Leiste ÜBER der Liste
+              SizedBox(
+                height: toggleBarHeight,
+                child: Row(
+                  children: [
+                    // Loop/Ende Toggle (white/green)
+                    SizedBox(
+                      width: 90,
+                      child: InkWell(
+                        onTap: () {
+                          setState(() {
+                            _isImageLoopMode = !_isImageLoopMode;
+                          });
+                          _saveTimelineData();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: _isImageLoopMode
+                                  ? AppColors.primaryGreen
+                                  : Colors.white,
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                _isImageLoopMode
+                                    ? Icons.loop
+                                    : Icons.stop_circle_outlined,
+                                size: 16,
+                                color: _isImageLoopMode
+                                    ? AppColors.primaryGreen
+                                    : Colors.white,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _isImageLoopMode ? 'Loop' : 'Ende',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _isImageLoopMode
+                                      ? AppColors.primaryGreen
+                                      : Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Timeline ON/OFF Toggle (white/green)
+                    SizedBox(
+                      width: 80,
+                      child: InkWell(
+                        onTap: () {
+                          setState(() {
+                            _isTimelineEnabled = !_isTimelineEnabled;
+                          });
+                          _saveTimelineData();
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            borderRadius: BorderRadius.circular(4),
+                            border: Border.all(
+                              color: _isTimelineEnabled
+                                  ? AppColors.primaryGreen
+                                  : Colors.white,
+                              width: 1,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                _isTimelineEnabled
+                                    ? Icons.play_circle_outline
+                                    : Icons.pause_circle_outline,
+                                size: 16,
+                                color: _isTimelineEnabled
+                                    ? AppColors.primaryGreen
+                                    : Colors.white,
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                _isTimelineEnabled ? 'ON' : 'OFF',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _isTimelineEnabled
+                                      ? AppColors.primaryGreen
+                                      : Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // Liste
+              SizedBox(
+                height: leftH, // Gleiche Höhe wie Kachel-View
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Reorderable Liste (VOLLE BREITE)
+                    Expanded(
+                      child: ReorderableListView.builder(
+                        buildDefaultDragHandles: false,
+                        itemCount: _imageUrls.length,
+                        onReorder: (oldIndex, newIndex) async {
+                          // Merke das aktuelle Hero-Image
+                          final currentHero = _profileImageUrl;
+
+                          setState(() {
+                            if (oldIndex < newIndex) {
+                              newIndex -= 1;
+                            }
+
+                            final item = _imageUrls.removeAt(oldIndex);
+                            _imageUrls.insert(newIndex, item);
+
+                            // Fall 1: Ein ANDERES Bild wird auf Position 0 gezogen -> neues Hero
+                            if (newIndex == 0 &&
+                                item != currentHero &&
+                                _imageUrls.isNotEmpty) {
+                              _profileImageUrl = _imageUrls[0];
+                            }
+
+                            // Fall 2: Das aktuelle Hero wird VON Position 0 wegbewegt -> neues erstes Bild wird Hero
+                            if (oldIndex == 0 &&
+                                item == currentHero &&
+                                _imageUrls.isNotEmpty) {
+                              _profileImageUrl = _imageUrls[0];
+                            }
+                          });
+                          // Timeline-Daten UND Hero-Image sofort speichern
+                          await _saveTimelineData();
+                        },
+                        itemBuilder: (context, index) {
+                          final url = _imageUrls[index];
+                          final isHero =
+                              _profileImageUrl == url ||
+                              (_profileImageUrl == null && index == 0);
+                          final imageName = _fileNameFromUrl(url);
+
+                          return Container(
+                            key: ValueKey(url),
+                            height: listItemHeight,
+                            margin: const EdgeInsets.only(bottom: 8),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              gradient: isHero
+                                  ? const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFFE91E63),
+                                        AppColors.lightBlue,
+                                        Color(0xFF00E5FF),
+                                      ],
+                                    )
+                                  : null,
+                              color: isHero
+                                  ? null
+                                  : Colors.white.withValues(alpha: 0.05),
+                            ),
+                            child: Row(
+                              children: [
+                                // Thumbnail ganz links
+                                Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(6),
+                                    child: SizedBox(
+                                      width: listItemHeight * 9 / 16,
+                                      height: listItemHeight - 8,
+                                      child: Image.network(
+                                        url,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                // 3 Reihen: Zeit, Dropdowns, Name
+                                Expanded(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      // Reihe 1: Zeit (Hero-Image zeigt "00:00 - ENDZEIT")
+                                      Text(
+                                        isHero
+                                            ? '00:00 - ${_getTotalEndTime()}'
+                                            : _getImageStartTime(index),
+                                        style: const TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 10,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      // Reihe 2: Dropdowns (Min : Sek)
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withValues(
+                                                alpha: 0.3,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: DropdownButton<int>(
+                                              value:
+                                                  (_imageDurations[url] ?? 5) ~/
+                                                  60,
+                                              isDense: true,
+                                              underline:
+                                                  const SizedBox.shrink(),
+                                              dropdownColor: Colors.black87,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 11,
+                                              ),
+                                              items: List.generate(60, (i) => i)
+                                                  .map(
+                                                    (min) => DropdownMenuItem(
+                                                      value: min,
+                                                      child: Text('${min}m'),
+                                                    ),
+                                                  )
+                                                  .toList(),
+                                              onChanged: (newMin) {
+                                                if (newMin != null) {
+                                                  setState(() {
+                                                    final currentSec =
+                                                        (_imageDurations[url] ??
+                                                            5) %
+                                                        60;
+                                                    _imageDurations[url] =
+                                                        (newMin * 60) +
+                                                        currentSec;
+                                                  });
+                                                  _saveTimelineData();
+                                                }
+                                              },
+                                            ),
+                                          ),
+                                          const Padding(
+                                            padding: EdgeInsets.symmetric(
+                                              horizontal: 4,
+                                            ),
+                                            child: Text(
+                                              ':',
+                                              style: TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 11,
+                                              ),
+                                            ),
+                                          ),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withValues(
+                                                alpha: 0.3,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: DropdownButton<int>(
+                                              value:
+                                                  ((_imageDurations[url] ?? 5) %
+                                                      60) ~/
+                                                  10 *
+                                                  10,
+                                              isDense: true,
+                                              underline:
+                                                  const SizedBox.shrink(),
+                                              dropdownColor: Colors.black87,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 11,
+                                              ),
+                                              items: [0, 10, 20, 30, 40, 50]
+                                                  .map(
+                                                    (sec) => DropdownMenuItem(
+                                                      value: sec,
+                                                      child: Text('${sec}s'),
+                                                    ),
+                                                  )
+                                                  .toList(),
+                                              onChanged: (newSec) {
+                                                if (newSec != null) {
+                                                  setState(() {
+                                                    final currentMin =
+                                                        (_imageDurations[url] ??
+                                                            5) ~/
+                                                        60;
+                                                    _imageDurations[url] =
+                                                        (currentMin * 60) +
+                                                        newSec;
+                                                  });
+                                                  _saveTimelineData();
+                                                }
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      // Reihe 3: Checkbox + Name (Hero-Image hat KEINE Checkbox)
+                                      Row(
+                                        children: [
+                                          // Checkbox (aktiv/inaktiv) - NUR bei NON-Hero-Images
+                                          if (!isHero) ...[
+                                            InkWell(
+                                              onTap: () {
+                                                setState(() {
+                                                  final currentActive =
+                                                      _imageActive[url] ?? true;
+                                                  _imageActive[url] =
+                                                      !currentActive;
+                                                });
+                                                _saveTimelineData();
+                                              },
+                                              child: Container(
+                                                width: 16,
+                                                height: 16,
+                                                decoration: BoxDecoration(
+                                                  color:
+                                                      (_imageActive[url] ??
+                                                          true)
+                                                      ? AppColors.primaryGreen
+                                                      : Colors.transparent,
+                                                  border: Border.all(
+                                                    color:
+                                                        (_imageActive[url] ??
+                                                            true)
+                                                        ? AppColors.primaryGreen
+                                                        : Colors.grey,
+                                                    width: 1,
+                                                  ),
+                                                  borderRadius:
+                                                      BorderRadius.circular(3),
+                                                ),
+                                                child:
+                                                    (_imageActive[url] ?? true)
+                                                    ? const Icon(
+                                                        Icons.check,
+                                                        size: 12,
+                                                        color: Colors.black,
+                                                      )
+                                                    : null,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 8),
+                                          ],
+                                          // Name
+                                          Expanded(
+                                            child: Text(
+                                              imageName,
+                                              style: TextStyle(
+                                                color: isHero
+                                                    ? Colors.white
+                                                    : (_imageActive[url] ??
+                                                          true)
+                                                    ? Colors.white
+                                                    : Colors.grey,
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                // NUR Drag Handle rechts (6-Punkte Grid Icon)
+                                ReorderableDragStartListener(
+                                  index: index,
+                                  child: MouseRegion(
+                                    cursor: SystemMouseCursors.click,
+                                    child: const Padding(
+                                      padding: EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                      ),
+                                      child: Icon(
+                                        Icons.drag_indicator,
+                                        color: Colors.white70,
+                                        size: 24,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  // Grid-View: 2x3 Grid mit 6 scrollbaren Bildern (wie vorher, aber angepasst)
+  Widget _buildHeroImagesGridView() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: LayoutBuilder(
         builder: (ctx, cons) {
           const double spacing =
               16.0; // Abstand zwischen großem Bild und Galerie
-          const double minThumbWidth = 120.0;
           const double gridSpacing = 12.0; // zwischen den Thumbs
           const double navBtnH = 40.0; // Höhe der lokalen Navigation / Upload
-          // Hero-Image 30% kleiner (Max-Breite von 240 auf 168 reduziert)
-          // MIN wird durch Navigation bestimmt: 3 Buttons (40px) + 2 Spacings (8px) = 136px
-          final double minNavWidth =
-              (navBtnH * 3) + (8 * 2); // 3 Buttons + 2x8px spacing
-          final double minRightWidth = (2 * minThumbWidth) + gridSpacing;
-          double leftW = cons.maxWidth - spacing - minRightWidth;
-          if (leftW > 168) leftW = 168; // MAX 168 statt 240 (30% kleiner)
-          if (leftW < minNavWidth) {
-            leftW = minNavWidth; // MIN durch Navigation-Breite
-          }
-          final double leftH = leftW * (16 / 9);
-          final double totalH = leftH; // Navigation ist jetzt separat oben
-          // Thumbnail-Breite berechnen
-          final double thumbW = leftH / 16 * 9;
-          // Row-Breite = großes Bild + spacing + 2 Thumbnails (breit wie 2 Bilder)
-          final double rowWidth =
-              leftW + spacing + leftW; // Rechts Platz für 2 Thumbnails
+
+          // Großansicht: HEIGHT fix, WIDTH auto aus 9:16
+          const double leftH = 223.0; // Image-Höhe
+          final double leftW = leftH * (9 / 16); // ~125px Breite aus 9:16
+          const double totalH = leftH; // Kein Drag-Handle mehr
 
           return SizedBox(
-            width: rowWidth,
+            width: cons.maxWidth,
             height: totalH,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Hero-Image links GROSS (responsive)
+                // Hero-Image links GROSS (responsive) mit GMBC background
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1474,89 +2140,103 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                       child: Container(
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          color: Colors.black.withValues(alpha: 0.05),
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFFE91E63),
+                              AppColors.lightBlue,
+                              Color(0xFF00E5FF),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
                         ),
-                        clipBehavior: Clip.hardEdge,
-                        child: Stack(
+                        padding: const EdgeInsets.all(2),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            color: Colors.black.withValues(alpha: 0.05),
+                          ),
                           clipBehavior: Clip.hardEdge,
-                          children: [
-                            Positioned.fill(
-                              child: _profileLocalPath != null
-                                  ? Image.file(
-                                      File(_profileLocalPath!),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : (_profileImageUrl != null
-                                        ? Image.network(
-                                            _profileImageUrl!,
-                                            fit: BoxFit.cover,
-                                            key: ValueKey(_profileImageUrl!),
-                                            errorBuilder:
-                                                (context, error, stack) {
-                                                  _handleImageError(
-                                                    _profileImageUrl!,
-                                                  );
-                                                  return Container(
-                                                    color: Colors.black26,
-                                                    alignment: Alignment.center,
-                                                    child: const Icon(
-                                                      Icons.image_not_supported,
-                                                      color: Colors.white54,
-                                                      size: 48,
-                                                    ),
-                                                  );
-                                                },
-                                          )
-                                        : Container(
-                                            color: Colors.white12,
-                                            child: const Icon(
-                                              Icons.person,
-                                              color: Colors.white54,
-                                              size: 64,
-                                            ),
-                                          )),
-                            ),
-                            if (_profileImageUrl != null)
-                              Positioned(
-                                left: 12,
-                                right: 12,
-                                bottom: 12,
-                                child: ElevatedButton(
-                                  onPressed: () async {
-                                    if (_avatarData == null ||
-                                        _isGeneratingAvatar) {
-                                      return;
-                                    }
-                                    await _handleGenerateAvatar();
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.black,
-                                    foregroundColor: Colors.white,
-                                    alignment: Alignment.center,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
+                          child: Stack(
+                            clipBehavior: Clip.hardEdge,
+                            children: [
+                              Positioned.fill(
+                                child: _profileLocalPath != null
+                                    ? Image.file(
+                                        File(_profileLocalPath!),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : (_profileImageUrl != null
+                                          ? Image.network(
+                                              _profileImageUrl!,
+                                              fit: BoxFit.cover,
+                                              key: ValueKey(_profileImageUrl!),
+                                              errorBuilder:
+                                                  (context, error, stack) {
+                                                    _handleImageError(
+                                                      _profileImageUrl!,
+                                                    );
+                                                    return Container(
+                                                      color: Colors.black26,
+                                                      alignment:
+                                                          Alignment.center,
+                                                      child: const Icon(
+                                                        Icons
+                                                            .image_not_supported,
+                                                        color: Colors.white54,
+                                                        size: 48,
+                                                      ),
+                                                    );
+                                                  },
+                                            )
+                                          : Container(
+                                              color: Colors.white12,
+                                              child: const Icon(
+                                                Icons.person,
+                                                color: Colors.white54,
+                                                size: 64,
+                                              ),
+                                            )),
+                              ),
+                              if (_profileImageUrl != null)
+                                Positioned(
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 12,
+                                  child: Center(
+                                    child: ElevatedButton(
+                                      onPressed: () async {
+                                        if (_avatarData == null ||
+                                            _isGeneratingAvatar) {
+                                          return;
+                                        }
+                                        await _handleGenerateAvatar();
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.black,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
+                                          horizontal: 16,
+                                        ),
+                                        minimumSize: Size.zero,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        context.read<LocalizationService>().t(
+                                          'avatars.refreshTooltip',
+                                        ),
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
                                     ),
-                                    minimumSize: const Size.fromHeight(0),
-                                    elevation: 0,
-                                    shadowColor: Colors.transparent,
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(8),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    context.read<LocalizationService>().t(
-                                      'avatars.refreshTooltip',
-                                    ),
-                                    style: const TextStyle(
-                                      fontSize: 13,
-                                      height: 1.2,
-                                      fontStyle: FontStyle.normal,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -1565,36 +2245,72 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ],
                 ),
                 const SizedBox(width: spacing),
-                // Galerie: unten bündig (leftH) und Toolbar exakt auf Höhe der linken Navi-Leiste
+                // Galerie: 2x3 Grid (6 Bilder sichtbar, scrollbar)
                 Expanded(
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      // Liste unten bündig
+                      // Grid rechts - scrollbar vertikal, 2 Spalten
                       Positioned(
                         left: 0,
                         right: 0,
                         bottom: 0,
                         child: SizedBox(
-                          height: leftH,
-                          child: ListView.separated(
+                          height: totalH,
+                          child: ListView.builder(
                             scrollDirection: Axis.horizontal,
-                            itemCount: remoteFour.length.clamp(0, 4),
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(width: gridSpacing),
+                            itemCount: _imageUrls.length,
                             itemBuilder: (context, index) {
-                              final url = remoteFour[index];
+                              final url = _imageUrls[index];
                               final isHero =
                                   _profileImageUrl == url ||
                                   (_profileImageUrl == null && index == 0);
-                              // Thumbnails: gleiche Proportionen wie großes Bild, aber kleinere Höhe
-                              final thumbH = leftH; // gleiche Höhe
-                              final thumbW =
-                                  thumbH / 16 * 9; // Breite aus 9:16 Format
-                              return SizedBox(
-                                width: thumbW,
-                                height: thumbH,
-                                child: _imageThumbNetwork(url, isHero),
+
+                              // Kachel mit Name unten
+                              const nameHeight = 30.0;
+                              final tileImageHeight = leftH - nameHeight;
+                              final tileWidth = tileImageHeight * (9 / 16);
+                              final imageName = _fileNameFromUrl(url);
+
+                              return Container(
+                                width: tileWidth,
+                                height: leftH,
+                                margin: EdgeInsets.only(
+                                  right: index < _imageUrls.length - 1
+                                      ? gridSpacing
+                                      : 0,
+                                ),
+                                child: Column(
+                                  children: [
+                                    SizedBox(
+                                      width: tileWidth,
+                                      height: tileImageHeight,
+                                      child: _buildHeroImageThumbNetwork(
+                                        url,
+                                        isHero,
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      height: nameHeight,
+                                      child: Center(
+                                        child: Text(
+                                          imageName,
+                                          style: TextStyle(
+                                            color: isHero
+                                                ? Colors.white
+                                                : Colors.white70,
+                                            fontSize: 11,
+                                            fontWeight: isHero
+                                                ? FontWeight.w600
+                                                : FontWeight.normal,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               );
                             },
                           ),
@@ -1673,13 +2389,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           const double minThumbWidth = 120.0;
           const double gridSpacing = 12.0;
           const double navBtnH = 40.0;
-          // Video-Preview 30% kleiner (Max-Breite von 240 auf 168 reduziert)
+          // Video-Preview (Max-Breite 148px)
           // MIN wird durch Navigation bestimmt: 3 Buttons (40px) + 2 Spacings (8px) = 136px
           final double minNavWidth =
               (navBtnH * 3) + (8 * 2); // 3 Buttons + 2x8px spacing
           final double minRightWidth = (2 * minThumbWidth) + gridSpacing;
           double leftW = cons.maxWidth - spacing - minRightWidth;
-          if (leftW > 168) leftW = 168; // MAX 168 statt 240 (30% kleiner)
+          if (leftW > 148) leftW = 148; // MAX 148 statt 168
           if (leftW < minNavWidth) {
             leftW = minNavWidth; // MIN durch Navigation-Breite
           }
@@ -2975,6 +3691,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   String _fileNameFromUrl(String url) {
+    // 1. Prüfe ob OriginalFileName in Map vorhanden (aus Firestore Media-Docs)
+    if (_mediaOriginalNames.containsKey(url)) {
+      return _mediaOriginalNames[url]!;
+    }
+    // 2. Fallback: Aus URL extrahieren
     try {
       final uri = Uri.parse(url);
       // Bei Firebase-Download-URLs ist das letzte Segment URL-encodiert (z.B. avatars%2F...%2Ffile.txt)
@@ -3444,6 +4165,146 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  // Hero-Image Thumbnail mit GMBC Border 2px nur für Hero-Image
+  Widget _buildHeroImageThumbNetwork(String url, bool isHero) {
+    final selected = _selectedRemoteImages.contains(url);
+
+    final Widget imageContent = Stack(
+      fit: StackFit.expand,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(isHero ? 10 : 12),
+          child: Image.network(
+            url,
+            fit: BoxFit.cover,
+            key: ValueKey(url),
+            errorBuilder: (context, error, stack) {
+              _handleImageError(url);
+              return Container(
+                color: Colors.black26,
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.image_not_supported,
+                  color: Colors.white54,
+                ),
+              );
+            },
+          ),
+        ),
+        if (isHero)
+          const Positioned(
+            top: 4,
+            left: 4,
+            child: Text('⭐', style: TextStyle(fontSize: 16)),
+          ),
+        // Crop-Icon unten links (nur wenn nicht im Delete-Modus)
+        if (!_isDeleteMode)
+          Positioned(
+            left: 6,
+            bottom: 6,
+            child: InkWell(
+              onTap: () => _reopenCrop(url),
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: const Color(0x30000000),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0x66FFFFFF)),
+                ),
+                child: const Icon(Icons.crop, color: Colors.white, size: 16),
+              ),
+            ),
+          ),
+        // Delete-Icon unten rechts
+        Positioned(
+          right: 6,
+          bottom: 6,
+          child: InkWell(
+            onTap: () {
+              setState(() {
+                _isDeleteMode = true;
+                if (selected) {
+                  _selectedRemoteImages.remove(url);
+                } else {
+                  _selectedRemoteImages.add(url);
+                }
+              });
+            },
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: selected ? null : const Color(0x30000000),
+                gradient: selected
+                    ? Theme.of(context).extension<AppGradients>()!.magentaBlue
+                    : null,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: selected
+                      ? AppColors.lightBlue.withValues(alpha: 0.7)
+                      : const Color(0x66FFFFFF),
+                ),
+              ),
+              child: const Icon(
+                Icons.delete_outline,
+                color: Colors.white,
+                size: 16,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    return GestureDetector(
+      onTap: () async {
+        if (_isDeleteMode) {
+          setState(() {
+            if (selected) {
+              _selectedRemoteImages.remove(url);
+            } else {
+              _selectedRemoteImages.add(url);
+            }
+          });
+        } else {
+          setState(() {
+            _profileImageUrl = url;
+            _updateDirty();
+          });
+          // Hero-Image sofort persistent speichern
+          await _persistTextFileUrls();
+        }
+      },
+      onLongPress: () => setState(() {
+        // Long-Press nur im Löschmodus relevant
+        if (_isDeleteMode) {
+          if (selected) {
+            _selectedRemoteImages.remove(url);
+          } else {
+            _selectedRemoteImages.add(url);
+          }
+        }
+      }),
+      child: isHero
+          ? Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFFE91E63),
+                    AppColors.lightBlue,
+                    Color(0xFF00E5FF),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              padding: const EdgeInsets.all(2),
+              child: imageContent,
+            )
+          : imageContent,
     );
   }
 
@@ -4283,6 +5144,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             if (!mounted) return;
             setState(() {
               _imageUrls.insert(0, url);
+              _imageDurations[url] = 5; // Default 5 Sekunden
+              _imageActive[url] = true; // Default: aktiv
               if (_profileImageUrl == null || _profileImageUrl!.isEmpty) {
                 _profileImageUrl = url;
               }
@@ -4352,6 +5215,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           if (!mounted) return;
           setState(() {
             _imageUrls.insert(0, url);
+            _imageDurations[url] = 5; // Default 5 Sekunden
             if (_profileImageUrl == null || _profileImageUrl!.isEmpty) {
               _profileImageUrl = url;
             }

@@ -75,6 +75,151 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   bool _sttBusy = false;
   bool _segmentClosing = false;
 
+  // Image Timeline für automatischen Bildwechsel
+  String? _currentBackgroundImage;
+  Timer? _imageTimer;
+  int _currentImageIndex = 0;
+  List<String> _imageUrls = [];
+  List<String> _activeImageUrls = []; // Nur aktive Bilder
+  Map<String, int> _imageDurations = {}; // URL -> Sekunden
+  Map<String, bool> _imageActive = {}; // URL -> aktiv
+  bool _isImageLoopMode = true;
+  bool _isTimelineEnabled = true;
+
+  // Timeline-Daten aus Firebase laden und Timer starten
+  Future<void> _loadAndStartImageTimeline(String avatarId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(avatarId)
+          .get();
+      if (!doc.exists || doc.data() == null) return;
+
+      final data = doc.data()!;
+
+      // ImageUrls laden
+      final images = data['imageUrls'] as List<dynamic>?;
+      if (images != null && images.isNotEmpty) {
+        _imageUrls = images.cast<String>();
+      }
+
+      // Timeline-Daten laden
+      final timeline = data['imageTimeline'] as Map<String, dynamic>?;
+      if (timeline != null) {
+        final durationsMap = timeline['durations'] as Map<String, dynamic>?;
+        if (durationsMap != null) {
+          _imageDurations = durationsMap.map(
+            (k, v) => MapEntry(k, v as int? ?? 5),
+          );
+        }
+        final loopMode = timeline['loopMode'];
+        if (loopMode is bool) {
+          _isImageLoopMode = loopMode;
+        }
+        final enabled = timeline['enabled'];
+        if (enabled is bool) {
+          _isTimelineEnabled = enabled;
+        }
+        final activeMap = timeline['active'] as Map<String, dynamic>?;
+        if (activeMap != null) {
+          _imageActive = activeMap.map(
+            (k, v) => MapEntry(k, v as bool? ?? true),
+          );
+        }
+      }
+
+      // Filtere nur aktive Bilder MIT Zeit > 1 Sekunde
+      // Hero-Image (Position 0) ist IMMER aktiv
+      _activeImageUrls = _imageUrls
+          .asMap()
+          .entries
+          .where((entry) {
+            final index = entry.key;
+            final url = entry.value;
+            final isHero = index == 0; // Hero-Image ist IMMER Position 0
+            final isActive =
+                isHero || (_imageActive[url] ?? true); // Hero IMMER aktiv
+            final duration = _imageDurations[url] ?? 5;
+            return isActive &&
+                duration > 1; // Nur aktive Bilder mit mehr als 1 Sekunde
+          })
+          .map((entry) => entry.value)
+          .toList();
+
+      // Starte mit erstem AKTIVEN Bild (Hero-Image) - nur wenn Timeline aktiviert
+      if (_isTimelineEnabled && _activeImageUrls.isNotEmpty) {
+        _currentImageIndex = 0;
+        _currentBackgroundImage = _activeImageUrls[0];
+        // Lade erstes Bild vor, um Flackern zu vermeiden
+        if (_activeImageUrls.isNotEmpty) {
+          precacheImage(NetworkImage(_activeImageUrls[0]), context);
+        }
+        _startImageTimer();
+      } else if (_imageUrls.isNotEmpty) {
+        // Timeline deaktiviert: Zeige nur Hero-Image (statisch)
+        _currentBackgroundImage = _imageUrls[0];
+        // Lade Hero-Image vor
+        precacheImage(NetworkImage(_imageUrls[0]), context);
+      }
+
+      debugPrint(
+        '✅ Image Timeline geladen: ${_activeImageUrls.length}/${_imageUrls.length} aktive Bilder, Loop: $_isImageLoopMode, Enabled: $_isTimelineEnabled',
+      );
+    } catch (e) {
+      debugPrint('❌ Fehler beim Laden der Image Timeline: $e');
+    }
+  }
+
+  // Timer für Bildwechsel starten (nur aktive Bilder)
+  void _startImageTimer() {
+    _imageTimer?.cancel();
+    if (_activeImageUrls.isEmpty || !_isTimelineEnabled) return;
+
+    // Duration für aktuelles AKTIVES Bild
+    final currentUrl = _activeImageUrls[_currentImageIndex];
+    final duration = Duration(seconds: _imageDurations[currentUrl] ?? 5);
+
+    // VORLADEN: Nächstes Bild bereits jetzt in den Cache laden
+    final nextIndex = (_currentImageIndex + 1) % _activeImageUrls.length;
+    if (nextIndex < _activeImageUrls.length) {
+      final nextUrl = _activeImageUrls[nextIndex];
+      precacheImage(NetworkImage(nextUrl), context);
+    }
+
+    _imageTimer = Timer(duration, () {
+      if (!mounted) return;
+
+      // Berechne nächstes Bild VORHER
+      int nextImageIndex = _currentImageIndex + 1;
+
+      // Loop oder Ende?
+      if (nextImageIndex >= _activeImageUrls.length) {
+        if (_isImageLoopMode) {
+          nextImageIndex = 0; // Zurück zum Anfang
+        } else {
+          // Ende: Bleibt beim letzten
+          _imageTimer?.cancel();
+          return;
+        }
+      }
+
+      // Setze neues Bild (ist bereits gecached → kein Flackern)
+      setState(() {
+        _currentImageIndex = nextImageIndex;
+        _currentBackgroundImage = _activeImageUrls[_currentImageIndex];
+      });
+
+      // Nächsten Timer starten
+      _startImageTimer();
+    });
+  }
+
+  // Timer stoppen
+  void _stopImageTimer() {
+    _imageTimer?.cancel();
+    _imageTimer = null;
+  }
+
   static const int _silenceThresholdDb = -40;
   static const int _silenceHoldMs = 800;
   static const int _minSegmentMs = 1200;
@@ -140,6 +285,25 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     } catch (_) {}
   }
 
+  StreamSubscription<DocumentSnapshot>? _avatarSub;
+
+  void _startAvatarListener(String avatarId) {
+    _avatarSub?.cancel();
+    _avatarSub = FirebaseFirestore.instance
+        .collection('avatars')
+        .doc(avatarId)
+        .snapshots()
+        .listen((snapshot) {
+          if (snapshot.exists && mounted) {
+            setState(() {
+              _avatarData = AvatarData.fromMap(snapshot.data()!);
+            });
+          }
+        });
+    // Starte Image Timeline
+    _loadAndStartImageTimeline(avatarId);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -163,6 +327,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         setState(() {
           _avatarData = args;
         });
+        // Starte Firestore-Listener für Live-Updates
+        _startAvatarListener(args.id);
       }
 
       // Priorisiere widget.avatarId (Overlay-Chat) - nur wenn noch nicht gesetzt
@@ -175,6 +341,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           setState(() {
             _avatarData = AvatarData.fromMap(doc.data()!);
           });
+          // Starte Firestore-Listener für Live-Updates
+          _startAvatarListener(widget.avatarId!);
         }
       }
 
@@ -205,8 +373,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final backgroundImage = _avatarData?.avatarImageUrl;
+    final backgroundImage =
+        _currentBackgroundImage ?? _avatarData?.avatarImageUrl;
     // Hintergrund wird stets mit Avatar-Bild gefüllt; LiveKit/Video-Overlay liegt darüber
+    // _currentBackgroundImage wechselt automatisch basierend auf Timeline-Einstellungen
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -2022,6 +2192,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   void dispose() {
     // _videoService.dispose(); // entfernt – kein lokales Lipsync mehr
     _playerStateSub?.cancel();
+    _avatarSub?.cancel();
     _stopPlayback();
     _player.dispose();
     _messageController.dispose();
@@ -2031,6 +2202,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     // Teaser aufräumen
     _teaserTimer?.cancel();
     _teaserEntry?.remove();
+    // Image Timeline aufräumen
+    _imageTimer?.cancel();
     // LiveKit sauber trennen (no-op wenn Feature deaktiviert)
     unawaited(LiveKitService().leave());
     super.dispose();

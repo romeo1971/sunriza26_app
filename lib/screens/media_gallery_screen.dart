@@ -2367,125 +2367,260 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             )
           : Column(
               children: [
-                // Info-Text/Suchfeld (centered) + Lupe (fixed right)
+                // Info-Text/Suchfeld (centered) + Lupe (fixed right) ODER Delete-Buttons
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 20, 16, 16),
                   child: SizedBox(
                     height: 40,
-                    child: Stack(
-                      children: [
-                        // Zentrierter Inhalt (Infotext ODER Suchfeld)
-                        Center(
-                          child: !_showSearch
-                              ? Text(
-                                  'Verlinkbare Medien für Deine Playlists',
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.85),
-                                    fontSize: 12,
-                                  ),
-                                )
-                              : ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 400,
-                                  ),
-                                  child: TextField(
-                                    controller: _searchController,
-                                    autofocus: true,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                    ),
-                                    cursorColor: Colors.white,
-                                    decoration: InputDecoration(
-                                      hintText: 'Suche nach Medien',
-                                      hintStyle: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                        fontSize: 13,
+                    child: _isDeleteMode && _selectedMediaIds.isNotEmpty
+                        ? LayoutBuilder(
+                            builder: (ctx, cons) {
+                              double measureTextWidth(
+                                String text,
+                                TextStyle style,
+                              ) {
+                                final tp = TextPainter(
+                                  text: TextSpan(text: text, style: style),
+                                  maxLines: 1,
+                                  textScaleFactor: MediaQuery.of(
+                                    ctx,
+                                  ).textScaleFactor,
+                                  textDirection: TextDirection.ltr,
+                                )..layout();
+                                return tp.width;
+                              }
+
+                              final TextStyle cancelStyle = TextStyle(
+                                color: Colors.grey.shade300,
+                                fontSize: 14,
+                              );
+                              const TextStyle deleteStyle = TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                              );
+
+                              final double cancelWidth =
+                                  measureTextWidth('Abbrechen', cancelStyle) +
+                                  16; // padding h=8*2
+                              final double deleteWidth =
+                                  measureTextWidth(
+                                    'Endgültig löschen',
+                                    deleteStyle,
+                                  ) +
+                                  40; // padding h=20*2
+                              final bool compact =
+                                  (cancelWidth + deleteWidth) > cons.maxWidth;
+
+                              final Widget cancelBtn = compact
+                                  ? IconButton(
+                                      tooltip: 'Abbrechen',
+                                      onPressed: () {
+                                        setState(() {
+                                          _isDeleteMode = false;
+                                          _selectedMediaIds.clear();
+                                        });
+                                      },
+                                      icon: Icon(
+                                        Icons.close,
+                                        color: Colors.grey.shade300,
                                       ),
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 10,
+                                    )
+                                  : MouseRegion(
+                                      cursor: SystemMouseCursors.click,
+                                      child: TextButton(
+                                        onPressed: () {
+                                          setState(() {
+                                            _isDeleteMode = false;
+                                            _selectedMediaIds.clear();
+                                          });
+                                        },
+                                        style: TextButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
                                           ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(6),
-                                        borderSide: BorderSide(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.6,
-                                          ),
-                                          width: 1,
+                                        ),
+                                        child: Text(
+                                          'Abbrechen',
+                                          style: cancelStyle,
                                         ),
                                       ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderRadius: BorderRadius.circular(6),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white,
-                                          width: 1,
-                                        ),
-                                      ),
-                                      hoverColor: Colors.transparent,
-                                      fillColor: Colors.transparent,
-                                      isDense: true,
-                                    ),
-                                    onChanged: (val) {
-                                      setState(() {
-                                        _searchTerm = val.toLowerCase();
-                                      });
-                                    },
+                                    );
+
+                              final selectedMedia = _items
+                                  .where(
+                                    (m) => _selectedMediaIds.contains(m.id),
+                                  )
+                                  .toList();
+                              final hasImagesVideosOrDocs = selectedMedia.any(
+                                (m) =>
+                                    m.type == AvatarMediaType.image ||
+                                    m.type == AvatarMediaType.video ||
+                                    m.type == AvatarMediaType.document,
+                              );
+                              final hasAudio = selectedMedia.any(
+                                (m) => m.type == AvatarMediaType.audio,
+                              );
+
+                              // Verwende das richtige Delete-Popup basierend auf Medientypen
+                              final Widget deleteBtn = TextButton(
+                                onPressed: hasImagesVideosOrDocs && !hasAudio
+                                    ? _confirmDeleteSelectedComplete
+                                    : _confirmDeleteSelectedMinimal,
+                                style: TextButton.styleFrom(
+                                  backgroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20,
+                                    vertical: 12,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
                                   ),
                                 ),
-                        ),
-                        // Lupe - IMMER rechts (fixed position)
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          bottom: 0,
-                          child: Center(
-                            child: InkWell(
-                              onTap: _items.isEmpty
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        _showSearch = !_showSearch;
-                                        if (!_showSearch) {
-                                          _searchController.clear();
-                                          _searchTerm = '';
-                                        }
-                                      });
-                                    },
-                              child: Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: _showSearch
-                                    ? ShaderMask(
-                                        shaderCallback: (bounds) =>
-                                            const LinearGradient(
-                                              colors: [
-                                                AppColors.magenta,
-                                                AppColors.lightBlue,
-                                              ],
-                                            ).createShader(bounds),
-                                        child: const Icon(
-                                          Icons.search,
-                                          size: 18,
-                                          color: Colors.white,
+                                child: ShaderMask(
+                                  shaderCallback: (bounds) =>
+                                      const LinearGradient(
+                                        colors: [
+                                          Color(0xFFE91E63),
+                                          AppColors.lightBlue,
+                                          Color(0xFF00E5FF),
+                                        ],
+                                      ).createShader(bounds),
+                                  child: const Text(
+                                    'Endgültig löschen',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              );
+
+                              return Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
+                                children: [cancelBtn, deleteBtn],
+                              );
+                            },
+                          )
+                        : Stack(
+                            children: [
+                              // Zentrierter Inhalt (Infotext ODER Suchfeld)
+                              Center(
+                                child: !_showSearch
+                                    ? Text(
+                                        'Verlinkbare Medien für Deine Playlists',
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.85,
+                                          ),
+                                          fontSize: 12,
                                         ),
                                       )
-                                    : Icon(
-                                        Icons.search,
-                                        size: 18,
-                                        color: _items.isEmpty
-                                            ? Colors.grey.shade700
-                                            : Colors.grey.shade500,
+                                    : ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 400,
+                                        ),
+                                        child: TextField(
+                                          controller: _searchController,
+                                          autofocus: true,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                          ),
+                                          cursorColor: Colors.white,
+                                          decoration: InputDecoration(
+                                            hintText: 'Suche nach Medien',
+                                            hintStyle: TextStyle(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.4,
+                                              ),
+                                              fontSize: 13,
+                                            ),
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 10,
+                                                ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              borderSide: BorderSide(
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.6,
+                                                ),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              borderSide: const BorderSide(
+                                                color: Colors.white,
+                                                width: 1,
+                                              ),
+                                            ),
+                                            hoverColor: Colors.transparent,
+                                            fillColor: Colors.transparent,
+                                            isDense: true,
+                                          ),
+                                          onChanged: (val) {
+                                            setState(() {
+                                              _searchTerm = val.toLowerCase();
+                                            });
+                                          },
+                                        ),
                                       ),
                               ),
-                            ),
+                              // Lupe - IMMER rechts (fixed position)
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                bottom: 0,
+                                child: Center(
+                                  child: InkWell(
+                                    onTap: _items.isEmpty
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _showSearch = !_showSearch;
+                                              if (!_showSearch) {
+                                                _searchController.clear();
+                                                _searchTerm = '';
+                                              }
+                                            });
+                                          },
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: _showSearch
+                                          ? ShaderMask(
+                                              shaderCallback: (bounds) =>
+                                                  const LinearGradient(
+                                                    colors: [
+                                                      AppColors.magenta,
+                                                      AppColors.lightBlue,
+                                                    ],
+                                                  ).createShader(bounds),
+                                              child: const Icon(
+                                                Icons.search,
+                                                size: 18,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : Icon(
+                                              Icons.search,
+                                              size: 18,
+                                              color: _items.isEmpty
+                                                  ? Colors.grey.shade700
+                                                  : Colors.grey.shade500,
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
 
@@ -2653,147 +2788,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   },
                 ),
 
-                // Delete-Toolbar NUR bei aktivem Delete-Mode
-                _isDeleteMode && _selectedMediaIds.isNotEmpty
-                    ? Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        child: LayoutBuilder(
-                          builder: (ctx, cons) {
-                            double measureTextWidth(
-                              String text,
-                              TextStyle style,
-                            ) {
-                              final tp = TextPainter(
-                                text: TextSpan(text: text, style: style),
-                                maxLines: 1,
-                                textScaleFactor: MediaQuery.of(
-                                  ctx,
-                                ).textScaleFactor,
-                                textDirection: TextDirection.ltr,
-                              )..layout();
-                              return tp.width;
-                            }
-
-                            final TextStyle cancelStyle = TextStyle(
-                              color: Colors.grey.shade400,
-                              fontSize: 14,
-                            );
-                            const TextStyle deleteStyle = TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            );
-
-                            final double cancelWidth =
-                                measureTextWidth('Abbrechen', cancelStyle) +
-                                16; // padding h=8*2
-                            final double deleteWidth =
-                                measureTextWidth(
-                                  'Endgültig löschen',
-                                  deleteStyle,
-                                ) +
-                                40; // padding h=20*2
-                            final bool compact =
-                                (cancelWidth + deleteWidth) > cons.maxWidth;
-
-                            final Widget cancelBtn = compact
-                                ? IconButton(
-                                    tooltip: 'Abbrechen',
-                                    onPressed: () {
-                                      setState(() {
-                                        _isDeleteMode = false;
-                                        _selectedMediaIds.clear();
-                                      });
-                                    },
-                                    icon: const Icon(
-                                      Icons.close,
-                                      color: Colors.white70,
-                                    ),
-                                  )
-                                : MouseRegion(
-                                    cursor: SystemMouseCursors.click,
-                                    child: TextButton(
-                                      onPressed: () {
-                                        setState(() {
-                                          _isDeleteMode = false;
-                                          _selectedMediaIds.clear();
-                                        });
-                                      },
-                                      style: TextButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 12,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        'Abbrechen',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade400,
-                                          fontSize: 14,
-                                        ),
-                                      ),
-                                    ),
-                                  );
-
-                            // Prüfe welche Medientypen selektiert sind
-                            final selectedMedia = _items
-                                .where((m) => _selectedMediaIds.contains(m.id))
-                                .toList();
-                            final hasImagesVideosOrDocs = selectedMedia.any(
-                              (m) =>
-                                  m.type == AvatarMediaType.image ||
-                                  m.type == AvatarMediaType.video ||
-                                  m.type == AvatarMediaType.document,
-                            );
-                            final hasAudio = selectedMedia.any(
-                              (m) => m.type == AvatarMediaType.audio,
-                            );
-
-                            // Verwende das richtige Delete-Popup basierend auf Medientypen
-                            final Widget deleteBtn = TextButton(
-                              onPressed: hasImagesVideosOrDocs && !hasAudio
-                                  ? _confirmDeleteSelectedComplete
-                                  : _confirmDeleteSelectedMinimal,
-                              style: TextButton.styleFrom(
-                                backgroundColor: Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 20,
-                                  vertical: 12,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: ShaderMask(
-                                shaderCallback: (bounds) =>
-                                    const LinearGradient(
-                                      colors: [
-                                        Color(0xFFE91E63),
-                                        AppColors.lightBlue,
-                                        Color(0xFF00E5FF),
-                                      ],
-                                    ).createShader(bounds),
-                                child: const Text(
-                                  'Endgültig löschen',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                            );
-
-                            return Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [cancelBtn, deleteBtn],
-                            );
-                          },
-                        ),
-                      )
-                    : const SizedBox.shrink(),
+                // Delete-Toolbar wurde nach oben verschoben (ersetzt Infotext/Suchfeld)
+                const SizedBox.shrink(),
 
                 // Responsive Grid wie in avatar_details_screen
                 Expanded(
@@ -3517,7 +3513,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             if (it.type == AvatarMediaType.image && !_isDeleteMode)
               Positioned(
                 left: 6,
-                bottom: 50,
+                bottom: 6,
                 child: InkWell(
                   onTap: () => _reopenCrop(it),
                   onLongPress: () => _showTagsDialog(it),
@@ -3944,7 +3940,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     child: Text(
                       'Abbrechen',
                       style: TextStyle(
-                        color: Colors.grey.shade400,
+                        color: Colors.grey.shade300,
                         fontSize: 14,
                       ),
                     ),
@@ -4091,11 +4087,36 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen'),
+            child: Text(
+              'Abbrechen',
+              style: TextStyle(color: Colors.grey.shade300),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen'),
+            style: TextButton.styleFrom(
+              backgroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [
+                  Color(0xFFE91E63),
+                  AppColors.lightBlue,
+                  Color(0xFF00E5FF),
+                ],
+              ).createShader(bounds),
+              child: const Text(
+                'Löschen',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -5518,7 +5539,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       await FirebaseFirestore.instance
                           .collection('avatars')
                           .doc(widget.avatarId)
-                          .collection(_getCollectionNameForMediaType(media.type))
+                          .collection(
+                            _getCollectionNameForMediaType(media.type),
+                          )
                           .doc(media.id)
                           .update({
                             'price': FieldValue.delete(),
@@ -5585,11 +5608,15 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     onTap: () {
                       // Abbrechen ohne Speichern - alte Werte wiederherstellen
                       // Falls kein individueller Preis: Globalen Preis verwenden
-                      final mediaTypeKey = media.type == AvatarMediaType.audio ? 'audio' 
-                          : media.type == AvatarMediaType.image ? 'image'
-                          : media.type == AvatarMediaType.video ? 'video'
+                      final mediaTypeKey = media.type == AvatarMediaType.audio
+                          ? 'audio'
+                          : media.type == AvatarMediaType.image
+                          ? 'image'
+                          : media.type == AvatarMediaType.video
+                          ? 'video'
                           : 'document';
-                      final gp = _globalPricing[mediaTypeKey] as Map<String, dynamic>?;
+                      final gp =
+                          _globalPricing[mediaTypeKey] as Map<String, dynamic>?;
                       final gpPrice = (gp?['price'] as num?)?.toDouble() ?? 0.0;
                       final price = media.price ?? gpPrice;
                       final priceText = price
@@ -5632,7 +5659,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         await FirebaseFirestore.instance
                             .collection('avatars')
                             .doc(widget.avatarId)
-                            .collection(_getCollectionNameForMediaType(media.type))
+                            .collection(
+                              _getCollectionNameForMediaType(media.type),
+                            )
                             .doc(media.id)
                             .update({
                               'price': newPrice,
@@ -5702,9 +5731,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     // STANDARD-ANSICHT: Preis + "Kostenpflichtig/Kostenlos" Toggle + Credits + Edit-Stift
     // Berechne effektiven Preis (individuelle Überschreibung oder global)
-    final mediaTypeKey = media.type == AvatarMediaType.audio ? 'audio' 
-        : media.type == AvatarMediaType.image ? 'image'
-        : media.type == AvatarMediaType.video ? 'video'
+    final mediaTypeKey = media.type == AvatarMediaType.audio
+        ? 'audio'
+        : media.type == AvatarMediaType.image
+        ? 'image'
+        : media.type == AvatarMediaType.video
+        ? 'video'
         : 'document';
     final gp = _globalPricing[mediaTypeKey] as Map<String, dynamic>?;
     final gpEnabled = (gp?['enabled'] as bool?) ?? false;
@@ -6128,7 +6160,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           await FirebaseFirestore.instance
                               .collection('avatars')
                               .doc(widget.avatarId)
-                              .collection(_getCollectionNameForMediaType(media.type))
+                              .collection(
+                                _getCollectionNameForMediaType(
+                                  currentMedia.type,
+                                ),
+                              )
                               .doc(currentMedia.id)
                               .update({'isFree': newIsFree});
 
@@ -6188,21 +6224,35 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       },
                       onSave: () async {
                         // Preis speichern
+                        debugPrint('💰 SAVE PRICE START');
                         final inputText = priceController?.text ?? '0,00';
                         final cleanText = inputText.replaceAll(',', '.');
                         final newPrice = double.tryParse(cleanText) ?? 0.0;
                         final newCurrency = tempCurrency ?? '\$';
 
+                        debugPrint(
+                          '💰 Input: $inputText → Price: $newPrice, Currency: $newCurrency',
+                        );
+                        debugPrint(
+                          '💰 Media: ${currentMedia.id}, Type: ${currentMedia.type}',
+                        );
+                        final collectionName = _getCollectionNameForMediaType(
+                          currentMedia.type,
+                        );
+                        debugPrint('💰 Collection: $collectionName');
+
                         try {
+                          debugPrint('💰 Firestore update STARTING...');
                           await FirebaseFirestore.instance
                               .collection('avatars')
                               .doc(widget.avatarId)
-                              .collection(_getCollectionNameForMediaType(media.type))
+                              .collection(collectionName)
                               .doc(currentMedia.id)
                               .update({
                                 'price': newPrice,
                                 'currency': newCurrency,
                               });
+                          debugPrint('💰 Firestore update SUCCESS');
 
                           // Lokale Liste aktualisieren
                           final index = _items.indexWhere(
@@ -6232,10 +6282,42 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             priceController?.dispose();
                             priceController = null;
                           });
+
+                          debugPrint('💰 About to pop dialog...');
                           // Schließe nur Pricing-Dialog (Viewer bleibt offen)
                           Navigator.of(context).pop();
-                        } catch (e) {
-                          debugPrint('Fehler beim Speichern: $e');
+                          debugPrint('💰 Dialog popped!');
+
+                          // Erfolgs-Snackbar
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '✅ Preis gespeichert: $newCurrency${newPrice.toStringAsFixed(2)}',
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                                backgroundColor: Colors.green,
+                                duration: const Duration(seconds: 2),
+                              ),
+                            );
+                          }
+                        } catch (e, stackTrace) {
+                          debugPrint('❌ FEHLER beim Speichern: $e');
+                          debugPrint('❌ StackTrace: $stackTrace');
+
+                          // Fehler-Snackbar anzeigen
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  '❌ FEHLER: $e',
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                                backgroundColor: Colors.red,
+                                duration: const Duration(seconds: 5),
+                              ),
+                            );
+                          }
                         }
                       },
                       onCurrencyChanged: (newCur) {
@@ -6254,7 +6336,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           await FirebaseFirestore.instance
                               .collection('avatars')
                               .doc(widget.avatarId)
-                              .collection(_getCollectionNameForMediaType(media.type))
+                              .collection(
+                                _getCollectionNameForMediaType(
+                                  currentMedia.type,
+                                ),
+                              )
                               .doc(currentMedia.id)
                               .update({
                                 'price': FieldValue.delete(),
@@ -6307,9 +6393,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   /// Preis-Feld: Zeigt Preis + Credits oder Input
   Widget _buildPriceField(AvatarMedia media, bool isEditing) {
     // Falls kein individueller Preis: Globalen Preis verwenden
-    final mediaTypeKey = media.type == AvatarMediaType.audio ? 'audio' 
-        : media.type == AvatarMediaType.image ? 'image'
-        : media.type == AvatarMediaType.video ? 'video'
+    final mediaTypeKey = media.type == AvatarMediaType.audio
+        ? 'audio'
+        : media.type == AvatarMediaType.image
+        ? 'image'
+        : media.type == AvatarMediaType.video
+        ? 'video'
         : 'document';
     final gp = _globalPricing[mediaTypeKey] as Map<String, dynamic>?;
     final gpPrice = (gp?['price'] as num?)?.toDouble() ?? 0.0;
@@ -6825,113 +6914,118 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             if (media.type == AvatarMediaType.audio)
                               _buildAudioPreviewForDialog(media)
                             else
-                              SizedBox(
-                                child: media.type == AvatarMediaType.video
-                                    ? (media.thumbUrl != null
-                                          ? ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              child: Image.network(
-                                                media.thumbUrl!,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (context, error, stack) {
-                                                  // Fallback zu VideoPlayer
-                                                  return FutureBuilder<
-                                                    VideoPlayerController?
-                                                  >(
-                                                    future:
-                                                        _videoControllerForThumb(
-                                                          media.url,
-                                                        ),
-                                                    builder: (context, snapshot) {
-                                                      if (snapshot.connectionState ==
-                                                              ConnectionState
-                                                                  .done &&
-                                                          snapshot.hasData &&
-                                                          snapshot.data !=
-                                                              null) {
-                                                        final controller =
-                                                            snapshot.data!;
-                                                        if (controller
-                                                            .value
-                                                            .isInitialized) {
-                                                          return AspectRatio(
-                                                            aspectRatio:
-                                                                controller
-                                                                    .value
-                                                                    .aspectRatio,
-                                                            child: VideoPlayer(
-                                                              controller,
-                                                            ),
-                                                          );
+                              Center(
+                                child: SizedBox(
+                                  child: media.type == AvatarMediaType.video
+                                      ? (media.thumbUrl != null
+                                            ? ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                child: Image.network(
+                                                  media.thumbUrl!,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (context, error, stack) {
+                                                    // Fallback zu VideoPlayer
+                                                    return FutureBuilder<
+                                                      VideoPlayerController?
+                                                    >(
+                                                      future:
+                                                          _videoControllerForThumb(
+                                                            media.url,
+                                                          ),
+                                                      builder: (context, snapshot) {
+                                                        if (snapshot.connectionState ==
+                                                                ConnectionState
+                                                                    .done &&
+                                                            snapshot.hasData &&
+                                                            snapshot.data !=
+                                                                null) {
+                                                          final controller =
+                                                              snapshot.data!;
+                                                          if (controller
+                                                              .value
+                                                              .isInitialized) {
+                                                            return AspectRatio(
+                                                              aspectRatio:
+                                                                  controller
+                                                                      .value
+                                                                      .aspectRatio,
+                                                              child:
+                                                                  VideoPlayer(
+                                                                    controller,
+                                                                  ),
+                                                            );
+                                                          }
                                                         }
-                                                      }
-                                                      return Container(
-                                                        color: Colors.black26,
+                                                        return Container(
+                                                          color: Colors.black26,
+                                                        );
+                                                      },
+                                                    );
+                                                  },
+                                                ),
+                                              )
+                                            : FutureBuilder<
+                                                VideoPlayerController?
+                                              >(
+                                                future:
+                                                    _videoControllerForThumb(
+                                                      media.url,
+                                                    ),
+                                                builder: (context, snapshot) {
+                                                  if (snapshot.connectionState ==
+                                                          ConnectionState
+                                                              .done &&
+                                                      snapshot.hasData &&
+                                                      snapshot.data != null) {
+                                                    final controller =
+                                                        snapshot.data!;
+                                                    if (controller
+                                                        .value
+                                                        .isInitialized) {
+                                                      return AspectRatio(
+                                                        aspectRatio: controller
+                                                            .value
+                                                            .aspectRatio,
+                                                        child: VideoPlayer(
+                                                          controller,
+                                                        ),
                                                       );
-                                                    },
+                                                    }
+                                                  }
+                                                  return Container(
+                                                    color: Colors.black26,
                                                   );
                                                 },
+                                              ))
+                                      : LayoutBuilder(
+                                          builder: (context, cons) {
+                                            final ar =
+                                                media.aspectRatio ?? (9 / 16);
+                                            final maxH = ar < 1.0
+                                                ? 294.0
+                                                : 224.0; // Portrait höher als Landscape (30% kleiner)
+                                            return ConstrainedBox(
+                                              constraints: BoxConstraints(
+                                                maxHeight: maxH,
                                               ),
-                                            )
-                                          : FutureBuilder<
-                                              VideoPlayerController?
-                                            >(
-                                              future: _videoControllerForThumb(
-                                                media.url,
-                                              ),
-                                              builder: (context, snapshot) {
-                                                if (snapshot.connectionState ==
-                                                        ConnectionState.done &&
-                                                    snapshot.hasData &&
-                                                    snapshot.data != null) {
-                                                  final controller =
-                                                      snapshot.data!;
-                                                  if (controller
-                                                      .value
-                                                      .isInitialized) {
-                                                    return AspectRatio(
-                                                      aspectRatio: controller
-                                                          .value
-                                                          .aspectRatio,
-                                                      child: VideoPlayer(
-                                                        controller,
+                                              child: AspectRatio(
+                                                aspectRatio: ar,
+                                                child:
+                                                    media.type ==
+                                                        AvatarMediaType.document
+                                                    ? _buildDocumentPreviewBackground(
+                                                        media,
+                                                      )
+                                                    : Image.network(
+                                                        media.url,
+                                                        fit: BoxFit.cover,
                                                       ),
-                                                    );
-                                                  }
-                                                }
-                                                return Container(
-                                                  color: Colors.black26,
-                                                );
-                                              },
-                                            ))
-                                    : LayoutBuilder(
-                                        builder: (context, cons) {
-                                          final ar =
-                                              media.aspectRatio ?? (9 / 16);
-                                          final maxH = ar < 1.0
-                                              ? 420.0
-                                              : 320.0; // Portrait höher als Landscape
-                                          return ConstrainedBox(
-                                            constraints: BoxConstraints(
-                                              maxHeight: maxH,
-                                            ),
-                                            child: AspectRatio(
-                                              aspectRatio: ar,
-                                              child:
-                                                  media.type ==
-                                                      AvatarMediaType.document
-                                                  ? _buildDocumentPreviewBackground(
-                                                      media,
-                                                    )
-                                                  : Image.network(
-                                                      media.url,
-                                                      fit: BoxFit.cover,
-                                                    ),
-                                            ),
-                                          );
-                                        },
-                                      ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                ),
                               ),
                             const SizedBox(height: 16),
                             // Header mit Vorschläge/Verwerfen Icon-Button RECHTS neben Text

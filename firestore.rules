@@ -44,7 +44,7 @@ service cloud.firestore {
         || (!('isFree' in data) || data.isFree == null)
         || (data.isFree == false 
             && (!('price' in data) || data.price == null || (data.price is number && data.price >= 0))
-            && (!('currency' in data) || data.currency == null || data.currency in ['EUR', 'USD'])
+            && (!('currency' in data) || data.currency == null || data.currency in ['EUR', 'USD', '€', '$', '£', '¥', 'CHF'])
             && (!('platformFeePercent' in data) || data.platformFeePercent == null 
                 || (data.platformFeePercent is number && data.platformFeePercent >= 0 && data.platformFeePercent <= 100)));
     }

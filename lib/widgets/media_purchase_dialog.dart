@@ -386,6 +386,8 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
         return Icons.videocam;
       case AvatarMediaType.audio:
         return Icons.audiotrack;
+      case AvatarMediaType.document:
+        return Icons.description;
     }
   }
 }

@@ -194,6 +194,8 @@ class MediaPurchaseService {
         return 'video';
       case AvatarMediaType.audio:
         return 'audio';
+      case AvatarMediaType.document:
+        return 'document';
     }
   }
 }
