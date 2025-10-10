@@ -38,12 +38,26 @@ service cloud.firestore {
       ];
     }
 
+    // Media-Pricing validieren
+    function validMediaPricing(data) {
+      return data.isFree == true
+        || (!('isFree' in data) || data.isFree == null)
+        || (data.isFree == false 
+            && (!('price' in data) || data.price == null || (data.price is number && data.price >= 0))
+            && (!('currency' in data) || data.currency == null || data.currency in ['EUR', 'USD'])
+            && (!('platformFeePercent' in data) || data.platformFeePercent == null 
+                || (data.platformFeePercent is number && data.platformFeePercent >= 0 && data.platformFeePercent <= 100)));
+    }
+
     // User-Dokumente (Struppi-System)
     match /users/{uid} {
       allow get, create, delete: if signedIn() && uid == request.auth.uid;
       
       // Update: Erlaubt auch arrayUnion/arrayRemove für favoriteAvatarIds
-      allow update: if signedIn() && uid == request.auth.uid;
+      // ABER: Credits-Felder dürfen NUR von Cloud Functions geändert werden
+      allow update: if signedIn() && uid == request.auth.uid
+        && !request.resource.data.diff(resource.data).affectedKeys()
+           .hasAny(['credits', 'creditsPurchased', 'creditsSpent']);
       
       // Transactions (Käufer-Transaktionen)
       match /transactions/{transactionId} {
@@ -103,19 +117,23 @@ service cloud.firestore {
     // Avatar-Medien (separate Collections pro Typ)
     match /avatars/{avatarId}/images/{mediaId} {
       allow get, list: if ownsAvatar(avatarId);
-      allow create, update, delete: if ownsAvatar(avatarId);
+      allow create, update: if ownsAvatar(avatarId) && validMediaPricing(request.resource.data);
+      allow delete: if ownsAvatar(avatarId);
     }
     match /avatars/{avatarId}/videos/{mediaId} {
       allow get, list: if ownsAvatar(avatarId);
-      allow create, update, delete: if ownsAvatar(avatarId);
+      allow create, update: if ownsAvatar(avatarId) && validMediaPricing(request.resource.data);
+      allow delete: if ownsAvatar(avatarId);
     }
     match /avatars/{avatarId}/documents/{mediaId} {
       allow get, list: if ownsAvatar(avatarId);
-      allow create, update, delete: if ownsAvatar(avatarId);
+      allow create, update: if ownsAvatar(avatarId) && validMediaPricing(request.resource.data);
+      allow delete: if ownsAvatar(avatarId);
     }
     match /avatars/{avatarId}/audios/{mediaId} {
       allow get, list: if ownsAvatar(avatarId);
-      allow create, update, delete: if ownsAvatar(avatarId);
+      allow create, update: if ownsAvatar(avatarId) && validMediaPricing(request.resource.data);
+      allow delete: if ownsAvatar(avatarId);
     }
     // Legacy: alte media-Collection (falls noch vorhanden)
     match /avatars/{avatarId}/media/{mediaId} {
