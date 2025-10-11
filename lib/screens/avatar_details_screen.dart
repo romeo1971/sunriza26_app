@@ -2442,88 +2442,88 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
-                          color: Colors.black.withValues(alpha: 0.05),
-                        ),
-                        clipBehavior: Clip.hardEdge,
-                        child: Stack(
+                            color: Colors.black.withValues(alpha: 0.05),
+                          ),
                           clipBehavior: Clip.hardEdge,
-                          children: [
-                            Positioned.fill(
-                              child: _profileLocalPath != null
-                                  ? Image.file(
-                                      File(_profileLocalPath!),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : (_profileImageUrl != null
-                                        ? Image.network(
-                                            _profileImageUrl!,
-                                            fit: BoxFit.cover,
-                                            key: ValueKey(_profileImageUrl!),
-                                            errorBuilder:
-                                                (context, error, stack) {
-                                                  _handleImageError(
-                                                    _profileImageUrl!,
-                                                  );
-                                                  return Container(
-                                                    color: Colors.black26,
+                          child: Stack(
+                            clipBehavior: Clip.hardEdge,
+                            children: [
+                              Positioned.fill(
+                                child: _profileLocalPath != null
+                                    ? Image.file(
+                                        File(_profileLocalPath!),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : (_profileImageUrl != null
+                                          ? Image.network(
+                                              _profileImageUrl!,
+                                              fit: BoxFit.cover,
+                                              key: ValueKey(_profileImageUrl!),
+                                              errorBuilder:
+                                                  (context, error, stack) {
+                                                    _handleImageError(
+                                                      _profileImageUrl!,
+                                                    );
+                                                    return Container(
+                                                      color: Colors.black26,
                                                       alignment:
                                                           Alignment.center,
-                                                    child: const Icon(
+                                                      child: const Icon(
                                                         Icons
                                                             .image_not_supported,
-                                                      color: Colors.white54,
-                                                      size: 48,
-                                                    ),
-                                                  );
-                                                },
-                                          )
-                                        : Container(
-                                            color: Colors.white12,
-                                            child: const Icon(
-                                              Icons.person,
-                                              color: Colors.white54,
-                                              size: 64,
-                                            ),
-                                          )),
-                            ),
-                            if (_profileImageUrl != null)
-                              Positioned(
+                                                        color: Colors.white54,
+                                                        size: 48,
+                                                      ),
+                                                    );
+                                                  },
+                                            )
+                                          : Container(
+                                              color: Colors.white12,
+                                              child: const Icon(
+                                                Icons.person,
+                                                color: Colors.white54,
+                                                size: 64,
+                                              ),
+                                            )),
+                              ),
+                              if (_profileImageUrl != null)
+                                Positioned(
                                   left: 0,
                                   right: 0,
-                                bottom: 12,
+                                  bottom: 12,
                                   child: Center(
-                                child: ElevatedButton(
-                                  onPressed: () async {
-                                    if (_avatarData == null ||
-                                        _isGeneratingAvatar) {
-                                      return;
-                                    }
-                                    await _handleGenerateAvatar();
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.black,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
+                                    child: ElevatedButton(
+                                      onPressed: () async {
+                                        if (_avatarData == null ||
+                                            _isGeneratingAvatar) {
+                                          return;
+                                        }
+                                        await _handleGenerateAvatar();
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.black,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
                                           horizontal: 16,
-                                    ),
+                                        ),
                                         minimumSize: Size.zero,
-                                    shape: RoundedRectangleBorder(
+                                        shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
                                             8,
                                           ),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    context.read<LocalizationService>().t(
-                                      'avatars.refreshTooltip',
-                                    ),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        context.read<LocalizationService>().t(
+                                          'avatars.refreshTooltip',
+                                        ),
                                         style: const TextStyle(fontSize: 11),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
                           ),
                         ),
                       ),
@@ -3854,7 +3854,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         updatedAt: DateTime.now(),
       );
       final ok = await _avatarService.updateAvatar(updated);
-        if (!mounted) return;
+      if (!mounted) return;
       if (ok) {
         _applyAvatar(updated);
         _showSystemSnack(

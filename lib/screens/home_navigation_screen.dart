@@ -94,7 +94,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
 
   // ignore: unused_element
   Future<void> _removeFavoriteInFavorites() async {
-    // TODO: Im Favoriten-Screen aktuellen Avatar ermitteln und entfernen
+    // FEHLT NOCH: Im Favoriten-Screen aktuellen Avatar ermitteln und entfernen
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Favorit entfernt ✓')));

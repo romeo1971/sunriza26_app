@@ -1573,7 +1573,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         ),
       ),
     );
-  // ignore: unused_element
+    // ignore: unused_element
   }
 
   // ignore: unused_element
@@ -1748,7 +1748,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     final mm = (s ~/ 60).toString().padLeft(2, '0');
     final ss = (s % 60).toString().padLeft(2, '0');
     return '$mm:$ss';
-  // ignore: unused_element
+    // ignore: unused_element
   }
 }
 

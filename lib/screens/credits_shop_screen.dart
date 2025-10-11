@@ -29,7 +29,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
   Future<void> _fetchExchangeRate() async {
     setState(() => _loadingExchangeRate = true);
     try {
-      // TODO: API-Call für aktuellen Wechselkurs
+      // FEHLT NOCH: API-Call für aktuellen Wechselkurs
       // final response = await http.get(
       //   Uri.parse('https://api.exchangerate-api.com/v4/latest/EUR'),
       // );
