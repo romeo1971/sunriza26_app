@@ -41,7 +41,7 @@ class SafeNetworkImage extends StatelessWidget {
       width: width,
       height: height,
       fit: fit,
-      errorBuilder: (_, __, ___) =>
+      errorBuilder: (context, err, stackTrace) =>
           SizedBox(width: width, height: height, child: error ?? fallback),
     );
   }

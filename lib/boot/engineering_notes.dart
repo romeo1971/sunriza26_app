@@ -88,8 +88,8 @@ void _clearPressedKeysSafe() {
     (ServicesBinding.instance.keyboard as dynamic).clearPressedKeys();
   } catch (_) {
     try {
-      // Ältere RawKeyboard-API
-      (RawKeyboard.instance as dynamic).clearKeysPressed();
+      // HardwareKeyboard API
+      (HardwareKeyboard.instance as dynamic).clearState();
     } catch (_) {}
   }
 }

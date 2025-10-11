@@ -647,11 +647,12 @@ class _AvatarUploadMemoriesScreenState
     } catch (e) {
       _showErrorSnackBar('Fehler beim Upload: $e');
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isUploading = false;
-        _uploadProgress = 0.0;
-      });
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+      }
     }
   }
 

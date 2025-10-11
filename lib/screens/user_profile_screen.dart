@@ -81,8 +81,9 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       // Listener NACH dem initialen Setzen der Werte anhängen
       _attachListeners();
     } finally {
-      if (!mounted) return;
-      setState(() => _loading = false);
+      if (mounted) {
+        setState(() => _loading = false);
+      }
     }
   }
 

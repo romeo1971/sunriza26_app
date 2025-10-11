@@ -2382,14 +2382,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                 String text,
                                 TextStyle style,
                               ) {
-                                final tp = TextPainter(
-                                  text: TextSpan(text: text, style: style),
-                                  maxLines: 1,
-                                  textScaleFactor: MediaQuery.of(
-                                    ctx,
-                                  ).textScaleFactor,
-                                  textDirection: TextDirection.ltr,
-                                )..layout();
+                              final tp = TextPainter(
+                                text: TextSpan(text: text, style: style),
+                                maxLines: 1,
+                                textScaler: MediaQuery.of(
+                                  ctx,
+                                ).textScaler,
+                                textDirection: TextDirection.ltr,
+                              )..layout();
                                 return tp.width;
                               }
 
