@@ -433,6 +433,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
     });
   }
 
+  // ignore: unused_element
   Future<File?> _cropToPortrait916(File input) async {
     try {
       final bytes = await input.readAsBytes();

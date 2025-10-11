@@ -92,6 +92,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
     }
   }
 
+  // ignore: unused_element
   Future<void> _removeFavoriteInFavorites() async {
     // TODO: Im Favoriten-Screen aktuellen Avatar ermitteln und entfernen
     ScaffoldMessenger.of(
@@ -234,6 +235,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildMiddleButton() {
     // In Home (Index 0): PLUS oder HOOK (je nach Favoriten-Status)
     // In Favoriten (Index 2): HOOK Button (Remove from Favorites)

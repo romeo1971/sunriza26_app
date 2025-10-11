@@ -162,6 +162,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildTopNavBar() {
     return Stack(
       children: [
@@ -576,6 +577,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildMediaGrid() {
     final items = _filtered;
     if (items.isEmpty) {
@@ -1571,8 +1573,10 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         ),
       ),
     );
+  // ignore: unused_element
   }
 
+  // ignore: unused_element
   Widget _miniNavIcon(IconData icon, bool sel, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
@@ -1744,9 +1748,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     final mm = (s ~/ 60).toString().padLeft(2, '0');
     final ss = (s % 60).toString().padLeft(2, '0');
     return '$mm:$ss';
+  // ignore: unused_element
   }
 }
 
+// ignore: unused_element
 class _NavIcon extends StatelessWidget {
   final IconData icon;
   final bool selected;

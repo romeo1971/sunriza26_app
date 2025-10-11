@@ -79,6 +79,7 @@ class GradientSliderThumbShape extends SliderComponentShape {
 }
 
 // Sticky Navigation Bar Delegate
+// ignore: unused_element
 class _StickyNavBarDelegate extends SliverPersistentHeaderDelegate {
   final Widget child;
 
@@ -1627,6 +1628,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildMediaNavRow() {
     final id = _avatarData?.id;
     if (id == null || id.isEmpty) return const SizedBox.shrink();
@@ -1921,6 +1923,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
+  // ignore: unused_element
   String? _voicePreviewUrlFor(String id) {
     try {
       final v = _elevenVoices.firstWhere(
@@ -4419,6 +4422,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return lines.join('\n');
   }
 
+  // ignore: unused_element
   Widget _imageThumbNetwork(String url, bool isHero) {
     final selected = _selectedRemoteImages.contains(url);
     return GestureDetector(
@@ -5487,6 +5491,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
           /// Liefert den exakten Options-Namen aus [_countryOptions],
           /// wenn der übergebene Wert entweder Landesname oder ISO-Code ist.
+          // ignore: unused_element
           String? normalizeCountryOption(String value) {
             if (value.isEmpty) return null;
             // Map: Name/Code vergleichen, korrekten Namen zurückgeben

@@ -216,6 +216,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   // Timer stoppen
+  // ignore: unused_element
   void _stopImageTimer() {
     _imageTimer?.cancel();
     _imageTimer = null;
@@ -611,6 +612,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildAppBar() {
     // Prüfe ob von "Meine Avatare" gekommen (onClose == null = normale Navigation)
     final showBackButton = widget.onClose == null;
@@ -676,6 +678,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildAvatarImage() {
     return Container(
       width: double.infinity,
@@ -1075,6 +1078,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildStopButton() {
     return Padding(
       padding: const EdgeInsets.only(right: 16, bottom: 12),
