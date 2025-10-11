@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -51,21 +52,21 @@ class UserService {
   Future<String?> uploadProfileImage(File file) async {
     final u = _auth.currentUser!;
 
-    print('🔍 Deleting old photos from: users/${u.uid}/images/profileImage/');
+    debugPrint('🔍 Deleting old photos from: users/${u.uid}/images/profileImage/');
 
     // 1. Lösche ALLE alten Fotos im profileImage/ Ordner
     final profileImageDir = _st.ref('users/${u.uid}/images/profileImage/');
     try {
       final listResult = await profileImageDir.listAll();
-      print('📋 Found ${listResult.items.length} files to delete');
+      debugPrint('📋 Found ${listResult.items.length} files to delete');
 
       for (final item in listResult.items) {
-        print('🗑️ Deleting: ${item.fullPath}');
+        debugPrint('🗑️ Deleting: ${item.fullPath}');
         await item.delete();
-        print('✅ Deleted: ${item.name}');
+        debugPrint('✅ Deleted: ${item.name}');
       }
     } catch (e) {
-      print('⚠️ Could not delete old photos: $e');
+      debugPrint('⚠️ Could not delete old photos: $e');
     }
 
     // 2. Lade neues Foto hoch
@@ -73,11 +74,11 @@ class UserService {
     final ref = _st.ref(
       'users/${u.uid}/images/profileImage/profile_$timestamp.jpg',
     );
-    print('📤 Uploading to: ${ref.fullPath}');
+    debugPrint('📤 Uploading to: ${ref.fullPath}');
 
     final snap = await ref.putFile(file);
     final url = await snap.ref.getDownloadURL();
-    print('✅ New photo uploaded: $url');
+    debugPrint('✅ New photo uploaded: $url');
 
     // 3. Update Firestore - wird vom Screen gemacht
     // (Screen macht das über updateUserProfile mit copyWith)

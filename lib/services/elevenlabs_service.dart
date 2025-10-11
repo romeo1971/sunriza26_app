@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
@@ -32,27 +33,27 @@ class ElevenLabsService {
 
       if (_apiKey == null || _apiKey!.isEmpty) {
         final keys = dotenv.env.keys.toList();
-        print('⚠️ ElevenLabs API Key nicht in .env gefunden (Keys: $keys)');
+        debugPrint('⚠️ ElevenLabs API Key nicht in .env gefunden (Keys: $keys)');
       } else {
         final masked = _apiKey!.length > 6
             ? '${_apiKey!.substring(0, 3)}***${_apiKey!.substring(_apiKey!.length - 3)}'
             : '***';
-        print('✅ ElevenLabs Service initialisiert (key=$masked)');
+        debugPrint('✅ ElevenLabs Service initialisiert (key=$masked)');
       }
     } catch (e) {
-      print('❌ ElevenLabs Initialisierung fehlgeschlagen: $e');
+      debugPrint('❌ ElevenLabs Initialisierung fehlgeschlagen: $e');
     }
   }
 
   /// Generiert TTS Audio von Text
   static Future<String?> generateSpeech(String text) async {
     if (_apiKey == null) {
-      print('❌ ElevenLabs API Key nicht gesetzt');
+      debugPrint('❌ ElevenLabs API Key nicht gesetzt');
       return null;
     }
 
     try {
-      print('🎵 ElevenLabs: Generiere TTS für Text');
+      debugPrint('🎵 ElevenLabs: Generiere TTS für Text');
 
       final response = await http.post(
         Uri.parse('$_baseUrl/text-to-speech/$_voiceId'),
@@ -77,14 +78,14 @@ class ElevenLabsService {
 
         await audioFile.writeAsBytes(response.bodyBytes);
 
-        print('✅ ElevenLabs TTS Audio erstellt: $audioPath');
+        debugPrint('✅ ElevenLabs TTS Audio erstellt: $audioPath');
         return audioPath;
       } else {
-        print('❌ ElevenLabs Fehler: ${response.statusCode} - ${response.body}');
+        debugPrint('❌ ElevenLabs Fehler: ${response.statusCode} - ${response.body}');
         return null;
       }
     } catch (e) {
-      print('❌ ElevenLabs TTS Fehler: $e');
+      debugPrint('❌ ElevenLabs TTS Fehler: $e');
       return null;
     }
   }
@@ -95,7 +96,7 @@ class ElevenLabsService {
     try {
       final base = (dotenv.env['MEMORY_API_BASE_URL'] ?? '').trim();
       if (base.isEmpty) {
-        print('❌ Backend URL fehlt: MEMORY_API_BASE_URL');
+        debugPrint('❌ Backend URL fehlt: MEMORY_API_BASE_URL');
         return null;
       }
       final r = await http.get(
@@ -109,11 +110,11 @@ class ElevenLabsService {
             : <Map<String, dynamic>>[];
         return list;
       } else {
-        print('❌ Backend Voices HTTP ${r.statusCode}: ${r.body}');
+        debugPrint('❌ Backend Voices HTTP ${r.statusCode}: ${r.body}');
         return null;
       }
     } catch (e) {
-      print('❌ Backend Voices Fehler: $e');
+      debugPrint('❌ Backend Voices Fehler: $e');
       return null;
     }
   }

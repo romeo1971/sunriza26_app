@@ -5155,7 +5155,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       // Nicht abspielen - nur erstes Frame zeigen
       return ctrl;
     } catch (e) {
-      print('🎬 Thumb controller error: $e');
+      debugPrint('🎬 Thumb controller error: $e');
       return null;
     }
   }
@@ -5170,7 +5170,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       // Nicht abspielen - nur erstes Frame zeigen
       return ctrl;
     } catch (e) {
-      print('🎬 Local thumb controller error: $e');
+      debugPrint('🎬 Local thumb controller error: $e');
       return null;
     }
   }
@@ -5190,14 +5190,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (fresh != null) {
           effectiveUrl = fresh;
           res = await http.get(Uri.parse(effectiveUrl));
-          print('🎬 Fresh Response: ${res.statusCode}');
+          debugPrint('🎬 Fresh Response: ${res.statusCode}');
           if (res.statusCode != 200) return null;
           // Cache frische URL direkt ablegen, damit Thumbs stabil sind
           final idx = _videoUrls.indexOf(url);
           if (idx >= 0) _videoUrls[idx] = fresh;
           // kein persist hier, damit UI flott bleibt; persist passiert beim Speichern
         } else {
-          print('🎬 Refresh failed');
+          debugPrint('🎬 Refresh failed');
           return null;
         }
       }
@@ -5219,7 +5219,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       } catch (_) {}
       return data;
     } catch (e) {
-      print('🎬 Thumbnail error: $e');
+      debugPrint('🎬 Thumbnail error: $e');
       return null;
     }
   }

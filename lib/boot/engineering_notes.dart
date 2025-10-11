@@ -15,13 +15,13 @@ void _printEngineeringAnchors() {
   try {
     final sample = buildSlotSummaryLabel([5, 0]);
     // ignore: avoid_print
-    print('🔗 Engineering Docs:');
+    debugPrint('🔗 Engineering Docs:');
     // ignore: avoid_print
-    print('   📘 brain/docs/firebase_storage_architecture.md');
+    debugPrint('   📘 brain/docs/firebase_storage_architecture.md');
     // ignore: avoid_print
-    print('   📘 brain/incidents/playlist_crash_root_cause.md');
+    debugPrint('   📘 brain/incidents/playlist_crash_root_cause.md');
     // ignore: avoid_print
-    print(
+    debugPrint(
       'ℹ️ Slot-Merge-Util aktiv (5+0 → $sample): lib/utils/playlist_time_utils.dart',
     );
   } catch (_) {

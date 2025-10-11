@@ -3,6 +3,7 @@
 library;
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:video_player/video_player.dart';
@@ -168,7 +169,7 @@ class VideoStreamService {
       _videoBuffer.clear();
       _stateController.add(VideoStreamState.stopped);
     } catch (e) {
-      print('Fehler beim Stoppen des Video-Streams: $e');
+      debugPrint('Fehler beim Stoppen des Video-Streams: $e');
     }
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
@@ -592,11 +593,11 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
         })
         .toList();
 
-    print(
+    debugPrint(
       '🔍 DEBUG: Saving weeklySchedules: ${weeklySchedules.length} entries',
     );
     for (final ws in weeklySchedules) {
-      print(
+      debugPrint(
         '   - Weekday ${ws.weekday}: ${ws.timeSlots.map((t) => t.index).toList()}',
       );
     }
@@ -632,7 +633,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
     final wsOut =
         weeklySchedules; // Weekly immer mit-speichern (keine Löschung)
 
-    print(
+    debugPrint(
       '🔍 DEBUG: Saving specialSchedules: ${specialSchedules.length} entries',
     );
 
@@ -664,8 +665,8 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
       updatedAt: DateTime.now().millisecondsSinceEpoch,
     );
 
-    print('🔍 DEBUG: Playlist.toMap() keys: ${p.toMap().keys}');
-    print('🔍 DEBUG: weeklySchedules in map: ${p.toMap()['weeklySchedules']}');
+    debugPrint('🔍 DEBUG: Playlist.toMap() keys: ${p.toMap().keys}');
+    debugPrint('🔍 DEBUG: weeklySchedules in map: ${p.toMap()['weeklySchedules']}');
 
     if (_saving) return;
     setState(() => _saving = true);

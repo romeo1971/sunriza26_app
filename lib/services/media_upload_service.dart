@@ -3,6 +3,7 @@
 library;
 
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:file_picker/file_picker.dart';
@@ -269,7 +270,7 @@ class MediaUploadService {
         quality: 75,
       );
     } catch (e) {
-      print('Thumbnail-Generierung fehlgeschlagen: $e');
+      debugPrint('Thumbnail-Generierung fehlgeschlagen: $e');
       return null;
     }
   }

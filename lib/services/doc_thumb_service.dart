@@ -15,11 +15,11 @@ class DocThumbService {
   ) async {
     try {
       if (kDebugMode) {
-        print('DocThumbService.generateThumbOnly: START für ${media.id}');
+        debugPrint('DocThumbService.generateThumbOnly: START für ${media.id}');
       }
       if (media.type != AvatarMediaType.document) {
         if (kDebugMode) {
-          print('DocThumbService.generateThumbOnly: SKIP - kein Dokument');
+          debugPrint('DocThumbService.generateThumbOnly: SKIP - kein Dokument');
         }
         return null;
       }
@@ -27,7 +27,7 @@ class DocThumbService {
       final bytes = await _loadPreviewBytes(media);
       if (bytes == null) {
         if (kDebugMode) {
-          print(
+          debugPrint(
             'DocThumbService.generateThumbOnly: FAIL - keine Preview-Bytes',
           );
         }
@@ -91,7 +91,7 @@ class DocThumbService {
       );
       final thumbUrl = await task.ref.getDownloadURL();
       if (kDebugMode) {
-        print(
+        debugPrint(
           'DocThumbService.generateThumbOnly: Thumb hochgeladen: $thumbUrl',
         );
       }
@@ -100,8 +100,8 @@ class DocThumbService {
       return {'thumbUrl': thumbUrl, 'aspectRatio': targetAR};
     } catch (e, stackTrace) {
       if (kDebugMode) {
-        print('DocThumbService.generateThumbOnly error: $e');
-        print('Stack: $stackTrace');
+        debugPrint('DocThumbService.generateThumbOnly error: $e');
+        debugPrint('Stack: $stackTrace');
       }
       return null;
     }
@@ -114,11 +114,11 @@ class DocThumbService {
   ) async {
     try {
       if (kDebugMode) {
-        print('DocThumbService: START für ${media.id}');
+        debugPrint('DocThumbService: START für ${media.id}');
       }
       if (media.type != AvatarMediaType.document) {
         if (kDebugMode) {
-          print('DocThumbService: SKIP - kein Dokument');
+          debugPrint('DocThumbService: SKIP - kein Dokument');
         }
         return null;
       }
@@ -126,12 +126,12 @@ class DocThumbService {
       final bytes = await _loadPreviewBytes(media);
       if (bytes == null) {
         if (kDebugMode) {
-          print('DocThumbService: FAIL - keine Preview-Bytes');
+          debugPrint('DocThumbService: FAIL - keine Preview-Bytes');
         }
         return null;
       }
       if (kDebugMode) {
-        print('DocThumbService: Preview-Bytes geladen: ${bytes.length}');
+        debugPrint('DocThumbService: Preview-Bytes geladen: ${bytes.length}');
       }
 
       // decode
@@ -191,7 +191,7 @@ class DocThumbService {
       );
       final thumbUrl = await task.ref.getDownloadURL();
       if (kDebugMode) {
-        print('DocThumbService: Thumb hochgeladen: $thumbUrl');
+        debugPrint('DocThumbService: Thumb hochgeladen: $thumbUrl');
       }
 
       // DELETE + SET (verhindert Cloud Function onCreate-Trigger!)
@@ -228,13 +228,13 @@ class DocThumbService {
       });
 
       if (kDebugMode) {
-        print('DocThumbService: SUCCESS - Firestore aktualisiert');
+        debugPrint('DocThumbService: SUCCESS - Firestore aktualisiert');
       }
       return {'thumbUrl': thumbUrl, 'aspectRatio': targetAR};
     } catch (e, stackTrace) {
       if (kDebugMode) {
-        print('DocThumbService error: $e');
-        print('Stack: $stackTrace');
+        debugPrint('DocThumbService error: $e');
+        debugPrint('Stack: $stackTrace');
       }
       return null;
     }
@@ -276,7 +276,7 @@ class DocThumbService {
       return bytes;
     } catch (e) {
       if (kDebugMode) {
-        print('_fetchPdfPreviewBytes error: $e');
+        debugPrint('_fetchPdfPreviewBytes error: $e');
       }
       return null;
     }

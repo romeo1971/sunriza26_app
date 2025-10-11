@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:googleapis/vision/v1.dart';
 import 'package:googleapis_auth/auth_io.dart';
@@ -25,10 +26,10 @@ class CloudVisionService {
       _visionApi = VisionApi(authClient);
       _useCloudAPI = true;
       _initialized = true;
-      print('✅ Google Cloud Vision API mit API Key initialisiert');
+      debugPrint('✅ Google Cloud Vision API mit API Key initialisiert');
     } catch (e) {
-      print('❌ Fehler bei Vision API Initialisierung: $e');
-      print('💡 Verwende lokale ML Kit als Fallback');
+      debugPrint('❌ Fehler bei Vision API Initialisierung: $e');
+      debugPrint('💡 Verwende lokale ML Kit als Fallback');
       _useCloudAPI = false;
       _initialized = true;
     }
@@ -40,7 +41,7 @@ class CloudVisionService {
 
     // Cloud API verwenden - KEIN Fallback!
     if (!_useCloudAPI || _visionApi == null) {
-      print('❌ Cloud API nicht verfügbar - KEINE Tags');
+      debugPrint('❌ Cloud API nicht verfügbar - KEINE Tags');
       return [];
     }
 
@@ -276,12 +277,12 @@ class CloudVisionService {
 
       // Duplikate entfernen und zurückgeben
       final uniqueTags = allTags.toSet().toList();
-      print(
+      debugPrint(
         '🔍 Cloud Vision API Tags gefunden: ${uniqueTags.length} - $uniqueTags',
       );
       return uniqueTags;
     } catch (e) {
-      print('❌ Fehler bei Bildanalyse: $e');
+      debugPrint('❌ Fehler bei Bildanalyse: $e');
       return [];
     }
   }
@@ -465,18 +466,18 @@ class CloudVisionService {
 
   /// Test-Funktion für die Vision API
   Future<void> testVisionAPI() async {
-    print('🧪 Teste Google Cloud Vision API...');
+    debugPrint('🧪 Teste Google Cloud Vision API...');
 
     if (!_initialized) {
       await initialize();
     }
 
     if (_useCloudAPI) {
-      print('✅ Google Cloud Vision API ist bereit!');
-      print('🔍 Lade ein Bild hoch um die KI-Tags zu sehen');
+      debugPrint('✅ Google Cloud Vision API ist bereit!');
+      debugPrint('🔍 Lade ein Bild hoch um die KI-Tags zu sehen');
     } else {
-      print('❌ Google Cloud Vision API ist nicht verfügbar');
-      print('💡 Bitte folge der Anleitung in GOOGLE_CLOUD_SETUP.md');
+      debugPrint('❌ Google Cloud Vision API ist nicht verfügbar');
+      debugPrint('💡 Bitte folge der Anleitung in GOOGLE_CLOUD_SETUP.md');
     }
   }
 }

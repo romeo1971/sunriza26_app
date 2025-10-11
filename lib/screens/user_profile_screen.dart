@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -103,7 +104,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ? DateTime.fromMillisecondsSinceEpoch(_profile!.dob!)
             : null;
       } catch (e) {
-        print('⚠️ Error loading DOB: $e');
+        debugPrint('⚠️ Error loading DOB: $e');
         _selectedDob = null;
       }
 
@@ -266,23 +267,23 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     if (pickedFile == null) return;
 
     File f = File(pickedFile.path);
-    print('🖼️ Original file: ${f.path}');
+    debugPrint('🖼️ Original file: ${f.path}');
 
     final cropped = await _cropToPortrait916(f);
     if (cropped == null) {
-      print('❌ Cropping cancelled or failed');
+      debugPrint('❌ Cropping cancelled or failed');
       return;
     }
 
     f = cropped;
-    print('✅ Using cropped file: ${f.path}');
+    debugPrint('✅ Using cropped file: ${f.path}');
 
     setState(() => _uploadingPhoto = true);
 
     try {
-      print('📤 Uploading to Firebase...');
+      debugPrint('📤 Uploading to Firebase...');
       final url = await _userService.uploadProfileImage(f);
-      print('✅ Upload complete: $url');
+      debugPrint('✅ Upload complete: $url');
 
       if (!mounted) return;
 
@@ -293,7 +294,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
           updatedAt: DateTime.now().millisecondsSinceEpoch,
         );
         await _userService.updateUserProfile(updatedProfile);
-        print('✅ ProfileImageUrl saved to Firestore: $url');
+        debugPrint('✅ ProfileImageUrl saved to Firestore: $url');
 
         // Profile neu laden
         _profile = updatedProfile;
@@ -313,7 +314,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ),
       );
     } catch (e) {
-      print('❌ Upload error: $e');
+      debugPrint('❌ Upload error: $e');
       setState(() => _uploadingPhoto = false);
       if (mounted) {
         ScaffoldMessenger.of(
@@ -359,13 +360,13 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       );
 
       if (updatedProfile != null) {
-        print(
+        debugPrint(
           '✅ Saving profile: dob=${updatedProfile.dob}, profileImageUrl=${updatedProfile.profileImageUrl}',
         );
         await _userService.updateUserProfile(updatedProfile);
-        print('✅ Profile saved successfully');
+        debugPrint('✅ Profile saved successfully');
       } else {
-        print('⚠️ No profile to update, creating new one');
+        debugPrint('⚠️ No profile to update, creating new one');
         await _userService.upsertCurrentUserProfile(
           displayName: _displayNameController.text.trim(),
         );
@@ -382,7 +383,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ),
       );
     } catch (e) {
-      print('❌ Save error: $e');
+      debugPrint('❌ Save error: $e');
       if (mounted) {
         ScaffoldMessenger.of(
           context,

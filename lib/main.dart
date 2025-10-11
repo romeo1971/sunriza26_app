@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
@@ -135,7 +136,7 @@ void main() async {
   }
 
   // Debug: Base-URL ausgeben
-  // print('BASE=${EnvService.memoryApiBaseUrl()}');
+  // debugPrint('BASE=${EnvService.memoryApiBaseUrl()}');
 
   // Engineering-Anker: Log nur bei Fehlern, optional beim Boot in Debug
   registerEngineeringAnchors(alwaysLogOnBoot: false);
@@ -158,7 +159,7 @@ void _validateAllEnvStrict() {
     // Hinweis: Kritische Fehler zeigen sich später im Feature selbst
     // (z.B. Pinecone/ElevenLabs), aber der Start bleibt stabil.
     // ignore: avoid_print
-    print('⚠️ Fehlende/leer .env Keys: ${missing.join(', ')}');
+    debugPrint('⚠️ Fehlende/leer .env Keys: ${missing.join(', ')}');
   }
 }
 

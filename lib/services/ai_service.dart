@@ -3,6 +3,7 @@
 library;
 
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -177,15 +178,15 @@ class AIService {
       onProgress?.call('Video erfolgreich generiert!');
 
       // ZEIGE das Video sofort an
-      print('🎥 VIDEO GENERIERT: ${videoData.length} bytes');
+      debugPrint('🎥 VIDEO GENERIERT: ${videoData.length} bytes');
 
       // Prüfe ob es echte Video-Daten sind
       if (videoData.length < 1000) {
-        print('❌ KEIN ECHTES VIDEO - nur ${videoData.length} bytes');
+        debugPrint('❌ KEIN ECHTES VIDEO - nur ${videoData.length} bytes');
         throw Exception('ComfyUI hat kein Video generiert');
       }
 
-      print('✅ ECHTES VIDEO - ${videoData.length} bytes');
+      debugPrint('✅ ECHTES VIDEO - ${videoData.length} bytes');
       return Stream.value(videoData);
     } catch (e) {
       onError?.call('Fehler bei ComfyUI Video-Generierung: $e');

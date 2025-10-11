@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../models/media_models.dart';
 import '../models/user_profile.dart';
@@ -86,7 +87,7 @@ class MediaPurchaseService {
       await batch.commit();
       return true;
     } catch (e) {
-      print('Fehler beim Media-Kauf: $e');
+      debugPrint('Fehler beim Media-Kauf: $e');
       return false;
     }
   }
@@ -118,7 +119,7 @@ class MediaPurchaseService {
 
       return result.data['url'] as String?;
     } catch (e) {
-      print('Fehler beim Stripe-Checkout: $e');
+      debugPrint('Fehler beim Stripe-Checkout: $e');
       return null;
     }
   }
@@ -181,7 +182,7 @@ class MediaPurchaseService {
       await batch.commit();
       return true;
     } catch (e) {
-      print('Fehler beim Bundle-Kauf: $e');
+      debugPrint('Fehler beim Bundle-Kauf: $e');
       return false;
     }
   }

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import '../models/avatar_data.dart';
 import 'firebase_storage_service.dart';
 
@@ -137,23 +138,23 @@ class AvatarService {
       final payload = avatarData.toMap();
       // Debug-Logging: zu speichernde Felder
       try {
-        print(
+        debugPrint(
           'Avatar create payload keys: '
           '${payload.keys.toList()}',
         );
-        print('Avatar create payload: $payload');
+        debugPrint('Avatar create payload: $payload');
       } catch (_) {}
 
       await _avatarsCollection.doc(avatarId).set(payload);
       return avatarData;
     } on FirebaseException catch (e) {
       // Zusätzliche Diagnoseausgabe
-      print(
+      debugPrint(
         'Firestore error on createAvatar: code=${e.code} message=${e.message}',
       );
       rethrow;
     } catch (e) {
-      print('Fehler beim Erstellen des Avatars: $e');
+      debugPrint('Fehler beim Erstellen des Avatars: $e');
       return null;
     }
   }
@@ -176,7 +177,7 @@ class AvatarService {
       // Reiche spezifische Firestore-Fehler nach oben weiter (Index, Rules etc.)
       rethrow;
     } catch (e) {
-      print('Fehler beim Laden der Avatare: $e');
+      debugPrint('Fehler beim Laden der Avatare: $e');
       return [];
     }
   }
@@ -188,7 +189,7 @@ class AvatarService {
       if (!doc.exists) return null;
       return AvatarData.fromMap(doc.data()!);
     } catch (e) {
-      print('Fehler beim Laden des Avatars: $e');
+      debugPrint('Fehler beim Laden des Avatars: $e');
       return null;
     }
   }
@@ -217,31 +218,31 @@ class AvatarService {
         // Falls heroVideoUrl aus training entfernt wurde, Variable für separates Update merken
         if (payload['training'] is Map) {
           final training = payload['training'] as Map;
-          print('🎬 Service: training keys = ${training.keys.toList()}');
-          print(
+          debugPrint('🎬 Service: training keys = ${training.keys.toList()}');
+          debugPrint(
             '🎬 Service: training.heroVideoUrl = ${training['heroVideoUrl']}',
           );
           // Wenn heroVideoUrl fehlt ODER null ist → merken für separates Update
           if (!training.containsKey('heroVideoUrl') ||
               training['heroVideoUrl'] == null) {
             shouldDeleteHeroVideoUrl = true;
-            print('🎬 Service: heroVideoUrl soll gelöscht werden');
+            debugPrint('🎬 Service: heroVideoUrl soll gelöscht werden');
           }
         }
       } catch (_) {}
       try {
-        print('Avatar update payload keys: ${payload.keys.toList()}');
-        print(
+        debugPrint('Avatar update payload keys: ${payload.keys.toList()}');
+        debugPrint(
           'imageUrls: ${(payload['imageUrls'] as List?)?.length} - ${payload['imageUrls']}',
         );
-        print(
+        debugPrint(
           'videoUrls: ${(payload['videoUrls'] as List?)?.length} - ${payload['videoUrls']}',
         );
-        print(
+        debugPrint(
           'textFileUrls: ${(payload['textFileUrls'] as List?)?.length} - ${payload['textFileUrls']}',
         );
-        print('training: ${payload['training']}');
-        print('Full update payload: $payload');
+        debugPrint('training: ${payload['training']}');
+        debugPrint('Full update payload: $payload');
       } catch (_) {}
 
       await _avatarsCollection
@@ -253,14 +254,14 @@ class AvatarService {
         await _avatarsCollection.doc(avatar.id).update({
           'training.heroVideoUrl': FieldValue.delete(),
         });
-        print(
+        debugPrint(
           '🎬 Service: training.heroVideoUrl mit separatem update() gelöscht',
         );
       }
 
       return true;
     } catch (e) {
-      print('Fehler beim Aktualisieren des Avatars: $e');
+      debugPrint('Fehler beim Aktualisieren des Avatars: $e');
       return false;
     }
   }
@@ -330,7 +331,7 @@ class AvatarService {
 
       return await updateAvatar(updatedAvatar);
     } catch (e) {
-      print('Fehler beim Hinzufügen von Medien: $e');
+      debugPrint('Fehler beim Hinzufügen von Medien: $e');
       return false;
     }
   }
@@ -351,7 +352,7 @@ class AvatarService {
       await _avatarsCollection.doc(avatarId).delete();
       return true;
     } catch (e) {
-      print('Fehler beim Löschen des Avatars: $e');
+      debugPrint('Fehler beim Löschen des Avatars: $e');
       return false;
     }
   }
@@ -379,7 +380,7 @@ class AvatarService {
         await FirebaseStorageService.deleteFile(url);
       }
     } catch (e) {
-      print('Fehler beim Löschen der Avatar-Dateien: $e');
+      debugPrint('Fehler beim Löschen der Avatar-Dateien: $e');
     }
   }
 
@@ -397,7 +398,7 @@ class AvatarService {
       });
       return true;
     } catch (e) {
-      print('Fehler beim Aktualisieren der letzten Nachricht: $e');
+      debugPrint('Fehler beim Aktualisieren der letzten Nachricht: $e');
       return false;
     }
   }
