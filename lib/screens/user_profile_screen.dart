@@ -119,6 +119,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   Future<File?> _cropToPortrait916(File input) async {
     try {
       final bytes = await input.readAsBytes();
+      if (!mounted) return null;
+      
       final cropController = cyi.CropController();
       Uint8List? result;
 
@@ -305,6 +307,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         _hasChanges = false; // Wurde bereits gespeichert
       });
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -376,6 +379,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       // WICHTIG: Nur _hasChanges zurücksetzen, NICHT _profileImageUrl ändern!
       setState(() => _hasChanges = false);
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(context.read<LocalizationService>().t('profile.saved')),

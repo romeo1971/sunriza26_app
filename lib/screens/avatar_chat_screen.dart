@@ -42,7 +42,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   bool _isRecording = false;
   bool _isTyping = false;
   bool _isSpeaking = false;
-  bool _isMuted =
+  final bool _isMuted =
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
   bool _isStoppingPlayback = false;
   StreamSubscription<PlayerState>? _playerStateSub;
@@ -149,7 +149,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         _currentImageIndex = 0;
         _currentBackgroundImage = _activeImageUrls[0];
         // Lade erstes Bild vor, um Flackern zu vermeiden
-        if (_activeImageUrls.isNotEmpty) {
+        if (_activeImageUrls.isNotEmpty && mounted) {
           precacheImage(NetworkImage(_activeImageUrls[0]), context);
         }
         _startImageTimer();
@@ -157,7 +157,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         // Timeline deaktiviert: Zeige nur Hero-Image (statisch)
         _currentBackgroundImage = _imageUrls[0];
         // Lade Hero-Image vor
-        precacheImage(NetworkImage(_imageUrls[0]), context);
+        if (mounted) {
+          precacheImage(NetworkImage(_imageUrls[0]), context);
+        }
       }
 
       debugPrint(
