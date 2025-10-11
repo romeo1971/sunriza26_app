@@ -581,6 +581,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (forceShow) {
       await prefs.setBool('hasSeenExplorerInfo', false);
     }
+    if (!mounted) return;
 
     bool dontShowAgain = false;
 
@@ -720,10 +721,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             Center(
               child: ElevatedButton(
                 onPressed: () async {
+                  final nav = Navigator.of(context);
                   if (dontShowAgain) {
                     await prefs.setBool('hasSeenExplorerInfo', true);
                   }
-                  Navigator.of(context).pop();
+                  nav.pop();
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.white,
@@ -1020,13 +1022,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     await _loadMediaOriginalNames(data.id);
     // Timeline-Daten laden
     await _loadTimelineData(data.id);
+    if (!mounted) return;
     // Greeting vorbelegen
+    final locSvc = context.read<LocalizationService>();
     _greetingController.text =
         _avatarData?.greetingText?.trim().isNotEmpty == true
         ? _avatarData!.greetingText!
-        : context.read<LocalizationService>().t(
-            'avatars.details.defaultGreeting',
-          );
+        : locSvc.t('avatars.details.defaultGreeting');
     // Hero-Video in Großansicht initialisieren
     _initInlineFromHero();
     // Kein Autogenerieren mehr – Generierung erfolgt nur auf Nutzeraktion
@@ -1827,7 +1829,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         updatedAt: DateTime.now(),
       );
       final ok = await _avatarService.updateAvatar(updated);
-      if (ok && mounted) {
+      if (!mounted) return;
+      if (ok) {
         _applyAvatar(updated);
         _showSystemSnack(
           context.read<LocalizationService>().t(
@@ -1836,6 +1839,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       _showSystemSnack(
         context.read<LocalizationService>().t(
           'avatars.details.saveError',
@@ -2434,88 +2438,88 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
-                            color: Colors.black.withValues(alpha: 0.05),
-                          ),
+                          color: Colors.black.withValues(alpha: 0.05),
+                        ),
+                        clipBehavior: Clip.hardEdge,
+                        child: Stack(
                           clipBehavior: Clip.hardEdge,
-                          child: Stack(
-                            clipBehavior: Clip.hardEdge,
-                            children: [
-                              Positioned.fill(
-                                child: _profileLocalPath != null
-                                    ? Image.file(
-                                        File(_profileLocalPath!),
-                                        fit: BoxFit.cover,
-                                      )
-                                    : (_profileImageUrl != null
-                                          ? Image.network(
-                                              _profileImageUrl!,
-                                              fit: BoxFit.cover,
-                                              key: ValueKey(_profileImageUrl!),
-                                              errorBuilder:
-                                                  (context, error, stack) {
-                                                    _handleImageError(
-                                                      _profileImageUrl!,
-                                                    );
-                                                    return Container(
-                                                      color: Colors.black26,
+                          children: [
+                            Positioned.fill(
+                              child: _profileLocalPath != null
+                                  ? Image.file(
+                                      File(_profileLocalPath!),
+                                      fit: BoxFit.cover,
+                                    )
+                                  : (_profileImageUrl != null
+                                        ? Image.network(
+                                            _profileImageUrl!,
+                                            fit: BoxFit.cover,
+                                            key: ValueKey(_profileImageUrl!),
+                                            errorBuilder:
+                                                (context, error, stack) {
+                                                  _handleImageError(
+                                                    _profileImageUrl!,
+                                                  );
+                                                  return Container(
+                                                    color: Colors.black26,
                                                       alignment:
                                                           Alignment.center,
-                                                      child: const Icon(
+                                                    child: const Icon(
                                                         Icons
                                                             .image_not_supported,
-                                                        color: Colors.white54,
-                                                        size: 48,
-                                                      ),
-                                                    );
-                                                  },
-                                            )
-                                          : Container(
-                                              color: Colors.white12,
-                                              child: const Icon(
-                                                Icons.person,
-                                                color: Colors.white54,
-                                                size: 64,
-                                              ),
-                                            )),
-                              ),
-                              if (_profileImageUrl != null)
-                                Positioned(
+                                                      color: Colors.white54,
+                                                      size: 48,
+                                                    ),
+                                                  );
+                                                },
+                                          )
+                                        : Container(
+                                            color: Colors.white12,
+                                            child: const Icon(
+                                              Icons.person,
+                                              color: Colors.white54,
+                                              size: 64,
+                                            ),
+                                          )),
+                            ),
+                            if (_profileImageUrl != null)
+                              Positioned(
                                   left: 0,
                                   right: 0,
-                                  bottom: 12,
+                                bottom: 12,
                                   child: Center(
-                                    child: ElevatedButton(
-                                      onPressed: () async {
-                                        if (_avatarData == null ||
-                                            _isGeneratingAvatar) {
-                                          return;
-                                        }
-                                        await _handleGenerateAvatar();
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.black,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 12,
+                                child: ElevatedButton(
+                                  onPressed: () async {
+                                    if (_avatarData == null ||
+                                        _isGeneratingAvatar) {
+                                      return;
+                                    }
+                                    await _handleGenerateAvatar();
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.black,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
                                           horizontal: 16,
-                                        ),
+                                    ),
                                         minimumSize: Size.zero,
-                                        shape: RoundedRectangleBorder(
+                                    shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
                                             8,
                                           ),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        context.read<LocalizationService>().t(
-                                          'avatars.refreshTooltip',
-                                        ),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    context.read<LocalizationService>().t(
+                                      'avatars.refreshTooltip',
+                                    ),
                                         style: const TextStyle(fontSize: 11),
-                                      ),
                                     ),
                                   ),
                                 ),
-                            ],
+                              ),
+                          ],
                           ),
                         ),
                       ),
@@ -3791,6 +3795,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final data = jsonDecode(res.body) as Map<String, dynamic>;
         final b64 = data['audio_b64'] as String?;
         if (b64 == null || b64.isEmpty) {
+          if (!mounted) return;
           _showSystemSnack(
             context.read<LocalizationService>().t(
               'avatars.details.noAudioReceived',
@@ -3806,7 +3811,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         await file.writeAsBytes(bytes, flush: true);
         await _voiceTestPlayer.setFilePath(file.path);
         await _voiceTestPlayer.play();
+        if (!mounted) return;
       } else {
+        if (!mounted) return;
         final detail = (res.body.isNotEmpty) ? ' ${res.body}' : '';
         _showSystemSnack(
           context.read<LocalizationService>().t(
@@ -3816,6 +3823,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       _showSystemSnack(
         context.read<LocalizationService>().t(
           'avatars.details.testError',
@@ -3844,8 +3852,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         updatedAt: DateTime.now(),
       );
       final ok = await _avatarService.updateAvatar(updated);
-      if (ok) {
         if (!mounted) return;
+      if (ok) {
         _applyAvatar(updated);
         _showSystemSnack(
           context.read<LocalizationService>().t(
@@ -3860,6 +3868,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       _showSystemSnack(
         context.read<LocalizationService>().t(
           'avatars.details.saveError',
@@ -3984,6 +3993,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 )
                 .timeout(const Duration(seconds: 45));
           } on TimeoutException {
+            if (!mounted) return;
             _showSystemSnack(
               context.read<LocalizationService>().t(
                 'avatars.details.cloneTimeout',
@@ -4014,6 +4024,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 updatedAt: DateTime.now(),
               );
               final ok = await _avatarService.updateAvatar(updated);
+              if (!mounted) return;
               if (ok) {
                 _applyAvatar(updated);
                 _showSystemSnack(
@@ -4021,7 +4032,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     'avatars.details.voiceClonedSaved',
                   ),
                 );
-                if (mounted) setState(() => _isDirty = false);
+                setState(() => _isDirty = false);
               } else {
                 _showSystemSnack(
                   context.read<LocalizationService>().t(
@@ -4030,6 +4041,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 );
               }
             } else {
+              if (!mounted) return;
               _showSystemSnack(
                 context.read<LocalizationService>().t(
                   'avatars.details.elevenNoVoiceId',
@@ -4037,6 +4049,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               );
             }
           } else {
+            if (!mounted) return;
             final detail = (res.body.isNotEmpty) ? ' ${res.body}' : '';
             _showSystemSnack(
               context.read<LocalizationService>().t(
@@ -4048,6 +4061,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         },
       );
     } catch (e) {
+      if (!mounted) return;
       _showSystemSnack(
         context.read<LocalizationService>().t(
           'avatars.details.cloneError',
@@ -4176,16 +4190,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Future<void> _confirmDeleteRemoteText(String url) async {
+    final locSvc = context.read<LocalizationService>();
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text(
-          context.read<LocalizationService>().t(
+          locSvc.t(
             'avatars.details.confirmDeleteFileTitle',
           ),
         ),
         content: Text(
-          context.read<LocalizationService>().t(
+          locSvc.t(
             'avatars.details.confirmDeleteFileContent',
             params: {'name': _fileNameFromUrl(url)},
           ),
@@ -4195,7 +4210,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             onPressed: () => Navigator.pop(ctx, false),
             style: TextButton.styleFrom(foregroundColor: Colors.white70),
             child: Text(
-              context.read<LocalizationService>().t('avatars.details.cancel'),
+              locSvc.t('avatars.details.cancel'),
             ),
           ),
           ElevatedButton(
@@ -4214,7 +4229,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 context,
               ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
               child: Text(
-                context.read<LocalizationService>().t('avatars.details.delete'),
+                locSvc.t('avatars.details.delete'),
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.w600,
@@ -4228,7 +4243,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (ok == true) {
       // Fortschritts-Notifier entfernt (nicht genutzt)
       await _showBlockingProgress<void>(
-        title: context.read<LocalizationService>().t(
+        title: locSvc.t(
           'avatars.details.deletingTitle',
         ),
         message: _fileNameFromUrl(url),
@@ -4236,8 +4251,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         task: () async {
           final deleted = await FirebaseStorageService.deleteFile(url);
           if (!deleted) {
+            if (!mounted) return;
             _showSystemSnack(
-              context.read<LocalizationService>().t(
+              locSvc.t(
                 'avatars.details.deleteFailed',
               ),
             );
@@ -4258,11 +4274,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             );
           } catch (_) {}
           _textFileUrls.remove(url);
-          if (mounted) setState(() {});
+          if (!mounted) return;
+          setState(() {});
           final ok = await _persistTextFileUrls();
           if (!ok) {
+            if (!mounted) return;
             _showSystemSnack(
-              context.read<LocalizationService>().t(
+              locSvc.t(
                 'avatars.details.firestoreUpdateFailed',
               ),
             );
@@ -4703,11 +4721,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (ok) {
         _applyAvatar(updated);
         await _initInlineFromHero();
+        if (!mounted) return;
         _showSystemSnack(
           context.read<LocalizationService>().t('avatars.details.heroVideoSet'),
         );
       }
     } catch (e) {
+      if (!mounted) return;
       _showSystemSnack(
         context.read<LocalizationService>().t(
           'avatars.details.setHeroVideoError',
@@ -4935,8 +4955,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         } catch (_) {}
       });
       await controller.play();
-      if (mounted) setState(() => _inlineVideoController = controller);
+      if (!mounted) return;
+      setState(() => _inlineVideoController = controller);
     } catch (e) {
+      if (!mounted) return;
       _showSystemSnack(
         context.read<LocalizationService>().t(
           'avatars.details.videoLoadFailed',
@@ -4953,8 +4975,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await controller.initialize();
       await controller.setLooping(true);
       await controller.play();
+      if (!mounted) return;
       setState(() => _inlineVideoController = controller);
     } catch (e) {
+      if (!mounted) return;
       _showSystemSnack(
         context.read<LocalizationService>().t(
           'avatars.details.localVideoLoadFailed',
@@ -5003,6 +5027,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         _profileImageUrl ?? _avatarData!.avatarImageUrl ?? '',
         suffix: '.png',
       );
+      if (!mounted) return;
       if (imageFile == null) {
         _showSystemSnack(
           context.read<LocalizationService>().t('avatars.details.noImageFound'),
@@ -5018,6 +5043,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         audioUrl = _avatarData!.audioUrls.first;
       }
       if (audioUrl == null || audioUrl.isEmpty) {
+        if (!mounted) return;
         _showSystemSnack(
           context.read<LocalizationService>().t(
             'avatars.details.noAudioSample',
@@ -5026,6 +5052,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         return;
       }
       audioFile = await _downloadToTemp(audioUrl, suffix: '.mp3');
+      if (!mounted) return;
       if (audioFile == null) {
         _showSystemSnack(
           context.read<LocalizationService>().t(
@@ -5035,11 +5062,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         return;
       }
 
+      final locSvc = context.read<LocalizationService>();
       await _showBlockingProgress<void>(
-        title: context.read<LocalizationService>().t(
+        title: locSvc.t(
           'avatars.details.generatingAvatarTitle',
         ),
-        message: context.read<LocalizationService>().t(
+        message: locSvc.t(
           'avatars.details.processingImageAudio',
         ),
         task: () async {
@@ -5121,13 +5149,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               // Sofort persistieren (Firestore aktualisieren)
               await _persistTextFileUrls();
             }
+            if (!mounted) return;
             _showSystemSnack(
               context.read<LocalizationService>().t(
                 'avatars.details.avatarVideoCreated',
               ),
             );
-          } else {
+          } else{
             final body = await streamed.stream.bytesToString();
+            if (!mounted) return;
             _showSystemSnack(
               'Generierung fehlgeschlagen: ${streamed.statusCode} ${body.isNotEmpty ? body : ''}',
             );
@@ -5135,13 +5165,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         },
       );
     } catch (e) {
+      if (!mounted) return;
       _showSystemSnack(
         context.read<LocalizationService>().t(
           'avatars.details.errorGeneric',
           params: {'msg': '$e'},
         ),
       );
-    } finally {
+    } finally{
       if (mounted) setState(() => _isGeneratingAvatar = false);
     }
   }
@@ -5246,6 +5277,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       final cropController = cyi.CropController();
       Uint8List? result;
 
+      if (!mounted) return null;
       await showDialog(
         context: context,
         barrierDismissible: false,
@@ -5849,6 +5881,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Future<void> _onAddAudio() async {
+    final locSvc = context.read<LocalizationService>();
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['mp3', 'm4a', 'wav', 'aac'],
@@ -5858,18 +5891,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       final String uid = FirebaseAuth.instance.currentUser!.uid;
       final String avatarId = _avatarData!.id;
       final List<String> uploaded = [];
-
       final progress = ValueNotifier<double>(0.0);
       await _showBlockingProgress<void>(
-        title: context.read<LocalizationService>().t(
+        title: locSvc.t(
           'avatars.details.uploadAudioTitle',
         ),
         message: result.files.length == 1
-            ? context.read<LocalizationService>().t(
+            ? locSvc.t(
                 'avatars.details.fileSavingMessage',
                 params: {'name': result.files.first.name},
               )
-            : context.read<LocalizationService>().t(
+            : locSvc.t(
                 'avatars.details.filesSavingMessage',
                 params: {'count': '${result.files.length}'},
               ),
@@ -5926,13 +5958,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         },
       );
 
+      if (!mounted) return;
       if (uploaded.isNotEmpty) {
         _showSystemSnack(
           uploaded.length == 1
-              ? context.read<LocalizationService>().t(
+              ? locSvc.t(
                   'avatars.details.audioUploadedSingle',
                 )
-              : context.read<LocalizationService>().t(
+              : locSvc.t(
                   'avatars.details.audioUploadedMulti',
                   params: {'count': '${uploaded.length}'},
                 ),
@@ -6524,6 +6557,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     () async {
       try {
         // 0) Freitext lokal als Datei anlegen (nicht in der Liste anzeigen)
+        final locSvc = context.read<LocalizationService>();
         final freeText = _textAreaController.text.trim();
         String? freeTextLocalFileName;
         File? freeTextLocalFile;
@@ -6557,10 +6591,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final imgProgress = ValueNotifier<double>(0.0);
         if (_newImageFiles.isNotEmpty) {
           await _showBlockingProgress<void>(
-            title: context.read<LocalizationService>().t(
+            title: locSvc.t(
               'avatars.details.uploadImagesTitle',
             ),
-            message: context.read<LocalizationService>().t(
+            message: locSvc.t(
               'avatars.details.filesSavingMessage',
               params: {'count': '${_newImageFiles.length}'},
             ),
@@ -6593,10 +6627,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final vidProgress = ValueNotifier<double>(0.0);
         if (_newVideoFiles.isNotEmpty) {
           await _showBlockingProgress<void>(
-            title: context.read<LocalizationService>().t(
+            title: locSvc.t(
               'avatars.details.uploadVideosTitle',
             ),
-            message: context.read<LocalizationService>().t(
+            message: locSvc.t(
               'avatars.details.filesSavingMessage',
               params: {'count': '${_newVideoFiles.length}'},
             ),
@@ -6673,10 +6707,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final txtProgress = ValueNotifier<double>(0.0);
         if (_newTextFiles.isNotEmpty) {
           await _showBlockingProgress<void>(
-            title: context.read<LocalizationService>().t(
+            title: locSvc.t(
               'avatars.details.uploadTextsTitle',
             ),
-            message: context.read<LocalizationService>().t(
+            message: locSvc.t(
               'avatars.details.filesSavingMessage',
               params: {'count': '${_newTextFiles.length}'},
             ),
@@ -6826,10 +6860,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
         bool ok = false;
         await _showBlockingProgress<void>(
-          title: context.read<LocalizationService>().t(
+          title: locSvc.t(
             'avatars.details.savingTitle',
           ),
-          message: context.read<LocalizationService>().t(
+          message: locSvc.t(
             'avatars.details.savingData',
           ),
           task: () async {
@@ -6888,10 +6922,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
           // Texte in Speicher übernehmen – immer mit modalem Spinner
           await _showBlockingProgress<void>(
-            title: context.read<LocalizationService>().t(
+            title: locSvc.t(
               'avatars.details.savingTitle',
             ),
-            message: context.read<LocalizationService>().t(
+            message: locSvc.t(
               'avatars.details.textsTransferMessage',
             ),
             task: () async {
@@ -7510,6 +7544,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (await f.exists()) source = f;
       }
       source ??= await _downloadToTemp(url, suffix: '.png');
+      if (!mounted) return;
       if (source == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Bild konnte nicht geladen werden.')),
@@ -7528,6 +7563,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       final originalPath = FirebaseStorageService.pathFromUrl(url);
       if (originalPath.isEmpty) {
+        if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Speicherpfad konnte nicht ermittelt werden.'),
@@ -7558,6 +7594,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         newUrl = await ref.getDownloadURL();
         debugPrint('RECROP: Upload erfolgreich! URL: $newUrl');
       } catch (e) {
+        if (!mounted) return;
         debugPrint('RECROP: Upload FEHLER: $e');
         ScaffoldMessenger.of(
           context,
@@ -7695,13 +7732,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         } catch (_) {}
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Zuschneiden fehlgeschlagen: $e')));
     }
   }
 
-  Future<void> _handleImageError(String url) async {
+  Future<void> _handleImageError(String url) async{
     if (_refreshingImages.contains(url)) return;
     _refreshingImages.add(url);
     try {
@@ -7831,6 +7869,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
     // WENN kein Match → Popup mit Fehlermeldung
     if (!hasResult) {
+      if (!mounted) return;
       await showDialog(
         context: context,
         builder: (ctx) => AlertDialog(

@@ -666,7 +666,9 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
     );
 
     debugPrint('🔍 DEBUG: Playlist.toMap() keys: ${p.toMap().keys}');
-    debugPrint('🔍 DEBUG: weeklySchedules in map: ${p.toMap()['weeklySchedules']}');
+    debugPrint(
+      '🔍 DEBUG: weeklySchedules in map: ${p.toMap()['weeklySchedules']}',
+    );
 
     if (_saving) return;
     setState(() => _saving = true);

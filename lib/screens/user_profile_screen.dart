@@ -120,7 +120,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     try {
       final bytes = await input.readAsBytes();
       if (!mounted) return null;
-      
+
       final cropController = cyi.CropController();
       Uint8List? result;
 

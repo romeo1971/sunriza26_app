@@ -666,10 +666,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       final avatar = await avatarService.getAvatar(widget.avatarId);
       if (!mounted) return;
       if (avatar != null) {
-        nav.pushReplacementNamed(
-          '/avatar-details',
-          arguments: avatar,
-        );
+        nav.pushReplacementNamed('/avatar-details', arguments: avatar);
       } else {
         nav.pop();
       }
@@ -700,6 +697,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                   );
                   return;
                 }
+                if (!context.mounted) return;
                 showDialog(
                   context: context,
                   builder: (ctx) => AlertDialog(
@@ -741,7 +739,8 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                     children: [
                                       ElevatedButton.icon(
                                         onPressed: () async {
-                                          final messenger = ScaffoldMessenger.of(context);
+                                          final messenger =
+                                              ScaffoldMessenger.of(context);
                                           final nav = Navigator.of(ctx);
                                           try {
                                             final res = await _svc.repair(
@@ -775,7 +774,8 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                       const SizedBox(width: 8),
                                       OutlinedButton.icon(
                                         onPressed: () async {
-                                          final messenger = ScaffoldMessenger.of(context);
+                                          final messenger =
+                                              ScaffoldMessenger.of(context);
                                           final nav = Navigator.of(ctx);
                                           final confirm = await showDialog<bool>(
                                             context: context,
@@ -892,7 +892,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                 );
               } catch (e) {
                 if (!mounted) return;
-                messenger.showSnackBar(SnackBar(content: Text('Diagnosefehler: $e')));
+                messenger.showSnackBar(
+                  SnackBar(content: Text('Diagnosefehler: $e')),
+                );
               }
             },
             icon: ShaderMask(
