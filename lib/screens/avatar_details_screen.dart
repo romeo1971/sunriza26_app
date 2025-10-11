@@ -17,6 +17,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
@@ -147,11 +148,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   bool _isTimelineEnabled = true; // Timeline generell aktiviert/deaktiviert
   final Map<String, bool> _imageActive =
       {}; // URL -> aktiv (true) oder inaktiv (false)
+  final Map<String, bool> _imageExplorerVisible =
+      {}; // URL -> Explorer-Sichtbarkeit
   final TextEditingController _textAreaController = TextEditingController();
 
   // Timeline-Daten in Firebase speichern
   Future<void> _saveTimelineData() async {
     if (_avatarData == null) return;
+
+    // WICHTIG: Hero-Image (Index 0) ist IMMER aktiv & sichtbar!
+    if (_imageUrls.isNotEmpty) {
+      final heroUrl = _imageUrls[0];
+      _imageActive[heroUrl] = true;
+      _imageExplorerVisible[heroUrl] = true;
+    }
+
     try {
       await FirebaseFirestore.instance
           .collection('avatars')
@@ -162,11 +173,47 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               'loopMode': _isImageLoopMode,
               'enabled': _isTimelineEnabled,
               'active': _imageActive,
+              'explorerVisible': _imageExplorerVisible,
             },
           });
-      debugPrint('✅ Timeline-Daten gespeichert');
+      debugPrint('✅ Timeline-Daten gespeichert (Hero immer aktiv & sichtbar)');
     } catch (e) {
       debugPrint('❌ Fehler beim Speichern der Timeline-Daten: $e');
+    }
+  }
+
+  // Hero-Image setzen (ZENTRAL) - garantiert immer active & visible
+  void _setHeroImage(String url) {
+    _profileImageUrl = url;
+    _imageActive[url] = true;
+    _imageExplorerVisible[url] = true;
+    debugPrint('✅ Hero-Image gesetzt (immer aktiv & sichtbar): $url');
+  }
+
+  // Hero-Image & imageUrls in Firebase speichern
+  Future<void> _saveHeroImageAndUrls() async {
+    if (_avatarData == null) return;
+    
+    // WICHTIG: Hero-Image (Index 0) ist IMMER aktiv & sichtbar!
+    if (_imageUrls.isNotEmpty) {
+      final heroUrl = _imageUrls[0];
+      _imageActive[heroUrl] = true;
+      _imageExplorerVisible[heroUrl] = true;
+    }
+    
+    try {
+      await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .update({
+            'avatarImageUrl': _profileImageUrl,
+            'imageUrls': _imageUrls,
+          });
+      debugPrint(
+        '✅ Hero-Image & imageUrls gespeichert: ${_imageUrls.length} Bilder, Hero: $_profileImageUrl',
+      );
+    } catch (e) {
+      debugPrint('❌ Fehler beim Speichern von Hero-Image & imageUrls: $e');
     }
   }
 
@@ -210,6 +257,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               }
             });
           }
+          // Explorer-Sichtbarkeit laden
+          final explorerVisibleMap =
+              timeline['explorerVisible'] as Map<String, dynamic>?;
+          if (explorerVisibleMap != null) {
+            _imageExplorerVisible.clear();
+            explorerVisibleMap.forEach((key, value) {
+              if (value is bool) {
+                _imageExplorerVisible[key] = value;
+              }
+            });
+          }
+
+          // WICHTIG: Hero-Image (Index 0) ist IMMER aktiv & sichtbar!
+          if (_imageUrls.isNotEmpty) {
+            final heroUrl = _imageUrls[0];
+            _imageActive[heroUrl] = true;
+            _imageExplorerVisible[heroUrl] = true;
+            debugPrint('✅ Hero-Image IMMER aktiv & sichtbar: $heroUrl');
+          }
+
           debugPrint(
             '✅ Timeline-Daten geladen: ${_imageDurations.length} Bilder, Loop: $_isImageLoopMode, Enabled: $_isTimelineEnabled',
           );
@@ -478,7 +545,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final url = _imageUrls[i];
         // Nur aktive Bilder zählen für die Timeline
         if (_imageActive[url] ?? true) {
-          totalSeconds += _imageDurations[url] ?? 5;
+          totalSeconds += _imageDurations[url] ?? 60;
         }
       }
     }
@@ -493,12 +560,200 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     for (int i = 0; i < _imageUrls.length; i++) {
       final url = _imageUrls[i];
       if (_imageActive[url] ?? true) {
-        totalSeconds += _imageDurations[url] ?? 5;
+        totalSeconds += _imageDurations[url] ?? 60;
       }
     }
     final minutes = totalSeconds ~/ 60;
     final seconds = totalSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  // Explorer-Info-Dialog anzeigen
+  Future<void> _showExplorerInfoDialog({bool forceShow = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasSeenInfo = prefs.getBool('hasSeenExplorerInfo') ?? false;
+
+    // forceShow: true → Info-Button (immer zeigen, startet Bildungskreislauf neu)
+    // forceShow: false → Auge-Klick (nur beim ersten Mal)
+    if (!forceShow && hasSeenInfo) return;
+
+    // Info-Button → Reset der Einstellung, damit Bildungskreislauf neu startet
+    if (forceShow) {
+      await prefs.setBool('hasSeenExplorerInfo', false);
+    }
+
+    bool dontShowAgain = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Stack(
+            children: [
+              const Center(
+                child: Text(
+                  'Startseiten-Galerie',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Positioned(
+                top: -8,
+                right: -8,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white54),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RichText(
+                textAlign: TextAlign.center,
+                text: TextSpan(
+                  children: [
+                    WidgetSpan(
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => Theme.of(context)
+                            .extension<AppGradients>()!
+                            .magentaBlue
+                            .createShader(bounds),
+                        child: const Text(
+                          'Aktivierte Bilder',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            height: 1.5,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const TextSpan(
+                      text:
+                          '\nrotieren auf Deiner Startseite\nim 2-Sekunden-Takt.\n\n'
+                          'Das verhindert schnelles Wegswipen (Nutzer verlässt Seite) '
+                          'und motiviert Besucher, mit Dir in Kontakt zu treten.\n\n'
+                          'Mehr Bilder = mehr Interesse!',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Großes Auge-Icon mit GMBC Gradient
+              ShaderMask(
+                shaderCallback: (bounds) => Theme.of(
+                  context,
+                ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
+                child: const Icon(
+                  Icons.visibility,
+                  size: 125,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 24),
+              // Checkbox
+              InkWell(
+                onTap: () {
+                  setDialogState(() => dontShowAgain = !dontShowAgain);
+                },
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 16,
+                      height: 16,
+                      decoration: BoxDecoration(
+                        gradient: dontShowAgain
+                            ? Theme.of(
+                                context,
+                              ).extension<AppGradients>()!.magentaBlue
+                            : null,
+                        border: Border.all(
+                          color: dontShowAgain
+                              ? Colors.transparent
+                              : Colors.grey,
+                          width: 1.5,
+                        ),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                      child: dontShowAgain
+                          ? const Icon(
+                              Icons.check,
+                              size: 12,
+                              color: Colors.white,
+                            )
+                          : null,
+                    ),
+                    const SizedBox(width: 8),
+                    const Flexible(
+                      child: Text(
+                        'Diesen Dialog nicht mehr anzeigen',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                          height: 1.0,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            Center(
+              child: ElevatedButton(
+                onPressed: () async {
+                  if (dontShowAgain) {
+                    await prefs.setBool('hasSeenExplorerInfo', true);
+                  }
+                  Navigator.of(context).pop();
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 32,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: ShaderMask(
+                  shaderCallback: (bounds) => Theme.of(
+                    context,
+                  ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
+                  child: const Text(
+                    'Verstanden',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   // Lade OriginalFileNames aus Firestore Media-Docs
@@ -702,6 +957,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       _profileImageUrl =
           data.avatarImageUrl ??
           (_imageUrls.isNotEmpty ? _imageUrls.first : null);
+
+      // WICHTIG: Hero-Image MUSS an Position 0 sein!
+      if (_profileImageUrl != null && _imageUrls.isNotEmpty) {
+        final heroUrl = _profileImageUrl!;
+        if (_imageUrls.contains(heroUrl) && _imageUrls[0] != heroUrl) {
+          _imageUrls.remove(heroUrl);
+          _imageUrls.insert(0, heroUrl);
+          debugPrint('✅ Hero-Image an Position 0 verschoben: $heroUrl');
+        }
+      }
       _profileLocalPath = null;
       // aktive Stimme aus training.voice.activeUrl lesen (falls vorhanden)
       final voice = (data.training != null) ? data.training!['voice'] : null;
@@ -816,6 +1081,25 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 ),
               ),
               const Spacer(),
+              // Info-Button für Explorer-Dialog
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: SizedBox(
+                  height: 35,
+                  width: 35,
+                  child: IconButton(
+                    onPressed: () async {
+                      await _showExplorerInfoDialog(forceShow: true);
+                    },
+                    padding: EdgeInsets.zero,
+                    icon: const Icon(
+                      Icons.info_outline,
+                      size: 20,
+                      color: Colors.white70,
+                    ),
+                  ),
+                ),
+              ),
               // Toggle View-Mode (Kacheln / Liste) - ganz rechts
               SizedBox(
                 height: 35,
@@ -1812,18 +2096,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                             if (newIndex == 0 &&
                                 item != currentHero &&
                                 _imageUrls.isNotEmpty) {
-                              _profileImageUrl = _imageUrls[0];
+                              _setHeroImage(_imageUrls[0]);
                             }
 
                             // Fall 2: Das aktuelle Hero wird VON Position 0 wegbewegt -> neues erstes Bild wird Hero
                             if (oldIndex == 0 &&
                                 item == currentHero &&
                                 _imageUrls.isNotEmpty) {
-                              _profileImageUrl = _imageUrls[0];
+                              _setHeroImage(_imageUrls[0]);
                             }
                           });
-                          // Timeline-Daten UND Hero-Image sofort speichern
+                          // Timeline-Daten UND Hero-Image & imageUrls sofort speichern
                           await _saveTimelineData();
+                          await _saveHeroImageAndUrls();
                         },
                         itemBuilder: (context, index) {
                           final url = _imageUrls[index];
@@ -1831,187 +2116,59 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               _profileImageUrl == url ||
                               (_profileImageUrl == null && index == 0);
                           final imageName = _fileNameFromUrl(url);
+                          final isActive = _imageActive[url] ?? true;
 
-                          return Container(
+                          return Stack(
                             key: ValueKey(url),
-                            height: listItemHeight,
-                            margin: const EdgeInsets.only(bottom: 8),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              gradient: isHero
-                                  ? const LinearGradient(
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                      colors: [
-                                        Color(0xFFE91E63),
-                                        AppColors.lightBlue,
-                                        Color(0xFF00E5FF),
-                                      ],
-                                    )
-                                  : null,
-                              color: isHero
-                                  ? null
-                                  : Colors.white.withValues(alpha: 0.05),
-                            ),
-                            child: Row(
-                              children: [
-                                // Thumbnail ganz links
-                                Padding(
-                                  padding: const EdgeInsets.all(4),
-                                  child: ClipRRect(
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: SizedBox(
-                                      width: listItemHeight * 9 / 16,
-                                      height: listItemHeight - 8,
-                                      child: Image.network(
-                                        url,
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                  ),
+                            children: [
+                              Container(
+                                height: listItemHeight,
+                                margin: const EdgeInsets.only(bottom: 8),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  gradient: isHero
+                                      ? const LinearGradient(
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                          colors: [
+                                            Color(0xFFE91E63),
+                                            AppColors.lightBlue,
+                                            Color(0xFF00E5FF),
+                                          ],
+                                        )
+                                      : (!isHero && isActive
+                                            ? const LinearGradient(
+                                                begin: Alignment.topCenter,
+                                                end: Alignment.bottomCenter,
+                                                colors: [
+                                                  Color(
+                                                    0x4D004D00,
+                                                  ), // Dark green (0.3 alpha)
+                                                  Color(
+                                                    0x26008000,
+                                                  ), // Medium dark green (0.15 alpha)
+                                                ],
+                                              )
+                                            : null),
+                                  color: isHero
+                                      ? null
+                                      : (!isHero && isActive
+                                            ? null
+                                            : Colors.white.withValues(
+                                                alpha: 0.05,
+                                              )),
                                 ),
-                                const SizedBox(width: 8),
-                                // 3 Reihen: Zeit, Dropdowns, Name
-                                Expanded(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      // Reihe 1: Zeit (Hero-Image zeigt "00:00 - ENDZEIT")
-                                      Text(
-                                        isHero
-                                            ? '00:00 - ${_getTotalEndTime()}'
-                                            : _getImageStartTime(index),
-                                        style: const TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 10,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      // Reihe 2: Dropdowns (Min : Sek)
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 2,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.black.withValues(
-                                                alpha: 0.3,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: DropdownButton<int>(
-                                              value:
-                                                  (_imageDurations[url] ?? 5) ~/
-                                                  60,
-                                              isDense: true,
-                                              underline:
-                                                  const SizedBox.shrink(),
-                                              dropdownColor: Colors.black87,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 11,
-                                              ),
-                                              items: List.generate(60, (i) => i)
-                                                  .map(
-                                                    (min) => DropdownMenuItem(
-                                                      value: min,
-                                                      child: Text('${min}m'),
-                                                    ),
-                                                  )
-                                                  .toList(),
-                                              onChanged: (newMin) {
-                                                if (newMin != null) {
-                                                  setState(() {
-                                                    final currentSec =
-                                                        (_imageDurations[url] ??
-                                                            5) %
-                                                        60;
-                                                    _imageDurations[url] =
-                                                        (newMin * 60) +
-                                                        currentSec;
-                                                  });
-                                                  _saveTimelineData();
-                                                }
-                                              },
-                                            ),
-                                          ),
-                                          const Padding(
-                                            padding: EdgeInsets.symmetric(
-                                              horizontal: 4,
-                                            ),
-                                            child: Text(
-                                              ':',
-                                              style: TextStyle(
-                                                color: Colors.white70,
-                                                fontSize: 11,
-                                              ),
-                                            ),
-                                          ),
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 2,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.black.withValues(
-                                                alpha: 0.3,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: DropdownButton<int>(
-                                              value:
-                                                  ((_imageDurations[url] ?? 5) %
-                                                      60) ~/
-                                                  10 *
-                                                  10,
-                                              isDense: true,
-                                              underline:
-                                                  const SizedBox.shrink(),
-                                              dropdownColor: Colors.black87,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 11,
-                                              ),
-                                              items: [0, 10, 20, 30, 40, 50]
-                                                  .map(
-                                                    (sec) => DropdownMenuItem(
-                                                      value: sec,
-                                                      child: Text('${sec}s'),
-                                                    ),
-                                                  )
-                                                  .toList(),
-                                              onChanged: (newSec) {
-                                                if (newSec != null) {
-                                                  setState(() {
-                                                    final currentMin =
-                                                        (_imageDurations[url] ??
-                                                            5) ~/
-                                                        60;
-                                                    _imageDurations[url] =
-                                                        (currentMin * 60) +
-                                                        newSec;
-                                                  });
-                                                  _saveTimelineData();
-                                                }
-                                              },
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      // Reihe 3: Checkbox + Name (Hero-Image hat KEINE Checkbox)
-                                      Row(
-                                        children: [
-                                          // Checkbox (aktiv/inaktiv) - NUR bei NON-Hero-Images
-                                          if (!isHero) ...[
-                                            InkWell(
-                                              onTap: () {
+                                child: Row(
+                                  children: [
+                                    // Thumbnail ganz links (Click = Timeline Active/Inactive)
+                                    MouseRegion(
+                                      cursor: isHero
+                                          ? SystemMouseCursors.basic
+                                          : SystemMouseCursors.click,
+                                      child: GestureDetector(
+                                        onTap: isHero
+                                            ? null
+                                            : () {
                                                 setState(() {
                                                   final currentActive =
                                                       _imageActive[url] ?? true;
@@ -2020,79 +2177,202 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                                 });
                                                 _saveTimelineData();
                                               },
-                                              child: Container(
-                                                width: 16,
-                                                height: 16,
-                                                decoration: BoxDecoration(
-                                                  color:
-                                                      (_imageActive[url] ??
-                                                          true)
-                                                      ? AppColors.primaryGreen
-                                                      : Colors.transparent,
-                                                  border: Border.all(
-                                                    color:
-                                                        (_imageActive[url] ??
-                                                            true)
-                                                        ? AppColors.primaryGreen
-                                                        : Colors.grey,
-                                                    width: 1,
+                                        child: ClipRRect(
+                                          borderRadius:
+                                              const BorderRadius.horizontal(
+                                                left: Radius.circular(8),
+                                                right: Radius.zero,
+                                              ),
+                                          child: SizedBox(
+                                            width: listItemHeight * 9 / 16,
+                                            height: listItemHeight,
+                                            child: Image.network(
+                                              url,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // 3 Reihen: Zeit, Dropdowns, Name
+                                    Expanded(
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // Reihe 1: Zeit + Auge-Icon
+                                          Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  isHero
+                                                      ? '00:00 - ${_getTotalEndTime()}'
+                                                      : _getImageStartTime(
+                                                          index,
+                                                        ),
+                                                  style: const TextStyle(
+                                                    color: Colors.white70,
+                                                    fontSize: 10,
                                                   ),
-                                                  borderRadius:
-                                                      BorderRadius.circular(3),
                                                 ),
-                                                child:
-                                                    (_imageActive[url] ?? true)
-                                                    ? const Icon(
-                                                        Icons.check,
-                                                        size: 12,
-                                                        color: Colors.black,
+                                              ),
+                                              if (!isHero)
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        right: 8,
+                                                      ),
+                                                  child: InkWell(
+                                                    onTap: () async {
+                                                      // Dialog nur beim ersten Klick
+                                                      await _showExplorerInfoDialog();
+                                                      setState(() {
+                                                        final currentVisible =
+                                                            _imageExplorerVisible[url] ??
+                                                            false;
+                                                        _imageExplorerVisible[url] =
+                                                            !currentVisible;
+                                                      });
+                                                      // Sofort in Firebase speichern
+                                                      await _saveTimelineData();
+                                                    },
+                                                    child:
+                                                        (_imageExplorerVisible[url] ??
+                                                            false)
+                                                        ? ShaderMask(
+                                                            shaderCallback: (bounds) =>
+                                                                Theme.of(
+                                                                      context,
+                                                                    )
+                                                                    .extension<
+                                                                      AppGradients
+                                                                    >()!
+                                                                    .magentaBlue
+                                                                    .createShader(
+                                                                      bounds,
+                                                                    ),
+                                                            child: const Icon(
+                                                              Icons.visibility,
+                                                              size: 20,
+                                                              color:
+                                                                  Colors.white,
+                                                            ),
+                                                          )
+                                                        : const Icon(
+                                                            Icons
+                                                                .visibility_off,
+                                                            size: 20,
+                                                            color: Colors.grey,
+                                                          ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          // Reihe 2: Dropdown (nur Minuten 1-30)
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 6,
+                                              vertical: 2,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              color: Colors.black.withValues(
+                                                alpha: 0.3,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: DropdownButton<int>(
+                                              value:
+                                                  ((_imageDurations[url] ??
+                                                              60) ~/
+                                                          60)
+                                                      .clamp(1, 30),
+                                              isDense: true,
+                                              underline:
+                                                  const SizedBox.shrink(),
+                                              dropdownColor: Colors.black87,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 11,
+                                              ),
+                                              items:
+                                                  List.generate(
+                                                        30,
+                                                        (i) => i + 1,
                                                       )
-                                                    : null,
-                                              ),
+                                                      .map(
+                                                        (min) =>
+                                                            DropdownMenuItem(
+                                                              value: min,
+                                                              child: Text(
+                                                                '${min} Min.',
+                                                              ),
+                                                            ),
+                                                      )
+                                                      .toList(),
+                                              onChanged: (newMin) {
+                                                if (newMin != null) {
+                                                  setState(() {
+                                                    _imageDurations[url] =
+                                                        newMin * 60;
+                                                  });
+                                                  _saveTimelineData();
+                                                }
+                                              },
                                             ),
-                                            const SizedBox(width: 8),
-                                          ],
-                                          // Name
-                                          Expanded(
-                                            child: Text(
-                                              imageName,
-                                              style: TextStyle(
-                                                color: isHero
-                                                    ? Colors.white
-                                                    : (_imageActive[url] ??
-                                                          true)
-                                                    ? Colors.white
-                                                    : Colors.grey,
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
+                                          ),
+                                          const SizedBox(height: 4),
+                                          // Reihe 3: Name
+                                          Row(
+                                            children: [
+                                              // Name
+                                              Expanded(
+                                                child: Text(
+                                                  imageName,
+                                                  style: TextStyle(
+                                                    color: isHero
+                                                        ? Colors.white
+                                                        : (_imageActive[url] ??
+                                                              true)
+                                                        ? Colors.white
+                                                        : Colors.grey,
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                ),
                                               ),
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
+                                            ],
                                           ),
                                         ],
                                       ),
-                                    ],
-                                  ),
-                                ),
-                                // NUR Drag Handle rechts (6-Punkte Grid Icon)
-                                ReorderableDragStartListener(
-                                  index: index,
-                                  child: MouseRegion(
-                                    cursor: SystemMouseCursors.click,
-                                    child: const Padding(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                      ),
-                                      child: Icon(
-                                        Icons.drag_indicator,
-                                        color: Colors.white70,
-                                        size: 24,
+                                    ),
+                                    // NUR Drag Handle rechts (6-Punkte Grid Icon)
+                                    ReorderableDragStartListener(
+                                      index: index,
+                                      child: MouseRegion(
+                                        cursor: SystemMouseCursors.click,
+                                        child: const Padding(
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                          ),
+                                          child: Icon(
+                                            Icons.drag_indicator,
+                                            color: Colors.white70,
+                                            size: 24,
+                                          ),
+                                        ),
                                       ),
                                     ),
-                                  ),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           );
                         },
                       ),
@@ -2271,46 +2551,135 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                               final tileImageHeight = leftH - nameHeight;
                               final tileWidth = tileImageHeight * (9 / 16);
                               final imageName = _fileNameFromUrl(url);
+                              final isActive = _imageActive[url] ?? true;
 
-                              return Container(
-                                width: tileWidth,
-                                height: leftH,
-                                margin: EdgeInsets.only(
-                                  right: index < _imageUrls.length - 1
-                                      ? gridSpacing
-                                      : 0,
-                                ),
-                                child: Column(
-                                  children: [
-                                    SizedBox(
-                                      width: tileWidth,
-                                      height: tileImageHeight,
-                                      child: _buildHeroImageThumbNetwork(
-                                        url,
-                                        isHero,
-                                      ),
+                              return Stack(
+                                children: [
+                                  Container(
+                                    width: tileWidth,
+                                    height: leftH,
+                                    margin: EdgeInsets.only(
+                                      right: index < _imageUrls.length - 1
+                                          ? gridSpacing
+                                          : 0,
                                     ),
-                                    SizedBox(
-                                      height: nameHeight,
-                                      child: Center(
-                                        child: Text(
-                                          imageName,
-                                          style: TextStyle(
-                                            color: isHero
-                                                ? Colors.white
-                                                : Colors.white70,
-                                            fontSize: 11,
-                                            fontWeight: isHero
-                                                ? FontWeight.w600
-                                                : FontWeight.normal,
+                                    child: Column(
+                                      children: [
+                                        MouseRegion(
+                                          cursor: isHero
+                                              ? SystemMouseCursors.basic
+                                              : SystemMouseCursors.click,
+                                          child: GestureDetector(
+                                            onTap: isHero
+                                                ? null
+                                                : () {
+                                                    setState(() {
+                                                      final currentActive =
+                                                          _imageActive[url] ??
+                                                          true;
+                                                      _imageActive[url] =
+                                                          !currentActive;
+                                                    });
+                                                    _saveTimelineData();
+                                                  },
+                                            child: SizedBox(
+                                              width: tileWidth,
+                                              height: tileImageHeight,
+                                              child:
+                                                  _buildHeroImageThumbNetwork(
+                                                    url,
+                                                    isHero,
+                                                  ),
+                                            ),
                                           ),
-                                          overflow: TextOverflow.ellipsis,
-                                          maxLines: 1,
                                         ),
+                                        SizedBox(
+                                          height: nameHeight,
+                                          child: Center(
+                                            child: Text(
+                                              imageName,
+                                              style: TextStyle(
+                                                color: isHero
+                                                    ? Colors.white
+                                                    : (isActive
+                                                          ? Colors.white70
+                                                          : Colors.grey),
+                                                fontSize: 11,
+                                                fontWeight: isHero
+                                                    ? FontWeight.w600
+                                                    : FontWeight.normal,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Status-Punkte oben rechts
+                                  if (!isHero)
+                                    Positioned(
+                                      top: 6,
+                                      right:
+                                          (index < _imageUrls.length - 1
+                                              ? gridSpacing
+                                              : 0) +
+                                          6,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          // Grüner Punkt = Timeline aktiv
+                                          if (isActive)
+                                            Container(
+                                              width: 13,
+                                              height: 13,
+                                              decoration: BoxDecoration(
+                                                color: Colors.green,
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: Colors.white,
+                                                  width: 1.0,
+                                                ),
+                                              ),
+                                            ),
+                                          // Abstand zwischen Punkten
+                                          if (isActive &&
+                                              (_imageExplorerVisible[url] ??
+                                                  false))
+                                            const SizedBox(width: 6),
+                                          // GMBC Punkt = Explorer aktiv
+                                          if (_imageExplorerVisible[url] ??
+                                              false)
+                                            Container(
+                                              width: 13,
+                                              height: 13,
+                                              decoration: BoxDecoration(
+                                                gradient: LinearGradient(
+                                                  begin: Alignment.topLeft,
+                                                  end: Alignment.bottomRight,
+                                                  colors: [
+                                                    const Color(0xFFFF2EC8),
+                                                    Theme.of(context)
+                                                            .extension<
+                                                              AppGradients
+                                                            >()
+                                                            ?.magentaBlue
+                                                            .colors[1] ??
+                                                        Colors.green,
+                                                  ],
+                                                ),
+                                                shape: BoxShape.circle,
+                                                border: Border.all(
+                                                  color: Colors.white,
+                                                  width: 1.0,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
                                       ),
                                     ),
-                                  ],
-                                ),
+                                ],
                               );
                             },
                           ),
@@ -4063,7 +4432,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           });
         } else {
           setState(() {
-            _profileImageUrl = url;
+            _setHeroImage(url);
             _updateDirty();
           });
           // Hero-Image sofort persistent speichern
@@ -4270,7 +4639,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           });
         } else {
           setState(() {
-            _profileImageUrl = url;
+            _setHeroImage(url);
             _updateDirty();
           });
           // Hero-Image sofort persistent speichern
@@ -5147,7 +5516,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               _imageDurations[url] = 5; // Default 5 Sekunden
               _imageActive[url] = true; // Default: aktiv
               if (_profileImageUrl == null || _profileImageUrl!.isEmpty) {
-                _profileImageUrl = url;
+                _setHeroImage(url);
               }
               _profileLocalPath = null; // nach Upload auf Remote wechseln
             });
@@ -5217,7 +5586,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             _imageUrls.insert(0, url);
             _imageDurations[url] = 5; // Default 5 Sekunden
             if (_profileImageUrl == null || _profileImageUrl!.isEmpty) {
-              _profileImageUrl = url;
+              _setHeroImage(url);
             }
             _profileLocalPath = null;
           });
@@ -6902,7 +7271,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       } catch (_) {}
       _imageUrls.remove(url);
       if (_profileImageUrl == url) {
-        _profileImageUrl = _imageUrls.isNotEmpty ? _imageUrls.first : null;
+        if (_imageUrls.isNotEmpty) {
+          _setHeroImage(_imageUrls.first);
+        } else {
+          _profileImageUrl = null;
+        }
       }
     }
     // Remote löschen (Videos) + Thumbs und Media-Dokumente
@@ -7201,7 +7574,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           if (index != -1) {
             _imageUrls[index] = newUrl;
           }
-          if (_profileImageUrl == url) _profileImageUrl = newUrl;
+          if (_profileImageUrl == url) _setHeroImage(newUrl);
           if (_profileLocalPath == cached.path) _profileLocalPath = null;
         });
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -21,6 +22,22 @@ class ExploreScreenState extends State<ExploreScreen> {
   List<AvatarData> _cachedAvatars = [];
   bool _isInitialized = false;
 
+  // Explorer Timeline State
+  Timer? _explorerTimer;
+  final Map<String, List<String>> _explorerImages =
+      {}; // avatarId -> eye-active images
+  final Map<String, int> _currentIndex = {}; // avatarId -> current index
+  final Map<String, String?> _currentImage =
+      {}; // avatarId -> current image URL
+
+  // LRU Cache: Behalte letzte 5 Avatare im Speicher
+  static const int _maxCachedAvatars = 5;
+  final List<String> _cachedAvatarIds =
+      []; // Queue: Ältester = [0], Neuester = [last]
+
+  // Firestore Listener für aktuellen Avatar (Live-Updates bei Änderungen)
+  StreamSubscription<DocumentSnapshot>? _currentAvatarSub;
+
   @override
   void initState() {
     super.initState();
@@ -37,6 +54,22 @@ class ExploreScreenState extends State<ExploreScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _explorerTimer?.cancel();
+    _currentAvatarSub?.cancel();
+
+    // Cleanup: Alle gecachten Avatare entfernen
+    for (final avatarId in _cachedAvatarIds) {
+      final images = _explorerImages[avatarId];
+      if (images != null) {
+        for (final url in images) {
+          NetworkImage(url).evict();
+        }
+      }
+    }
+    debugPrint(
+      '🗑️ Explorer Screen dispose: ${_cachedAvatarIds.length} Avatare aus Cache entfernt',
+    );
+
     super.dispose();
   }
 
@@ -98,6 +131,135 @@ class ExploreScreenState extends State<ExploreScreen> {
     }
   }
 
+  // Explorer Timeline: Lade eye-active Images
+  Future<void> _loadExplorerImages(String avatarId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(avatarId)
+          .get();
+
+      if (!doc.exists) return;
+
+      final data = doc.data()!;
+      final allImages =
+          (data['imageUrls'] as List<dynamic>?)?.cast<String>() ?? [];
+
+      if (allImages.isEmpty) {
+        _explorerImages[avatarId] = [];
+        _currentImage[avatarId] = null;
+        return;
+      }
+
+      // Timeline-Daten laden
+      final timeline = data['imageTimeline'] as Map<String, dynamic>?;
+      final explorerVisible =
+          timeline?['explorerVisible'] as Map<String, dynamic>?;
+
+      // WICHTIG: Hero-Image (Index 0) ist IMMER sichtbar im Explorer
+      final heroImage = allImages[0];
+
+      // Filtere eye-active Images (OHNE Hero, da immer dabei)
+      final activeImages = allImages.skip(1).where((url) {
+        return explorerVisible?[url] == true;
+      }).toList();
+
+      // Hero-Image IMMER an Index 0, dann active Images
+      final explorerImagesList = [heroImage, ...activeImages];
+
+      _explorerImages[avatarId] = explorerImagesList;
+      _currentIndex[avatarId] = 0;
+      _currentImage[avatarId] = heroImage;
+
+      // Preload Hero-Image
+      if (mounted) {
+        precacheImage(NetworkImage(heroImage), context);
+      }
+    } catch (e) {
+      debugPrint('❌ Explorer Images Fehler: $e');
+    }
+  }
+
+  // Firestore Listener für Live-Updates des aktuellen Avatars
+  void _startAvatarListener(String avatarId) {
+    _currentAvatarSub?.cancel();
+    _currentAvatarSub = FirebaseFirestore.instance
+        .collection('avatars')
+        .doc(avatarId)
+        .snapshots()
+        .listen((snapshot) {
+          if (snapshot.exists && mounted && _currentAvatarId == avatarId) {
+            // Bei Änderungen: Bilder NEU LADEN (gelöscht/verschoben/etc.)
+            debugPrint('🔄 Explorer: Avatar-Daten geändert, lade Bilder neu');
+            _loadExplorerImages(avatarId).then((_) {
+              _startExplorerTimer(avatarId);
+              if (mounted) setState(() {});
+            });
+          }
+        });
+  }
+
+  // LRU Cache Management: Füge Avatar hinzu und lösche ältesten wenn Limit erreicht
+  void _manageLRUCache(String newAvatarId) {
+    // Entferne Avatar aus Liste wenn bereits vorhanden (wird neu hinzugefügt am Ende)
+    _cachedAvatarIds.remove(newAvatarId);
+
+    // Füge aktuellen Avatar am Ende hinzu (= zuletzt verwendet)
+    _cachedAvatarIds.add(newAvatarId);
+
+    // Wenn Limit überschritten: Lösche ÄLTESTEN Avatar (Index 0)
+    if (_cachedAvatarIds.length > _maxCachedAvatars) {
+      final oldestAvatarId = _cachedAvatarIds.removeAt(0);
+
+      // Cleanup für ältesten Avatar
+      final oldImages = _explorerImages[oldestAvatarId];
+      if (oldImages != null) {
+        for (final url in oldImages) {
+          NetworkImage(url).evict();
+        }
+        debugPrint(
+          '🗑️ LRU Cache bereinigt: $oldestAvatarId (${oldImages.length} Bilder) | Cache: ${_cachedAvatarIds.length}/$_maxCachedAvatars',
+        );
+
+        // Entferne aus Maps
+        _explorerImages.remove(oldestAvatarId);
+        _currentIndex.remove(oldestAvatarId);
+        _currentImage.remove(oldestAvatarId);
+      }
+    } else {
+      debugPrint(
+        '✅ LRU Cache: $newAvatarId hinzugefügt | Cache: ${_cachedAvatarIds.length}/$_maxCachedAvatars',
+      );
+    }
+  }
+
+  // Explorer Timeline: Starte 2-Sekunden-Loop
+  void _startExplorerTimer(String avatarId) {
+    _explorerTimer?.cancel();
+
+    final images = _explorerImages[avatarId];
+    if (images == null || images.length <= 1) return;
+
+    _explorerTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (!mounted || _currentAvatarId != avatarId) {
+        timer.cancel();
+        return;
+      }
+
+      final idx = _currentIndex[avatarId] ?? 0;
+      final nextIdx = (idx + 1) % images.length; // IMMER LOOP
+
+      setState(() {
+        _currentIndex[avatarId] = nextIdx;
+        _currentImage[avatarId] = images[nextIdx];
+      });
+
+      // Preload next (KEIN BLACK SCREEN)
+      final preloadIdx = (nextIdx + 1) % images.length;
+      precacheImage(NetworkImage(images[preloadIdx]), context);
+    });
+  }
+
   void _showSearch() {
     showSearch(
       context: context,
@@ -127,9 +289,23 @@ class ExploreScreenState extends State<ExploreScreen> {
             return PageView.builder(
               scrollDirection: Axis.vertical,
               itemCount: _cachedAvatars.length,
-              onPageChanged: (index) {
-                _currentAvatarId = _cachedAvatars[index].id;
-                widget.onCurrentAvatarChanged?.call(_cachedAvatars[index].id);
+              onPageChanged: (index) async {
+                final avatarId = _cachedAvatars[index].id;
+                _currentAvatarId = avatarId;
+                widget.onCurrentAvatarChanged?.call(avatarId);
+
+                // LRU Cache Management
+                _manageLRUCache(avatarId);
+
+                // Timeline laden & starten (nur wenn noch nicht geladen)
+                if (!_explorerImages.containsKey(avatarId)) {
+                  await _loadExplorerImages(avatarId);
+                }
+                _startExplorerTimer(avatarId);
+
+                // Starte Listener für Live-Updates
+                _startAvatarListener(avatarId);
+
                 if (mounted) setState(() {});
               },
               itemBuilder: (context, index) {
@@ -189,9 +365,20 @@ class ExploreScreenState extends State<ExploreScreen> {
         return PageView.builder(
           scrollDirection: Axis.vertical,
           itemCount: _cachedAvatars.length,
-          onPageChanged: (index) {
-            _currentAvatarId = _cachedAvatars[index].id;
-            widget.onCurrentAvatarChanged?.call(_cachedAvatars[index].id);
+          onPageChanged: (index) async {
+            final avatarId = _cachedAvatars[index].id;
+            _currentAvatarId = avatarId;
+            widget.onCurrentAvatarChanged?.call(avatarId);
+
+            // LRU Cache Management
+            _manageLRUCache(avatarId);
+
+            // Timeline laden & starten (nur wenn noch nicht geladen)
+            if (!_explorerImages.containsKey(avatarId)) {
+              await _loadExplorerImages(avatarId);
+            }
+            _startExplorerTimer(avatarId);
+
             // Nur setState für das Herz-Icon, nicht den ganzen PageView
             if (mounted) setState(() {});
           },
@@ -217,9 +404,12 @@ class ExploreScreenState extends State<ExploreScreen> {
     }
     final displayName = nameParts.isEmpty ? 'Avatar' : nameParts.join(' ');
 
+    // Timeline-Bild oder Fallback
+    final imageUrl = _currentImage[avatar.id] ?? avatar.avatarImageUrl;
+
     // Bild SOFORT in den Cache laden (unsichtbar)
-    if (avatar.avatarImageUrl != null) {
-      precacheImage(NetworkImage(avatar.avatarImageUrl!), context);
+    if (imageUrl != null) {
+      precacheImage(NetworkImage(imageUrl), context);
     }
 
     return Scaffold(
@@ -256,13 +446,13 @@ class ExploreScreenState extends State<ExploreScreen> {
       ),
       body: Container(
         decoration: BoxDecoration(
-          image: avatar.avatarImageUrl != null
+          image: imageUrl != null
               ? DecorationImage(
-                  image: NetworkImage(avatar.avatarImageUrl!),
+                  image: NetworkImage(imageUrl),
                   fit: BoxFit.cover,
                 )
               : null,
-          color: avatar.avatarImageUrl == null ? Colors.grey.shade800 : null,
+          color: imageUrl == null ? Colors.grey.shade800 : null,
         ),
         child: Stack(
           children: [

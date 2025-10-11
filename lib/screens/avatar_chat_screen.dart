@@ -109,7 +109,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         final durationsMap = timeline['durations'] as Map<String, dynamic>?;
         if (durationsMap != null) {
           _imageDurations = durationsMap.map(
-            (k, v) => MapEntry(k, v as int? ?? 5),
+            (k, v) => MapEntry(k, v as int? ?? 60),
           );
         }
         final loopMode = timeline['loopMode'];
@@ -128,7 +128,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         }
       }
 
-      // Filtere nur aktive Bilder MIT Zeit > 1 Sekunde
+      // Filtere nur aktive Bilder
       // Hero-Image (Position 0) ist IMMER aktiv
       _activeImageUrls = _imageUrls
           .asMap()
@@ -139,9 +139,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             final isHero = index == 0; // Hero-Image ist IMMER Position 0
             final isActive =
                 isHero || (_imageActive[url] ?? true); // Hero IMMER aktiv
-            final duration = _imageDurations[url] ?? 5;
-            return isActive &&
-                duration > 1; // Nur aktive Bilder mit mehr als 1 Sekunde
+            return isActive; // Alle aktiven Bilder anzeigen
           })
           .map((entry) => entry.value)
           .toList();
@@ -177,7 +175,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
     // Duration für aktuelles AKTIVES Bild
     final currentUrl = _activeImageUrls[_currentImageIndex];
-    final duration = Duration(seconds: _imageDurations[currentUrl] ?? 5);
+    final duration = Duration(seconds: _imageDurations[currentUrl] ?? 60);
 
     // VORLADEN: Nächstes Bild bereits jetzt in den Cache laden
     final nextIndex = (_currentImageIndex + 1) % _activeImageUrls.length;
@@ -298,9 +296,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             setState(() {
               _avatarData = AvatarData.fromMap(snapshot.data()!);
             });
+            // WICHTIG: Timeline NEU LADEN bei Änderungen (Bilder gelöscht/verschoben/etc.)
+            _loadAndStartImageTimeline(avatarId);
           }
         });
-    // Starte Image Timeline
+    // Starte Image Timeline (initial)
     _loadAndStartImageTimeline(avatarId);
   }
 
