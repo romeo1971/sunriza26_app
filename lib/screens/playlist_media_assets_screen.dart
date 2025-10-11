@@ -450,7 +450,7 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
               Image.network(
                 m.thumbUrl!,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const SizedBox(),
+                errorBuilder: (context, error, stackTrace) => const SizedBox(),
               ),
               const Align(
                 alignment: Alignment.center,
@@ -475,7 +475,7 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
                   Image.network(
                     url,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => const SizedBox(),
+                    errorBuilder: (context, error, stackTrace) => const SizedBox(),
                   ),
                   const Align(
                     alignment: Alignment.center,
@@ -533,7 +533,7 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
           return Image.network(
             m.thumbUrl!,
             fit: BoxFit.cover,
-            errorBuilder: (_, __, ___) => _docFallback(m),
+            errorBuilder: (context, error, stackTrace) => _docFallback(m),
           );
         }
         // Kein Thumb: Erzeuge live und speichere dauerhaft
@@ -545,20 +545,13 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
               return Image.network(
                 url,
                 fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _docFallback(m),
+                errorBuilder: (context, error, stackTrace) => _docFallback(m),
               );
             }
             return _docFallback(m);
           },
         );
       case AvatarMediaType.audio:
-        String fmtDuration() {
-          final ms = m.durationMs ?? 0;
-          final s = (ms ~/ 1000) % 60;
-          final min = (ms ~/ 1000) ~/ 60;
-          String two(int n) => n.toString().padLeft(2, '0');
-          return '${two(min)}:${two(s)}';
-        }
         final fileName =
             (m.originalFileName ??
             Uri.parse(m.url).pathSegments.last.split('?').first);
@@ -621,23 +614,6 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
                 style: const TextStyle(fontSize: 12),
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // Placeholder-Wave, falls noch kein thumbUrl vorhanden oder Ladefehler
-  Widget _audioWavePlaceholder() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            Colors.white.withValues(alpha: 0.12),
-            Colors.white.withValues(alpha: 0.06),
-            Colors.white.withValues(alpha: 0.12),
           ],
         ),
       ),

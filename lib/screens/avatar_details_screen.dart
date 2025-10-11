@@ -2438,88 +2438,88 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
-                          color: Colors.black.withValues(alpha: 0.05),
-                        ),
-                        clipBehavior: Clip.hardEdge,
-                        child: Stack(
+                            color: Colors.black.withValues(alpha: 0.05),
+                          ),
                           clipBehavior: Clip.hardEdge,
-                          children: [
-                            Positioned.fill(
-                              child: _profileLocalPath != null
-                                  ? Image.file(
-                                      File(_profileLocalPath!),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : (_profileImageUrl != null
-                                        ? Image.network(
-                                            _profileImageUrl!,
-                                            fit: BoxFit.cover,
-                                            key: ValueKey(_profileImageUrl!),
-                                            errorBuilder:
-                                                (context, error, stack) {
-                                                  _handleImageError(
-                                                    _profileImageUrl!,
-                                                  );
-                                                  return Container(
-                                                    color: Colors.black26,
+                          child: Stack(
+                            clipBehavior: Clip.hardEdge,
+                            children: [
+                              Positioned.fill(
+                                child: _profileLocalPath != null
+                                    ? Image.file(
+                                        File(_profileLocalPath!),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : (_profileImageUrl != null
+                                          ? Image.network(
+                                              _profileImageUrl!,
+                                              fit: BoxFit.cover,
+                                              key: ValueKey(_profileImageUrl!),
+                                              errorBuilder:
+                                                  (context, error, stack) {
+                                                    _handleImageError(
+                                                      _profileImageUrl!,
+                                                    );
+                                                    return Container(
+                                                      color: Colors.black26,
                                                       alignment:
                                                           Alignment.center,
-                                                    child: const Icon(
+                                                      child: const Icon(
                                                         Icons
                                                             .image_not_supported,
-                                                      color: Colors.white54,
-                                                      size: 48,
-                                                    ),
-                                                  );
-                                                },
-                                          )
-                                        : Container(
-                                            color: Colors.white12,
-                                            child: const Icon(
-                                              Icons.person,
-                                              color: Colors.white54,
-                                              size: 64,
-                                            ),
-                                          )),
-                            ),
-                            if (_profileImageUrl != null)
-                              Positioned(
+                                                        color: Colors.white54,
+                                                        size: 48,
+                                                      ),
+                                                    );
+                                                  },
+                                            )
+                                          : Container(
+                                              color: Colors.white12,
+                                              child: const Icon(
+                                                Icons.person,
+                                                color: Colors.white54,
+                                                size: 64,
+                                              ),
+                                            )),
+                              ),
+                              if (_profileImageUrl != null)
+                                Positioned(
                                   left: 0,
                                   right: 0,
-                                bottom: 12,
+                                  bottom: 12,
                                   child: Center(
-                                child: ElevatedButton(
-                                  onPressed: () async {
-                                    if (_avatarData == null ||
-                                        _isGeneratingAvatar) {
-                                      return;
-                                    }
-                                    await _handleGenerateAvatar();
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.black,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
+                                    child: ElevatedButton(
+                                      onPressed: () async {
+                                        if (_avatarData == null ||
+                                            _isGeneratingAvatar) {
+                                          return;
+                                        }
+                                        await _handleGenerateAvatar();
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.black,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
                                           horizontal: 16,
-                                    ),
+                                        ),
                                         minimumSize: Size.zero,
-                                    shape: RoundedRectangleBorder(
+                                        shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
                                             8,
                                           ),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    context.read<LocalizationService>().t(
-                                      'avatars.refreshTooltip',
-                                    ),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        context.read<LocalizationService>().t(
+                                          'avatars.refreshTooltip',
+                                        ),
                                         style: const TextStyle(fontSize: 11),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
                           ),
                         ),
                       ),
@@ -3852,7 +3852,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         updatedAt: DateTime.now(),
       );
       final ok = await _avatarService.updateAvatar(updated);
-        if (!mounted) return;
+      if (!mounted) return;
       if (ok) {
         _applyAvatar(updated);
         _showSystemSnack(
@@ -4194,11 +4194,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(
-          locSvc.t(
-            'avatars.details.confirmDeleteFileTitle',
-          ),
-        ),
+        title: Text(locSvc.t('avatars.details.confirmDeleteFileTitle')),
         content: Text(
           locSvc.t(
             'avatars.details.confirmDeleteFileContent',
@@ -4209,9 +4205,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             style: TextButton.styleFrom(foregroundColor: Colors.white70),
-            child: Text(
-              locSvc.t('avatars.details.cancel'),
-            ),
+            child: Text(locSvc.t('avatars.details.cancel')),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(ctx, true),
@@ -4243,20 +4237,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (ok == true) {
       // Fortschritts-Notifier entfernt (nicht genutzt)
       await _showBlockingProgress<void>(
-        title: locSvc.t(
-          'avatars.details.deletingTitle',
-        ),
+        title: locSvc.t('avatars.details.deletingTitle'),
         message: _fileNameFromUrl(url),
         progress: null, // kein Prozent für Delete
         task: () async {
           final deleted = await FirebaseStorageService.deleteFile(url);
           if (!deleted) {
             if (!mounted) return;
-            _showSystemSnack(
-              locSvc.t(
-                'avatars.details.deleteFailed',
-              ),
-            );
+            _showSystemSnack(locSvc.t('avatars.details.deleteFailed'));
             return;
           }
           // Pinecone: zugehörige Chunks löschen (OR: file_url / file_path / file_name)
@@ -4279,11 +4267,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           final ok = await _persistTextFileUrls();
           if (!ok) {
             if (!mounted) return;
-            _showSystemSnack(
-              locSvc.t(
-                'avatars.details.firestoreUpdateFailed',
-              ),
-            );
+            _showSystemSnack(locSvc.t('avatars.details.firestoreUpdateFailed'));
           }
         },
       );
@@ -5064,12 +5048,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       final locSvc = context.read<LocalizationService>();
       await _showBlockingProgress<void>(
-        title: locSvc.t(
-          'avatars.details.generatingAvatarTitle',
-        ),
-        message: locSvc.t(
-          'avatars.details.processingImageAudio',
-        ),
+        title: locSvc.t('avatars.details.generatingAvatarTitle'),
+        message: locSvc.t('avatars.details.processingImageAudio'),
         task: () async {
           // 1) Figure sicherstellen (nur wenn noch nicht vorhanden)
           String? figureId;
@@ -5155,7 +5135,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 'avatars.details.avatarVideoCreated',
               ),
             );
-          } else{
+          } else {
             final body = await streamed.stream.bytesToString();
             if (!mounted) return;
             _showSystemSnack(
@@ -5172,7 +5152,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           params: {'msg': '$e'},
         ),
       );
-    } finally{
+    } finally {
       if (mounted) setState(() => _isGeneratingAvatar = false);
     }
   }
@@ -5893,9 +5873,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       final List<String> uploaded = [];
       final progress = ValueNotifier<double>(0.0);
       await _showBlockingProgress<void>(
-        title: locSvc.t(
-          'avatars.details.uploadAudioTitle',
-        ),
+        title: locSvc.t('avatars.details.uploadAudioTitle'),
         message: result.files.length == 1
             ? locSvc.t(
                 'avatars.details.fileSavingMessage',
@@ -5962,9 +5940,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (uploaded.isNotEmpty) {
         _showSystemSnack(
           uploaded.length == 1
-              ? locSvc.t(
-                  'avatars.details.audioUploadedSingle',
-                )
+              ? locSvc.t('avatars.details.audioUploadedSingle')
               : locSvc.t(
                   'avatars.details.audioUploadedMulti',
                   params: {'count': '${uploaded.length}'},
@@ -6591,9 +6567,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final imgProgress = ValueNotifier<double>(0.0);
         if (_newImageFiles.isNotEmpty) {
           await _showBlockingProgress<void>(
-            title: locSvc.t(
-              'avatars.details.uploadImagesTitle',
-            ),
+            title: locSvc.t('avatars.details.uploadImagesTitle'),
             message: locSvc.t(
               'avatars.details.filesSavingMessage',
               params: {'count': '${_newImageFiles.length}'},
@@ -6627,9 +6601,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final vidProgress = ValueNotifier<double>(0.0);
         if (_newVideoFiles.isNotEmpty) {
           await _showBlockingProgress<void>(
-            title: locSvc.t(
-              'avatars.details.uploadVideosTitle',
-            ),
+            title: locSvc.t('avatars.details.uploadVideosTitle'),
             message: locSvc.t(
               'avatars.details.filesSavingMessage',
               params: {'count': '${_newVideoFiles.length}'},
@@ -6707,9 +6679,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final txtProgress = ValueNotifier<double>(0.0);
         if (_newTextFiles.isNotEmpty) {
           await _showBlockingProgress<void>(
-            title: locSvc.t(
-              'avatars.details.uploadTextsTitle',
-            ),
+            title: locSvc.t('avatars.details.uploadTextsTitle'),
             message: locSvc.t(
               'avatars.details.filesSavingMessage',
               params: {'count': '${_newTextFiles.length}'},
@@ -6860,12 +6830,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
         bool ok = false;
         await _showBlockingProgress<void>(
-          title: locSvc.t(
-            'avatars.details.savingTitle',
-          ),
-          message: locSvc.t(
-            'avatars.details.savingData',
-          ),
+          title: locSvc.t('avatars.details.savingTitle'),
+          message: locSvc.t('avatars.details.savingData'),
           task: () async {
             debugPrint('💾 Updated object city: "${updated.city}"');
             debugPrint('💾 Updated object postalCode: "${updated.postalCode}"');
@@ -6922,12 +6888,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
           // Texte in Speicher übernehmen – immer mit modalem Spinner
           await _showBlockingProgress<void>(
-            title: locSvc.t(
-              'avatars.details.savingTitle',
-            ),
-            message: locSvc.t(
-              'avatars.details.textsTransferMessage',
-            ),
+            title: locSvc.t('avatars.details.savingTitle'),
+            message: locSvc.t('avatars.details.textsTransferMessage'),
             task: () async {
               if (combinedText.trim().isNotEmpty) {
                 try {
@@ -7739,7 +7701,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
-  Future<void> _handleImageError(String url) async{
+  Future<void> _handleImageError(String url) async {
     if (_refreshingImages.contains(url)) return;
     _refreshingImages.add(url);
     try {
