@@ -962,7 +962,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                           )
                         : ListView.separated(
                             itemCount: _items.length,
-                            separatorBuilder: (_, __) =>
+                            separatorBuilder: (context, index) =>
                                 const Divider(height: 1),
                             itemBuilder: (context, i) {
                               final p = _items[i];

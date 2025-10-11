@@ -646,7 +646,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         content = Image.network(
           m.thumbUrl!,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) =>
+          errorBuilder: (context, error, stackTrace) =>
               const Center(child: Icon(Icons.videocam, color: Colors.white70)),
         );
       } else {
@@ -659,7 +659,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         content = Image.network(
           m.thumbUrl!,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const Center(
+          errorBuilder: (context, error, stackTrace) => const Center(
             child: Icon(Icons.description, color: Colors.white70),
           ),
         );

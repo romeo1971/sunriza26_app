@@ -3802,7 +3802,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: selectedMedia.length,
-                        separatorBuilder: (_, __) => const SizedBox(width: 8),
+                        separatorBuilder: (context, index) => const SizedBox(width: 8),
                         itemBuilder: (_, i) {
                           final m = selectedMedia[i];
                           final double h = 120.0;

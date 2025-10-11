@@ -2313,7 +2313,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                                             DropdownMenuItem(
                                                               value: min,
                                                               child: Text(
-                                                                '${min} Min.',
+                                                                '$min Min.',
                                                               ),
                                                             ),
                                                       )
@@ -2880,7 +2880,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
                             itemCount: remoteFour.length.clamp(0, 4),
-                            separatorBuilder: (_, __) =>
+                            separatorBuilder: (context, index) =>
                                 const SizedBox(width: gridSpacing),
                             itemBuilder: (context, index) {
                               final url = remoteFour[index];
@@ -7542,7 +7542,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ? p.extension(cached.path)
           : origExt;
       final avatarIdNew = _avatarData!.id;
-      final newPath = 'avatars/$avatarIdNew/images/recrop_${ts}$cropExt';
+      final newPath = 'avatars/$avatarIdNew/images/recrop_$ts$cropExt';
 
       // Upload recrop direkt mit korrektem Content-Type
       String newUrl;
@@ -7639,7 +7639,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           String? newThumbUrl;
           try {
             final thumbPath =
-                'avatars/$avatarIdNew/images/thumbs/recrop_${ts}.jpg';
+                'avatars/$avatarIdNew/images/thumbs/recrop_$ts.jpg';
             final imgBytes = await cached.readAsBytes();
             final decoded = img.decodeImage(imgBytes);
             if (decoded != null) {
@@ -7647,7 +7647,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               final jpg = img.encodeJpg(resized, quality: 70);
               final dir2 = await getTemporaryDirectory();
               final thumbFile = await File(
-                '${dir2.path}/thumb_${ts}.jpg',
+                '${dir2.path}/thumb_$ts.jpg',
               ).create();
               await thumbFile.writeAsBytes(jpg, flush: true);
               newThumbUrl = await FirebaseStorageService.uploadImage(
