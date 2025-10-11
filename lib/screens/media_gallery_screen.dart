@@ -6815,7 +6815,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     width: 400, // Maximal 400px Breite
                     constraints: const BoxConstraints(maxWidth: 400),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).dialogBackgroundColor,
+                      color: Theme.of(context).dialogTheme.backgroundColor ?? Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: SingleChildScrollView(
