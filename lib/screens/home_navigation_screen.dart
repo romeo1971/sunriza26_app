@@ -109,25 +109,6 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Screen direkt auswählen OHNE Getter
-    Widget currentScreen;
-    switch (_currentIndex) {
-      case 0:
-        currentScreen = _exploreScreen;
-        break;
-      case 1:
-        currentScreen = _avatarListScreen;
-        break;
-      case 2:
-        currentScreen = _favoritesScreen;
-        break;
-      case 3:
-        currentScreen = _profileScreen;
-        break;
-      default:
-        currentScreen = _exploreScreen;
-    }
-
     return Scaffold(
       body: Stack(
         children: [

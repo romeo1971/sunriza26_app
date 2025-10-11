@@ -21,7 +21,6 @@ import 'dart:ui' as ui;
 import '../services/media_service.dart';
 import '../services/firebase_storage_service.dart';
 import '../services/cloud_vision_service.dart';
-import '../services/doc_thumb_service.dart';
 import '../models/media_models.dart';
 import '../services/playlist_service.dart';
 import '../models/playlist_models.dart';
@@ -4652,6 +4651,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   final Map<String, Future<Uint8List?>> _docPreviewImageFuture = {};
   final Map<String, Future<String?>> _docPreviewTextFuture = {};
   // Ermitteltes Seitenverhältnis der Dokument-Preview-Bilder (aus Bytes)
+  // ignore: unused_field
   final Map<String, double> _docAspectRatios = {};
 
   /// Dokument-Preview: PDF erste Seite als Bild; TXT/MD/RTF Snippet; PPTX/DOCX erste eingebettete Grafik

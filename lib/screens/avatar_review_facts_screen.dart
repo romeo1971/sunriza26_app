@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:sunriza26/services/fact_review_service.dart';
 import 'package:provider/provider.dart';
 import 'package:sunriza26/services/localization_service.dart';
-import '../widgets/avatar_nav_bar.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 
@@ -32,16 +31,12 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
   int? _cursor;
   String _statusFilter = 'pending';
   final Set<String> _processing = {};
-  double _scrollOffset = 0.0;
 
   @override
   void initState() {
     super.initState();
     _fetchFacts(reset: true);
-    _scrollController.addListener(() {
-      _onScroll();
-      setState(() => _scrollOffset = _scrollController.offset);
-    });
+    _scrollController.addListener(_onScroll);
   }
 
   @override
@@ -177,8 +172,6 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final opacity = (_scrollOffset / 150.0).clamp(0.0, 1.0);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Faktenfreigabe'),

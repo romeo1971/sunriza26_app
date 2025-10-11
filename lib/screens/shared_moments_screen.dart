@@ -5,7 +5,6 @@ import '../services/media_service.dart';
 import '../models/media_models.dart';
 import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
-import '../widgets/avatar_nav_bar.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 
@@ -29,15 +28,11 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
   List<SharedMoment> _items = [];
   Map<String, AvatarMedia> _media = {};
   bool _loading = true;
-  double _scrollOffset = 0.0;
 
   @override
   void initState() {
     super.initState();
     _load();
-    _scrollController.addListener(() {
-      setState(() => _scrollOffset = _scrollController.offset);
-    });
   }
 
   @override
@@ -99,8 +94,6 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final opacity = (_scrollOffset / 150.0).clamp(0.0, 1.0);
-
     return Scaffold(
       appBar: AppBar(
         title: Text(

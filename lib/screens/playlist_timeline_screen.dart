@@ -29,6 +29,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   final List<Key> _timelineKeys = [];
   final List<AvatarMedia> _assets = []; // rechte Seite: Timeline-Assets
   double _splitRatio = 0.38; // Anteil der linken Spalte (0..1)
+  // ignore: unused_field
   final bool _showSearch = false;
   final String _searchTerm = '';
   final TextEditingController _searchController = TextEditingController();
@@ -246,15 +247,6 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
       if (widget.playlist.timelineSplitRatio != null) {
         _splitRatio = widget.playlist.timelineSplitRatio!.clamp(0.1, 0.9);
       }
-      // Assets + Items laden
-      final assets = await _playlistSvc.listAssets(
-        widget.playlist.avatarId,
-        widget.playlist.id,
-      );
-      final items = await _playlistSvc.listTimelineItems(
-        widget.playlist.avatarId,
-        widget.playlist.id,
-      );
       // Inkonstistenzen bereinigen (Items ohne Assets, Assets ohne Media)
       await _playlistSvc.pruneTimelineData(
         widget.playlist.avatarId,

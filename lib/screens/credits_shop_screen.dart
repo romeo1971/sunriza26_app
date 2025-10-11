@@ -16,6 +16,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
   final List<int> _creditPackages = [5, 10, 25, 50, 100]; // in Euro (Basis)
   final double _stripeFeeCents = 25; // Stripe-Gebühr: 0,25 € fix
   double _exchangeRate = 1.10; // EUR -> USD (wird live aktualisiert)
+  // ignore: unused_field
   bool _loadingExchangeRate = false;
 
   @override

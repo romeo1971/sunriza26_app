@@ -2775,8 +2775,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
           final double leftH = leftW * (16 / 9);
           final double totalH = leftH; // Navigation ist jetzt separat oben
-          // Thumbnail-Breite berechnen
-          final double thumbW = leftH / 16 * 9;
           // Row-Breite = großes Video + spacing + 2 Thumbnails (breit wie 2 Videos)
           final double rowWidth =
               leftW + spacing + leftW; // Rechts Platz für 2 Thumbnails
@@ -5428,7 +5426,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       if (files.isNotEmpty && _avatarData != null) {
         setState(() => _isDirty = true);
-        final String uid = FirebaseAuth.instance.currentUser!.uid;
         final String avatarId = _avatarData!.id;
         debugPrint('🖼️ Starte Upload von ${files.length} Bildern...');
 
@@ -5570,7 +5567,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       );
       if (x != null && _avatarData != null) {
         setState(() => _isDirty = true);
-        final String uid = FirebaseAuth.instance.currentUser!.uid;
         final String avatarId = _avatarData!.id;
         File f = File(x.path);
         final cropped = await _cropToPortrait916(f);
@@ -5869,7 +5865,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       allowMultiple: true,
     );
     if (result != null && _avatarData != null) {
-      final String uid = FirebaseAuth.instance.currentUser!.uid;
       final String avatarId = _avatarData!.id;
       final List<String> uploaded = [];
       final progress = ValueNotifier<double>(0.0);
@@ -6637,7 +6632,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         String? freeTextUploadedPath;
         String? freeTextUploadedName;
         // a) profile.txt mit Basisdaten immer aktualisieren (nicht in Liste)
-        final String uid = FirebaseAuth.instance.currentUser!.uid;
         final String profilePath = 'avatars/$avatarId/texts/profile.txt';
         final String profileContent = _buildProfileTextContent(
           firstName: _firstNameController.text.trim(),

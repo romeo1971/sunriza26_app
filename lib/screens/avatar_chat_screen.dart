@@ -42,6 +42,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   bool _isRecording = false;
   bool _isTyping = false;
   bool _isSpeaking = false;
+  // ignore: unused_field
   final bool _isMuted =
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
   bool _isStoppingPlayback = false;
@@ -676,8 +677,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   Widget _buildAvatarImage() {
-    final hasImage = _avatarData?.avatarImageUrl != null;
-
     return Container(
       width: double.infinity,
       decoration: null,
