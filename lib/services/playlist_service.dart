@@ -398,16 +398,17 @@ class PlaylistService {
     TimeSlot? currentSlot;
     if (hour >= 3 && hour < 6) {
       currentSlot = TimeSlot.earlyMorning;
-    } else if (hour >= 6 && hour < 11)
+    } else if (hour >= 6 && hour < 11) {
       currentSlot = TimeSlot.morning;
-    else if (hour >= 11 && hour < 14)
+    } else if (hour >= 11 && hour < 14) {
       currentSlot = TimeSlot.noon;
-    else if (hour >= 14 && hour < 18)
+    } else if (hour >= 14 && hour < 18) {
       currentSlot = TimeSlot.afternoon;
-    else if (hour >= 18 && hour < 23)
+    } else if (hour >= 18 && hour < 23) {
       currentSlot = TimeSlot.evening;
-    else
+    } else {
       currentSlot = TimeSlot.night; // 23-3
+    }
 
     // 1. Prüfe Sondertermine (überschreiben weekly)
     final nowMs = now.millisecondsSinceEpoch;

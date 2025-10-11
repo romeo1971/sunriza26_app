@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'dart:async';
 import 'dart:math';
@@ -5304,7 +5303,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               ? 'images'
               : 'videos';
           final thumbPath =
-              'avatars/${widget.avatarId}/$mediaFolder/thumbs/recrop_${timestamp}.jpg';
+              'avatars/${widget.avatarId}/$mediaFolder/thumbs/recrop_$timestamp.jpg';
           final imgBytes = await tempFile.readAsBytes();
           final decoded = img.decodeImage(imgBytes);
           if (decoded != null) {
@@ -5312,7 +5311,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             final jpg = img.encodeJpg(resized, quality: 70);
             final dir2 = await getTemporaryDirectory();
             final thumbFile = await File(
-              '${dir2.path}/thumb_${timestamp}.jpg',
+              '${dir2.path}/thumb_$timestamp.jpg',
             ).create();
             await thumbFile.writeAsBytes(jpg, flush: true);
             newThumbUrl = await FirebaseStorageService.uploadImage(
@@ -6753,12 +6752,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     if (tags.isEmpty) {
       if (media.type == AvatarMediaType.audio) {
         tags.add('audio');
-      } else if (media.type == AvatarMediaType.video)
+      } else if (media.type == AvatarMediaType.video) {
         tags.add('video');
-      else if (media.type == AvatarMediaType.image)
+      } else if (media.type == AvatarMediaType.image) {
         tags.add('image');
-      else if (media.type == AvatarMediaType.document)
+      } else if (media.type == AvatarMediaType.document) {
         tags.add('document');
+      }
     }
 
     return tags;
