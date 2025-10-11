@@ -119,6 +119,7 @@ class _LegalPageScreenState extends State<LegalPageScreen> {
         allowedExtensions: ['txt', 'html', 'htm'],
         allowMultiple: false,
       );
+      if (!mounted) return;
 
       if (result != null && result.files.single.bytes != null) {
         final file = result.files.single;
@@ -136,6 +137,7 @@ class _LegalPageScreenState extends State<LegalPageScreen> {
         ).showSnackBar(SnackBar(content: Text('Datei "${file.name}" geladen')));
       }
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Fehler beim Dateienupload: $e')));

@@ -2307,8 +2307,10 @@ class _MediaDecisionDialogState extends State<_MediaDecisionDialog> {
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: () async {
+                      final nav = Navigator.of(context);
                       await widget.onDecision?.call('rejected');
-                      if (mounted) Navigator.pop(context);
+                      if (!mounted) return;
+                      nav.pop();
                     },
                     icon: const Icon(Icons.hide_image),
                     label: Text(

@@ -269,15 +269,15 @@ class _LanguageScreenState extends State<LanguageScreen> {
           icon: const Icon(Icons.arrow_back),
           color: Colors.white,
           onPressed: () async {
+            final langService = context.read<LanguageService>();
+            final nav = Navigator.of(context);
             if ((_pendingLang ?? '').isNotEmpty) {
               final code = _pendingLang!;
               await _save(code);
-              if (mounted) {
-                // App-weit aktualisieren
-                context.read<LanguageService>().setLanguage(code);
-              }
+              if (!mounted) return;
+              langService.setLanguage(code);
             }
-            if (mounted) Navigator.pop(context);
+            nav.pop();
           },
         ),
       ),

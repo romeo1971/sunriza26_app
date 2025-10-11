@@ -165,6 +165,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   Future<File?> _cropToPortrait916(File input) async {
     try {
       final bytes = await input.readAsBytes();
+      if (!mounted) return null;
       final cropController = cyi.CropController();
       Uint8List? result;
 
@@ -660,16 +661,17 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       );
     } else {
       // Von anderen Screens → zurück zu Avatar Details
+      final nav = Navigator.of(context);
       final avatarService = AvatarService();
       final avatar = await avatarService.getAvatar(widget.avatarId);
-      if (avatar != null && context.mounted) {
-        Navigator.pushReplacementNamed(
-          context,
+      if (!mounted) return;
+      if (avatar != null) {
+        nav.pushReplacementNamed(
           '/avatar-details',
           arguments: avatar,
         );
       } else {
-        Navigator.pop(context);
+        nav.pop();
       }
     }
   }
@@ -688,11 +690,12 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
           IconButton(
             tooltip: 'Diagnose',
             onPressed: () async {
+              final messenger = ScaffoldMessenger.of(context);
               try {
                 final issues = await _svc.validate(widget.avatarId);
                 if (!mounted) return;
                 if (issues.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                  messenger.showSnackBar(
                     const SnackBar(content: Text('Keine Probleme gefunden')),
                   );
                   return;
@@ -738,28 +741,26 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                     children: [
                                       ElevatedButton.icon(
                                         onPressed: () async {
+                                          final messenger = ScaffoldMessenger.of(context);
+                                          final nav = Navigator.of(ctx);
                                           try {
                                             final res = await _svc.repair(
                                               widget.avatarId,
                                               docId,
                                             );
                                             if (!mounted) return;
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
+                                            messenger.showSnackBar(
                                               SnackBar(
                                                 content: Text(
                                                   'Repariert: ${res['status']}',
                                                 ),
                                               ),
                                             );
-                                            Navigator.pop(ctx);
+                                            nav.pop();
                                             await _load();
                                           } catch (e) {
                                             if (!mounted) return;
-                                            ScaffoldMessenger.of(
-                                              context,
-                                            ).showSnackBar(
+                                            messenger.showSnackBar(
                                               SnackBar(
                                                 content: Text(
                                                   'Repair-Fehler: $e',
@@ -774,6 +775,8 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                       const SizedBox(width: 8),
                                       OutlinedButton.icon(
                                         onPressed: () async {
+                                          final messenger = ScaffoldMessenger.of(context);
+                                          final nav = Navigator.of(ctx);
                                           final confirm = await showDialog<bool>(
                                             context: context,
                                             builder: (c2) => AlertDialog(
@@ -845,20 +848,16 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                 docId,
                                               );
                                               if (!mounted) return;
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
+                                              messenger.showSnackBar(
                                                 const SnackBar(
                                                   content: Text('Gelöscht.'),
                                                 ),
                                               );
-                                              Navigator.pop(ctx);
+                                              nav.pop();
                                               await _load();
                                             } catch (e) {
                                               if (!mounted) return;
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
+                                              messenger.showSnackBar(
                                                 SnackBar(
                                                   content: Text(
                                                     'Lösch-Fehler: $e',
@@ -893,9 +892,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                 );
               } catch (e) {
                 if (!mounted) return;
-                ScaffoldMessenger.of(
-                  context,
-                ).showSnackBar(SnackBar(content: Text('Diagnosefehler: $e')));
+                messenger.showSnackBar(SnackBar(content: Text('Diagnosefehler: $e')));
               }
             },
             icon: ShaderMask(

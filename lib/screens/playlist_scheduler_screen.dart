@@ -436,6 +436,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
   Future<File?> _cropToPortrait916(File input) async {
     try {
       final bytes = await input.readAsBytes();
+      if (!mounted) return null;
       final cropController = cyi.CropController();
       Uint8List? result;
 

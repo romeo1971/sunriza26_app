@@ -1260,6 +1260,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         );
       }
     } catch (_) {}
+    if (!mounted) return;
     final result = await Navigator.push<List<AvatarMedia>>(
       context,
       MaterialPageRoute(

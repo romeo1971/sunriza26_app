@@ -160,16 +160,17 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
       );
     } else {
       // Von anderen Screens → zurück zu Avatar Details
+      final nav = Navigator.of(context);
       final avatarService = AvatarService();
       final avatar = await avatarService.getAvatar(widget.avatarId);
-      if (avatar != null && context.mounted) {
-        Navigator.pushReplacementNamed(
-          context,
+      if (!mounted) return;
+      if (avatar != null) {
+        nav.pushReplacementNamed(
           '/avatar-details',
           arguments: avatar,
         );
       } else {
-        Navigator.pop(context);
+        nav.pop();
       }
     }
   }
