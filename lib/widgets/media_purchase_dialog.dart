@@ -118,9 +118,9 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
-                          Color(0xFFE91E63).withOpacity(0.3),
-                          AppColors.lightBlue.withOpacity(0.3),
-                          Color(0xFF00E5FF).withOpacity(0.3),
+                          Color(0xFFE91E63).withValues(alpha: 0.3),
+                          AppColors.lightBlue.withValues(alpha: 0.3),
+                          Color(0xFF00E5FF).withValues(alpha: 0.3),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(12),
@@ -209,10 +209,10 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.orange.withOpacity(0.2),
+                        color: Colors.orange.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: Colors.orange.withOpacity(0.5),
+                          color: Colors.orange.withValues(alpha: 0.5),
                         ),
                       ),
                       child: Row(
@@ -242,9 +242,11 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
                     Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.2),
+                        color: Colors.blue.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.withOpacity(0.5)),
+                        border: Border.all(
+                          color: Colors.blue.withValues(alpha: 0.5),
+                        ),
                       ),
                       child: const Text(
                         'Zahlungen unter 2€ sind nur mit Credits möglich.',

@@ -155,7 +155,10 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
         decoration: BoxDecoration(
           color: Colors.black,
           border: Border(
-            top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
+            top: BorderSide(
+              color: Colors.white.withValues(alpha: 0.1),
+              width: 1,
+            ),
           ),
         ),
         child: Row(
@@ -240,7 +243,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
               style: TextStyle(
                 color: (isSelected || isChatActive)
                     ? Colors.white
-                    : Colors.white.withOpacity(0.5),
+                    : Colors.white.withValues(alpha: 0.5),
                 fontSize: 8,
               ),
             ),

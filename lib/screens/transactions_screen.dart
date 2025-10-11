@@ -88,13 +88,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   Icon(
                     Icons.receipt_long,
                     size: 64,
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                   ),
                   const SizedBox(height: 16),
                   Text(
                     'Noch keine Transaktionen',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 16,
                     ),
                   ),
@@ -122,7 +122,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.1),
+          width: 1,
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -173,7 +176,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           Text(
                             _dateFormat.format(transaction.createdAt),
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
+                              color: Colors.white.withValues(alpha: 0.6),
                               fontSize: 13,
                             ),
                           ),
@@ -198,7 +201,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           Text(
                             transaction.formattedCredits,
                             style: TextStyle(
-                              color: Colors.white.withOpacity(0.8),
+                              color: Colors.white.withValues(alpha: 0.8),
                               fontSize: 14,
                             ),
                           ),
@@ -210,7 +213,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 // Rechnung verfügbar?
                 if (transaction.invoiceNumber != null) ...[
                   const SizedBox(height: 12),
-                  Divider(color: Colors.white.withOpacity(0.1)),
+                  Divider(color: Colors.white.withValues(alpha: 0.1)),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -283,9 +286,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.2),
+        color: color.withValues(alpha: 0.2),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.5)),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
       child: Text(
         label,
@@ -394,7 +397,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             child: Text(
               '$label:',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.6),
+                color: Colors.white.withValues(alpha: 0.6),
                 fontSize: 14,
               ),
             ),

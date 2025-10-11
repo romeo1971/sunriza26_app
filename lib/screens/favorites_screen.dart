@@ -71,13 +71,13 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                   Icon(
                     Icons.favorite_border,
                     size: 64,
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                   ),
                   const SizedBox(height: 16),
                   Text(
                     'Noch keine Favoriten',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 16,
                     ),
                   ),
@@ -85,7 +85,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                   Text(
                     'Markiere Avatare mit ❤️ beim Entdecken',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.4),
+                      color: Colors.white.withValues(alpha: 0.4),
                       fontSize: 13,
                     ),
                   ),
@@ -134,7 +134,10 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.1),
+          width: 1,
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -185,7 +188,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                         Text(
                           avatar.role!,
                           style: TextStyle(
-                            color: Colors.white.withOpacity(0.6),
+                            color: Colors.white.withValues(alpha: 0.6),
                             fontSize: 13,
                           ),
                         ),

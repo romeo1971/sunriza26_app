@@ -4,7 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:pdf_render/pdf_render.dart' as pdf;
+import 'package:pdfx/pdfx.dart';
 import '../models/media_models.dart';
 
 class DocThumbService {
@@ -263,17 +263,15 @@ class DocThumbService {
       if (r.statusCode != 200) return null;
 
       // Rendere erste Seite als Bild
-      final doc = await pdf.PdfDocument.openData(r.bodyBytes);
+      final doc = await PdfDocument.openData(r.bodyBytes);
       final page = await doc.getPage(1);
       final pageImage = await page.render(
-        width: page.width.toInt(),
-        height: page.height.toInt(),
+        width: page.width.toDouble(),
+        height: page.height.toDouble(),
       );
-      await pageImage.createImageIfNotAvailable();
-      final image = pageImage.imageIfAvailable!;
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      final bytes = byteData!.buffer.asUint8List();
-      await doc.dispose();
+      final bytes = pageImage!.bytes;
+      await page.close();
+      doc.close();
 
       return bytes;
     } catch (e) {

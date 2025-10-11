@@ -46,7 +46,7 @@ dependencies:
   # Video Player für Live-Streaming
   video_player: ^2.9.2
   chewie: ^1.8.5
-  pdf_render: ^1.4.12
+  pdfx: ^2.7.0
   archive: ^3.6.1
   
   # HTTP und WebSocket für Streaming

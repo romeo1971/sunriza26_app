@@ -346,13 +346,13 @@ class ExploreScreenState extends State<ExploreScreen> {
                   Icon(
                     Icons.explore_off,
                     size: 64,
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                   ),
                   const SizedBox(height: 16),
                   Text(
                     'Noch keine öffentlichen Avatare',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 16,
                     ),
                   ),
@@ -528,7 +528,7 @@ class ExploreScreenState extends State<ExploreScreen> {
                 icon: const Icon(Icons.chat_bubble_outline),
                 label: const Text('Conversation starten'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.black.withOpacity(0.7),
+                  backgroundColor: Colors.black.withValues(alpha: 0.7),
                   foregroundColor: Colors.white,
                   minimumSize: const Size(double.infinity, 48),
                   shape: RoundedRectangleBorder(
@@ -562,7 +562,7 @@ class AvatarSearchDelegate extends SearchDelegate<String> {
         elevation: 0,
       ),
       inputDecorationTheme: InputDecorationTheme(
-        hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
       ),
       textTheme: const TextTheme(
         titleLarge: TextStyle(color: Colors.white, fontSize: 18),
@@ -617,7 +617,7 @@ class AvatarSearchDelegate extends SearchDelegate<String> {
         child: Center(
           child: Text(
             'Avatar-Namen eingeben...',
-            style: TextStyle(color: Colors.white.withOpacity(0.5)),
+            style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
           ),
         ),
       );
@@ -651,7 +651,7 @@ class AvatarSearchDelegate extends SearchDelegate<String> {
             return Center(
               child: Text(
                 'Keine Avatare gefunden',
-                style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
               ),
             );
           }
@@ -678,7 +678,9 @@ class AvatarSearchDelegate extends SearchDelegate<String> {
                 subtitle: avatar.role != null
                     ? Text(
                         avatar.role!,
-                        style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.6),
+                        ),
                       )
                     : null,
                 trailing: IconButton(

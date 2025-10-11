@@ -13,7 +13,7 @@ class AvatarBottomNavBar extends StatelessWidget {
   });
 
   Color _iconColor(bool active) =>
-      active ? Colors.white : Colors.white.withOpacity(0.5);
+      active ? Colors.white : Colors.white.withValues(alpha: 0.5);
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +25,10 @@ class AvatarBottomNavBar extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.black,
           border: Border(
-            top: BorderSide(color: Colors.white.withOpacity(0.1), width: 1),
+            top: BorderSide(
+              color: Colors.white.withValues(alpha: 0.1),
+              width: 1,
+            ),
           ),
         ),
         child: Row(

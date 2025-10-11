@@ -110,7 +110,7 @@ class _MinimalControls extends StatelessWidget {
             builder: (context, value, _) {
               return Container(
                 decoration: BoxDecoration(
-                  color: Colors.black.withOpacity(0.35),
+                  color: Colors.black.withValues(alpha: 0.35),
                   shape: BoxShape.circle,
                 ),
                 child: IconButton(

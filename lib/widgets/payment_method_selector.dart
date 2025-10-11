@@ -68,7 +68,7 @@ class _PaymentMethodSelectorState extends State<PaymentMethodSelector> {
         Text(
           'Zahlungsmethode wählen:',
           style: TextStyle(
-            color: Colors.white.withOpacity(0.8),
+            color: Colors.white.withValues(alpha: 0.8),
             fontSize: 14,
             fontWeight: FontWeight.w500,
           ),
@@ -91,13 +91,13 @@ class _PaymentMethodSelectorState extends State<PaymentMethodSelector> {
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: isSelected
-            ? AppColors.lightBlue.withOpacity(0.1)
-            : Colors.white.withOpacity(0.05),
+            ? AppColors.lightBlue.withValues(alpha: 0.1)
+            : Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: isSelected
               ? AppColors.lightBlue
-              : Colors.white.withOpacity(0.1),
+              : Colors.white.withValues(alpha: 0.1),
           width: isSelected ? 2 : 1,
         ),
       ),
@@ -159,13 +159,13 @@ class _PaymentMethodSelectorState extends State<PaymentMethodSelector> {
       margin: const EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: isSelected
-            ? AppColors.lightBlue.withOpacity(0.1)
-            : Colors.white.withOpacity(0.05),
+            ? AppColors.lightBlue.withValues(alpha: 0.1)
+            : Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: isSelected
               ? AppColors.lightBlue
-              : Colors.white.withOpacity(0.1),
+              : Colors.white.withValues(alpha: 0.1),
           width: isSelected ? 2 : 1,
         ),
       ),

@@ -368,9 +368,9 @@ class _AvatarListScreenState extends State<AvatarListScreen>
                                       : null,
                                   color: (avatar.isPublic ?? false)
                                       ? null
-                                      : Colors.black.withOpacity(0.5),
+                                      : Colors.black.withValues(alpha: 0.5),
                                   border: Border.all(
-                                    color: Colors.white.withOpacity(0.3),
+                                    color: Colors.white.withValues(alpha: 0.3),
                                     width: 1,
                                   ),
                                 ),

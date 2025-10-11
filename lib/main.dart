@@ -414,7 +414,7 @@ class SunrizaApp extends StatelessWidget {
                 side: const BorderSide(color: AppColors.magenta, width: 3),
               ),
               elevation: 8,
-              shadowColor: AppColors.magenta.withOpacity(0.5),
+              shadowColor: AppColors.magenta.withValues(alpha: 0.5),
             ),
             popupMenuTheme: PopupMenuThemeData(
               color: const Color(0xFF1A1A1A),
@@ -423,7 +423,7 @@ class SunrizaApp extends StatelessWidget {
                 side: const BorderSide(color: AppColors.magenta, width: 2),
               ),
               elevation: 8,
-              shadowColor: AppColors.magenta.withOpacity(0.5),
+              shadowColor: AppColors.magenta.withValues(alpha: 0.5),
             ),
           ),
           home: const AuthGate(),

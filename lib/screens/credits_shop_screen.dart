@@ -186,7 +186,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
+              color: Colors.white.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
@@ -251,7 +251,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
                   ],
                 )
               : null,
-          color: isSelected ? null : Colors.white.withOpacity(0.1),
+          color: isSelected ? null : Colors.white.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(24),
           border: Border.all(
             color: isSelected ? Colors.transparent : Colors.white30,
@@ -282,7 +282,10 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.1),
+          width: 1,
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -339,7 +342,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
                       Text(
                         'Gesamt: ${totalPrice.toStringAsFixed(2)} $currencySymbol',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                           fontSize: 13,
                         ),
                       ),
@@ -349,7 +352,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
                 // Pfeil
                 Icon(
                   Icons.arrow_forward_ios,
-                  color: Colors.white.withOpacity(0.4),
+                  color: Colors.white.withValues(alpha: 0.4),
                   size: 20,
                 ),
               ],
@@ -365,16 +368,19 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.05),
+        color: Colors.white.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.1),
+          width: 1,
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
             Icons.info_outline,
-            color: Colors.white.withOpacity(0.7),
+            color: Colors.white.withValues(alpha: 0.7),
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -384,7 +390,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
               'Alle Preise verstehen sich zzgl. dieser Gebühr. '
               'Bei Credits-Zahlung fällt diese Gebühr NICHT mehr an!',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 12,
                 height: 1.5,
               ),
@@ -433,7 +439,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
             Text(
               'Du kaufst:',
               style: TextStyle(
-                color: Colors.white.withOpacity(0.7),
+                color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 14,
               ),
             ),
@@ -453,7 +459,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            Divider(color: Colors.white.withOpacity(0.2)),
+            Divider(color: Colors.white.withValues(alpha: 0.2)),
             const SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -461,7 +467,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
                 Text(
                   'Preis:',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withValues(alpha: 0.7),
                     fontSize: 14,
                   ),
                 ),
@@ -478,7 +484,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
                 Text(
                   'Stripe-Gebühr:',
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
+                    color: Colors.white.withValues(alpha: 0.7),
                     fontSize: 14,
                   ),
                 ),
@@ -489,7 +495,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            Divider(color: Colors.white.withOpacity(0.2)),
+            Divider(color: Colors.white.withValues(alpha: 0.2)),
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -519,7 +525,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
             onPressed: () => Navigator.pop(context),
             child: Text(
               'Abbrechen',
-              style: TextStyle(color: Colors.white.withOpacity(0.7)),
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
             ),
           ),
           ElevatedButton(

@@ -112,13 +112,13 @@ class _SellerSalesScreenState extends State<SellerSalesScreen> {
                   Icon(
                     Icons.shopping_bag,
                     size: 64,
-                    color: Colors.white.withOpacity(0.3),
+                    color: Colors.white.withValues(alpha: 0.3),
                   ),
                   const SizedBox(height: 16),
                   Text(
                     'Noch keine Verkäufe',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 16,
                     ),
                   ),
@@ -147,7 +147,10 @@ class _SellerSalesScreenState extends State<SellerSalesScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.1),
+          width: 1,
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -197,7 +200,7 @@ class _SellerSalesScreenState extends State<SellerSalesScreen> {
                     Text(
                       '${sale.credits} Credits',
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.6),
+                        color: Colors.white.withValues(alpha: 0.6),
                         fontSize: 12,
                       ),
                     ),
@@ -222,13 +225,13 @@ class _SellerSalesScreenState extends State<SellerSalesScreen> {
                 Icon(
                   Icons.access_time,
                   size: 14,
-                  color: Colors.white.withOpacity(0.6),
+                  color: Colors.white.withValues(alpha: 0.6),
                 ),
                 const SizedBox(width: 4),
                 Text(
                   _dateFormat.format(sale.createdAt),
                   style: TextStyle(
-                    color: Colors.white.withOpacity(0.6),
+                    color: Colors.white.withValues(alpha: 0.6),
                     fontSize: 13,
                   ),
                 ),
@@ -236,13 +239,13 @@ class _SellerSalesScreenState extends State<SellerSalesScreen> {
                 Icon(
                   Icons.remove_circle_outline,
                   size: 14,
-                  color: Colors.red.withOpacity(0.8),
+                  color: Colors.red.withValues(alpha: 0.8),
                 ),
                 const SizedBox(width: 4),
                 Text(
                   'Provision: ${sale.platformFee.toStringAsFixed(2)} €',
                   style: TextStyle(
-                    color: Colors.red.withOpacity(0.8),
+                    color: Colors.red.withValues(alpha: 0.8),
                     fontSize: 13,
                   ),
                 ),

@@ -13,6 +13,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_inappwebview_windows
   flutter_webrtc
   livekit_client
+  pdfx
   permission_handler_windows
   record_windows
   url_launcher_windows

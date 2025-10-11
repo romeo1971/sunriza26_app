@@ -242,7 +242,10 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
         const SizedBox(height: 8),
         Text(
           'Optional: Schnellerer Checkout ohne erneute Karteneingabe',
-          style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.6),
+            fontSize: 14,
+          ),
         ),
         const SizedBox(height: 16),
 
@@ -269,7 +272,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
               color: const Color(0xFF1A1A1A),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.white.withOpacity(0.1),
+                color: Colors.white.withValues(alpha: 0.1),
                 width: 1,
               ),
             ),
@@ -277,7 +280,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
               children: [
                 Icon(
                   Icons.credit_card_off,
-                  color: Colors.white.withOpacity(0.3),
+                  color: Colors.white.withValues(alpha: 0.3),
                   size: 32,
                 ),
                 const SizedBox(width: 16),
@@ -285,7 +288,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                   child: Text(
                     'Keine gespeicherten Karten',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 14,
                     ),
                   ),
@@ -308,7 +311,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
         border: Border.all(
           color: pm.isDefault
               ? AppColors.lightBlue
-              : Colors.white.withOpacity(0.1),
+              : Colors.white.withValues(alpha: 0.1),
           width: pm.isDefault ? 2 : 1,
         ),
       ),
@@ -336,7 +339,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                   Text(
                     'Läuft ab: ${pm.expMonth.toString().padLeft(2, '0')}/${pm.expYear}',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.6),
+                      color: Colors.white.withValues(alpha: 0.6),
                       fontSize: 13,
                     ),
                   ),
@@ -348,7 +351,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: AppColors.lightBlue.withOpacity(0.2),
+                        color: AppColors.lightBlue.withValues(alpha: 0.2),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: const Text(
@@ -441,7 +444,10 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
         const SizedBox(height: 8),
         Text(
           'Stripe Connect für Verkäufer-Auszahlungen',
-          style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 14),
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.6),
+            fontSize: 14,
+          ),
         ),
         const SizedBox(height: 16),
 
@@ -450,7 +456,10 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
           decoration: BoxDecoration(
             color: const Color(0xFF1A1A1A),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.1),
+              width: 1,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -500,7 +509,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                       Text(
                         'Ausstehend',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                           fontSize: 12,
                         ),
                       ),
@@ -521,7 +530,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
                       Text(
                         'Gesamt verdient',
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                           fontSize: 12,
                         ),
                       ),

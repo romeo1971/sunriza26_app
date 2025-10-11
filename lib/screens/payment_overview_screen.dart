@@ -179,7 +179,7 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
           ),
 
           const SizedBox(height: 24),
-          Divider(color: Colors.white.withOpacity(0.3)),
+          Divider(color: Colors.white.withValues(alpha: 0.3)),
           const SizedBox(height: 16),
 
           // Statistiken
@@ -190,7 +190,7 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
               Container(
                 width: 1,
                 height: 40,
-                color: Colors.white.withOpacity(0.3),
+                color: Colors.white.withValues(alpha: 0.3),
               ),
               _buildCreditStat('Ausgegeben', spent),
             ],
@@ -214,7 +214,10 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
         const SizedBox(height: 4),
         Text(
           label,
-          style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12),
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.8),
+            fontSize: 12,
+          ),
         ),
       ],
     );
@@ -231,7 +234,10 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFF1A1A1A),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.1), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.1),
+          width: 1,
+        ),
       ),
       child: Material(
         color: Colors.transparent,
@@ -273,7 +279,7 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
                       Text(
                         subtitle,
                         style: TextStyle(
-                          color: Colors.white.withOpacity(0.6),
+                          color: Colors.white.withValues(alpha: 0.6),
                           fontSize: 14,
                         ),
                       ),
@@ -282,7 +288,7 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
                 ),
                 Icon(
                   Icons.arrow_forward_ios,
-                  color: Colors.white.withOpacity(0.4),
+                  color: Colors.white.withValues(alpha: 0.4),
                   size: 20,
                 ),
               ],

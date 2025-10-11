@@ -560,7 +560,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                               Colors.transparent,
                             ),
                             overlayColor: WidgetStateProperty.all(
-                              Colors.white.withOpacity(0.1),
+                              Colors.white.withValues(alpha: 0.1),
                             ),
                           ),
                       child: Container(
@@ -701,7 +701,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
               ).copyWith(
                 backgroundColor: WidgetStateProperty.all(Colors.transparent),
                 overlayColor: WidgetStateProperty.all(
-                  Colors.white.withOpacity(0.1),
+                  Colors.white.withValues(alpha: 0.1),
                 ),
               ),
           child: Container(

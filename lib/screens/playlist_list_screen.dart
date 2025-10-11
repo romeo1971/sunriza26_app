@@ -1066,7 +1066,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                         ),
                                                         border: Border.all(
                                                           color: Colors.white
-                                                              .withOpacity(0.3),
+                                                              .withValues(
+                                                                alpha: 0.3,
+                                                              ),
                                                           width: 1,
                                                         ),
                                                         borderRadius:
@@ -1111,7 +1113,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                     ),
                                                 decoration: BoxDecoration(
                                                   color: Colors.amber
-                                                      .withOpacity(0.3),
+                                                      .withValues(alpha: 0.3),
                                                   borderRadius:
                                                       BorderRadius.circular(12),
                                                   border: Border.all(

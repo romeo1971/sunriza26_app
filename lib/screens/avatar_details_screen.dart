@@ -193,14 +193,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   // Hero-Image & imageUrls in Firebase speichern
   Future<void> _saveHeroImageAndUrls() async {
     if (_avatarData == null) return;
-    
+
     // WICHTIG: Hero-Image (Index 0) ist IMMER aktiv & sichtbar!
     if (_imageUrls.isNotEmpty) {
       final heroUrl = _imageUrls[0];
       _imageActive[heroUrl] = true;
       _imageExplorerVisible[heroUrl] = true;
     }
-    
+
     try {
       await FirebaseFirestore.instance
           .collection('avatars')
@@ -377,11 +377,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
-            activeTrackColor: AppColors.magenta.withOpacity(
-              0.8,
+            activeTrackColor: AppColors.magenta.withValues(
+              alpha: 0.8,
             ), // GMBC Magenta
-            inactiveTrackColor: Colors.white.withOpacity(0.15),
-            overlayColor: AppColors.magenta.withOpacity(0.2),
+            inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+            overlayColor: AppColors.magenta.withValues(alpha: 0.2),
             thumbShape: const GradientSliderThumbShape(
               thumbRadius: 8.0,
             ), // GMBC Kugel
@@ -429,11 +429,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
-            activeTrackColor: AppColors.magenta.withOpacity(
-              0.8,
+            activeTrackColor: AppColors.magenta.withValues(
+              alpha: 0.8,
             ), // GMBC Magenta
-            inactiveTrackColor: Colors.white.withOpacity(0.15),
-            overlayColor: AppColors.magenta.withOpacity(0.2),
+            inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+            overlayColor: AppColors.magenta.withValues(alpha: 0.2),
             thumbShape: const GradientSliderThumbShape(
               thumbRadius: 8.0,
             ), // GMBC Kugel
@@ -473,11 +473,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         SliderTheme(
           data: SliderTheme.of(context).copyWith(
-            activeTrackColor: AppColors.magenta.withOpacity(
-              0.8,
+            activeTrackColor: AppColors.magenta.withValues(
+              alpha: 0.8,
             ), // GMBC Magenta
-            inactiveTrackColor: Colors.white.withOpacity(0.15),
-            overlayColor: AppColors.magenta.withOpacity(0.2),
+            inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+            overlayColor: AppColors.magenta.withValues(alpha: 0.2),
             thumbShape: const GradientSliderThumbShape(
               thumbRadius: 8.0,
             ), // GMBC Kugel
@@ -3475,12 +3475,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: AppColors.magenta.withOpacity(
-                    0.8,
+                  activeTrackColor: AppColors.magenta.withValues(
+                    alpha: 0.8,
                   ), // GMBC Magenta
-                  inactiveTrackColor: Colors.white.withOpacity(0.15),
-                  overlayColor: AppColors.magenta.withOpacity(
-                    0.2,
+                  inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+                  overlayColor: AppColors.magenta.withValues(
+                    alpha: 0.2,
                   ), // GMBC Magenta overlay
                   trackHeight: 4.0,
                   thumbShape: const GradientSliderThumbShape(
@@ -3527,12 +3527,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: AppColors.magenta.withOpacity(
-                    0.8,
+                  activeTrackColor: AppColors.magenta.withValues(
+                    alpha: 0.8,
                   ), // GMBC Magenta
-                  inactiveTrackColor: Colors.white.withOpacity(0.15),
-                  overlayColor: AppColors.magenta.withOpacity(
-                    0.2,
+                  inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+                  overlayColor: AppColors.magenta.withValues(
+                    alpha: 0.2,
                   ), // GMBC Magenta overlay
                   trackHeight: 4.0,
                   thumbShape: const GradientSliderThumbShape(
@@ -3579,12 +3579,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
-                  activeTrackColor: AppColors.magenta.withOpacity(
-                    0.8,
+                  activeTrackColor: AppColors.magenta.withValues(
+                    alpha: 0.8,
                   ), // GMBC Magenta
-                  inactiveTrackColor: Colors.white.withOpacity(0.15),
-                  overlayColor: AppColors.magenta.withOpacity(
-                    0.2,
+                  inactiveTrackColor: Colors.white.withValues(alpha: 0.15),
+                  overlayColor: AppColors.magenta.withValues(
+                    alpha: 0.2,
                   ), // GMBC Magenta overlay
                   trackHeight: 4.0,
                   thumbShape: const GradientSliderThumbShape(
@@ -6057,9 +6057,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         : null,
                     color: (_avatarData?.firstNamePublic ?? false)
                         ? null
-                        : Colors.white.withOpacity(0.1),
+                        : Colors.white.withValues(alpha: 0.1),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
+                      color: Colors.white.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -6152,9 +6152,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         : null,
                     color: (_avatarData?.nicknamePublic ?? false)
                         ? null
-                        : Colors.white.withOpacity(0.1),
+                        : Colors.white.withValues(alpha: 0.1),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
+                      color: Colors.white.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),
@@ -6247,9 +6247,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         : null,
                     color: (_avatarData?.lastNamePublic ?? false)
                         ? null
-                        : Colors.white.withOpacity(0.1),
+                        : Colors.white.withValues(alpha: 0.1),
                     border: Border.all(
-                      color: Colors.white.withOpacity(0.3),
+                      color: Colors.white.withValues(alpha: 0.3),
                       width: 1,
                     ),
                   ),

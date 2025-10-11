@@ -635,9 +635,9 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withOpacity(0.12),
-            Colors.white.withOpacity(0.06),
-            Colors.white.withOpacity(0.12),
+            Colors.white.withValues(alpha: 0.12),
+            Colors.white.withValues(alpha: 0.06),
+            Colors.white.withValues(alpha: 0.12),
           ],
         ),
       ),
