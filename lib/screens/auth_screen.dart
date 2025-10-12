@@ -775,7 +775,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
-                    // Landesflagge (aktuelle Sprache)
+                    // Landesflagge (aktuelle Sprache) - größerer Touch-Bereich
                     InkWell(
                       onTap: () {
                         Navigator.of(context).push(
@@ -784,50 +784,55 @@ class _AuthScreenState extends State<AuthScreen> {
                           ),
                         );
                       },
-                      child: Text(
-                        currentFlag,
-                        style: const TextStyle(fontSize: 28),
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(
+                          currentFlag,
+                          style: const TextStyle(fontSize: 28),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 20),
-                    // Textlinks für Login/Register
+                    const SizedBox(width: 12),
+                    // Textlinks für Login/Register - größere Touch-Bereiche
                     TextButton(
                       onPressed: () => _showAuthDialog(isLogin: true),
                       style: TextButton.styleFrom(
                         overlayColor: Colors.transparent,
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size(0, 0),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        minimumSize: const Size(80, 44),
                       ),
                       child: Text(
                         loc.t('auth.login'),
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
-                          fontSize: 14,
+                          fontSize: 16,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 4),
                     const Text(
                       '/',
-                      style: TextStyle(color: Color(0xFF444444), fontSize: 14),
+                      style: TextStyle(color: Color(0xFF444444), fontSize: 16),
                     ),
-                    const SizedBox(width: 4),
                     TextButton(
                       onPressed: () => _showAuthDialog(isLogin: false),
                       style: TextButton.styleFrom(
                         overlayColor: Colors.transparent,
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size(0, 0),
-                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        minimumSize: const Size(100, 44),
                       ),
                       child: Text(
                         loc.t('auth.register'),
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
-                          fontSize: 14,
+                          fontSize: 16,
                         ),
                       ),
                     ),
