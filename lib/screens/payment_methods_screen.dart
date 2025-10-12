@@ -179,7 +179,7 @@ class _PaymentMethodsScreenState extends State<PaymentMethodsScreen> {
         const SnackBar(content: Text('Stripe Dashboard wird geöffnet...')),
       );
 
-      // TODO: url_launcher integrieren
+      // FEHLT NOCH: url_launcher integrieren
       debugPrint('Dashboard URL: $url');
     } catch (e) {
       if (!mounted) return;

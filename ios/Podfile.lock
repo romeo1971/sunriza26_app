@@ -1530,7 +1530,7 @@ PODS:
   - path_provider_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
-  - pdf_render (0.0.1):
+  - pdfx (1.0.0):
     - Flutter
   - permission_handler_apple (9.3.0):
     - Flutter
@@ -1580,7 +1580,7 @@ DEPENDENCIES:
   - livekit_client (from `.symlinks/plugins/livekit_client/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
-  - pdf_render (from `.symlinks/plugins/pdf_render/ios`)
+  - pdfx (from `.symlinks/plugins/pdfx/ios`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
   - record_ios (from `.symlinks/plugins/record_ios/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
@@ -1671,8 +1671,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/package_info_plus/ios"
   path_provider_foundation:
     :path: ".symlinks/plugins/path_provider_foundation/darwin"
-  pdf_render:
-    :path: ".symlinks/plugins/pdf_render/ios"
+  pdfx:
+    :path: ".symlinks/plugins/pdfx/ios"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
   record_ios:
@@ -1740,7 +1740,7 @@ SPEC CHECKSUMS:
   OrderedSet: e539b66b644ff081c73a262d24ad552a69be3a94
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
-  pdf_render: 5f9586e5fd49519bf59ea14a6da4851616e91c81
+  pdfx: 77f4dddc48361fbb01486fa2bdee4532cbb97ef3
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   RecaptchaInterop: 11e0b637842dfb48308d242afc3f448062325aba

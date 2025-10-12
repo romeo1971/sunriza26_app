@@ -5,8 +5,13 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
-import '../widgets/primary_button.dart';
+import 'package:provider/provider.dart';
+import '../widgets/custom_text_field.dart';
+import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
+import '../services/language_service.dart';
+import '../services/localization_service.dart';
+import 'language_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -16,10 +21,8 @@ class AuthScreen extends StatefulWidget {
 }
 
 class _AuthScreenState extends State<AuthScreen> {
-  final _form = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  var _isLogin = true;
   var _enteredEmail = '';
   var _enteredPassword = '';
   var _isLoading = false;
@@ -29,94 +32,614 @@ class _AuthScreenState extends State<AuthScreen> {
   // GoogleSignIn wird über AuthService genutzt
   final AuthService _authService = AuthService();
 
-  bool get _isFormValid => _isEmailValid && _isPasswordValid;
-
-  void _validateEmail(String value) {
-    setState(() {
-      _isEmailValid = value.contains('@') && value.trim().isNotEmpty;
-    });
+  @override
+  void initState() {
+    super.initState();
+    _initializeLanguage();
   }
 
-  void _validatePassword(String value) {
-    setState(() {
-      _isPasswordValid = value.trim().length >= 6;
-    });
-  }
+  // Device-Locale als Startsprache setzen (falls noch keine gesetzt)
+  void _initializeLanguage() {
+    final languageService = context.read<LanguageService>();
+    if (languageService.languageCode == null ||
+        languageService.languageCode!.isEmpty) {
+      // Device-Locale auslesen
+      final deviceLocale = WidgetsBinding.instance.platformDispatcher.locale;
+      final languageCode = deviceLocale.languageCode; // z.B. "de", "en", "fr"
 
-  void _submit() async {
-    if (!_form.currentState!.validate()) {
-      return;
+      // Unterstützte Sprachen prüfen und setzen
+      const supportedLanguages = [
+        'ar',
+        'bn',
+        'cs',
+        'da',
+        'de',
+        'el',
+        'en',
+        'es',
+        'fa',
+        'fi',
+        'fr',
+        'hi',
+        'hu',
+        'id',
+        'it',
+        'he',
+        'ja',
+        'ko',
+        'mr',
+        'ms',
+        'nl',
+        'no',
+        'pa',
+        'pl',
+        'pt',
+        'ro',
+        'ru',
+        'sv',
+        'te',
+        'th',
+        'tr',
+        'uk',
+        'ur',
+        'vi',
+        'zh',
+      ];
+
+      if (supportedLanguages.contains(languageCode)) {
+        languageService.setLanguage(languageCode);
+      } else {
+        languageService.setLanguage('en'); // Fallback: Englisch
+      }
     }
+  }
 
+  // Flag-Emoji für Sprachcode
+  String _getFlagEmoji(String? languageCode) {
+    const Map<String, String> flags = {
+      'ar': '🇸🇦', // Arabisch → Saudi-Arabien
+      'bn': '🇧🇩', // Bangla → Bangladesch
+      'cs': '🇨🇿', // Tschechisch → Tschechien
+      'da': '🇩🇰', // Dänisch → Dänemark
+      'de': '🇩🇪', // Deutsch → Deutschland
+      'el': '🇬🇷', // Griechisch → Griechenland
+      'en': '🇬🇧', // Englisch → UK
+      'es': '🇪🇸', // Spanisch → Spanien
+      'fa': '🇮🇷', // Persisch → Iran
+      'fi': '🇫🇮', // Finnisch → Finnland
+      'fr': '🇫🇷', // Französisch → Frankreich
+      'hi': '🇮🇳', // Hindi → Indien
+      'hu': '🇭🇺', // Ungarisch → Ungarn
+      'id': '🇮🇩', // Indonesisch → Indonesien
+      'it': '🇮🇹', // Italienisch → Italien
+      'he': '🇮🇱', // Hebräisch → Israel
+      'ja': '🇯🇵', // Japanisch → Japan
+      'ko': '🇰🇷', // Koreanisch → Südkorea
+      'mr': '🇮🇳', // Marathi → Indien
+      'ms': '🇲🇾', // Malaiisch → Malaysia
+      'nl': '🇳🇱', // Niederländisch → Niederlande
+      'no': '🇳🇴', // Norwegisch → Norwegen
+      'pa': '🇮🇳', // Punjabi → Indien
+      'pl': '🇵🇱', // Polnisch → Polen
+      'pt': '🇵🇹', // Portugiesisch → Portugal
+      'ro': '🇷🇴', // Rumänisch → Rumänien
+      'ru': '🇷🇺', // Russisch → Russland
+      'sv': '🇸🇪', // Schwedisch → Schweden
+      'te': '🇮🇳', // Telugu → Indien
+      'th': '🇹🇭', // Thai → Thailand
+      'tr': '🇹🇷', // Türkisch → Türkei
+      'uk': '🇺🇦', // Ukrainisch → Ukraine
+      'ur': '🇵🇰', // Urdu → Pakistan
+      'vi': '🇻🇳', // Vietnamesisch → Vietnam
+      'zh': '🇨🇳', // Chinesisch → China
+    };
+    return flags[languageCode] ?? '🇬🇧'; // Default: UK
+  }
+
+  // Auth-Dialog (Login/Registrierung in einem)
+  void _showAuthDialog({bool isLogin = true}) {
+    final gradients = Theme.of(context).extension<AppGradients>()!;
+    final loc = Provider.of<LocalizationService>(context, listen: false);
+    final formKey = GlobalKey<FormState>();
+    bool currentIsLogin = isLogin;
+
+    // Lokale Controller für den Dialog
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    bool isEmailValid = false;
+    bool isPasswordValid = false;
+    String enteredEmail = '';
+    String enteredPassword = '';
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      useSafeArea: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) {
+          // Language Keys
+          final loginText = loc.t('auth.login');
+          final registerText = loc.t('auth.register');
+          final emailText = loc.t('auth.email');
+          final passwordText = loc.t('auth.password');
+          final emailErrorText = loc.t('auth.emailValidError');
+          final passwordErrorText = loc.t('auth.passwordLengthError');
+          final orText = loc.t('auth.or');
+          final googleSignInText = loc.t('auth.googleSignIn');
+          final passwordForgotText = loc.t('auth.passwordForgot');
+          final noAccountText = loc.t('auth.noAccount');
+          final hasAccountText = loc.t('auth.hasAccount');
+
+          return Dialog(
+            backgroundColor: const Color(0xFF111111),
+            insetPadding: EdgeInsets.zero,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+            child: SizedBox(
+              width: MediaQuery.of(dialogContext).size.width,
+              height: MediaQuery.of(dialogContext).size.height,
+              child: Stack(
+                children: [
+                  // Close Button oben rechts
+                  Positioned(
+                    top: 40,
+                    right: 20,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 30,
+                        ),
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                      ),
+                    ),
+                  ),
+                  // Scrollbarer Inhalt mit Content Wrapper
+                  Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minWidth: 300,
+                        maxWidth: 768, // iPad portrait width
+                      ),
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 24,
+                          vertical: 60,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Title
+                            Center(
+                              child: ShaderMask(
+                                shaderCallback: (bounds) =>
+                                    gradients.magentaBlue.createShader(bounds),
+                                child: Text(
+                                  currentIsLogin ? loginText : registerText,
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    fontSize: 32,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 40),
+                            // Form Content
+                            Form(
+                              key: formKey,
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  // Email TextField
+                                  CustomTextField(
+                                    label: emailText,
+                                    controller: emailController,
+                                    keyboardType: TextInputType.emailAddress,
+                                    validator: (value) {
+                                      if (value == null ||
+                                          value.trim().isEmpty ||
+                                          !value.contains('@')) {
+                                        return emailErrorText;
+                                      }
+                                      return null;
+                                    },
+                                    onChanged: (value) {
+                                      setDialogState(() {
+                                        isEmailValid =
+                                            value.contains('@') &&
+                                            value.trim().isNotEmpty;
+                                        enteredEmail = value;
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(height: 16),
+
+                                  // Password TextField
+                                  CustomTextField(
+                                    label: passwordText,
+                                    controller: passwordController,
+                                    obscureText: true,
+                                    validator: (value) {
+                                      if (value == null ||
+                                          value.trim().length < 6) {
+                                        return passwordErrorText;
+                                      }
+                                      return null;
+                                    },
+                                    onChanged: (value) {
+                                      setDialogState(() {
+                                        isPasswordValid =
+                                            value.trim().length >= 6;
+                                        enteredPassword = value;
+                                      });
+                                    },
+                                  ),
+                                  const SizedBox(height: 24),
+
+                                  // Loading Indicator
+                                  if (_isLoading)
+                                    ShaderMask(
+                                      shaderCallback: (bounds) => gradients
+                                          .magentaBlue
+                                          .createShader(bounds),
+                                      child: const CircularProgressIndicator(
+                                        valueColor:
+                                            AlwaysStoppedAnimation<Color>(
+                                              Colors.white,
+                                            ),
+                                      ),
+                                    ),
+
+                                  // Submit Button
+                                  if (!_isLoading)
+                                    Container(
+                                      width: double.infinity,
+                                      height: 52,
+                                      decoration: BoxDecoration(
+                                        color: (isEmailValid && isPasswordValid)
+                                            ? Colors.white
+                                            : Colors.white.withValues(
+                                                alpha: 0.2,
+                                              ),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.3,
+                                          ),
+                                          width: 1,
+                                        ),
+                                      ),
+                                      child: ElevatedButton(
+                                        onPressed:
+                                            (isEmailValid && isPasswordValid)
+                                            ? () {
+                                                if (formKey.currentState!
+                                                    .validate()) {
+                                                  Navigator.of(
+                                                    dialogContext,
+                                                  ).pop();
+                                                  setState(() {
+                                                    _enteredEmail =
+                                                        enteredEmail;
+                                                    _enteredPassword =
+                                                        enteredPassword;
+                                                  });
+                                                  if (currentIsLogin) {
+                                                    _submitLogin();
+                                                  } else {
+                                                    _submitRegistration();
+                                                  }
+                                                }
+                                              }
+                                            : null,
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.transparent,
+                                          shadowColor: Colors.transparent,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
+                                          ),
+                                        ),
+                                        child: (isEmailValid && isPasswordValid)
+                                            ? ShaderMask(
+                                                shaderCallback: (bounds) =>
+                                                    gradients.magentaBlue
+                                                        .createShader(bounds),
+                                                child: Text(
+                                                  currentIsLogin
+                                                      ? loginText
+                                                      : registerText,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 16,
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              )
+                                            : Text(
+                                                currentIsLogin
+                                                    ? loginText
+                                                    : registerText,
+                                                style: TextStyle(
+                                                  color: Colors.white
+                                                      .withValues(alpha: 0.5),
+                                                  fontSize: 16,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                      ),
+                                    ),
+
+                                  const SizedBox(height: 16),
+
+                                  // Toggle zwischen Login/Registrierung
+                                  if (!_isLoading)
+                                    TextButton(
+                                      onPressed: () {
+                                        setDialogState(() {
+                                          currentIsLogin = !currentIsLogin;
+                                        });
+                                      },
+                                      style: TextButton.styleFrom(
+                                        overlayColor: Colors.transparent,
+                                      ),
+                                      child: ShaderMask(
+                                        shaderCallback: (bounds) => gradients
+                                            .magentaBlue
+                                            .createShader(bounds),
+                                        child: Text(
+                                          currentIsLogin
+                                              ? noAccountText
+                                              : hasAccountText,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.w600,
+                                            height: 1.4,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+
+                                  const SizedBox(height: 16),
+
+                                  // Divider
+                                  Row(
+                                    children: [
+                                      const Expanded(
+                                        child: Divider(
+                                          color: Color(0xFF333333),
+                                          thickness: 1,
+                                        ),
+                                      ),
+                                      Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12.0,
+                                        ),
+                                        child: Text(
+                                          orText,
+                                          style: const TextStyle(
+                                            color: Color(0xFFAAAAAA),
+                                            fontWeight: FontWeight.w700,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                      const Expanded(
+                                        child: Divider(
+                                          color: Color(0xFF333333),
+                                          thickness: 1,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+
+                                  const SizedBox(height: 16),
+
+                                  // Google Sign-In Button
+                                  if (!_isLoading)
+                                    Container(
+                                      width: double.infinity,
+                                      height: 52,
+                                      decoration: BoxDecoration(
+                                        gradient: gradients.magentaBlue,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Container(
+                                        margin: const EdgeInsets.all(2),
+                                        decoration: BoxDecoration(
+                                          color: const Color(0xFF111111),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        child: ElevatedButton.icon(
+                                          icon: const Icon(
+                                            Icons.login,
+                                            color: Colors.white,
+                                          ),
+                                          label: Text(
+                                            googleSignInText,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                          onPressed: _isLoading
+                                              ? null
+                                              : _handleGoogleSignIn,
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.transparent,
+                                            shadowColor: Colors.transparent,
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+
+                                  const SizedBox(height: 16),
+
+                                  // Password Reset Button (nur bei Login) oder Platzhalter
+                                  TextButton(
+                                    onPressed: currentIsLogin
+                                        ? () {
+                                            Navigator.of(dialogContext).pop();
+                                            _showPasswordResetDialog();
+                                          }
+                                        : null,
+                                    style: TextButton.styleFrom(
+                                      overlayColor: Colors.transparent,
+                                    ),
+                                    child: Text(
+                                      currentIsLogin ? passwordForgotText : '',
+                                      style: TextStyle(
+                                        color: currentIsLogin
+                                            ? const Color(0xFF888888)
+                                            : Colors.transparent,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    ).then((_) {
+      // Controller nach Dialog-Schließung aufräumen
+      emailController.dispose();
+      passwordController.dispose();
+    });
+  }
+
+  void _submitLogin() async {
     setState(() {
       _isLoading = true;
     });
 
     try {
-      if (_isLogin) {
-        await _authService.signInWithEmailAndPassword(
-          email: _enteredEmail,
-          password: _enteredPassword,
-        );
-      } else {
-        await _authService.createUserWithEmailAndPassword(
-          email: _enteredEmail,
-          password: _enteredPassword,
-        );
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Registrierung erfolgreich! Bitte bestätige deine E-Mail-Adresse. Prüfe dein Postfach.',
-              ),
-              backgroundColor: Color(0xFF00FF94),
-            ),
-          );
-          setState(() {
-            _isLogin = true;
-            _enteredEmail = '';
-            _enteredPassword = '';
-            _isEmailValid = false;
-            _isPasswordValid = false;
-            _emailController.clear();
-            _passwordController.clear();
-          });
-          await _authService.signOut();
-          return;
+      await _authService.signInWithEmailAndPassword(
+        email: _enteredEmail,
+        password: _enteredPassword,
+      );
+    } on FirebaseAuthException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        final loc = Provider.of<LocalizationService>(context, listen: false);
+
+        String errorMessage;
+        switch (error.code) {
+          case 'invalid-email':
+            errorMessage = loc.t('auth.errorInvalidEmail');
+            break;
+          case 'user-disabled':
+            errorMessage = loc.t('auth.errorUserDisabled');
+            break;
+          case 'user-not-found':
+            errorMessage = loc.t('auth.errorUserNotFound');
+            break;
+          case 'wrong-password':
+            errorMessage = loc.t('auth.errorWrongPassword');
+            break;
+          default:
+            errorMessage = error.message ?? loc.t('auth.errorDefault');
         }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              errorMessage,
+              style: const TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.red[700],
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _submitRegistration() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      await _authService.createUserWithEmailAndPassword(
+        email: _enteredEmail,
+        password: _enteredPassword,
+      );
+      if (mounted) {
+        final loc = Provider.of<LocalizationService>(context, listen: false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(loc.t('auth.registerSuccess')),
+            backgroundColor: const Color(0xFF00FF94),
+          ),
+        );
+        setState(() {
+          _enteredEmail = '';
+          _enteredPassword = '';
+          _isEmailValid = false;
+          _isPasswordValid = false;
+          _emailController.clear();
+          _passwordController.clear();
+        });
+        await _authService.signOut();
+        return;
       }
     } on FirebaseAuthException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
+        final loc = Provider.of<LocalizationService>(context, listen: false);
 
-        // Deutsche Fehlermeldungen
         String errorMessage;
         switch (error.code) {
           case 'invalid-email':
-            errorMessage = 'Bitte gib eine gültige E-Mail-Adresse ein.';
+            errorMessage = loc.t('auth.errorInvalidEmail');
             break;
           case 'user-disabled':
-            errorMessage = 'Dieser Account wurde deaktiviert.';
+            errorMessage = loc.t('auth.errorUserDisabled');
             break;
           case 'user-not-found':
-            errorMessage = 'Kein Nutzer mit dieser E-Mail gefunden.';
+            errorMessage = loc.t('auth.errorUserNotFound');
             break;
           case 'wrong-password':
-            errorMessage = 'Das Passwort ist falsch.';
+            errorMessage = loc.t('auth.errorWrongPassword');
             break;
           case 'email-already-in-use':
-            errorMessage = 'Diese E-Mail wird bereits verwendet.';
+            errorMessage = loc.t('auth.errorEmailInUse');
             break;
           case 'weak-password':
-            errorMessage = 'Das Passwort ist zu schwach (mind. 6 Zeichen).';
+            errorMessage = loc.t('auth.errorWeakPassword');
             break;
           case 'missing-email':
-            errorMessage = 'Bitte gib eine E-Mail-Adresse ein.';
+            errorMessage = loc.t('auth.errorMissingEmail');
             break;
           default:
-            errorMessage =
-                error.message ??
-                'Ein Authentifizierungsfehler ist aufgetreten.';
+            errorMessage = error.message ?? loc.t('auth.errorDefault');
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -155,36 +678,36 @@ class _AuthScreenState extends State<AuthScreen> {
       }
 
       if (mounted) {
+        final loc = Provider.of<LocalizationService>(context, listen: false);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Erfolgreich mit Google angemeldet!'),
-            backgroundColor: Color(0xFF00FF94),
+          SnackBar(
+            content: Text(loc.t('auth.googleSignInSuccess')),
+            backgroundColor: const Color(0xFF00FF94),
           ),
         );
       }
     } on FirebaseAuthException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
+        final loc = Provider.of<LocalizationService>(context, listen: false);
         String errorMessage;
         switch (error.code) {
           case 'popup-closed-by-user':
-            errorMessage = 'Anmeldung abgebrochen.';
-            break;
+            return; // Keine Meldung wenn User abbricht
           case 'cancelled-popup-request':
-            errorMessage = 'Anfrage abgebrochen.';
-            break;
+            return; // Keine Meldung wenn User abbricht
           case 'operation-not-allowed':
-            errorMessage = 'Google Sign-In ist nicht aktiviert.';
+            errorMessage = loc.t('auth.errorOperationNotAllowed');
             break;
           case 'unauthorized-domain':
-            errorMessage =
-                'Domain nicht autorisiert. Füge localhost in Firebase hinzu.';
+            errorMessage = loc.t('auth.errorUnauthorizedDomain');
             break;
           case 'invalid-credential':
-            errorMessage = 'Ungültige Anmeldedaten.';
+            errorMessage = loc.t('auth.errorInvalidCredential');
             break;
           default:
-            errorMessage = error.message ?? 'Google-Anmeldung fehlgeschlagen.';
+            errorMessage =
+                error.message ?? loc.t('auth.errorGoogleSignInFailed');
         }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -197,11 +720,17 @@ class _AuthScreenState extends State<AuthScreen> {
         );
       }
     } catch (e) {
+      // GoogleSignInException wenn User abbricht - KEINE Meldung
+      if (e.toString().contains('canceled') ||
+          e.toString().contains('cancelled')) {
+        return;
+      }
       if (mounted) {
+        final loc = Provider.of<LocalizationService>(context, listen: false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Fehler: ${e.toString()}',
+              loc.t('auth.errorGeneric', params: {'msg': e.toString()}),
               style: const TextStyle(color: Colors.white),
             ),
             backgroundColor: Colors.red[700],
@@ -219,6 +748,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final gradients = Theme.of(context).extension<AppGradients>()!;
+    final languageService = context.watch<LanguageService>();
+    final loc = context.watch<LocalizationService>();
+    final currentFlag = _getFlagEmoji(languageService.languageCode);
+
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       body: Container(
@@ -229,258 +763,238 @@ class _AuthScreenState extends State<AuthScreen> {
             colors: [Color(0xFF000000), Color(0xFF111111)],
           ),
         ),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: <Widget>[
-                // Logo/Branding
-                Container(
-                  height: 120,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF00FF94).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(60),
-                  ),
-                  child: const Icon(
-                    Icons.psychology,
-                    color: Color(0xFF00FF94),
-                    size: 60,
-                  ),
+        child: Column(
+          children: [
+            // Top Navigation - Sprache + Login/Register
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
                 ),
-                const SizedBox(height: 24),
-                Text(
-                  'SUNRIZA26',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.displayMedium?.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 32,
-                  ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // Landesflagge (aktuelle Sprache)
+                    InkWell(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const LanguageScreen(),
+                          ),
+                        );
+                      },
+                      child: Text(
+                        currentFlag,
+                        style: const TextStyle(fontSize: 28),
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    // Textlinks für Login/Register
+                    TextButton(
+                      onPressed: () => _showAuthDialog(isLogin: true),
+                      style: TextButton.styleFrom(
+                        overlayColor: Colors.transparent,
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        loc.t('auth.login'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    const Text(
+                      '/',
+                      style: TextStyle(color: Color(0xFF444444), fontSize: 14),
+                    ),
+                    const SizedBox(width: 4),
+                    TextButton(
+                      onPressed: () => _showAuthDialog(isLogin: false),
+                      style: TextButton.styleFrom(
+                        overlayColor: Colors.transparent,
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(0, 0),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(
+                        loc.t('auth.register'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'Erwecke mit Sunriza Erinnerungen zum Leben',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: const Color(0xFFCCCCCC),
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 40),
-
-                // Login/Registration Form
-                Form(
-                  key: _form,
+              ),
+            ),
+            // Main Content - scrollable
+            Expanded(
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
                   child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Email TextField
-                      TextFormField(
-                        decoration: InputDecoration(
-                          labelText: 'E-Mail-Adresse',
-                          labelStyle: const TextStyle(color: Color(0xFFCCCCCC)),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFF333333),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFF333333),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFF00FF94),
-                            ),
-                          ),
-                          errorBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Colors.red),
-                          ),
-                          focusedErrorBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Colors.red),
-                          ),
-                          filled: true,
-                          fillColor: const Color(
-                            0xFF111111,
-                          ).withValues(alpha: 0.5),
-                          errorStyle: const TextStyle(color: Colors.red),
-                        ),
-                        keyboardType: TextInputType.emailAddress,
-                        autocorrect: false,
-                        textCapitalization: TextCapitalization.none,
-                        style: const TextStyle(color: Colors.white),
-                        validator: (value) {
-                          if (value == null ||
-                              value.trim().isEmpty ||
-                              !value.contains('@')) {
-                            return 'Bitte gib eine gültige E-Mail-Adresse ein.';
-                          }
-                          return null;
-                        },
-                        controller: _emailController,
-                        onSaved: (value) {
-                          _enteredEmail = value!;
-                        },
-                        onChanged: (value) {
-                          _validateEmail(value);
-                          _enteredEmail = value;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Password TextField
-                      TextFormField(
-                        decoration: InputDecoration(
-                          labelText: 'Passwort',
-                          labelStyle: const TextStyle(color: Color(0xFFCCCCCC)),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFF333333),
-                            ),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFF333333),
-                            ),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(
-                              color: Color(0xFF00FF94),
-                            ),
-                          ),
-                          errorBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Colors.red),
-                          ),
-                          focusedErrorBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                            borderSide: const BorderSide(color: Colors.red),
-                          ),
-                          filled: true,
-                          fillColor: const Color(
-                            0xFF111111,
-                          ).withValues(alpha: 0.5),
-                          errorStyle: const TextStyle(color: Colors.red),
-                        ),
-                        obscureText: true,
-                        style: const TextStyle(color: Colors.white),
-                        validator: (value) {
-                          if (value == null || value.trim().length < 6) {
-                            return 'Das Passwort muss mindestens 6 Zeichen lang sein.';
-                          }
-                          return null;
-                        },
-                        controller: _passwordController,
-                        onSaved: (value) {
-                          _enteredPassword = value!;
-                        },
-                        onChanged: (value) {
-                          _validatePassword(value);
-                          _enteredPassword = value;
-                        },
-                      ),
+                    mainAxisAlignment: MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: <Widget>[
                       const SizedBox(height: 20),
+                      // Logo - 70vw Breite, NICHT umbrechend
+                      Center(
+                        child: Image.asset(
+                          'assets/logo/logo_hauau.png',
+                          width: MediaQuery.of(context).size.width * 0.7,
+                          fit: BoxFit.contain,
+                        ),
+                      ),
+                      const SizedBox(height: 32),
 
-                      // Loading Indicator
-                      if (_isLoading)
-                        const CircularProgressIndicator(
-                          valueColor: AlwaysStoppedAnimation<Color>(
-                            Color(0xFF00FF94),
+                      // Claim 1 - Hauptslogan (70vw, auto-resize)
+                      Center(
+                        child: SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.7,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: const Text(
+                              'DEIN AVATAR IN 2 MINUTEN LIVE',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w300,
+                                fontSize: 24,
+                                height: 1,
+                                fontFamily: 'Roboto',
+                                letterSpacing: 0.5,
+                              ),
+                            ),
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 8),
 
-                      // Submit Button
-                      if (!_isLoading)
-                        PrimaryButton(
-                          text: _isLogin ? 'Anmelden' : 'Registrieren',
-                          onPressed: _isFormValid ? _submit : null,
-                        ),
-
-                      // Toggle Login/Registration
-                      if (!_isLoading)
-                        TextButton(
-                          onPressed: () {
-                            setState(() {
-                              _isLogin = !_isLogin;
-                            });
-                          },
-                          child: Text(
-                            _isLogin
-                                ? 'Noch kein Konto? Registrieren'
-                                : 'Bereits registriert? Anmelden',
-                            style: const TextStyle(color: Color(0xFF00FF94)),
+                      // Sub-Text unter Claim 1
+                      Center(
+                        child: SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.7,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: const Text(
+                              'Uploade Dein Foto und Deine Stimmprobe und los geht\'s',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Color(0xFFBBBBBB),
+                                fontWeight: FontWeight.w300,
+                                fontSize: 18,
+                                height: 1,
+                                fontFamily: 'Roboto',
+                                letterSpacing: 0.3,
+                              ),
+                            ),
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      // Claim 2 - Beschreibung (responsive fontSize, center)
+                      Center(
+                        child: SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.7,
+                          child: LayoutBuilder(
+                            builder: (context, constraints) {
+                              final double responsiveFontSize =
+                                  constraints.maxWidth > 300 ? 15 : 13;
+                              return Text(
+                                'Im privaten 1:1 Chat antwortet Dein Avatar 24/7 weltweit mit Deiner Stimme. Sieht aus wie du und klingt und antwortet wie du.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: const Color(0xFFBBBBBB),
+                                  fontSize: responsiveFontSize,
+                                  fontWeight: FontWeight.w300,
+                                  height: 1.4,
+                                  fontFamily: 'Roboto',
+                                  letterSpacing: 0.2,
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+
+                      // Claim 3 - Use Cases
+                      Center(
+                        child: SizedBox(
+                          width: MediaQuery.of(context).size.width * 0.7,
+                          child: Column(
+                            children: [
+                              ShaderMask(
+                                shaderCallback: (bounds) =>
+                                    gradients.magentaBlue.createShader(bounds),
+                                child: const Text(
+                                  'Wer erreicht wen?',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    fontFamily: 'Roboto',
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Artists → Fans, Marketer → Kunden, Coaches → Schüler',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w400,
+                                  height: 1.5,
+                                  fontFamily: 'Roboto',
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              const Text(
+                                'Sei erreichbar und antworte, wenn Du grad kein Zeit hast.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w400,
+                                  height: 1.5,
+                                  fontFamily: 'Roboto',
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Menschen bleiben unvergessen - lege z.B. einen Avatar für geliebte Menschen an, die nicht mehr da sind und halte sie und ihre Geschichten am Leben.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w300,
+                                  height: 1.6,
+                                  fontFamily: 'Roboto',
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 60),
                     ],
                   ),
                 ),
-
-                const SizedBox(height: 20),
-
-                // Divider
-                const Row(
-                  children: [
-                    Expanded(child: Divider(color: Color(0xFF333333))),
-                    Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8.0),
-                      child: Text(
-                        'ODER',
-                        style: TextStyle(color: Color(0xFF666666)),
-                      ),
-                    ),
-                    Expanded(child: Divider(color: Color(0xFF333333))),
-                  ],
-                ),
-
-                const SizedBox(height: 20),
-
-                // Google Sign-In Button
-                if (!_isLoading)
-                  OutlinedButton.icon(
-                    icon: const Icon(Icons.login, color: Colors.white),
-                    label: const Text(
-                      'Mit Google anmelden',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    onPressed: _isLoading ? null : _handleGoogleSignIn,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Color(0xFF333333)),
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 12,
-                        horizontal: 16,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-
-                // Password Reset Button
-                if (_isLogin && !_isLoading)
-                  TextButton(
-                    onPressed: () {
-                      _showPasswordResetDialog();
-                    },
-                    child: const Text(
-                      'Passwort vergessen?',
-                      style: TextStyle(color: Color(0xFF666666)),
-                    ),
-                  ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -490,98 +1004,119 @@ class _AuthScreenState extends State<AuthScreen> {
     final emailController = TextEditingController();
     final formKey = GlobalKey<FormState>();
     bool isValidEmail = false;
+    final gradients = Theme.of(context).extension<AppGradients>()!;
+    final loc = Provider.of<LocalizationService>(context, listen: false);
 
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, setState) => AlertDialog(
           backgroundColor: const Color(0xFF111111),
-          title: const Text(
-            'Passwort zurücksetzen',
-            style: TextStyle(color: Colors.white),
+          title: ShaderMask(
+            shaderCallback: (bounds) =>
+                gradients.magentaBlue.createShader(bounds),
+            child: Text(
+              loc.t('auth.passwordResetTitle'),
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
           content: Form(
             key: formKey,
-            child: TextFormField(
+            child: CustomTextField(
+              label: loc.t('auth.email'),
               controller: emailController,
-              decoration: InputDecoration(
-                labelText: 'E-Mail-Adresse',
-                labelStyle: const TextStyle(color: Color(0xFFCCCCCC)),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF333333)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF333333)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFF00FF94)),
-                ),
-                filled: true,
-                fillColor: const Color(0xFF000000).withValues(alpha: 0.5),
-              ),
               keyboardType: TextInputType.emailAddress,
-              style: const TextStyle(color: Colors.white),
-              onChanged: (value) {
-                setState(() {
-                  isValidEmail = value.contains('@') && value.trim().isNotEmpty;
-                });
-              },
               validator: (value) {
                 if (value == null ||
                     value.trim().isEmpty ||
                     !value.contains('@')) {
-                  return 'Bitte eine gültige E-Mail-Adresse eingeben.';
+                  return loc.t('auth.emailValidError');
                 }
                 return null;
+              },
+              onChanged: (value) {
+                setState(() {
+                  isValidEmail = value.contains('@') && value.trim().isNotEmpty;
+                });
               },
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text(
-                'Abbrechen',
-                style: TextStyle(color: Color(0xFF00FF94)),
+              style: TextButton.styleFrom(overlayColor: Colors.transparent),
+              child: Text(
+                loc.t('buttons.cancel'),
+                style: const TextStyle(
+                  color: Color(0xFF888888),
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-            PrimaryButton(
-              text: 'Passwort zurücksetzen',
-              onPressed: isValidEmail
-                  ? () async {
-                      if (formKey.currentState!.validate()) {
-                        try {
-                          await FirebaseAuth.instance.sendPasswordResetEmail(
-                            email: emailController.text.trim(),
-                          );
-                          if (dialogContext.mounted) {
-                            Navigator.of(dialogContext).pop();
-                            ScaffoldMessenger.of(dialogContext).showSnackBar(
-                              const SnackBar(
-                                content: Text(
-                                  'E-Mail zum Zurücksetzen des Passworts wurde gesendet.',
-                                  style: TextStyle(color: Colors.white),
+            Container(
+              height: 40,
+              decoration: BoxDecoration(
+                gradient: isValidEmail ? gradients.magentaBlue : null,
+                color: isValidEmail ? null : Colors.grey.shade800,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ElevatedButton(
+                onPressed: isValidEmail
+                    ? () async {
+                        if (formKey.currentState!.validate()) {
+                          try {
+                            await FirebaseAuth.instance.sendPasswordResetEmail(
+                              email: emailController.text.trim(),
+                            );
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    loc.t('auth.passwordResetSuccess'),
+                                    style: const TextStyle(color: Colors.white),
+                                  ),
+                                  backgroundColor: AppColors.primaryGreen,
                                 ),
-                                backgroundColor: Color(0xFF00FF94),
-                              ),
-                            );
-                          }
-                        } on FirebaseAuthException catch (e) {
-                          if (dialogContext.mounted) {
-                            Navigator.of(dialogContext).pop();
-                            ScaffoldMessenger.of(dialogContext).showSnackBar(
-                              SnackBar(
-                                content: Text('Fehler: ${e.message}'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
+                              );
+                            }
+                          } on FirebaseAuthException catch (e) {
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    loc.t(
+                                      'auth.errorGeneric',
+                                      params: {'msg': e.message ?? ''},
+                                    ),
+                                  ),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
                           }
                         }
                       }
-                    }
-                  : null,
+                    : null,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  loc.t('auth.passwordResetButton'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ),
           ],
         ),

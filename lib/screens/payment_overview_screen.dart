@@ -113,7 +113,7 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
                     title: 'Warenkorb',
                     subtitle: 'Vorgemerkte Medien (0)',
                     onTap: () {
-                      // TODO: Warenkorb-Screen
+                      // FEHLT NOCH Warenkorb-Screen
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Warenkorb folgt bald')),
                       );
