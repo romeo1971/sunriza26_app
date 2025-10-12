@@ -234,10 +234,16 @@ class _CustomTextFieldWithGradientState
               color: Colors.white70,
               fontWeight: FontWeight.normal,
             ),
+            floatingLabelStyle: widget.effectiveStyle.copyWith(
+              color: _isFocused ? Colors.white : Colors.white70,
+              fontWeight: FontWeight.normal,
+              backgroundColor: const Color(0xFF0A0A0A),
+            ),
             floatingLabelBehavior: FloatingLabelBehavior.always,
             hintText: widget.hintText,
             hintStyle: widget.effectiveStyle.copyWith(color: Colors.white54),
-            filled: false,
+            filled: true,
+            fillColor: const Color(0xFF0A0A0A),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(_isFocused ? 6 : 8),
               borderSide: BorderSide(
