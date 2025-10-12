@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "İstek iptal edildi.",
   "auth.errorOperationNotAllowed": "Google ile giriş etkinleştirilmemiş.",
   "auth.errorUnauthorizedDomain": "Yetkisiz alan.",
-  "auth.errorInvalidCredential": "Geçersiz kimlik bilgileri.",
+  "auth.errorInvalidCredential": "Girilen giriş bilgileri yanlış. Lütfen e-posta ve şifrenizi kontrol edin.",
   "auth.errorGoogleSignInFailed": "Google ile giriş başarısız oldu.",
-  "auth.errorGeneric": "Hata: {msg}"
+  "auth.errorGeneric": "Hata: {msg}",
+  "auth.errorTooManyRequests": "Çok fazla başarısız deneme. Lütfen bir süre bekleyin ve tekrar deneyin.",
+  "auth.errorNetworkFailed": "Ağ hatası. Lütfen internet bağlantınızı kontrol edin."
 }

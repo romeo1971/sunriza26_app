@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Η αίτηση ακυρώθηκε.",
   "auth.errorOperationNotAllowed": "Η σύνδεση με Google δεν είναι ενεργοποιημένη.",
   "auth.errorUnauthorizedDomain": "Μη εξουσιοδοτημένος τομέας.",
-  "auth.errorInvalidCredential": "Μη έγκυρα διαπιστευτήρια.",
+  "auth.errorInvalidCredential": "Τα στοιχεία σύνδεσης που εισήχθησαν είναι λανθασμένα. Ελέγξτε το email και τον κωδικό σας.",
   "auth.errorGoogleSignInFailed": "Η σύνδεση με Google απέτυχε.",
-  "auth.errorGeneric": "Σφάλμα: {msg}"
+  "auth.errorGeneric": "Σφάλμα: {msg}",
+  "auth.errorTooManyRequests": "Πάρα πολλές αποτυχημένες προσπάθειες. Περιμένετε λίγο και δοκιμάστε ξανά.",
+  "auth.errorNetworkFailed": "Σφάλμα δικτύου. Ελέγξτε τη σύνδεσή σας στο διαδίκτυο."
 }

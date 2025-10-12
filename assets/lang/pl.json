@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Żądanie anulowane.",
   "auth.errorOperationNotAllowed": "Logowanie przez Google nie jest włączone.",
   "auth.errorUnauthorizedDomain": "Niedozwolona domena.",
-  "auth.errorInvalidCredential": "Nieprawidłowe dane uwierzytelniające.",
+  "auth.errorInvalidCredential": "Wprowadzone dane logowania są nieprawidłowe. Sprawdź swój e-mail i hasło.",
   "auth.errorGoogleSignInFailed": "Logowanie przez Google nie powiodło się.",
-  "auth.errorGeneric": "Błąd: {msg}"
+  "auth.errorGeneric": "Błąd: {msg}",
+  "auth.errorTooManyRequests": "Zbyt wiele nieudanych prób. Poczekaj chwilę i spróbuj ponownie.",
+  "auth.errorNetworkFailed": "Błąd sieci. Sprawdź połączenie z internetem."
 }

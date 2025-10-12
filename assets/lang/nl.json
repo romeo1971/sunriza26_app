@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Verzoek geannuleerd.",
   "auth.errorOperationNotAllowed": "Inloggen met Google is niet ingeschakeld.",
   "auth.errorUnauthorizedDomain": "Niet-geautoriseerd domein.",
-  "auth.errorInvalidCredential": "Ongeldige inloggegevens.",
+  "auth.errorInvalidCredential": "De ingevoerde inloggegevens zijn onjuist. Controleer je e-mail en wachtwoord.",
   "auth.errorGoogleSignInFailed": "Inloggen met Google mislukt.",
-  "auth.errorGeneric": "Fout: {msg}"
+  "auth.errorGeneric": "Fout: {msg}",
+  "auth.errorTooManyRequests": "Te veel mislukte pogingen. Wacht even en probeer het opnieuw.",
+  "auth.errorNetworkFailed": "Netwerkfout. Controleer je internetverbinding."
 }

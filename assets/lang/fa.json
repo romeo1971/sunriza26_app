@@ -270,7 +270,9 @@
   "auth.errorCancelledPopup": "درخواست لغو شد.",
   "auth.errorOperationNotAllowed": "ورود با Google فعال نیست.",
   "auth.errorUnauthorizedDomain": "دامنه غیرمجاز.",
-  "auth.errorInvalidCredential": "اعتبارنامه‌های نامعتبر.",
+  "auth.errorInvalidCredential": "اطلاعات ورود وارد شده نادرست است. لطفاً ایمیل و رمز عبور خود را بررسی کنید.",
   "auth.errorGoogleSignInFailed": "ورود با Google ناموفق بود.",
-  "auth.errorGeneric": "خطا: {msg}"
+  "auth.errorGeneric": "خطا: {msg}",
+  "auth.errorTooManyRequests": "تلاش‌های ناموفق بیش از حد. لطفاً لحظه‌ای صبر کنید و دوباره تلاش کنید.",
+  "auth.errorNetworkFailed": "خطای شبکه. لطفاً اتصال اینترنت خود را بررسی کنید."
 }

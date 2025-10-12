@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "請求已取消。",
   "auth.errorOperationNotAllowed": "未啟用Google登入。",
   "auth.errorUnauthorizedDomain": "未授權的域名。",
-  "auth.errorInvalidCredential": "無效的憑據。",
+  "auth.errorInvalidCredential": "輸入的登入憑證不正確。請檢查您的電子郵件和密碼。",
   "auth.errorGoogleSignInFailed": "Google登入失敗。",
-  "auth.errorGeneric": "錯誤：{msg}"
+  "auth.errorGeneric": "錯誤：{msg}",
+  "auth.errorTooManyRequests": "失敗嘗試次數過多。請稍等片刻後重試。",
+  "auth.errorNetworkFailed": "網路錯誤。請檢查您的網際網路連接。"
 }

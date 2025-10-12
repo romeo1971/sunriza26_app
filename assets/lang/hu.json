@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Kérés megszakítva.",
   "auth.errorOperationNotAllowed": "A Google bejelentkezés nincs engedélyezve.",
   "auth.errorUnauthorizedDomain": "Jogosulatlan domain.",
-  "auth.errorInvalidCredential": "Érvénytelen bejelentkezési adatok.",
+  "auth.errorInvalidCredential": "A megadott bejelentkezési adatok helytelenek. Ellenőrizd az e-mail címed és jelszavad.",
   "auth.errorGoogleSignInFailed": "A Google bejelentkezés sikertelen.",
-  "auth.errorGeneric": "Hiba: {msg}"
+  "auth.errorGeneric": "Hiba: {msg}",
+  "auth.errorTooManyRequests": "Túl sok sikertelen próbálkozás. Várj egy pillanatot, majd próbáld újra.",
+  "auth.errorNetworkFailed": "Hálózati hiba. Ellenőrizd az internetkapcsolatod."
 }

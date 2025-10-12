@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Pyyntö peruutettu.",
   "auth.errorOperationNotAllowed": "Google-kirjautuminen ei ole käytössä.",
   "auth.errorUnauthorizedDomain": "Luvaton domain.",
-  "auth.errorInvalidCredential": "Virheelliset kirjautumistiedot.",
+  "auth.errorInvalidCredential": "Syötetyt kirjautumistiedot ovat virheelliset. Tarkista sähköpostisi ja salasanasi.",
   "auth.errorGoogleSignInFailed": "Google-kirjautuminen epäonnistui.",
-  "auth.errorGeneric": "Virhe: {msg}"
+  "auth.errorGeneric": "Virhe: {msg}",
+  "auth.errorTooManyRequests": "Liikaa epäonnistuneita yrityksiä. Odota hetki ja yritä uudelleen.",
+  "auth.errorNetworkFailed": "Verkkovirhe. Tarkista internet-yhteytesi."
 }

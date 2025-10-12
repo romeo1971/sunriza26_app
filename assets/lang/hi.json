@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "अनुरोध रद्द कर दिया गया।",
   "auth.errorOperationNotAllowed": "Google लॉग इन सक्षम नहीं है।",
   "auth.errorUnauthorizedDomain": "अनधिकृत डोमेन।",
-  "auth.errorInvalidCredential": "अमान्य क्रेडेंशियल्स।",
+  "auth.errorInvalidCredential": "दर्ज किए गए लॉगिन विवरण गलत हैं। कृपया अपना ईमेल और पासवर्ड जांचें।",
   "auth.errorGoogleSignInFailed": "Google लॉग इन विफल रहा।",
-  "auth.errorGeneric": "त्रुटि: {msg}"
+  "auth.errorGeneric": "त्रुटि: {msg}",
+  "auth.errorTooManyRequests": "बहुत सारे असफल प्रयास। कृपया थोड़ी देर प्रतीक्षा करें और फिर से प्रयास करें।",
+  "auth.errorNetworkFailed": "नेटवर्क त्रुटि। कृपया अपना इंटरनेट कनेक्शन जांचें।"
 }

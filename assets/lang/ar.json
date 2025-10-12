@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "تم إلغاء الطلب.",
   "auth.errorOperationNotAllowed": "تسجيل الدخول بواسطة Google غير مفعل.",
   "auth.errorUnauthorizedDomain": "نطاق غير مصرح به.",
-  "auth.errorInvalidCredential": "بيانات اعتماد غير صالحة.",
+  "auth.errorInvalidCredential": "بيانات الاعتماد المدخلة غير صحيحة. يرجى التحقق من بريدك الإلكتروني وكلمة المرور.",
   "auth.errorGoogleSignInFailed": "فشل تسجيل الدخول بواسطة Google.",
-  "auth.errorGeneric": "خطأ: {msg}"
+  "auth.errorGeneric": "خطأ: {msg}",
+  "auth.errorTooManyRequests": "محاولات فاشلة كثيرة جدًا. يرجى الانتظار لحظة والمحاولة مرة أخرى.",
+  "auth.errorNetworkFailed": "خطأ في الشبكة. يرجى التحقق من اتصالك بالإنترنت."
 }

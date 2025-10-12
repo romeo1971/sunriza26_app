@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "リクエストがキャンセルされました。",
   "auth.errorOperationNotAllowed": "Googleログインが有効になっていません。",
   "auth.errorUnauthorizedDomain": "未承認のドメインです。",
-  "auth.errorInvalidCredential": "無効な認証情報です。",
+  "auth.errorInvalidCredential": "入力されたログイン情報が正しくありません。メールアドレスとパスワードを確認してください。",
   "auth.errorGoogleSignInFailed": "Googleログインに失敗しました。",
-  "auth.errorGeneric": "エラー: {msg}"
+  "auth.errorGeneric": "エラー: {msg}",
+  "auth.errorTooManyRequests": "試行回数が多すぎます。しばらく待ってから再度お試しください。",
+  "auth.errorNetworkFailed": "ネットワークエラー。インターネット接続を確認してください。"
 }

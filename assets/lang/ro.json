@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Cerere anulată.",
   "auth.errorOperationNotAllowed": "Conectarea cu Google nu este activată.",
   "auth.errorUnauthorizedDomain": "Domeniu neautorizat.",
-  "auth.errorInvalidCredential": "Credențiale invalide.",
+  "auth.errorInvalidCredential": "Datele de conectare introduse sunt incorecte. Verifică email-ul și parola.",
   "auth.errorGoogleSignInFailed": "Conectare cu Google eșuată.",
-  "auth.errorGeneric": "Eroare: {msg}"
+  "auth.errorGeneric": "Eroare: {msg}",
+  "auth.errorTooManyRequests": "Prea multe încercări eșuate. Așteaptă puțin și încearcă din nou.",
+  "auth.errorNetworkFailed": "Eroare de rețea. Verifică conexiunea la internet."
 }

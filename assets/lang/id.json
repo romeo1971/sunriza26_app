@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Permintaan dibatalkan.",
   "auth.errorOperationNotAllowed": "Masuk dengan Google tidak diaktifkan.",
   "auth.errorUnauthorizedDomain": "Domain tidak sah.",
-  "auth.errorInvalidCredential": "Kredensial tidak valid.",
+  "auth.errorInvalidCredential": "Kredensial login yang dimasukkan salah. Periksa email dan kata sandi Anda.",
   "auth.errorGoogleSignInFailed": "Masuk dengan Google gagal.",
-  "auth.errorGeneric": "Kesalahan: {msg}"
+  "auth.errorGeneric": "Kesalahan: {msg}",
+  "auth.errorTooManyRequests": "Terlalu banyak percobaan gagal. Tunggu sebentar dan coba lagi.",
+  "auth.errorNetworkFailed": "Kesalahan jaringan. Periksa koneksi internet Anda."
 }

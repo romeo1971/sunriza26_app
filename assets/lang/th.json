@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "ยกเลิกคำขอ",
   "auth.errorOperationNotAllowed": "ไม่ได้เปิดใช้งานการเข้าสู่ระบบด้วย Google",
   "auth.errorUnauthorizedDomain": "โดเมนที่ไม่ได้รับอนุญาต",
-  "auth.errorInvalidCredential": "ข้อมูลรับรองไม่ถูกต้อง",
+  "auth.errorInvalidCredential": "ข้อมูลการเข้าสู่ระบบที่ป้อนไม่ถูกต้อง โปรดตรวจสอบอีเมลและรหัสผ่านของคุณ",
   "auth.errorGoogleSignInFailed": "การเข้าสู่ระบบด้วย Google ล้มเหลว",
-  "auth.errorGeneric": "ข้อผิดพลาด: {msg}"
+  "auth.errorGeneric": "ข้อผิดพลาด: {msg}",
+  "auth.errorTooManyRequests": "พยายามล้มเหลวมากเกินไป โปรดรอสักครู่แล้วลองอีกครั้ง",
+  "auth.errorNetworkFailed": "ข้อผิดพลาดเครือข่าย โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของคุณ"
 }

@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "요청이 취소되었습니다.",
   "auth.errorOperationNotAllowed": "Google 로그인이 활성화되어 있지 않습니다.",
   "auth.errorUnauthorizedDomain": "승인되지 않은 도메인입니다.",
-  "auth.errorInvalidCredential": "잘못된 자격 증명입니다.",
+  "auth.errorInvalidCredential": "입력한 로그인 정보가 올바르지 않습니다. 이메일과 비밀번호를 확인하세요.",
   "auth.errorGoogleSignInFailed": "Google 로그인에 실패했습니다.",
-  "auth.errorGeneric": "오류: {msg}"
+  "auth.errorGeneric": "오류: {msg}",
+  "auth.errorTooManyRequests": "실패한 시도가 너무 많습니다. 잠시 기다렸다가 다시 시도하세요.",
+  "auth.errorNetworkFailed": "네트워크 오류. 인터넷 연결을 확인하세요."
 }

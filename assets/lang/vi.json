@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Yêu cầu đã bị hủy.",
   "auth.errorOperationNotAllowed": "Đăng nhập bằng Google chưa được kích hoạt.",
   "auth.errorUnauthorizedDomain": "Tên miền không được ủy quyền.",
-  "auth.errorInvalidCredential": "Thông tin đăng nhập không hợp lệ.",
+  "auth.errorInvalidCredential": "Thông tin đăng nhập đã nhập không chính xác. Vui lòng kiểm tra email và mật khẩu của bạn.",
   "auth.errorGoogleSignInFailed": "Đăng nhập bằng Google thất bại.",
-  "auth.errorGeneric": "Lỗi: {msg}"
+  "auth.errorGeneric": "Lỗi: {msg}",
+  "auth.errorTooManyRequests": "Quá nhiều lần thử không thành công. Vui lòng đợi một chút và thử lại.",
+  "auth.errorNetworkFailed": "Lỗi mạng. Vui lòng kiểm tra kết nối internet của bạn."
 }

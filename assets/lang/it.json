@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Richiesta annullata.",
   "auth.errorOperationNotAllowed": "L'accesso con Google non è abilitato.",
   "auth.errorUnauthorizedDomain": "Dominio non autorizzato.",
-  "auth.errorInvalidCredential": "Credenziali non valide.",
+  "auth.errorInvalidCredential": "Le credenziali di accesso inserite sono errate. Controlla email e password.",
   "auth.errorGoogleSignInFailed": "Accesso con Google fallito.",
-  "auth.errorGeneric": "Errore: {msg}"
+  "auth.errorGeneric": "Errore: {msg}",
+  "auth.errorTooManyRequests": "Troppi tentativi falliti. Attendi un momento e riprova.",
+  "auth.errorNetworkFailed": "Errore di rete. Controlla la tua connessione internet."
 }

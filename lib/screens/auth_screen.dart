@@ -306,7 +306,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                                   Navigator.of(
                                                     dialogContext,
                                                   ).pop();
-                                                  setState(() {
+    setState(() {
                                                     _enteredEmail =
                                                         enteredEmail;
                                                     _enteredPassword =
@@ -545,10 +545,10 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
-      await _authService.signInWithEmailAndPassword(
-        email: _enteredEmail,
-        password: _enteredPassword,
-      );
+        await _authService.signInWithEmailAndPassword(
+          email: _enteredEmail,
+          password: _enteredPassword,
+        );
     } on FirebaseAuthException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
@@ -568,8 +568,17 @@ class _AuthScreenState extends State<AuthScreen> {
           case 'wrong-password':
             errorMessage = loc.t('auth.errorWrongPassword');
             break;
+          case 'invalid-credential':
+            errorMessage = loc.t('auth.errorInvalidCredential');
+            break;
+          case 'too-many-requests':
+            errorMessage = loc.t('auth.errorTooManyRequests');
+            break;
+          case 'network-request-failed':
+            errorMessage = loc.t('auth.errorNetworkFailed');
+            break;
           default:
-            errorMessage = error.message ?? loc.t('auth.errorDefault');
+            errorMessage = loc.t('auth.errorDefault');
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -597,28 +606,28 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
-      await _authService.createUserWithEmailAndPassword(
-        email: _enteredEmail,
-        password: _enteredPassword,
-      );
-      if (mounted) {
+        await _authService.createUserWithEmailAndPassword(
+          email: _enteredEmail,
+          password: _enteredPassword,
+        );
+        if (mounted) {
         final loc = Provider.of<LocalizationService>(context, listen: false);
-        ScaffoldMessenger.of(context).showSnackBar(
+          ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(loc.t('auth.registerSuccess')),
             backgroundColor: const Color(0xFF00FF94),
-          ),
-        );
-        setState(() {
-          _enteredEmail = '';
-          _enteredPassword = '';
-          _isEmailValid = false;
-          _isPasswordValid = false;
-          _emailController.clear();
-          _passwordController.clear();
-        });
-        await _authService.signOut();
-        return;
+            ),
+          );
+          setState(() {
+            _enteredEmail = '';
+            _enteredPassword = '';
+            _isEmailValid = false;
+            _isPasswordValid = false;
+            _emailController.clear();
+            _passwordController.clear();
+          });
+          await _authService.signOut();
+          return;
       }
     } on FirebaseAuthException catch (error) {
       if (mounted) {
@@ -648,8 +657,17 @@ class _AuthScreenState extends State<AuthScreen> {
           case 'missing-email':
             errorMessage = loc.t('auth.errorMissingEmail');
             break;
+          case 'invalid-credential':
+            errorMessage = loc.t('auth.errorInvalidCredential');
+            break;
+          case 'too-many-requests':
+            errorMessage = loc.t('auth.errorTooManyRequests');
+            break;
+          case 'network-request-failed':
+            errorMessage = loc.t('auth.errorNetworkFailed');
+            break;
           default:
-            errorMessage = error.message ?? loc.t('auth.errorDefault');
+            errorMessage = loc.t('auth.errorDefault');
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -773,7 +791,7 @@ class _AuthScreenState extends State<AuthScreen> {
             colors: [Color(0xFF000000), Color(0xFF111111)],
           ),
         ),
-        child: Column(
+            child: Column(
           children: [
             // Top Navigation - Sprache + Login/Register
             SafeArea(
@@ -819,9 +837,9 @@ class _AuthScreenState extends State<AuthScreen> {
                         style: const TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                        ),
-                      ),
+                    fontSize: 16,
+                  ),
+                ),
                     ),
                     const Text(
                       '/',
@@ -947,7 +965,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         child: SizedBox(
                           width: MediaQuery.of(context).size.width * 0.7,
                           child: Column(
-                            children: [
+                  children: [
                               ShaderMask(
                                 shaderCallback: (bounds) =>
                                     gradients.magentaBlue.createShader(bounds),
@@ -1004,9 +1022,9 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ),
                       const SizedBox(height: 60),
-                    ],
-                  ),
-                ),
+              ],
+            ),
+          ),
               ),
             ),
           ],
@@ -1079,44 +1097,44 @@ class _AuthScreenState extends State<AuthScreen> {
                 borderRadius: BorderRadius.circular(8),
               ),
               child: ElevatedButton(
-                onPressed: isValidEmail
-                    ? () async {
-                        if (formKey.currentState!.validate()) {
-                          try {
-                            await FirebaseAuth.instance.sendPasswordResetEmail(
-                              email: emailController.text.trim(),
-                            );
-                            if (dialogContext.mounted) {
-                              Navigator.of(dialogContext).pop();
-                              ScaffoldMessenger.of(dialogContext).showSnackBar(
+              onPressed: isValidEmail
+                  ? () async {
+                      if (formKey.currentState!.validate()) {
+                        try {
+                          await FirebaseAuth.instance.sendPasswordResetEmail(
+                            email: emailController.text.trim(),
+                          );
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
                                 SnackBar(
-                                  content: Text(
+                                content: Text(
                                     loc.t('auth.passwordResetSuccess'),
                                     style: const TextStyle(color: Colors.white),
-                                  ),
-                                  backgroundColor: AppColors.primaryGreen,
                                 ),
-                              );
-                            }
-                          } on FirebaseAuthException catch (e) {
-                            if (dialogContext.mounted) {
-                              Navigator.of(dialogContext).pop();
-                              ScaffoldMessenger.of(dialogContext).showSnackBar(
-                                SnackBar(
+                                  backgroundColor: AppColors.primaryGreen,
+                              ),
+                            );
+                          }
+                        } on FirebaseAuthException catch (e) {
+                          if (dialogContext.mounted) {
+                            Navigator.of(dialogContext).pop();
+                            ScaffoldMessenger.of(dialogContext).showSnackBar(
+                              SnackBar(
                                   content: Text(
                                     loc.t(
                                       'auth.errorGeneric',
                                       params: {'msg': e.message ?? ''},
                                     ),
                                   ),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
-                            }
+                                backgroundColor: Colors.red,
+                              ),
+                            );
                           }
                         }
                       }
-                    : null,
+                    }
+                  : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.transparent,
                   shadowColor: Colors.transparent,

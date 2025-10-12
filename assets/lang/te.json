@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "అభ్యర్థన రద్దు చేయబడింది.",
   "auth.errorOperationNotAllowed": "Google లాగిన్ ప్రారంభించబడలేదు.",
   "auth.errorUnauthorizedDomain": "అనధికృత డొమైన్.",
-  "auth.errorInvalidCredential": "చెల్లని ప్రమాణపత్రాలు.",
+  "auth.errorInvalidCredential": "నమోదు చేసిన లాగిన్ వివరాలు తప్పు. దయచేసి మీ ఇమెయిల్ మరియు పాస్‌వర్డ్ తనిఖీ చేయండి.",
   "auth.errorGoogleSignInFailed": "Google లాగిన్ విఫలమైంది.",
-  "auth.errorGeneric": "లోపం: {msg}"
+  "auth.errorGeneric": "లోపం: {msg}",
+  "auth.errorTooManyRequests": "చాలా విఫల ప్రయత్నాలు. దయచేసి కొంత సమయం వేచి ఉండండి మరియు మళ్లీ ప్రయత్నించండి.",
+  "auth.errorNetworkFailed": "నెట్‌వర్క్ లోపం. దయచేసి మీ ఇంటర్నెట్ కనెక్షన్ తనిఖీ చేయండి."
 }

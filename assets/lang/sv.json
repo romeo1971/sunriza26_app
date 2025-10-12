@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Begäran avbröts.",
   "auth.errorOperationNotAllowed": "Inloggning med Google är inte aktiverad.",
   "auth.errorUnauthorizedDomain": "Obehörig domän.",
-  "auth.errorInvalidCredential": "Ogiltiga inloggningsuppgifter.",
+  "auth.errorInvalidCredential": "De angivna inloggningsuppgifterna är felaktiga. Kontrollera din e-post och ditt lösenord.",
   "auth.errorGoogleSignInFailed": "Inloggning med Google misslyckades.",
-  "auth.errorGeneric": "Fel: {msg}"
+  "auth.errorGeneric": "Fel: {msg}",
+  "auth.errorTooManyRequests": "För många misslyckade försök. Vänta en stund och försök igen.",
+  "auth.errorNetworkFailed": "Nätverksfel. Kontrollera din internetanslutning."
 }

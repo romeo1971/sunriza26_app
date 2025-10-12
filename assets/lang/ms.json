@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Permintaan dibatalkan.",
   "auth.errorOperationNotAllowed": "Log masuk Google tidak didayakan.",
   "auth.errorUnauthorizedDomain": "Domain tidak dibenarkan.",
-  "auth.errorInvalidCredential": "Bukti kelayakan tidak sah.",
+  "auth.errorInvalidCredential": "Kelayakan log masuk yang dimasukkan adalah salah. Sila semak e-mel dan kata laluan anda.",
   "auth.errorGoogleSignInFailed": "Log masuk Google gagal.",
-  "auth.errorGeneric": "Ralat: {msg}"
+  "auth.errorGeneric": "Ralat: {msg}",
+  "auth.errorTooManyRequests": "Terlalu banyak percubaan gagal. Sila tunggu sebentar dan cuba lagi.",
+  "auth.errorNetworkFailed": "Ralat rangkaian. Sila semak sambungan internet anda."
 }

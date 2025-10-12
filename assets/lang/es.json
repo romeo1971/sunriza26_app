@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Solicitud cancelada.",
   "auth.errorOperationNotAllowed": "El inicio de sesión con Google no está habilitado.",
   "auth.errorUnauthorizedDomain": "Dominio no autorizado.",
-  "auth.errorInvalidCredential": "Credenciales inválidas.",
+  "auth.errorInvalidCredential": "Las credenciales de inicio de sesión ingresadas son incorrectas. Verifica tu correo y contraseña.",
   "auth.errorGoogleSignInFailed": "El inicio de sesión con Google falló.",
-  "auth.errorGeneric": "Error: {msg}"
+  "auth.errorGeneric": "Error: {msg}",
+  "auth.errorTooManyRequests": "Demasiados intentos fallidos. Espera un momento e inténtalo de nuevo.",
+  "auth.errorNetworkFailed": "Error de red. Verifica tu conexión a internet."
 }

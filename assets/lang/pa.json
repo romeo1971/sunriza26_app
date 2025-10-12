@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "ਬੇਨਤੀ ਰੱਦ ਕੀਤੀ ਗਈ।",
   "auth.errorOperationNotAllowed": "Google ਲੌਗਿਨ ਸਮਰੱਥ ਨਹੀਂ ਹੈ।",
   "auth.errorUnauthorizedDomain": "ਅਣਅਧਿਕਾਰਤ ਡੋਮੇਨ।",
-  "auth.errorInvalidCredential": "ਅਵੈਧ ਪ੍ਰਮਾਣ ਪੱਤਰ।",
+  "auth.errorInvalidCredential": "ਦਰਜ ਕੀਤੇ ਲੌਗਇਨ ਵੇਰਵੇ ਗਲਤ ਹਨ। ਕਿਰਪਾ ਕਰਕੇ ਆਪਣਾ ਈਮੇਲ ਅਤੇ ਪਾਸਵਰਡ ਜਾਂਚੋ।",
   "auth.errorGoogleSignInFailed": "Google ਲੌਗਿਨ ਫੇਲ੍ਹ।",
-  "auth.errorGeneric": "ਗਲਤੀ: {msg}"
+  "auth.errorGeneric": "ਗਲਤੀ: {msg}",
+  "auth.errorTooManyRequests": "ਬਹੁਤ ਸਾਰੀਆਂ ਅਸਫਲ ਕੋਸ਼ਿਸ਼ਾਂ। ਕਿਰਪਾ ਕਰਕੇ ਥੋੜ੍ਹੀ ਦੇਰ ਉਡੀਕ ਕਰੋ ਅਤੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",
+  "auth.errorNetworkFailed": "ਨੈੱਟਵਰਕ ਗਲਤੀ। ਕਿਰਪਾ ਕਰਕੇ ਆਪਣਾ ਇੰਟਰਨੈਟ ਕਨੈਕਸ਼ਨ ਜਾਂਚੋ।"
 }

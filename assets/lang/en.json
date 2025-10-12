@@ -283,7 +283,9 @@
   "auth.errorCancelledPopup": "Request cancelled.",
   "auth.errorOperationNotAllowed": "Google Sign-In is not enabled.",
   "auth.errorUnauthorizedDomain": "Domain not authorized. Add localhost to Firebase.",
-  "auth.errorInvalidCredential": "Invalid credentials.",
+  "auth.errorInvalidCredential": "The entered login credentials are incorrect. Please check your email and password.",
   "auth.errorGoogleSignInFailed": "Google sign-in failed.",
-  "auth.errorGeneric": "Error: {msg}"
+  "auth.errorGeneric": "Error: {msg}",
+  "auth.errorTooManyRequests": "Too many failed attempts. Please wait a moment and try again.",
+  "auth.errorNetworkFailed": "Network error. Please check your internet connection."
 }

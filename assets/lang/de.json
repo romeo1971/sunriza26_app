@@ -283,7 +283,9 @@
   "auth.errorCancelledPopup": "Anfrage abgebrochen.",
   "auth.errorOperationNotAllowed": "Google Sign-In ist nicht aktiviert.",
   "auth.errorUnauthorizedDomain": "Domain nicht autorisiert. Füge localhost in Firebase hinzu.",
-  "auth.errorInvalidCredential": "Ungültige Anmeldedaten.",
+  "auth.errorInvalidCredential": "Die eingegebenen Anmeldedaten sind falsch. Bitte überprüfe deine E-Mail und dein Passwort.",
+  "auth.errorTooManyRequests": "Zu viele fehlgeschlagene Versuche. Bitte warte einen Moment und versuche es erneut.",
+  "auth.errorNetworkFailed": "Netzwerkfehler. Bitte überprüfe deine Internetverbindung.",
   "auth.errorGoogleSignInFailed": "Google-Anmeldung fehlgeschlagen.",
   "auth.errorGeneric": "Fehler: {msg}"
 }

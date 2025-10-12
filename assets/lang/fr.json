@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Demande annulée.",
   "auth.errorOperationNotAllowed": "La connexion avec Google n'est pas activée.",
   "auth.errorUnauthorizedDomain": "Domaine non autorisé.",
-  "auth.errorInvalidCredential": "Identifiants invalides.",
+  "auth.errorInvalidCredential": "Les identifiants de connexion saisis sont incorrects. Vérifiez votre e-mail et mot de passe.",
   "auth.errorGoogleSignInFailed": "La connexion avec Google a échoué.",
-  "auth.errorGeneric": "Erreur : {msg}"
+  "auth.errorGeneric": "Erreur : {msg}",
+  "auth.errorTooManyRequests": "Trop de tentatives échouées. Veuillez patienter un moment et réessayer.",
+  "auth.errorNetworkFailed": "Erreur réseau. Vérifiez votre connexion internet."
 }

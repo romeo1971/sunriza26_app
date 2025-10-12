@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Запит скасовано.",
   "auth.errorOperationNotAllowed": "Вхід через Google не ввімкнено.",
   "auth.errorUnauthorizedDomain": "Неавторизований домен.",
-  "auth.errorInvalidCredential": "Невірні облікові дані.",
+  "auth.errorInvalidCredential": "Введені дані для входу неправильні. Перевірте вашу електронну адресу та пароль.",
   "auth.errorGoogleSignInFailed": "Вхід через Google не вдався.",
-  "auth.errorGeneric": "Помилка: {msg}"
+  "auth.errorGeneric": "Помилка: {msg}",
+  "auth.errorTooManyRequests": "Занадто багато невдалих спроб. Зачекайте трохи і спробуйте ще раз.",
+  "auth.errorNetworkFailed": "Помилка мережі. Перевірте підключення до інтернету."
 }

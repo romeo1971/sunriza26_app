@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Kinansela ang request.",
   "auth.errorOperationNotAllowed": "Hindi naka-enable ang pag-login gamit ang Google.",
   "auth.errorUnauthorizedDomain": "Hindi awtorisadong domain.",
-  "auth.errorInvalidCredential": "Hindi wastong credentials.",
+  "auth.errorInvalidCredential": "Ang ipinasok na login credentials ay hindi tama. Pakisuri ang iyong email at password.",
   "auth.errorGoogleSignInFailed": "Nabigo ang pag-login gamit ang Google.",
-  "auth.errorGeneric": "Error: {msg}"
+  "auth.errorGeneric": "Error: {msg}",
+  "auth.errorTooManyRequests": "Masyadong maraming nabigong pagtatangka. Mangyaring maghintay sandali at subukan muli.",
+  "auth.errorNetworkFailed": "Network error. Pakisuri ang iyong internet connection."
 }

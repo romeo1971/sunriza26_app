@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "অনুরোধ বাতিল করা হয়েছে।",
   "auth.errorOperationNotAllowed": "Google লগইন সক্রিয় নেই।",
   "auth.errorUnauthorizedDomain": "অননুমোদিত ডোমেইন।",
-  "auth.errorInvalidCredential": "অবৈধ শংসাপত্র।",
+  "auth.errorInvalidCredential": "প্রবেশ করা লগইন তথ্য ভুল। দয়া করে আপনার ইমেল এবং পাসওয়ার্ড পরীক্ষা করুন।",
   "auth.errorGoogleSignInFailed": "Google লগইন ব্যর্থ হয়েছে।",
-  "auth.errorGeneric": "ত্রুটি: {msg}"
+  "auth.errorGeneric": "ত্রুটি: {msg}",
+  "auth.errorTooManyRequests": "অনেক বেশি ব্যর্থ প্রচেষ্টা। দয়া করে একটু অপেক্ষা করুন এবং আবার চেষ্টা করুন।",
+  "auth.errorNetworkFailed": "নেটওয়ার্ক ত্রুটি। দয়া করে আপনার ইন্টারনেট সংযোগ পরীক্ষা করুন।"
 }

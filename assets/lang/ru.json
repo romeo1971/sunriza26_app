@@ -276,7 +276,9 @@
   "auth.errorCancelledPopup": "Запрос отменен.",
   "auth.errorOperationNotAllowed": "Вход через Google не включен.",
   "auth.errorUnauthorizedDomain": "Неавторизованный домен.",
-  "auth.errorInvalidCredential": "Неверные учетные данные.",
+  "auth.errorInvalidCredential": "Введенные учетные данные неверны. Проверьте адрес электронной почты и пароль.",
   "auth.errorGoogleSignInFailed": "Вход через Google не удался.",
-  "auth.errorGeneric": "Ошибка: {msg}"
+  "auth.errorGeneric": "Ошибка: {msg}",
+  "auth.errorTooManyRequests": "Слишком много неудачных попыток. Подождите немного и попробуйте снова.",
+  "auth.errorNetworkFailed": "Ошибка сети. Проверьте подключение к интернету."
 }
