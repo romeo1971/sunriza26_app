@@ -536,11 +536,7 @@ class _AuthScreenState extends State<AuthScreen> {
           );
         },
       ),
-    ).then((_) {
-      // Controller nach Dialog-Schließung aufräumen
-      emailController.dispose();
-      passwordController.dispose();
-    });
+    );
   }
 
   void _submitLogin() async {
