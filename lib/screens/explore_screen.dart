@@ -22,6 +22,10 @@ class ExploreScreenState extends State<ExploreScreen> {
   List<AvatarData> _cachedAvatars = [];
   bool _isInitialized = false;
 
+  // PageController für persistente Scroll-Position
+  late PageController _pageController;
+  int _currentPageIndex = 0;
+
   // Explorer Timeline State
   Timer? _explorerTimer;
   final Map<String, List<String>> _explorerImages =
@@ -41,6 +45,7 @@ class ExploreScreenState extends State<ExploreScreen> {
   @override
   void initState() {
     super.initState();
+    _pageController = PageController(initialPage: _currentPageIndex);
     _loadFavorites();
   }
 
@@ -54,6 +59,7 @@ class ExploreScreenState extends State<ExploreScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _pageController.dispose();
     _explorerTimer?.cancel();
     _currentAvatarSub?.cancel();
 
@@ -287,9 +293,11 @@ class ExploreScreenState extends State<ExploreScreen> {
         if (snapshot.connectionState == ConnectionState.waiting) {
           if (_cachedAvatars.isNotEmpty) {
             return PageView.builder(
+              controller: _pageController,
               scrollDirection: Axis.vertical,
               itemCount: _cachedAvatars.length,
               onPageChanged: (index) async {
+                _currentPageIndex = index; // Position speichern
                 final avatarId = _cachedAvatars[index].id;
                 _currentAvatarId = avatarId;
                 widget.onCurrentAvatarChanged?.call(avatarId);
@@ -363,9 +371,11 @@ class ExploreScreenState extends State<ExploreScreen> {
         }
 
         return PageView.builder(
+          controller: _pageController,
           scrollDirection: Axis.vertical,
           itemCount: _cachedAvatars.length,
           onPageChanged: (index) async {
+            _currentPageIndex = index; // Position speichern
             final avatarId = _cachedAvatars[index].id;
             _currentAvatarId = avatarId;
             widget.onCurrentAvatarChanged?.call(avatarId);

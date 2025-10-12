@@ -104,13 +104,19 @@ class AvatarBottomNavBar extends StatelessWidget {
           arguments: args ?? {'avatarId': avatarId},
         );
       },
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 2),
-          Text(label, style: TextStyle(color: color, fontSize: 8)),
-        ],
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: color, size: 20),
+              const SizedBox(height: 2),
+              Text(label, style: TextStyle(color: color, fontSize: 8)),
+            ],
+          ),
+        ),
       ),
     );
   }

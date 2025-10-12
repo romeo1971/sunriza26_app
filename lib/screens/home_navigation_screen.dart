@@ -132,49 +132,52 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
             ),
         ],
       ),
-      bottomNavigationBar: Container(
-        height: 60,
-        decoration: BoxDecoration(
-          color: Colors.black,
-          border: Border(
-            top: BorderSide(
-              color: Colors.white.withValues(alpha: 0.1),
-              width: 1,
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Container(
+          height: 64,
+          decoration: BoxDecoration(
+            color: Colors.black,
+            border: Border(
+              top: BorderSide(
+                color: Colors.white.withValues(alpha: 0.1),
+                width: 1,
+              ),
             ),
           ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            // Home
-            _buildNavItem(
-              iconFilled: Icons.home,
-              iconOutlined: Icons.home_outlined,
-              label: 'Home',
-              index: 0,
-            ),
-            // Meine Avatare
-            _buildNavItem(
-              iconFilled: Icons.people,
-              iconOutlined: Icons.people_outline,
-              label: 'Meine Avatare',
-              index: 1,
-            ),
-            // Favoriten
-            _buildNavItem(
-              iconFilled: Icons.favorite,
-              iconOutlined: Icons.favorite_border,
-              label: 'Favoriten',
-              index: 2,
-            ),
-            // Profil
-            _buildNavItem(
-              iconFilled: Icons.person,
-              iconOutlined: Icons.person_outline,
-              label: 'Profil',
-              index: 3,
-            ),
-          ],
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              // Home
+              _buildNavItem(
+                iconFilled: Icons.home,
+                iconOutlined: Icons.home_outlined,
+                label: 'Home',
+                index: 0,
+              ),
+              // Meine Avatare
+              _buildNavItem(
+                iconFilled: Icons.people,
+                iconOutlined: Icons.people_outline,
+                label: 'Meine Avatare',
+                index: 1,
+              ),
+              // Favoriten
+              _buildNavItem(
+                iconFilled: Icons.favorite,
+                iconOutlined: Icons.favorite_border,
+                label: 'Favoriten',
+                index: 2,
+              ),
+              // Profil
+              _buildNavItem(
+                iconFilled: Icons.person,
+                iconOutlined: Icons.person_outline,
+                label: 'Profil',
+                index: 3,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -197,39 +200,42 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
         }
         setState(() => _currentIndex = index);
       },
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (isChatActive)
-              ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [
-                    Color(0xFFE91E63), // Magenta
-                    AppColors.lightBlue, // Blue
-                    Color(0xFF00E5FF), // Cyan
-                  ],
-                ).createShader(bounds),
-                child: Icon(iconFilled, color: Colors.white, size: 21),
-              )
-            else
-              Icon(
-                isSelected ? iconFilled : iconOutlined,
-                color: isSelected ? Colors.white : Colors.grey.shade400,
-                size: 21,
+      child: Align(
+        alignment: Alignment.topCenter,
+        child: Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (isChatActive)
+                ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [
+                      Color(0xFFE91E63), // Magenta
+                      AppColors.lightBlue, // Blue
+                      Color(0xFF00E5FF), // Cyan
+                    ],
+                  ).createShader(bounds),
+                  child: Icon(iconFilled, color: Colors.white, size: 20),
+                )
+              else
+                Icon(
+                  isSelected ? iconFilled : iconOutlined,
+                  color: isSelected ? Colors.white : Colors.grey.shade400,
+                  size: 20,
+                ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  color: (isSelected || isChatActive)
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.5),
+                  fontSize: 8,
+                ),
               ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: (isSelected || isChatActive)
-                    ? Colors.white
-                    : Colors.white.withValues(alpha: 0.5),
-                fontSize: 8,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

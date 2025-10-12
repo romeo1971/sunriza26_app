@@ -126,17 +126,51 @@ class _AvatarListScreenState extends State<AvatarListScreen>
         ),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          style: IconButton.styleFrom(
+            overlayColor: Colors.white.withValues(alpha: 0.1),
+          ),
+          icon: const Icon(Icons.menu, color: Colors.white),
+          onPressed: () => Scaffold.of(context).openDrawer(),
+        ),
         actions: [
-          // Avatar Editor wird jetzt über Avatar Details aufgerufen
+          // Refresh Icon mit GMBC Gradient
           IconButton(
             onPressed: _loadAvatars,
-            icon: const Icon(Icons.refresh),
+            style: IconButton.styleFrom(
+              overlayColor: Colors.white.withValues(alpha: 0.1),
+            ),
+            icon: ShaderMask(
+              shaderCallback: (bounds) => const LinearGradient(
+                colors: [
+                  Color(0xFFE91E63),
+                  AppColors.lightBlue,
+                  Color(0xFF00E5FF),
+                ],
+              ).createShader(bounds),
+              child: const Icon(Icons.refresh, color: Colors.white),
+            ),
             tooltip: loc.t('avatars.refreshTooltip'),
           ),
+          // Add Icon mit GMBC Gradient
           if (!_isLoading && _avatars.isNotEmpty)
             IconButton(
               onPressed: _createNewAvatar,
-              icon: const Icon(Icons.add),
+              style: IconButton.styleFrom(
+                overlayColor: Colors.white.withValues(alpha: 0.1),
+              ),
+              icon: ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  colors: [
+                    Color(0xFFE91E63),
+                    AppColors.lightBlue,
+                    Color(0xFF00E5FF),
+                  ],
+                ).createShader(bounds),
+                child: const Icon(Icons.add, color: Colors.white),
+              ),
               tooltip: loc.t('avatars.createTooltip'),
             ),
         ],
@@ -305,261 +339,280 @@ class _AvatarListScreenState extends State<AvatarListScreen>
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: InkWell(
-        onTap: () => _openAvatarChat(avatar),
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  // Avatar-Bild 9:16 (ca. 2.5x höher) + isPublic Toggle
-                  Builder(
-                    builder: (context) {
-                      const double h = 150; // ~2.5 * 60
-                      const double w = h * 9 / 16;
-                      return Stack(
-                        children: [
-                          Container(
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    // Avatar-Bild 9:16 (ca. 2.5x höher) - MIT Chat-Klick
+                    Builder(
+                      builder: (context) {
+                        const double h = 150; // ~2.5 * 60
+                        const double w = h * 9 / 16;
+                        return InkWell(
+                          onTap: () => _openAvatarChat(avatar),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Container(
                             width: w,
                             height: h,
                             decoration: BoxDecoration(
-                              color: const Color(0x1400DFA8),
                               borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: AppColors.accentGreenDark,
-                                width: 2,
+                              border: Border.all(color: Colors.white, width: 1),
+                            ),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(11),
+                              child: avatar.avatarImageUrl != null
+                                  ? Image.network(
+                                      avatar.avatarImageUrl!,
+                                      width: w,
+                                      height: h,
+                                      fit: BoxFit.cover,
+                                      errorBuilder:
+                                          (context, error, stackTrace) =>
+                                              _buildDefaultAvatar(),
+                                    )
+                                  : Container(
+                                      color: const Color(0x1400DFA8),
+                                      child: _buildDefaultAvatar(),
+                                    ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(width: 16),
+                    // Avatar-Info
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Nickname (falls vorhanden)
+                          if (avatar.nickname != null &&
+                              avatar.nickname!.isNotEmpty)
+                            Text(
+                              avatar.nickname!,
+                              style: const TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
                               ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                            clipBehavior: Clip.hardEdge,
-                            child: avatar.avatarImageUrl != null
-                                ? Image.network(
-                                    avatar.avatarImageUrl!,
-                                    width: w,
-                                    height: h,
-                                    fit: BoxFit.cover,
-                                    errorBuilder:
-                                        (context, error, stackTrace) =>
-                                            _buildDefaultAvatar(),
-                                  )
-                                : _buildDefaultAvatar(),
-                          ),
-                          // isPublic Toggle - oben rechts
-                          Positioned(
-                            top: 8,
-                            right: 8,
-                            child: GestureDetector(
-                              onTap: () => _togglePublic(avatar),
-                              child: Container(
-                                width: 28,
-                                height: 28,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: (avatar.isPublic ?? false)
-                                      ? const LinearGradient(
-                                          colors: [
-                                            Color(0xFFE91E63), // Magenta
-                                            AppColors.lightBlue, // Blue
-                                            Color(0xFF00E5FF), // Cyan
-                                          ],
-                                        )
-                                      : null,
-                                  color: (avatar.isPublic ?? false)
-                                      ? null
-                                      : Colors.black.withValues(alpha: 0.5),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.3),
-                                    width: 1,
-                                  ),
-                                ),
-                                child: Icon(
-                                  (avatar.isPublic ?? false)
-                                      ? Icons.public
-                                      : Icons.lock,
-                                  size: 16,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                  const SizedBox(width: 16),
-                  // Avatar-Info
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Nickname (falls vorhanden)
-                        if (avatar.nickname != null &&
-                            avatar.nickname!.isNotEmpty)
+                          // Vorname + Nachname (immer anzeigen)
                           Text(
-                            avatar.nickname!,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.white,
-                            ),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        // Vorname + Nachname (immer anzeigen)
-                        Text(
-                          [
-                            avatar.firstName,
-                            if (avatar.lastName != null &&
-                                avatar.lastName!.isNotEmpty)
-                              avatar.lastName!,
-                          ].join(' '),
-                          style: TextStyle(
-                            fontSize:
-                                (avatar.nickname != null &&
-                                    avatar.nickname!.isNotEmpty)
-                                ? 16
-                                : 20,
-                            fontWeight:
-                                (avatar.nickname != null &&
-                                    avatar.nickname!.isNotEmpty)
-                                ? FontWeight.normal
-                                : FontWeight.w600,
-                            color:
-                                (avatar.nickname != null &&
-                                    avatar.nickname!.isNotEmpty)
-                                ? Colors.grey.shade600
-                                : Colors.white,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        // "Noch keine Nachrichten" ENTFERNT - nur wenn tatsächlich eine Message da ist
-                        if (avatar.lastMessage != null &&
-                            avatar.lastMessage!.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            avatar.lastMessage!,
+                            [
+                              avatar.firstName,
+                              if (avatar.lastName != null &&
+                                  avatar.lastName!.isNotEmpty)
+                                avatar.lastName!,
+                            ].join(' '),
                             style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.grey.shade400,
+                              fontSize:
+                                  (avatar.nickname != null &&
+                                      avatar.nickname!.isNotEmpty)
+                                  ? 16
+                                  : 20,
+                              fontWeight:
+                                  (avatar.nickname != null &&
+                                      avatar.nickname!.isNotEmpty)
+                                  ? FontWeight.normal
+                                  : FontWeight.w600,
+                              color:
+                                  (avatar.nickname != null &&
+                                      avatar.nickname!.isNotEmpty)
+                                  ? Colors.grey.shade600
+                                  : Colors.white,
                             ),
-                            maxLines: 2,
+                            maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                decoration: BoxDecoration(
-                  color: const Color(0x1400DFA8),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    IconButton(
-                      tooltip: 'Fakten prüfen',
-                      icon: const Icon(
-                        Icons.fact_check,
-                        size: 18,
-                        color: Colors.white,
-                      ),
-                      onPressed: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => AvatarReviewFactsScreen(
-                              avatarId: avatar.id,
-                              fromScreen: 'avatar-list',
+                          // "Noch keine Nachrichten" ENTFERNT - nur wenn tatsächlich eine Message da ist
+                          if (avatar.lastMessage != null &&
+                              avatar.lastMessage!.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              avatar.lastMessage!,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade400,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                    IconButton(
-                      tooltip: loc.t('gallery.title'),
-                      icon: const Icon(
-                        Icons.photo_library_outlined,
-                        size: 18,
-                        color: Colors.white,
+                          ],
+                        ],
                       ),
-                      onPressed: () async {
-                        await Navigator.pushNamed(
-                          context,
-                          '/media-gallery',
-                          arguments: {
-                            'avatarId': avatar.id,
-                            'fromScreen': 'avatar-list',
-                          },
-                        );
-                      },
-                    ),
-                    IconButton(
-                      tooltip: loc.t('playlists.title'),
-                      icon: const Icon(
-                        Icons.playlist_play,
-                        size: 20,
-                        color: Colors.white,
-                      ),
-                      onPressed: () async {
-                        await Navigator.pushNamed(
-                          context,
-                          '/playlist-list',
-                          arguments: {
-                            'avatarId': avatar.id,
-                            'fromScreen': 'avatar-list',
-                          },
-                        );
-                      },
-                    ),
-                    IconButton(
-                      tooltip: loc.t('sharedMoments.title'),
-                      icon: const Icon(
-                        Icons.collections_bookmark_outlined,
-                        size: 18,
-                        color: Colors.white,
-                      ),
-                      onPressed: () async {
-                        await Navigator.pushNamed(
-                          context,
-                          '/shared-moments',
-                          arguments: {
-                            'avatarId': avatar.id,
-                            'fromScreen': 'avatar-list',
-                          },
-                        );
-                      },
-                    ),
-                    IconButton(
-                      tooltip: loc.t('avatars.editTooltip'),
-                      icon: const Icon(
-                        Icons.edit,
-                        size: 18,
-                        color: Colors.white,
-                      ),
-                      onPressed: () async {
-                        await Navigator.pushNamed(
-                          context,
-                          '/avatar-details',
-                          arguments: avatar,
-                        );
-                        if (!mounted) return;
-                        await _loadAvatars();
-                      },
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      IconButton(
+                        tooltip: 'Fakten prüfen',
+                        style: IconButton.styleFrom(
+                          overlayColor: Colors.white.withValues(alpha: 0.1),
+                        ),
+                        icon: const Icon(
+                          Icons.fact_check,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                        onPressed: () async {
+                          await Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AvatarReviewFactsScreen(
+                                avatarId: avatar.id,
+                                fromScreen: 'avatar-list',
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      IconButton(
+                        tooltip: loc.t('gallery.title'),
+                        style: IconButton.styleFrom(
+                          overlayColor: Colors.white.withValues(alpha: 0.1),
+                        ),
+                        icon: const Icon(
+                          Icons.photo_library_outlined,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                        onPressed: () async {
+                          await Navigator.pushNamed(
+                            context,
+                            '/media-gallery',
+                            arguments: {
+                              'avatarId': avatar.id,
+                              'fromScreen': 'avatar-list',
+                            },
+                          );
+                        },
+                      ),
+                      IconButton(
+                        tooltip: loc.t('playlists.title'),
+                        style: IconButton.styleFrom(
+                          overlayColor: Colors.white.withValues(alpha: 0.1),
+                        ),
+                        icon: const Icon(
+                          Icons.playlist_play,
+                          size: 20,
+                          color: Colors.white,
+                        ),
+                        onPressed: () async {
+                          await Navigator.pushNamed(
+                            context,
+                            '/playlist-list',
+                            arguments: {
+                              'avatarId': avatar.id,
+                              'fromScreen': 'avatar-list',
+                            },
+                          );
+                        },
+                      ),
+                      IconButton(
+                        tooltip: loc.t('sharedMoments.title'),
+                        style: IconButton.styleFrom(
+                          overlayColor: Colors.white.withValues(alpha: 0.1),
+                        ),
+                        icon: const Icon(
+                          Icons.collections_bookmark_outlined,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                        onPressed: () async {
+                          await Navigator.pushNamed(
+                            context,
+                            '/shared-moments',
+                            arguments: {
+                              'avatarId': avatar.id,
+                              'fromScreen': 'avatar-list',
+                            },
+                          );
+                        },
+                      ),
+                      IconButton(
+                        tooltip: loc.t('avatars.editTooltip'),
+                        style: IconButton.styleFrom(
+                          overlayColor: Colors.white.withValues(alpha: 0.1),
+                        ),
+                        icon: const Icon(
+                          Icons.edit,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                        onPressed: () async {
+                          await Navigator.pushNamed(
+                            context,
+                            '/avatar-details',
+                            arguments: avatar,
+                          );
+                          if (!mounted) return;
+                          await _loadAvatars();
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
+          // isPublic Toggle - oben rechts in der KACHEL (nicht im Bild)
+          Positioned(
+            top: 12,
+            right: 12,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => _togglePublic(avatar),
+                child: Container(
+                  width: 42,
+                  height: 42,
+                  padding: const EdgeInsets.all(2),
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        Color(0xFFE91E63),
+                        AppColors.lightBlue,
+                        Color(0xFF00E5FF),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: (avatar.isPublic ?? false)
+                          ? Colors.transparent
+                          : Colors.black.withValues(alpha: 0.85),
+                    ),
+                    child: Icon(
+                      (avatar.isPublic ?? false) ? Icons.public : Icons.lock,
+                      size: 22,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

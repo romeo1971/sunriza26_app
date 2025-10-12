@@ -82,10 +82,7 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
       final avatar = await avatarService.getAvatar(widget.avatarId);
       if (!mounted) return;
       if (avatar != null) {
-        nav.pushReplacementNamed(
-          '/avatar-details',
-          arguments: avatar,
-        );
+        nav.pushReplacementNamed('/avatar-details', arguments: avatar);
       } else {
         nav.pop();
       }
@@ -99,8 +96,15 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
         title: Text(
           context.read<LocalizationService>().t('sharedMoments.title'),
         ),
+        backgroundColor: Colors.black,
+        foregroundColor: Colors.white,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          style: IconButton.styleFrom(
+            overlayColor: Colors.white.withValues(alpha: 0.1),
+          ),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => _handleBackNavigation(context),
         ),
       ),
@@ -122,7 +126,8 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
                 : ListView.separated(
                     controller: _scrollController,
                     itemCount: _items.length,
-                    separatorBuilder: (context, index) => const Divider(height: 1),
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1),
                     itemBuilder: (context, i) {
                       final it = _items[i];
                       final media = _media[it.mediaId];

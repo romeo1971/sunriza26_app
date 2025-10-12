@@ -145,7 +145,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final List<String> _textFileUrls = [];
   final Map<String, String> _mediaOriginalNames = {}; // URL -> originalFileName
   final Map<String, int> _imageDurations =
-      {}; // URL -> duration in seconds (default 5)
+      {}; // URL -> duration in seconds (default 60)
   bool _isImageLoopMode = true; // Kreislauf (true) oder Ende (false)
   bool _isTimelineEnabled = true; // Timeline generell aktiviert/deaktiviert
   final Map<String, bool> _imageActive =
@@ -163,6 +163,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       final heroUrl = _imageUrls[0];
       _imageActive[heroUrl] = true;
       _imageExplorerVisible[heroUrl] = true;
+    }
+
+    // Sicherstellen, dass ALLE Bilder eine Duration haben (Min: 60 Sekunden = 1 Minute)
+    for (final url in _imageUrls) {
+      final current = _imageDurations[url];
+      if (current == null || current < 60) {
+        _imageDurations[url] = 60; // Minimum 1 Minute
+      }
     }
 
     try {
@@ -235,7 +243,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             _imageDurations.clear();
             durationsMap.forEach((key, value) {
               if (value is int) {
-                _imageDurations[key] = value;
+                // WICHTIG: Mindestens 60 Sekunden (1 Minute)
+                final duration = value < 60 ? 60 : value;
+                _imageDurations[key] = duration;
               }
             });
           }
@@ -2442,88 +2452,88 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                         child: Container(
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(10),
-                          color: Colors.black.withValues(alpha: 0.05),
-                        ),
-                        clipBehavior: Clip.hardEdge,
-                        child: Stack(
+                            color: Colors.black.withValues(alpha: 0.05),
+                          ),
                           clipBehavior: Clip.hardEdge,
-                          children: [
-                            Positioned.fill(
-                              child: _profileLocalPath != null
-                                  ? Image.file(
-                                      File(_profileLocalPath!),
-                                      fit: BoxFit.cover,
-                                    )
-                                  : (_profileImageUrl != null
-                                        ? Image.network(
-                                            _profileImageUrl!,
-                                            fit: BoxFit.cover,
-                                            key: ValueKey(_profileImageUrl!),
-                                            errorBuilder:
-                                                (context, error, stack) {
-                                                  _handleImageError(
-                                                    _profileImageUrl!,
-                                                  );
-                                                  return Container(
-                                                    color: Colors.black26,
+                          child: Stack(
+                            clipBehavior: Clip.hardEdge,
+                            children: [
+                              Positioned.fill(
+                                child: _profileLocalPath != null
+                                    ? Image.file(
+                                        File(_profileLocalPath!),
+                                        fit: BoxFit.cover,
+                                      )
+                                    : (_profileImageUrl != null
+                                          ? Image.network(
+                                              _profileImageUrl!,
+                                              fit: BoxFit.cover,
+                                              key: ValueKey(_profileImageUrl!),
+                                              errorBuilder:
+                                                  (context, error, stack) {
+                                                    _handleImageError(
+                                                      _profileImageUrl!,
+                                                    );
+                                                    return Container(
+                                                      color: Colors.black26,
                                                       alignment:
                                                           Alignment.center,
-                                                    child: const Icon(
+                                                      child: const Icon(
                                                         Icons
                                                             .image_not_supported,
-                                                      color: Colors.white54,
-                                                      size: 48,
-                                                    ),
-                                                  );
-                                                },
-                                          )
-                                        : Container(
-                                            color: Colors.white12,
-                                            child: const Icon(
-                                              Icons.person,
-                                              color: Colors.white54,
-                                              size: 64,
-                                            ),
-                                          )),
-                            ),
-                            if (_profileImageUrl != null)
-                              Positioned(
+                                                        color: Colors.white54,
+                                                        size: 48,
+                                                      ),
+                                                    );
+                                                  },
+                                            )
+                                          : Container(
+                                              color: Colors.white12,
+                                              child: const Icon(
+                                                Icons.person,
+                                                color: Colors.white54,
+                                                size: 64,
+                                              ),
+                                            )),
+                              ),
+                              if (_profileImageUrl != null)
+                                Positioned(
                                   left: 0,
                                   right: 0,
-                                bottom: 12,
+                                  bottom: 12,
                                   child: Center(
-                                child: ElevatedButton(
-                                  onPressed: () async {
-                                    if (_avatarData == null ||
-                                        _isGeneratingAvatar) {
-                                      return;
-                                    }
-                                    await _handleGenerateAvatar();
-                                  },
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: Colors.black,
-                                    foregroundColor: Colors.white,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 12,
+                                    child: ElevatedButton(
+                                      onPressed: () async {
+                                        if (_avatarData == null ||
+                                            _isGeneratingAvatar) {
+                                          return;
+                                        }
+                                        await _handleGenerateAvatar();
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.black,
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          vertical: 12,
                                           horizontal: 16,
-                                    ),
+                                        ),
                                         minimumSize: Size.zero,
-                                    shape: RoundedRectangleBorder(
+                                        shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
                                             8,
                                           ),
-                                    ),
-                                  ),
-                                  child: Text(
-                                    context.read<LocalizationService>().t(
-                                      'avatars.refreshTooltip',
-                                    ),
+                                        ),
+                                      ),
+                                      child: Text(
+                                        context.read<LocalizationService>().t(
+                                          'avatars.refreshTooltip',
+                                        ),
                                         style: const TextStyle(fontSize: 11),
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                          ],
+                            ],
                           ),
                         ),
                       ),
@@ -3854,7 +3864,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         updatedAt: DateTime.now(),
       );
       final ok = await _avatarService.updateAvatar(updated);
-        if (!mounted) return;
+      if (!mounted) return;
       if (ok) {
         _applyAvatar(updated);
         _showSystemSnack(
@@ -5528,7 +5538,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             if (!mounted) return;
             setState(() {
               _imageUrls.insert(0, url);
-              _imageDurations[url] = 5; // Default 5 Sekunden
+              _imageDurations[url] = 60; // Default 1 Minute
               _imageActive[url] = true; // Default: aktiv
               if (_profileImageUrl == null || _profileImageUrl!.isEmpty) {
                 _setHeroImage(url);
@@ -5540,6 +5550,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             );
             // Sofort persistieren (Firestore aktualisieren)
             await _persistTextFileUrls();
+            // WICHTIG: Timeline-Daten speichern (incl. Duration!)
+            await _saveTimelineData();
             // Media-Doc anlegen → triggert Thumb-Generierung
             final origName = files[i].name;
             await _addMediaDoc(
@@ -5598,7 +5610,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           if (!mounted) return;
           setState(() {
             _imageUrls.insert(0, url);
-            _imageDurations[url] = 5; // Default 5 Sekunden
+            _imageDurations[url] = 60; // Default 1 Minute
             if (_profileImageUrl == null || _profileImageUrl!.isEmpty) {
               _setHeroImage(url);
             }
@@ -5606,6 +5618,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           });
           // Sofort persistieren (Firestore aktualisieren)
           await _persistTextFileUrls();
+          // WICHTIG: Timeline-Daten speichern (incl. Duration!)
+          await _saveTimelineData();
           // Media-Doc anlegen → triggert Thumb-Generierung
           final origName = x.name;
           await _addMediaDoc(
@@ -7575,9 +7589,29 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
           if (_profileImageUrl == url) _setHeroImage(newUrl);
           if (_profileLocalPath == cached.path) _profileLocalPath = null;
+
+          // WICHTIG: Timeline-Daten für neue URL übertragen
+          final oldDuration = _imageDurations[url];
+          final oldActive = _imageActive[url];
+          final oldExplorerVisible = _imageExplorerVisible[url];
+
+          if (oldDuration != null) {
+            _imageDurations[newUrl] = oldDuration;
+            _imageDurations.remove(url);
+          }
+          if (oldActive != null) {
+            _imageActive[newUrl] = oldActive;
+            _imageActive.remove(url);
+          }
+          if (oldExplorerVisible != null) {
+            _imageExplorerVisible[newUrl] = oldExplorerVisible;
+            _imageExplorerVisible.remove(url);
+          }
         });
 
         await _persistTextFileUrls();
+        // WICHTIG: Timeline-Daten speichern (nach URL-Änderung!)
+        await _saveTimelineData();
 
         // ERST: Altes thumbUrl aus Firestore holen UND alte Files aus Storage löschen
         // (BEVOR Firestore geändert wird, wegen Storage Rules!)

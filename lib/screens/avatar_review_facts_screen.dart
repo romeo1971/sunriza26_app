@@ -160,10 +160,7 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
       final avatar = await avatarService.getAvatar(widget.avatarId);
       if (!mounted) return;
       if (avatar != null) {
-        nav.pushReplacementNamed(
-          '/avatar-details',
-          arguments: avatar,
-        );
+        nav.pushReplacementNamed('/avatar-details', arguments: avatar);
       } else {
         nav.pop();
       }
@@ -177,8 +174,13 @@ class _AvatarReviewFactsScreenState extends State<AvatarReviewFactsScreen> {
         title: const Text('Faktenfreigabe'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
+          style: IconButton.styleFrom(
+            overlayColor: Colors.white.withValues(alpha: 0.1),
+          ),
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => _handleBackNavigation(context),
         ),
       ),

@@ -15,7 +15,6 @@ import 'services/localization_service.dart';
 import 'screens/avatar_upload_memories_screen.dart';
 import 'screens/avatar_details_screen.dart';
 import 'screens/avatar_chat_screen.dart';
-import 'screens/avatar_list_screen.dart';
 import 'screens/media_gallery_screen.dart';
 import 'screens/playlist_list_screen.dart';
 import 'screens/playlist_scheduler_screen.dart';
@@ -436,7 +435,8 @@ class SunrizaApp extends StatelessWidget {
             '/avatar-upload': (context) => const AvatarUploadMemoriesScreen(),
             '/avatar-details': (context) => const AvatarDetailsScreen(),
             '/avatar-chat': (context) => const AvatarChatScreen(),
-            '/avatar-list': (context) => const AvatarListScreen(),
+            '/avatar-list': (context) =>
+                const HomeNavigationScreen(initialIndex: 1),
             '/credits-shop': (context) => const CreditsShopScreen(),
             '/payment-overview': (context) => const PaymentOverviewScreen(),
             '/seller-sales': (context) => const SellerSalesScreen(),

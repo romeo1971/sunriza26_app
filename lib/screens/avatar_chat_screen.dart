@@ -109,9 +109,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       if (timeline != null) {
         final durationsMap = timeline['durations'] as Map<String, dynamic>?;
         if (durationsMap != null) {
-          _imageDurations = durationsMap.map(
-            (k, v) => MapEntry(k, v as int? ?? 60),
-          );
+          _imageDurations = durationsMap.map((k, v) {
+            final duration = (v as int?) ?? 60;
+            // WICHTIG: Mindestens 60 Sekunden (1 Minute)
+            return MapEntry(k, duration < 60 ? 60 : duration);
+          });
         }
         final loopMode = timeline['loopMode'];
         if (loopMode is bool) {
@@ -166,6 +168,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       debugPrint(
         '✅ Image Timeline geladen: ${_activeImageUrls.length}/${_imageUrls.length} aktive Bilder, Loop: $_isImageLoopMode, Enabled: $_isTimelineEnabled',
       );
+      if (_activeImageUrls.isNotEmpty) {
+        final firstUrl = _activeImageUrls[0];
+        final firstDuration = _imageDurations[firstUrl] ?? 60;
+        debugPrint('⏱️ Erste Bild-Duration: $firstDuration Sekunden');
+      }
     } catch (e) {
       debugPrint('❌ Fehler beim Laden der Image Timeline: $e');
     }
