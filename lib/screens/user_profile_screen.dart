@@ -399,11 +399,20 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey.shade900,
+      backgroundColor: Colors.black, // Schwarz wie im Details Screen
       appBar: AppBar(
         title: const Text('Profildaten'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+          style: IconButton.styleFrom(
+            overlayColor: Colors.white.withValues(alpha: 0.1),
+          ),
+        ),
         actions: [
           if (_hasChanges)
             IconButton(
@@ -427,10 +436,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                 children: [
                   // Profilbild-Sektion
                   _buildPhotoSection(),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 6),
 
-                  // Persönliche Daten
-                  _buildSection(
+                  // Persönliche Daten - ExpansionTile wie im Details Screen
+                  _buildExpandableSection(
                     context.read<LocalizationService>().t(
                       'profile.personalData',
                     ),
@@ -442,6 +451,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         controller: _displayNameController,
                         onChanged: (_) => _markChanged(),
                       ),
+                      const SizedBox(height: 16),
                       CustomTextField(
                         label: context.read<LocalizationService>().t(
                           'avatars.details.firstNameLabel',
@@ -449,6 +459,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         controller: _firstNameController,
                         onChanged: (_) => _markChanged(),
                       ),
+                      const SizedBox(height: 16),
                       CustomTextField(
                         label: context.read<LocalizationService>().t(
                           'avatars.details.lastNameLabel',
@@ -456,6 +467,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         controller: _lastNameController,
                         onChanged: (_) => _markChanged(),
                       ),
+                      const SizedBox(height: 16),
                       CustomDateField(
                         label: context.read<LocalizationService>().t(
                           'profile.dateOfBirth',
@@ -473,10 +485,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     ],
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 6),
 
-                  // Adressdaten
-                  _buildSection(
+                  // Adressdaten - ExpansionTile wie im Details Screen
+                  _buildExpandableSection(
                     context.read<LocalizationService>().t('profile.address'),
                     [
                       CustomTextField(
@@ -486,6 +498,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         controller: _streetController,
                         onChanged: (_) => _markChanged(),
                       ),
+                      const SizedBox(height: 16),
                       Row(
                         children: [
                           Expanded(
@@ -512,6 +525,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 16),
                       CustomTextField(
                         label: context.read<LocalizationService>().t(
                           'profile.country',
@@ -522,10 +536,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     ],
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 6),
 
-                  // Telefonnummer
-                  _buildSection('Telefonnummer', [
+                  // Telefonnummer - ExpansionTile wie im Details Screen
+                  _buildExpandableSection('Telefonnummer', [
                     CustomTextField(
                       label: 'Telefonnummer',
                       controller: _phoneController,
@@ -591,10 +605,10 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                     ),
                   ]),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 6),
 
-                  // Zahlungseinstellungen
-                  _buildSection('Zahlungseinstellungen', [
+                  // Zahlungseinstellungen - ExpansionTile wie im Details Screen
+                  _buildExpandableSection('Zahlungseinstellungen', [
                     _buildPaymentSection(),
                   ]),
 
@@ -612,15 +626,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         width: 120,
         height: 213, // 9:16 aspect ratio
         decoration: BoxDecoration(
-          color: Colors.grey.shade800,
+          color: Colors.white.withValues(
+            alpha: 0.04,
+          ), // Konsistent mit ExpansionTile
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.grey.shade600),
+          border: Border.all(
+            color: Colors.white.withValues(
+              alpha: 0.2,
+            ), // Subtiler weißer Border
+            width: 1,
+          ),
         ),
         child: _uploadingPhoto
             ? const Center(child: CircularProgressIndicator())
             : _profileImageUrl != null
             ? ClipRRect(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(11),
                 child: Image.network(_profileImageUrl!, fit: BoxFit.cover),
               )
             : const Center(
@@ -634,30 +655,29 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     );
   }
 
-  Widget _buildSection(String title, List<Widget> children) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade800,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
+  Widget _buildExpandableSection(String title, List<Widget> children) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
+        backgroundColor: Colors.white.withValues(alpha: 0.06),
+        collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
+        iconColor: AppColors.lightBlue, // GMBC Arrow expanded
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
           ),
-          const SizedBox(height: 16),
-          ...children.map(
-            (child) => Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: child,
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: children,
             ),
           ),
         ],

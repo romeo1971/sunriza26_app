@@ -54,10 +54,20 @@ service cloud.firestore {
       allow get, create, delete: if signedIn() && uid == request.auth.uid;
       
       // Update: Erlaubt auch arrayUnion/arrayRemove für favoriteAvatarIds
-      // ABER: Credits-Felder dürfen NUR von Cloud Functions geändert werden
+      // ABER: Credits-Felder dürfen sich NICHT ÄNDERN (müssen gleich bleiben)
       allow update: if signedIn() && uid == request.auth.uid
-        && !request.resource.data.diff(resource.data).affectedKeys()
-           .hasAny(['credits', 'creditsPurchased', 'creditsSpent']);
+        && (
+          !('credits' in request.resource.data) 
+          || request.resource.data.credits == resource.data.get('credits', 0)
+        )
+        && (
+          !('creditsPurchased' in request.resource.data) 
+          || request.resource.data.creditsPurchased == resource.data.get('creditsPurchased', 0)
+        )
+        && (
+          !('creditsSpent' in request.resource.data) 
+          || request.resource.data.creditsSpent == resource.data.get('creditsSpent', 0)
+        );
       
       // Transactions (Käufer-Transaktionen)
       match /transactions/{transactionId} {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
+import '../widgets/app_drawer.dart';
 import 'home_navigation_screen.dart';
 
 /// Entdecken Screen - Öffentliche Avatare im Feed-Style
@@ -425,12 +426,19 @@ class ExploreScreenState extends State<ExploreScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         toolbarHeight: 56,
         titleSpacing: 0,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         title: Transform.translate(
           offset: const Offset(0, 3),
           child: Text(

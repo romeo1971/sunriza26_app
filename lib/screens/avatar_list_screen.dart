@@ -128,12 +128,14 @@ class _AvatarListScreenState extends State<AvatarListScreen>
         foregroundColor: Colors.white,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
-        leading: IconButton(
-          style: IconButton.styleFrom(
-            overlayColor: Colors.white.withValues(alpha: 0.1),
+        leading: Builder(
+          builder: (context) => IconButton(
+            style: IconButton.styleFrom(
+              overlayColor: Colors.white.withValues(alpha: 0.1),
+            ),
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
           ),
-          icon: const Icon(Icons.menu, color: Colors.white),
-          onPressed: () => Scaffold.of(context).openDrawer(),
         ),
         actions: [
           // Refresh Icon mit GMBC Gradient

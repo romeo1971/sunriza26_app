@@ -95,26 +95,32 @@ class AvatarBottomNavBar extends StatelessWidget {
   }) {
     final color = _iconColor(active);
     final icon = active ? iconFilled : iconOutlined;
-    return GestureDetector(
-      onTap: () {
-        if (active) return;
-        Navigator.pushReplacementNamed(
-          context,
-          route,
-          arguments: args ?? {'avatarId': avatarId},
-        );
-      },
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: color, size: 20),
-              const SizedBox(height: 2),
-              Text(label, style: TextStyle(color: color, fontSize: 8)),
-            ],
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          if (active) return;
+          Navigator.pushReplacementNamed(
+            context,
+            route,
+            arguments: args ?? {'avatarId': avatarId},
+          );
+        },
+        behavior: HitTestBehavior.opaque, // WICHTIG: Gesamter Bereich klickbar
+        child: Container(
+          color: Colors.transparent, // Touch-Target vergrößern
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, color: color, size: 20),
+                  const SizedBox(height: 2),
+                  Text(label, style: TextStyle(color: color, fontSize: 8)),
+                ],
+              ),
+            ),
           ),
         ),
       ),

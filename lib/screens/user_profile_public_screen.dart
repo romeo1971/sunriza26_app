@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../widgets/app_drawer.dart';
 
 /// Öffentliches User-Profil (Placeholder)
 class UserProfilePublicScreen extends StatefulWidget {
@@ -22,8 +23,15 @@ class _UserProfilePublicScreenState extends State<UserProfilePublicScreen>
 
     return Scaffold(
       backgroundColor: Colors.black,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.black,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         title: const Text('Profil', style: TextStyle(color: Colors.white)),
       ),
       body: Center(

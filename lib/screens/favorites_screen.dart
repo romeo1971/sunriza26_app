@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
 import '../theme/app_theme.dart';
+import '../widgets/app_drawer.dart';
 import 'home_navigation_screen.dart';
 
 /// Favoriten Screen - Gespeicherte Lieblings-Avatare
@@ -32,9 +33,16 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
     return Scaffold(
       backgroundColor: Colors.black,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
         title: const Text('Favoriten'),
       ),
       body: StreamBuilder<DocumentSnapshot>(

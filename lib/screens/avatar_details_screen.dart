@@ -336,6 +336,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   String _mediaTab = 'images';
   // Hero-View-Mode: 'grid' (Kacheln) oder 'list' (drag&drop sortierbar)
   String _heroViewMode = 'grid';
+  // List View expanded/collapsed
+  bool _isListViewExpanded = false;
   // Cache für Video-Provider-Auswahl, verhindert Zurückspringen nach Fehlern/Reloads
   // String? _cachedVideoProvider; // entfernt (nur BitHuman)
   // ElevenLabs Voice-Parameter (per Avatar speicherbar)
@@ -1958,450 +1960,493 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   // Listen-View: Drag & Drop sortierbare Liste
   Widget _buildHeroImagesListView() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: LayoutBuilder(
-        builder: (ctx, cons) {
-          const double leftH = 223.0; // Container-Höhe
-          const double listItemHeight = 80.0; // Höhe jedes Listen-Items
-          const double toggleBarHeight = 40.0; // Höhe der Toggle-Leiste
+    return LayoutBuilder(
+      builder: (ctx, cons) {
+        // const double leftH = 223.0; // Container-Höhe wenn collapsed (nicht mehr benötigt)
+        const double listItemHeight = 80.0; // Höhe jedes Listen-Items
 
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Toggle-Leiste ÜBER der Liste
-              SizedBox(
-                height: toggleBarHeight,
-                child: Row(
-                  children: [
-                    // Loop/Ende Toggle (white/green)
-                    SizedBox(
-                      width: 90,
-                      child: InkWell(
-                        onTap: () {
-                          setState(() {
-                            _isImageLoopMode = !_isImageLoopMode;
-                          });
-                          _saveTimelineData();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: _isImageLoopMode
-                                  ? AppColors.primaryGreen
-                                  : Colors.white,
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                _isImageLoopMode
-                                    ? Icons.loop
-                                    : Icons.stop_circle_outlined,
-                                size: 16,
-                                color: _isImageLoopMode
-                                    ? AppColors.primaryGreen
-                                    : Colors.white,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                _isImageLoopMode ? 'Loop' : 'Ende',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: _isImageLoopMode
-                                      ? AppColors.primaryGreen
-                                      : Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
+        // Berechne volle verfügbare Höhe wenn expanded
+        final double screenHeight = MediaQuery.of(ctx).size.height;
+        final double appBarHeight = 56.0; // Standard AppBar Höhe
+        final double heroNavHeight = 35.0; // _buildHeroMediaNav Höhe
+        final double footerHeight = 64.0; // Footer Navigation
+        final double paddingBottom = 24.0; // 24px vor Footer
+        final double infoTextHeight = 40.0; // Geschätzter Info-Text + Spacing
+
+        final double availableHeight =
+            screenHeight -
+            appBarHeight -
+            heroNavHeight -
+            footerHeight -
+            paddingBottom -
+            infoTextHeight -
+            16.0; // Top Padding von SingleChildScrollView
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Aufklappbarer Header (gleiche Breite wie ExpansionTile)
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.white24),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: ExpansionTile(
+                  initiallyExpanded: _isListViewExpanded,
+                  onExpansionChanged: (expanded) {
+                    setState(() {
+                      _isListViewExpanded = expanded;
+                    });
+                  },
+                  collapsedBackgroundColor: Colors.white.withValues(
+                    alpha: 0.04,
+                  ),
+                  backgroundColor: Colors.white.withValues(alpha: 0.04),
+                  collapsedIconColor: AppColors.magenta,
+                  iconColor: AppColors.lightBlue,
+                  title: Row(
+                    children: [
+                      const Text(
+                        'Timeline',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Timeline ON/OFF Toggle (white/green)
-                    SizedBox(
-                      width: 80,
-                      child: InkWell(
-                        onTap: () {
-                          setState(() {
-                            _isTimelineEnabled = !_isTimelineEnabled;
-                          });
-                          _saveTimelineData();
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.4),
-                            borderRadius: BorderRadius.circular(4),
-                            border: Border.all(
-                              color: _isTimelineEnabled
-                                  ? AppColors.primaryGreen
-                                  : Colors.white,
-                              width: 1,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                _isTimelineEnabled
-                                    ? Icons.play_circle_outline
-                                    : Icons.pause_circle_outline,
-                                size: 16,
-                                color: _isTimelineEnabled
-                                    ? AppColors.primaryGreen
-                                    : Colors.white,
-                              ),
-                              const SizedBox(width: 6),
-                              Text(
-                                _isTimelineEnabled ? 'ON' : 'OFF',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: _isTimelineEnabled
-                                      ? AppColors.primaryGreen
-                                      : Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
+                      // Status-Info IMMER sichtbar - weit rechts als Badge (KLICKBAR)
+                      const Spacer(),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              // Liste
-              SizedBox(
-                height: leftH, // Gleiche Höhe wie Kachel-View
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Reorderable Liste (VOLLE BREITE)
-                    Expanded(
-                      child: ReorderableListView.builder(
-                        buildDefaultDragHandles: false,
-                        itemCount: _imageUrls.length,
-                        onReorder: (oldIndex, newIndex) async {
-                          // Merke das aktuelle Hero-Image
-                          final currentHero = _profileImageUrl;
-
-                          setState(() {
-                            if (oldIndex < newIndex) {
-                              newIndex -= 1;
-                            }
-
-                            final item = _imageUrls.removeAt(oldIndex);
-                            _imageUrls.insert(newIndex, item);
-
-                            // Fall 1: Ein ANDERES Bild wird auf Position 0 gezogen -> neues Hero
-                            if (newIndex == 0 &&
-                                item != currentHero &&
-                                _imageUrls.isNotEmpty) {
-                              _setHeroImage(_imageUrls[0]);
-                            }
-
-                            // Fall 2: Das aktuelle Hero wird VON Position 0 wegbewegt -> neues erstes Bild wird Hero
-                            if (oldIndex == 0 &&
-                                item == currentHero &&
-                                _imageUrls.isNotEmpty) {
-                              _setHeroImage(_imageUrls[0]);
-                            }
-                          });
-                          // Timeline-Daten UND Hero-Image & imageUrls sofort speichern
-                          await _saveTimelineData();
-                          await _saveHeroImageAndUrls();
-                        },
-                        itemBuilder: (context, index) {
-                          final url = _imageUrls[index];
-                          final isHero =
-                              _profileImageUrl == url ||
-                              (_profileImageUrl == null && index == 0);
-                          final imageName = _fileNameFromUrl(url);
-                          final isActive = _imageActive[url] ?? true;
-
-                          return Stack(
-                            key: ValueKey(url),
-                            children: [
-                              Container(
-                                height: listItemHeight,
-                                margin: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Loop/Ende Teil - KLICKBAR
+                            InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _isImageLoopMode = !_isImageLoopMode;
+                                });
+                                _saveTimelineData();
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
                                 decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8),
-                                  gradient: isHero
-                                      ? const LinearGradient(
-                                          begin: Alignment.topLeft,
-                                          end: Alignment.bottomRight,
-                                          colors: [
-                                            Color(0xFFE91E63),
-                                            AppColors.lightBlue,
-                                            Color(0xFF00E5FF),
-                                          ],
-                                        )
-                                      : (!isHero && isActive
-                                            ? const LinearGradient(
-                                                begin: Alignment.topCenter,
-                                                end: Alignment.bottomCenter,
-                                                colors: [
-                                                  Color(
-                                                    0x4D004D00,
-                                                  ), // Dark green (0.3 alpha)
-                                                  Color(
-                                                    0x26008000,
-                                                  ), // Medium dark green (0.15 alpha)
-                                                ],
-                                              )
-                                            : null),
-                                  color: isHero
-                                      ? null
-                                      : (!isHero && isActive
-                                            ? null
-                                            : Colors.white.withValues(
-                                                alpha: 0.05,
-                                              )),
+                                  gradient: _isImageLoopMode
+                                      ? Theme.of(
+                                          context,
+                                        ).extension<AppGradients>()!.magentaBlue
+                                      : null,
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(4),
+                                    bottomLeft: Radius.circular(4),
+                                  ),
                                 ),
-                                child: Row(
-                                  children: [
-                                    // Thumbnail ganz links (Click = Timeline Active/Inactive)
-                                    MouseRegion(
-                                      cursor: isHero
-                                          ? SystemMouseCursors.basic
-                                          : SystemMouseCursors.click,
-                                      child: GestureDetector(
-                                        onTap: isHero
-                                            ? null
-                                            : () {
-                                                setState(() {
-                                                  final currentActive =
-                                                      _imageActive[url] ?? true;
-                                                  _imageActive[url] =
-                                                      !currentActive;
-                                                });
-                                                _saveTimelineData();
-                                              },
-                                        child: ClipRRect(
-                                          borderRadius:
-                                              const BorderRadius.horizontal(
-                                                left: Radius.circular(8),
-                                                right: Radius.zero,
-                                              ),
-                                          child: SizedBox(
-                                            width: listItemHeight * 9 / 16,
-                                            height: listItemHeight,
-                                            child: Image.network(
-                                              url,
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                        ),
+                                child: SizedBox(
+                                  width:
+                                      30, // Feste Breite für breitestes Wort "Ende"
+                                  child: Center(
+                                    child: Text(
+                                      _isImageLoopMode ? 'Loop' : 'Ende',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
                                       ),
                                     ),
-                                    const SizedBox(width: 8),
-                                    // 3 Reihen: Zeit, Dropdowns, Name
-                                    Expanded(
-                                      child: Column(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-                                          // Reihe 1: Zeit + Auge-Icon
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  isHero
-                                                      ? '00:00 - ${_getTotalEndTime()}'
-                                                      : _getImageStartTime(
-                                                          index,
-                                                        ),
-                                                  style: const TextStyle(
-                                                    color: Colors.white70,
-                                                    fontSize: 10,
-                                                  ),
-                                                ),
-                                              ),
-                                              if (!isHero)
-                                                Padding(
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                        right: 8,
-                                                      ),
-                                                  child: InkWell(
-                                                    onTap: () async {
-                                                      // Dialog nur beim ersten Klick
-                                                      await _showExplorerInfoDialog();
-                                                      setState(() {
-                                                        final currentVisible =
-                                                            _imageExplorerVisible[url] ??
-                                                            false;
-                                                        _imageExplorerVisible[url] =
-                                                            !currentVisible;
-                                                      });
-                                                      // Sofort in Firebase speichern
-                                                      await _saveTimelineData();
-                                                    },
-                                                    child:
-                                                        (_imageExplorerVisible[url] ??
-                                                            false)
-                                                        ? ShaderMask(
-                                                            shaderCallback: (bounds) =>
-                                                                Theme.of(
-                                                                      context,
-                                                                    )
-                                                                    .extension<
-                                                                      AppGradients
-                                                                    >()!
-                                                                    .magentaBlue
-                                                                    .createShader(
-                                                                      bounds,
-                                                                    ),
-                                                            child: const Icon(
-                                                              Icons.visibility,
-                                                              size: 20,
-                                                              color:
-                                                                  Colors.white,
-                                                            ),
-                                                          )
-                                                        : const Icon(
-                                                            Icons
-                                                                .visibility_off,
-                                                            size: 20,
-                                                            color: Colors.grey,
-                                                          ),
-                                                  ),
-                                                ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 4),
-                                          // Reihe 2: Dropdown (nur Minuten 1-30)
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 6,
-                                              vertical: 2,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: Colors.black.withValues(
-                                                alpha: 0.3,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: DropdownButton<int>(
-                                              value:
-                                                  ((_imageDurations[url] ??
-                                                              60) ~/
-                                                          60)
-                                                      .clamp(1, 30),
-                                              isDense: true,
-                                              underline:
-                                                  const SizedBox.shrink(),
-                                              dropdownColor: Colors.black87,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 11,
-                                              ),
-                                              items:
-                                                  List.generate(
-                                                        30,
-                                                        (i) => i + 1,
-                                                      )
-                                                      .map(
-                                                        (min) =>
-                                                            DropdownMenuItem(
-                                                              value: min,
-                                                              child: Text(
-                                                                '$min Min.',
-                                                              ),
-                                                            ),
-                                                      )
-                                                      .toList(),
-                                              onChanged: (newMin) {
-                                                if (newMin != null) {
-                                                  setState(() {
-                                                    _imageDurations[url] =
-                                                        newMin * 60;
-                                                  });
-                                                  _saveTimelineData();
-                                                }
-                                              },
-                                            ),
-                                          ),
-                                          const SizedBox(height: 4),
-                                          // Reihe 3: Name
-                                          Row(
-                                            children: [
-                                              // Name
-                                              Expanded(
-                                                child: Text(
-                                                  imageName,
-                                                  style: TextStyle(
-                                                    color: isHero
-                                                        ? Colors.white
-                                                        : (_imageActive[url] ??
-                                                              true)
-                                                        ? Colors.white
-                                                        : Colors.grey,
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    // NUR Drag Handle rechts (6-Punkte Grid Icon)
-                                    ReorderableDragStartListener(
-                                      index: index,
-                                      child: MouseRegion(
-                                        cursor: SystemMouseCursors.click,
-                                        child: const Padding(
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                          ),
-                                          child: Icon(
-                                            Icons.drag_indicator,
-                                            color: Colors.white70,
-                                            size: 24,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ],
-                          );
-                        },
+                            ),
+                            // Pipe
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                              ),
+                              child: Text(
+                                '|',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.5),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w300,
+                                ),
+                              ),
+                            ),
+                            // ON/OFF Teil - KLICKBAR
+                            InkWell(
+                              onTap: () {
+                                setState(() {
+                                  _isTimelineEnabled = !_isTimelineEnabled;
+                                });
+                                _saveTimelineData();
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: _isTimelineEnabled
+                                      ? Theme.of(
+                                          context,
+                                        ).extension<AppGradients>()!.magentaBlue
+                                      : null,
+                                  borderRadius: const BorderRadius.only(
+                                    topRight: Radius.circular(4),
+                                    bottomRight: Radius.circular(4),
+                                  ),
+                                ),
+                                child: SizedBox(
+                                  width:
+                                      24, // Feste Breite für breitestes Wort "OFF"
+                                  child: Center(
+                                    child: Text(
+                                      _isTimelineEnabled ? 'ON' : 'OFF',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8), // Abstand zum Pfeil
+                    ],
+                  ),
+                  children: [
+                    // Liste DIREKT in children für sanfte Animation
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: SizedBox(
+                        height: availableHeight, // VOLLE HÖHE wenn expanded
+                        child: Padding(
+                          padding: const EdgeInsets.only(
+                            bottom: 24,
+                          ), // 24px padding unten
+                          child: ReorderableListView.builder(
+                            buildDefaultDragHandles: false,
+                            itemCount: _imageUrls.length,
+                            onReorder: (oldIndex, newIndex) async {
+                              // Merke das aktuelle Hero-Image
+                              final currentHero = _profileImageUrl;
+
+                              setState(() {
+                                if (oldIndex < newIndex) {
+                                  newIndex -= 1;
+                                }
+
+                                final item = _imageUrls.removeAt(oldIndex);
+                                _imageUrls.insert(newIndex, item);
+
+                                // Fall 1: Ein ANDERES Bild wird auf Position 0 gezogen -> neues Hero
+                                if (newIndex == 0 &&
+                                    item != currentHero &&
+                                    _imageUrls.isNotEmpty) {
+                                  _setHeroImage(_imageUrls[0]);
+                                }
+
+                                // Fall 2: Das aktuelle Hero wird VON Position 0 wegbewegt -> neues erstes Bild wird Hero
+                                if (oldIndex == 0 &&
+                                    item == currentHero &&
+                                    _imageUrls.isNotEmpty) {
+                                  _setHeroImage(_imageUrls[0]);
+                                }
+                              });
+                              // Timeline-Daten UND Hero-Image & imageUrls sofort speichern
+                              await _saveTimelineData();
+                              await _saveHeroImageAndUrls();
+                            },
+                            itemBuilder: (context, index) {
+                              final url = _imageUrls[index];
+                              final isHero =
+                                  _profileImageUrl == url ||
+                                  (_profileImageUrl == null && index == 0);
+                              final imageName = _fileNameFromUrl(url);
+                              final isActive = _imageActive[url] ?? true;
+
+                              return Stack(
+                                key: ValueKey(url),
+                                children: [
+                                  Container(
+                                    height: listItemHeight,
+                                    margin: const EdgeInsets.only(bottom: 8),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      gradient: isHero
+                                          ? const LinearGradient(
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                              colors: [
+                                                Color(0xFFE91E63),
+                                                AppColors.lightBlue,
+                                                Color(0xFF00E5FF),
+                                              ],
+                                            )
+                                          : (!isHero && isActive
+                                                ? const LinearGradient(
+                                                    begin: Alignment.topCenter,
+                                                    end: Alignment.bottomCenter,
+                                                    colors: [
+                                                      Color(
+                                                        0x4D004D00,
+                                                      ), // Dark green (0.3 alpha)
+                                                      Color(
+                                                        0x26008000,
+                                                      ), // Medium dark green (0.15 alpha)
+                                                    ],
+                                                  )
+                                                : null),
+                                      color: isHero
+                                          ? null
+                                          : (!isHero && isActive
+                                                ? null
+                                                : Colors.white.withValues(
+                                                    alpha: 0.05,
+                                                  )),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        // Thumbnail ganz links (Click = Timeline Active/Inactive)
+                                        MouseRegion(
+                                          cursor: isHero
+                                              ? SystemMouseCursors.basic
+                                              : SystemMouseCursors.click,
+                                          child: GestureDetector(
+                                            onTap: isHero
+                                                ? null
+                                                : () {
+                                                    setState(() {
+                                                      final currentActive =
+                                                          _imageActive[url] ??
+                                                          true;
+                                                      _imageActive[url] =
+                                                          !currentActive;
+                                                    });
+                                                    _saveTimelineData();
+                                                  },
+                                            child: ClipRRect(
+                                              borderRadius:
+                                                  const BorderRadius.horizontal(
+                                                    left: Radius.circular(8),
+                                                    right: Radius.zero,
+                                                  ),
+                                              child: SizedBox(
+                                                width: listItemHeight * 9 / 16,
+                                                height: listItemHeight,
+                                                child: Image.network(
+                                                  url,
+                                                  fit: BoxFit.cover,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        // 3 Reihen: Zeit, Dropdowns, Name
+                                        Expanded(
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.center,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              // Reihe 1: Zeit + Auge-Icon
+                                              Row(
+                                                children: [
+                                                  Expanded(
+                                                    child: Text(
+                                                      isHero
+                                                          ? '00:00 - ${_getTotalEndTime()}'
+                                                          : _getImageStartTime(
+                                                              index,
+                                                            ),
+                                                      style: const TextStyle(
+                                                        color: Colors.white70,
+                                                        fontSize: 10,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  if (!isHero)
+                                                    Padding(
+                                                      padding:
+                                                          const EdgeInsets.only(
+                                                            right: 8,
+                                                          ),
+                                                      child: InkWell(
+                                                        onTap: () async {
+                                                          // Dialog nur beim ersten Klick
+                                                          await _showExplorerInfoDialog();
+                                                          setState(() {
+                                                            final currentVisible =
+                                                                _imageExplorerVisible[url] ??
+                                                                false;
+                                                            _imageExplorerVisible[url] =
+                                                                !currentVisible;
+                                                          });
+                                                          // Sofort in Firebase speichern
+                                                          await _saveTimelineData();
+                                                        },
+                                                        child:
+                                                            (_imageExplorerVisible[url] ??
+                                                                false)
+                                                            ? ShaderMask(
+                                                                shaderCallback: (bounds) =>
+                                                                    Theme.of(
+                                                                          context,
+                                                                        )
+                                                                        .extension<
+                                                                          AppGradients
+                                                                        >()!
+                                                                        .magentaBlue
+                                                                        .createShader(
+                                                                          bounds,
+                                                                        ),
+                                                                child: const Icon(
+                                                                  Icons
+                                                                      .visibility,
+                                                                  size: 20,
+                                                                  color: Colors
+                                                                      .white,
+                                                                ),
+                                                              )
+                                                            : const Icon(
+                                                                Icons
+                                                                    .visibility_off,
+                                                                size: 20,
+                                                                color:
+                                                                    Colors.grey,
+                                                              ),
+                                                      ),
+                                                    ),
+                                                ],
+                                              ),
+                                              const SizedBox(height: 4),
+                                              // Reihe 2: Dropdown (nur Minuten 1-30)
+                                              Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.3),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
+                                                child: DropdownButton<int>(
+                                                  value:
+                                                      ((_imageDurations[url] ??
+                                                                  60) ~/
+                                                              60)
+                                                          .clamp(1, 30),
+                                                  isDense: true,
+                                                  underline:
+                                                      const SizedBox.shrink(),
+                                                  dropdownColor: Colors.black87,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                  ),
+                                                  items:
+                                                      List.generate(
+                                                            30,
+                                                            (i) => i + 1,
+                                                          )
+                                                          .map(
+                                                            (min) =>
+                                                                DropdownMenuItem(
+                                                                  value: min,
+                                                                  child: Text(
+                                                                    '$min Min.',
+                                                                  ),
+                                                                ),
+                                                          )
+                                                          .toList(),
+                                                  onChanged: (newMin) {
+                                                    if (newMin != null) {
+                                                      setState(() {
+                                                        _imageDurations[url] =
+                                                            newMin * 60;
+                                                      });
+                                                      _saveTimelineData();
+                                                    }
+                                                  },
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              // Reihe 3: Name
+                                              Row(
+                                                children: [
+                                                  // Name
+                                                  Expanded(
+                                                    child: Text(
+                                                      imageName,
+                                                      style: TextStyle(
+                                                        color: isHero
+                                                            ? Colors.white
+                                                            : (_imageActive[url] ??
+                                                                  true)
+                                                            ? Colors.white
+                                                            : Colors.grey,
+                                                        fontSize: 12,
+                                                        fontWeight:
+                                                            FontWeight.w500,
+                                                      ),
+                                                      overflow:
+                                                          TextOverflow.ellipsis,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        // NUR Drag Handle rechts (6-Punkte Grid Icon)
+                                        ReorderableDragStartListener(
+                                          index: index,
+                                          child: MouseRegion(
+                                            cursor: SystemMouseCursors.click,
+                                            child: const Padding(
+                                              padding: EdgeInsets.symmetric(
+                                                horizontal: 12,
+                                              ),
+                                              child: Icon(
+                                                Icons.drag_indicator,
+                                                color: Colors.white70,
+                                                size: 24,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
-            ],
-          );
-        },
-      ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -2673,20 +2718,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                                               width: 13,
                                               height: 13,
                                               decoration: BoxDecoration(
-                                                gradient: LinearGradient(
-                                                  begin: Alignment.topLeft,
-                                                  end: Alignment.bottomRight,
-                                                  colors: [
-                                                    const Color(0xFFFF2EC8),
-                                                    Theme.of(context)
-                                                            .extension<
-                                                              AppGradients
-                                                            >()
-                                                            ?.magentaBlue
-                                                            .colors[1] ??
-                                                        Colors.green,
-                                                  ],
-                                                ),
+                                                gradient: Theme.of(context)
+                                                    .extension<AppGradients>()!
+                                                    .magentaBlue,
                                                 shape: BoxShape.circle,
                                                 border: Border.all(
                                                   color: Colors.white,

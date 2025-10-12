@@ -169,13 +169,13 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
                 label: 'Favoriten',
                 index: 2,
               ),
-              // Profil
-              _buildNavItem(
-                iconFilled: Icons.person,
-                iconOutlined: Icons.person_outline,
-                label: 'Profil',
-                index: 3,
-              ),
+              // Profil - AUSKOMMENTIERT (evtl. später anderes Icon)
+              // _buildNavItem(
+              //   iconFilled: Icons.person,
+              //   iconOutlined: Icons.person_outline,
+              //   label: 'Profil',
+              //   index: 3,
+              // ),
             ],
           ),
         ),
@@ -193,48 +193,54 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
     final isChatActive =
         _activeChatAvatarId != null && index == 0; // Chat = Home
 
-    return GestureDetector(
-      onTap: () {
-        if (_activeChatAvatarId != null) {
-          closeChat(); // Chat schließen
-        }
-        setState(() => _currentIndex = index);
-      },
-      child: Align(
-        alignment: Alignment.topCenter,
-        child: Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (isChatActive)
-                ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: [
-                      Color(0xFFE91E63), // Magenta
-                      AppColors.lightBlue, // Blue
-                      Color(0xFF00E5FF), // Cyan
-                    ],
-                  ).createShader(bounds),
-                  child: Icon(iconFilled, color: Colors.white, size: 20),
-                )
-              else
-                Icon(
-                  isSelected ? iconFilled : iconOutlined,
-                  color: isSelected ? Colors.white : Colors.grey.shade400,
-                  size: 20,
-                ),
-              const SizedBox(height: 2),
-              Text(
-                label,
-                style: TextStyle(
-                  color: (isSelected || isChatActive)
-                      ? Colors.white
-                      : Colors.white.withValues(alpha: 0.5),
-                  fontSize: 8,
-                ),
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          if (_activeChatAvatarId != null) {
+            closeChat(); // Chat schließen
+          }
+          setState(() => _currentIndex = index);
+        },
+        behavior: HitTestBehavior.opaque, // WICHTIG: Gesamter Bereich klickbar
+        child: Container(
+          color: Colors.transparent, // Touch-Target vergrößern
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (isChatActive)
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [
+                          Color(0xFFE91E63), // Magenta
+                          AppColors.lightBlue, // Blue
+                          Color(0xFF00E5FF), // Cyan
+                        ],
+                      ).createShader(bounds),
+                      child: Icon(iconFilled, color: Colors.white, size: 20),
+                    )
+                  else
+                    Icon(
+                      isSelected ? iconFilled : iconOutlined,
+                      color: isSelected ? Colors.white : Colors.grey.shade400,
+                      size: 20,
+                    ),
+                  const SizedBox(height: 2),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      color: (isSelected || isChatActive)
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.5),
+                      fontSize: 8,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
