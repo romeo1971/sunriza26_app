@@ -545,10 +545,15 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
-        await _authService.signInWithEmailAndPassword(
-          email: _enteredEmail,
-          password: _enteredPassword,
-        );
+      await _authService.signInWithEmailAndPassword(
+        email: _enteredEmail,
+        password: _enteredPassword,
+      );
+      
+      // Erfolgreiche Anmeldung - Dialog schließen
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
     } on FirebaseAuthException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
@@ -606,28 +611,30 @@ class _AuthScreenState extends State<AuthScreen> {
     });
 
     try {
-        await _authService.createUserWithEmailAndPassword(
-          email: _enteredEmail,
-          password: _enteredPassword,
-        );
-        if (mounted) {
+      await _authService.createUserWithEmailAndPassword(
+        email: _enteredEmail,
+        password: _enteredPassword,
+      );
+      
+      if (mounted) {
         final loc = Provider.of<LocalizationService>(context, listen: false);
-          ScaffoldMessenger.of(context).showSnackBar(
+        Navigator.of(context).pop(); // Dialog schließen
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(loc.t('auth.registerSuccess')),
             backgroundColor: const Color(0xFF00FF94),
-            ),
-          );
-          setState(() {
-            _enteredEmail = '';
-            _enteredPassword = '';
-            _isEmailValid = false;
-            _isPasswordValid = false;
-            _emailController.clear();
-            _passwordController.clear();
-          });
-          await _authService.signOut();
-          return;
+          ),
+        );
+        setState(() {
+          _enteredEmail = '';
+          _enteredPassword = '';
+          _isEmailValid = false;
+          _isPasswordValid = false;
+          _emailController.clear();
+          _passwordController.clear();
+        });
+        await _authService.signOut();
+        return;
       }
     } on FirebaseAuthException catch (error) {
       if (mounted) {
@@ -707,6 +714,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
       if (mounted) {
         final loc = Provider.of<LocalizationService>(context, listen: false);
+        Navigator.of(context).pop(); // Dialog schließen
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(loc.t('auth.googleSignInSuccess')),
