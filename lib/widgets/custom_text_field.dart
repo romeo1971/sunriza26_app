@@ -198,84 +198,79 @@ class _CustomTextFieldWithGradientState
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: _isFocused ? widget.gradients.magentaBlue : null,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Container(
-        margin: _isFocused ? const EdgeInsets.all(2) : EdgeInsets.zero,
-        decoration: BoxDecoration(
-          color: const Color(0xFF0A0A0A),
-          borderRadius: BorderRadius.circular(_isFocused ? 6 : 8),
+    return TextFormField(
+      controller: widget.controller,
+      validator: widget.validator,
+      onChanged: widget.onChanged,
+      keyboardType: widget.keyboardType,
+      readOnly: widget.readOnly,
+      maxLines: widget.maxLines,
+      minLines: widget.minLines,
+      maxLength: widget.maxLength,
+      inputFormatters: widget.inputFormatters,
+      textCapitalization: widget.textCapitalization,
+      obscureText: widget.obscureText,
+      style: widget.effectiveStyle,
+      cursorColor: AppColors.magenta,
+      enabled: widget.enabled,
+      focusNode: _internalFocusNode,
+      onTap: widget.onTap,
+      onFieldSubmitted: widget.onSubmitted,
+      textInputAction: widget.textInputAction,
+      decoration: InputDecoration(
+        labelText: widget.label,
+        labelStyle: widget.effectiveStyle.copyWith(
+          color: Colors.white70,
+          fontWeight: FontWeight.normal,
+          backgroundColor: const Color(0xFF0A0A0A),
         ),
-        child: TextFormField(
-          controller: widget.controller,
-          validator: widget.validator,
-          onChanged: widget.onChanged,
-          keyboardType: widget.keyboardType,
-          readOnly: widget.readOnly,
-          maxLines: widget.maxLines,
-          minLines: widget.minLines,
-          maxLength: widget.maxLength,
-          inputFormatters: widget.inputFormatters,
-          textCapitalization: widget.textCapitalization,
-          obscureText: widget.obscureText,
-          style: widget.effectiveStyle,
-          cursorColor: AppColors.magenta,
-          enabled: widget.enabled,
-          focusNode: _internalFocusNode,
-          onTap: widget.onTap,
-          onFieldSubmitted: widget.onSubmitted,
-          textInputAction: widget.textInputAction,
-          decoration: InputDecoration(
-            labelText: widget.label,
-            labelStyle: widget.effectiveStyle.copyWith(
-              color: Colors.white70,
-              fontWeight: FontWeight.normal,
-            ),
-            floatingLabelStyle: widget.effectiveStyle.copyWith(
-              color: _isFocused ? Colors.white : Colors.white70,
-              fontWeight: FontWeight.normal,
-              backgroundColor: const Color(0xFF0A0A0A),
-            ),
-            floatingLabelBehavior: FloatingLabelBehavior.always,
-            hintText: widget.hintText,
-            hintStyle: widget.effectiveStyle.copyWith(color: Colors.white54),
-            filled: true,
-            fillColor: const Color(0xFF0A0A0A),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(_isFocused ? 6 : 8),
-              borderSide: BorderSide(
-                color: Colors.white.withValues(alpha: 0.3),
-                width: 1,
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(6),
-              borderSide: const BorderSide(color: Colors.transparent, width: 1),
-            ),
-            errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Colors.red, width: 2),
-            ),
-            focusedErrorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Colors.red, width: 2),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
-              borderSide: const BorderSide(color: Colors.white12, width: 1),
-            ),
-            contentPadding:
-                widget.contentPadding ??
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            suffixIcon: widget.suffixIcon,
-            prefixIcon: widget.prefixIcon,
-            prefixIconConstraints: widget.prefixIconConstraints,
-            counterStyle: const TextStyle(color: Colors.white54),
+        floatingLabelStyle: widget.effectiveStyle.copyWith(
+          color: _isFocused ? Colors.white : Colors.white70,
+          fontWeight: FontWeight.normal,
+          backgroundColor: const Color(0xFF0A0A0A),
+        ),
+        floatingLabelBehavior: FloatingLabelBehavior.always,
+        hintText: widget.hintText,
+        hintStyle: widget.effectiveStyle.copyWith(color: Colors.white54),
+        filled: true,
+        fillColor: const Color(0xFF0A0A0A),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(
+            color: Colors.white.withValues(alpha: 0.3),
+            width: 1,
           ),
+          gapPadding: 12,
         ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(
+            color: Color(0xFFFF2EC8), // GMBC Magenta
+            width: 2,
+          ),
+          gapPadding: 12,
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+          gapPadding: 8,
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
+          gapPadding: 8,
+        ),
+        disabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: const BorderSide(color: Colors.white12, width: 1),
+        ),
+        contentPadding:
+            widget.contentPadding ??
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        suffixIcon: widget.suffixIcon,
+        prefixIcon: widget.prefixIcon,
+        prefixIconConstraints: widget.prefixIconConstraints,
+        counterStyle: const TextStyle(color: Colors.white54),
       ),
     );
   }
