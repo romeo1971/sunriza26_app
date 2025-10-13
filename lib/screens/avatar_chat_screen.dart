@@ -24,6 +24,10 @@ import '../services/media_service.dart';
 import '../services/shared_moments_service.dart';
 import '../models/media_models.dart';
 import 'package:extended_image/extended_image.dart';
+import '../widgets/avatar_overlay.dart';
+import 'dart:ui' as ui;
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 class AvatarChatScreen extends StatefulWidget {
   final String? avatarId; // Optional: Für Overlay-Chat
@@ -47,6 +51,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
   bool _isStoppingPlayback = false;
   StreamSubscription<PlayerState>? _playerStateSub;
+
+  // Live Avatar Animation
+  VideoPlayerController? _idleController;
+  ui.Image? _atlasImage;
+  ui.Image? _maskImage;
+  Map<String, Rect>? _atlasCells;
+  Rect? _mouthROI;
+  VisemeMixer? _visemeMixer;
+  bool _liveAvatarEnabled = false;
+  WebSocketChannel? _orchestratorWS;
+  String? _liveSessionId;
 
   // Rate-Limiting für TTS-Requests
   DateTime? _lastTtsRequestTime;
@@ -378,8 +393,243 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         }
         // Starte Teaser-Scheduling
         _scheduleTeaser();
+        // Live Avatar Assets laden
+        _initLiveAvatar(_avatarData!.id);
       }
     });
+  }
+
+  Future<void> _initLiveAvatar(String avatarId) async {
+    try {
+      // Lade Avatar-Assets-URLs aus Firestore
+      final doc = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(avatarId)
+          .get();
+
+      if (!doc.exists) {
+        debugPrint('⚠️ Live Avatar: Avatar nicht gefunden in Firestore');
+        return;
+      }
+
+      final data = doc.data();
+      final liveAssets = data?['liveAssets'] as Map<String, dynamic>?;
+
+      if (liveAssets == null) {
+        debugPrint(
+          '⚠️ Live Avatar: Keine liveAssets für $avatarId - verwende lokale Assets für Test',
+        );
+        // Fallback für Test: Lokale Assets
+        await _initLiveAvatarLocal(avatarId);
+        return;
+      }
+
+      // URLs aus Firebase Storage
+      final idleUrl = liveAssets['idleUrl'] as String?;
+      final atlasUrl = liveAssets['atlasUrl'] as String?;
+      final maskUrl = liveAssets['maskUrl'] as String?;
+      final atlasJson = liveAssets['atlasJson'] as String?;
+      final roiJson = liveAssets['roiJson'] as String?;
+
+      if (idleUrl == null || atlasUrl == null || maskUrl == null) {
+        debugPrint('⚠️ Live Avatar: Unvollständige Assets');
+        return;
+      }
+
+      // Video von Firebase Storage
+      _idleController = VideoPlayerController.networkUrl(Uri.parse(idleUrl));
+      await _idleController!.initialize();
+      _idleController!.setLooping(true);
+      _idleController!.play();
+
+      // Atlas & Mask von Firebase Storage
+      final atlasRes = await http.get(Uri.parse(atlasUrl));
+      final maskRes = await http.get(Uri.parse(maskUrl));
+
+      final codec1 = await ui.instantiateImageCodec(atlasRes.bodyBytes);
+      final frame1 = await codec1.getNextFrame();
+      _atlasImage = frame1.image;
+
+      final codec2 = await ui.instantiateImageCodec(maskRes.bodyBytes);
+      final frame2 = await codec2.getNextFrame();
+      _maskImage = frame2.image;
+
+      // Parse JSON (entweder von Firebase oder fallback lokal)
+      Map<String, dynamic> atlasMapParsed;
+      Map<String, dynamic> roiMapParsed;
+
+      if (atlasJson != null && roiJson != null) {
+        atlasMapParsed = json.decode(atlasJson);
+        roiMapParsed = json.decode(roiJson);
+      } else {
+        // Fallback: Lokale JSON-Dateien
+        final atlasJsonLocal = await rootBundle.loadString(
+          'assets/avatars/schatzy/atlas.json',
+        );
+        final roiJsonLocal = await rootBundle.loadString(
+          'assets/avatars/schatzy/roi.json',
+        );
+        atlasMapParsed = json.decode(atlasJsonLocal);
+        roiMapParsed = json.decode(roiJsonLocal);
+      }
+
+      _atlasCells = (atlasMapParsed['cells'] as Map<String, dynamic>).map((
+        k,
+        v,
+      ) {
+        final cell = v as Map<String, dynamic>;
+        return MapEntry(
+          k,
+          Rect.fromLTWH(
+            (cell['x'] as num).toDouble(),
+            (cell['y'] as num).toDouble(),
+            (cell['w'] as num).toDouble(),
+            (cell['h'] as num).toDouble(),
+          ),
+        );
+      });
+
+      _mouthROI = Rect.fromLTWH(
+        (roiMapParsed['x'] as num).toDouble(),
+        (roiMapParsed['y'] as num).toDouble(),
+        (roiMapParsed['w'] as num).toDouble(),
+        (roiMapParsed['h'] as num).toDouble(),
+      );
+
+      _visemeMixer = VisemeMixer(_atlasCells!);
+
+      // WebSocket zum Orchestrator aufbauen
+      await _connectOrchestrator(avatarId);
+
+      setState(() {
+        _liveAvatarEnabled = true;
+      });
+
+      debugPrint('✅ Live Avatar initialisiert (Firebase Storage)');
+    } catch (e) {
+      debugPrint('❌ Live Avatar Init Fehler: $e');
+    }
+  }
+
+  // Fallback für lokale Tests
+  Future<void> _initLiveAvatarLocal(String avatarId) async {
+    try {
+      final assetPath = 'assets/avatars/schatzy';
+
+      _idleController = VideoPlayerController.asset('$assetPath/idle.mp4');
+      await _idleController!.initialize();
+      _idleController!.setLooping(true);
+      _idleController!.play();
+
+      final atlasData = await rootBundle.load('$assetPath/atlas.png');
+      final maskData = await rootBundle.load('$assetPath/mask.png');
+      final atlasJson = await rootBundle.loadString('$assetPath/atlas.json');
+      final roiJson = await rootBundle.loadString('$assetPath/roi.json');
+
+      final codec1 = await ui.instantiateImageCodec(
+        atlasData.buffer.asUint8List(),
+      );
+      final frame1 = await codec1.getNextFrame();
+      _atlasImage = frame1.image;
+
+      final codec2 = await ui.instantiateImageCodec(
+        maskData.buffer.asUint8List(),
+      );
+      final frame2 = await codec2.getNextFrame();
+      _maskImage = frame2.image;
+
+      final atlasMap = json.decode(atlasJson) as Map<String, dynamic>;
+      final roiMap = json.decode(roiJson) as Map<String, dynamic>;
+
+      _atlasCells = (atlasMap['cells'] as Map<String, dynamic>).map((k, v) {
+        final cell = v as Map<String, dynamic>;
+        return MapEntry(
+          k,
+          Rect.fromLTWH(
+            (cell['x'] as num).toDouble(),
+            (cell['y'] as num).toDouble(),
+            (cell['w'] as num).toDouble(),
+            (cell['h'] as num).toDouble(),
+          ),
+        );
+      });
+
+      _mouthROI = Rect.fromLTWH(
+        (roiMap['x'] as num).toDouble(),
+        (roiMap['y'] as num).toDouble(),
+        (roiMap['w'] as num).toDouble(),
+        (roiMap['h'] as num).toDouble(),
+      );
+
+      _visemeMixer = VisemeMixer(_atlasCells!);
+      await _connectOrchestrator(avatarId);
+
+      setState(() {
+        _liveAvatarEnabled = true;
+      });
+
+      debugPrint('✅ Live Avatar initialisiert (Lokal - Test)');
+    } catch (e) {
+      debugPrint('❌ Live Avatar Local Init Fehler: $e');
+    }
+  }
+
+  Future<void> _connectOrchestrator(String avatarId) async {
+    try {
+      // Session erstellen
+      final res = await http.post(
+        Uri.parse('http://localhost:8787/session-live'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'avatar_id': avatarId,
+          'voice_id':
+              _avatarData?.training?['voice']?['elevenVoiceId'] ?? 'demo',
+        }),
+      );
+
+      if (res.statusCode == 200) {
+        final data = json.decode(res.body);
+        _liveSessionId = data['session_id'];
+        final wsUrl = data['ws_url'] as String;
+
+        // WebSocket verbinden
+        _orchestratorWS = WebSocketChannel.connect(Uri.parse(wsUrl));
+
+        // Listener für Viseme/Prosody Events
+        _orchestratorWS!.stream.listen((message) {
+          try {
+            final data = json.decode(message as String);
+            if (data['type'] == 'viseme' && _visemeMixer != null) {
+              final weights = (data['weights'] as Map).map(
+                (k, v) => MapEntry(k as String, (v as num).toDouble()),
+              );
+              _visemeMixer!.updateWeights(weights);
+            }
+          } catch (e) {
+            debugPrint('❌ WebSocket message error: $e');
+          }
+        });
+
+        debugPrint('✅ Orchestrator verbunden: $_liveSessionId');
+      }
+    } catch (e) {
+      debugPrint('❌ Orchestrator Connect Fehler: $e');
+    }
+  }
+
+  Future<void> _liveSpeak(String text) async {
+    if (_liveSessionId == null) return;
+
+    try {
+      await http.post(
+        Uri.parse('http://localhost:8787/session-live/$_liveSessionId/speak'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'text': text, 'barge_in': false}),
+      );
+      debugPrint('🗣️ Live Speak gestartet');
+    } catch (e) {
+      debugPrint('❌ Live Speak Fehler: $e');
+    }
   }
 
   @override
@@ -449,8 +699,38 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       body: SizedBox.expand(
         child: Stack(
           children: [
-            // Background Image FULLSCREEN (height: 100%, width: auto)
-            if (backgroundImage != null && backgroundImage.isNotEmpty)
+            // LIVE AVATAR: Video + Overlay ODER Fallback: Statisches Bild
+            if (_liveAvatarEnabled &&
+                _idleController != null &&
+                _idleController!.value.isInitialized) ...[
+              // Layer 0: Idle-Loop Video
+              Positioned.fill(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _idleController!.value.size.width,
+                    height: _idleController!.value.size.height,
+                    child: VideoPlayer(_idleController!),
+                  ),
+                ),
+              ),
+              // Layer 1: Mund-Overlay
+              if (_atlasImage != null &&
+                  _maskImage != null &&
+                  _atlasCells != null &&
+                  _mouthROI != null &&
+                  _visemeMixer != null)
+                Positioned.fill(
+                  child: AvatarOverlay(
+                    atlas: _atlasImage!,
+                    mask: _maskImage!,
+                    cells: _atlasCells!,
+                    roi: _mouthROI!,
+                    mixer: _visemeMixer!,
+                  ),
+                ),
+            ] else if (backgroundImage != null && backgroundImage.isNotEmpty)
+              // Fallback: Statisches Bild
               Positioned.fill(
                 child: ExtendedImage.network(
                   backgroundImage,
@@ -2217,6 +2497,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     _teaserEntry?.remove();
     // Image Timeline aufräumen
     _imageTimer?.cancel();
+    // Live Avatar aufräumen
+    _idleController?.dispose();
+    _visemeMixer?.dispose();
+    _orchestratorWS?.sink.close();
     // LiveKit sauber trennen (no-op wenn Feature deaktiviert)
     unawaited(LiveKitService().leave());
     super.dispose();

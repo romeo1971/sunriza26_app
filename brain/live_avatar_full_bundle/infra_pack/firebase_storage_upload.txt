@@ -1,0 +1,4 @@
+# Upload assets to Firebase Storage
+# gsutil is available if you install Google Cloud SDK, or use Firebase Admin/SDK.
+
+gsutil -m cp -r ./avatars/user123 gs://<your-project>.appspot.com/avatars/
