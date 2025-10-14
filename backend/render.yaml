@@ -1,0 +1,42 @@
+# Render.com Blueprint für Sunriza Backend
+services:
+  - type: web
+    name: sunriza-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    region: frankfurt  # EU Region (näher zu Deutschland)
+    plan: starter  # $7/Monat (kann später zu free downgraded werden für Tests)
+    branch: main  # Git Branch
+    
+    # Umgebungsvariablen
+    envVars:
+      - key: LIVEPORTRAIT_PATH
+        value: /opt/liveportrait/inference.py
+      - key: PYTORCH_ENABLE_MPS_FALLBACK
+        value: "1"
+      - key: PORT
+        value: "8002"
+      
+      # Firebase Service Account (als Secret hochladen!)
+      - key: GOOGLE_APPLICATION_CREDENTIALS
+        value: /app/service-account-key.json
+    
+    # Health Check
+    healthCheckPath: /health
+    
+    # Auto-Deploy bei Git Push
+    autoDeploy: true
+    
+    # Disk Space für temporäre Videos
+    disk:
+      name: temp-videos
+      mountPath: /tmp
+      sizeGB: 5
+
+# Hinweise:
+# 1. service-account-key.json muss als Secret File hochgeladen werden
+# 2. LivePortrait Pretrained Weights werden beim ersten Build heruntergeladen
+# 3. Erste Generierung kann länger dauern (Cold Start + Download)
+# 4. CPU-only = langsamere Generierung (10-15 Min statt 3-5 Min)
+

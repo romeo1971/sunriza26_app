@@ -9,6 +9,7 @@ import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
@@ -130,6 +131,7 @@ class AvatarDetailsScreen extends StatefulWidget {
 class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _mediaSvc = MediaService();
+  final _db = FirebaseDatabase.instance;
   final _firstNameController = TextEditingController();
   final _nicknameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -404,7 +406,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     'basic': 0.41,
   }; // dynamicsId -> value
   Map<String, double> _animationScales = {'basic': 1.7};
-  Map<String, int> _sourceMaxDims = {'basic': 2048};
+  Map<String, int> _sourceMaxDims = {
+    'basic': 1600,
+  }; // Auto-berechnet aus Hero-Image!
   Map<String, bool> _flagsNormalizeLip = {'basic': true};
   Map<String, bool> _flagsPasteback = {'basic': true};
   Map<String, String> _animationRegions = {'basic': 'all'};
@@ -1248,6 +1252,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             onDeleteConfirm: _confirmDeleteSelectedImages,
             onGenerateAvatar: _handleGenerateAvatar,
             onSetHeroImage: _setHeroImage,
+            onCropImage: _onImageRecrop,
             // Helper functions
             fileNameFromUrl: _fileNameFromUrl,
             getTotalEndTime: _getTotalEndTime,
@@ -1431,12 +1436,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           setState(() => _drivingMultipliers[id] = v),
       onAnimationScaleChanged: (id, v) =>
           setState(() => _animationScales[id] = v),
-      onSourceMaxDimChanged: (id, v) => setState(() => _sourceMaxDims[id] = v),
+      // onSourceMaxDimChanged entfernt - Wert wird automatisch berechnet
       onFlagNormalizeLipChanged: (id, v) =>
           setState(() => _flagsNormalizeLip[id] = v),
       onFlagPastebackChanged: (id, v) =>
           setState(() => _flagsPasteback[id] = v),
       onGenerate: (id) => _generateDynamics(id),
+      onCancelGeneration: (id) => _cancelDynamicsGeneration(id),
+      onDeleteDynamics: (id) => _deleteDynamicsVideo(id),
       onShowCreateDynamicsDialog: _showCreateDynamicsDialog,
       buildSlider: _buildSlider,
     );
@@ -3559,8 +3566,154 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return null;
   }
 
+  String? _getHeroImageUrl() {
+    if (_profileImageUrl != null && _profileImageUrl!.isNotEmpty) {
+      return _profileImageUrl;
+    }
+    if (_imageUrls.isNotEmpty) return _imageUrls.first;
+    return null;
+  }
+
+  /// Berechnet optimalen source-max-dim Wert basierend auf Hero-Image-Dimensionen
+  /// Logik: Nimmt die größere Dimension (Höhe oder Breite) und rundet auf nächste 512px
+  Future<void> _autoCalculateSourceMaxDim(String dynamicsId) async {
+    final heroImageUrl = _getHeroImageUrl();
+    if (heroImageUrl == null) return;
+
+    try {
+      debugPrint('📏 Berechne optimalen source-max-dim für: $heroImageUrl');
+
+      // Lade Image und hole Dimensionen
+      final completer = Completer<ui.Image>();
+      final imageStream = NetworkImage(
+        heroImageUrl,
+      ).resolve(ImageConfiguration.empty);
+
+      late ImageStreamListener listener;
+      listener = ImageStreamListener(
+        (ImageInfo info, bool _) {
+          completer.complete(info.image);
+          imageStream.removeListener(listener);
+        },
+        onError: (exception, stackTrace) {
+          debugPrint('❌ Fehler beim Laden des Hero-Images: $exception');
+          completer.completeError(exception);
+          imageStream.removeListener(listener);
+        },
+      );
+
+      imageStream.addListener(listener);
+      final image = await completer.future;
+
+      final width = image.width;
+      final height = image.height;
+      final maxDim = width > height ? width : height;
+
+      // Runde auf nächste 512px, min 512, max 2048
+      int optimal;
+      if (maxDim <= 768) {
+        optimal = 512;
+      } else if (maxDim <= 1280) {
+        optimal = 1024;
+      } else if (maxDim <= 1792) {
+        optimal = 1600;
+      } else {
+        optimal = 2048;
+      }
+
+      setState(() {
+        _sourceMaxDims[dynamicsId] = optimal;
+      });
+
+      debugPrint(
+        '✅ source-max-dim berechnet: ${width}x${height} → $optimal px',
+      );
+      debugPrint('💡 Empfehlung: $optimal (basierend auf Bild-Größe)');
+    } catch (e) {
+      debugPrint('❌ Fehler beim Berechnen von source-max-dim: $e');
+      // Fallback auf 1600
+      setState(() {
+        _sourceMaxDims[dynamicsId] = 1600;
+      });
+    }
+  }
+
   Future<void> _setHeroVideo(String url) async {
     if (_avatarData == null) return;
+
+    // Prüfe ob Basic Dynamics Video existiert
+    final hasBasicDynamicsVideo = _dynamicsData['basic']?['video_url'] != null;
+
+    if (hasBasicDynamicsVideo) {
+      // Warnung anzeigen
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('⚠️ Neues Hero-Video?'),
+          content: const Text(
+            'Durch das Setzen eines neuen Hero-Videos wird das generierte Basic Dynamics Video gelöscht.\n\n'
+            'Möchtest du fortfahren?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: Colors.orange),
+              child: const Text('Fortfahren'),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+
+      // Lösche NUR Basic Dynamics Video und setze Status auf 'pending'
+      try {
+        final batch = <String, dynamic>{};
+
+        // Nur 'basic' Dynamics
+        if (_dynamicsData['basic']?['video_url'] != null) {
+          batch['dynamics.basic.video_url'] = FieldValue.delete();
+        }
+        batch['dynamics.basic.status'] = 'pending';
+
+        if (batch.isNotEmpty) {
+          await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(_avatarData!.id)
+              .update(batch);
+        }
+
+        setState(() {
+          _dynamicsData['basic']?['video_url'] = null;
+          _dynamicsData['basic']?['status'] = 'pending';
+        });
+
+        debugPrint('✅ Basic Dynamics Video gelöscht, Status auf pending');
+      } catch (e) {
+        debugPrint('❌ Fehler beim Löschen Basic Dynamics Video: $e');
+      }
+    } else {
+      // Auch wenn kein Video vorhanden ist, setze Status auf 'pending'
+      try {
+        await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(_avatarData!.id)
+            .update({'dynamics.basic.status': 'pending'});
+
+        setState(() {
+          _dynamicsData['basic']?['status'] = 'pending';
+        });
+
+        debugPrint('✅ Basic Dynamics Status auf pending gesetzt');
+      } catch (e) {
+        debugPrint('❌ Fehler beim Setzen Status: $e');
+      }
+    }
+
     try {
       final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
       tr['heroVideoUrl'] = url;
@@ -5963,10 +6116,49 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     for (final url in _selectedRemoteImages) {
       try {
         debugPrint('DEL img start: $url');
-        // ERST: thumbUrl aus Firestore holen und löschen
-        String? thumbUrl;
+        final avatarId = _avatarData!.id;
+
+        // ALLE Thumbnails zum Bild löschen (nicht nur das eine aus Firestore!)
+        final originalPath = FirebaseStorageService.pathFromUrl(url);
+        if (originalPath.isNotEmpty) {
+          final dir = p.dirname(originalPath); // avatars/<id>/images
+          final base = p.basenameWithoutExtension(originalPath);
+          // Lösche ALLE thumbs die mit diesem Basename beginnen
+          final thumbsDir = '$dir/thumbs';
+          debugPrint(
+            'DEL: Suche alle Thumbnails in: $thumbsDir für Basis: $base',
+          );
+          try {
+            final ref = FirebaseStorage.instance.ref().child(thumbsDir);
+            final listResult = await ref.listAll();
+            for (final item in listResult.items) {
+              // Prüfe ob Dateiname mit base beginnt
+              if (item.name.startsWith(base)) {
+                debugPrint('DEL: Lösche Thumbnail: ${item.fullPath}');
+                try {
+                  await item.delete();
+                  debugPrint('DEL: Thumbnail gelöscht ✓');
+                } catch (e) {
+                  debugPrint('DEL: Fehler beim Löschen: $e');
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('DEL: Fehler beim Listen der Thumbnails: $e');
+          }
+        }
+
+        // Original löschen
+        debugPrint('DEL: Lösche altes Original: $url');
         try {
-          final avatarId = _avatarData!.id;
+          await FirebaseStorageService.deleteFile(url);
+          debugPrint('DEL: Altes Original gelöscht ✓');
+        } catch (e) {
+          debugPrint('DEL: Original-Fehler: $e');
+        }
+
+        // Firestore-Dokument löschen
+        try {
           debugPrint('DEL images query for avatar=$avatarId');
           final qs = await FirebaseFirestore.instance
               .collection('avatars')
@@ -5976,25 +6168,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               .get();
           debugPrint('DEL images docs: ${qs.docs.length}');
           for (final d in qs.docs) {
-            final data = d.data();
-            thumbUrl = (data['thumbUrl'] as String?);
-            if (thumbUrl != null && thumbUrl.isNotEmpty) {
-              debugPrint('DEL: Lösche Thumbnail: $thumbUrl');
-              try {
-                await FirebaseStorageService.deleteFile(thumbUrl);
-                debugPrint('DEL: Thumbnail gelöscht ✓');
-              } catch (e) {
-                debugPrint('DEL: Thumbnail-Fehler: $e');
-              }
-            }
+            debugPrint('DEL: Lösche Firestore-Dokument: ${d.id}');
             await d.reference.delete();
+            debugPrint('DEL: Firestore-Dokument gelöscht ✓');
           }
-        } catch (_) {}
-        // Original löschen
-        await FirebaseStorageService.deleteFile(url);
+        } catch (e) {
+          debugPrint('DEL: Firestore-Fehler: $e');
+        }
+
         debugPrint('DEL img storage OK');
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('DEL img ERROR: $e');
+      }
+
+      // URLs und Maps aufräumen
       _imageUrls.remove(url);
+      _mediaOriginalNames.remove(url);
+      _imageDurations.remove(url);
+      _imageActive.remove(url);
+      _imageExplorerVisible.remove(url);
+
       if (_profileImageUrl == url) {
         if (_imageUrls.isNotEmpty) {
           _setHeroImage(_imageUrls.first);
@@ -6108,6 +6301,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       debugPrint(
         '✅ Avatar nach Delete aktualisiert: ${_videoUrls.length} Videos, heroVideoUrl=$newHeroVideoUrl',
       );
+      // Timeline-Daten persistieren (imageDurations, imageActive, imageExplorerVisible)
+      await _saveTimelineData();
+      debugPrint('✅ Timeline-Daten nach Delete gespeichert');
     }
     _isDeleteMode = false;
     if (mounted) setState(() {});
@@ -6970,11 +7166,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     setState(() {
       _drivingMultipliers[dynamicsId] = 0.41;
       _animationScales[dynamicsId] = 1.7;
-      _sourceMaxDims[dynamicsId] = 2048;
+      _sourceMaxDims[dynamicsId] = 1600; // Fallback, wird gleich neu berechnet
       _flagsNormalizeLip[dynamicsId] = true;
       _flagsPasteback[dynamicsId] = true;
       _animationRegions[dynamicsId] = 'all';
     });
+
+    // 🎯 Auto-berechne optimalen source-max-dim
+    _autoCalculateSourceMaxDim(dynamicsId);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -7006,8 +7205,187 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
+  Future<void> _restoreGeneratingTimer(String dynamicsId) async {
+    if (_avatarData == null) return;
+
+    try {
+      final snapshot = await _db
+          .ref('avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating')
+          .get();
+
+      if (!snapshot.exists) return;
+
+      final data = snapshot.value as Map?;
+      if (data == null) return;
+
+      final startTime = data['startTime'] as int?;
+      final duration = data['duration'] as int? ?? 210;
+
+      if (startTime == null) return;
+
+      // Berechne verbleibende Zeit
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final elapsed = ((now - startTime) / 1000).floor(); // Sekunden
+      final remaining = duration - elapsed;
+
+      if (remaining <= 0) {
+        // Zeit ist abgelaufen - cleanup
+        _db
+            .ref('avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating')
+            .remove();
+        return;
+      }
+
+      // Stelle Timer wieder her
+      setState(() {
+        _generatingDynamics.add(dynamicsId);
+        _dynamicsTimeRemaining[dynamicsId] = remaining;
+      });
+
+      _dynamicsTimers[dynamicsId]?.cancel();
+      _dynamicsTimers[dynamicsId] = Timer.periodic(const Duration(seconds: 1), (
+        timer,
+      ) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+
+        setState(() {
+          final rem = _dynamicsTimeRemaining[dynamicsId] ?? 0;
+          if (rem > 0) {
+            _dynamicsTimeRemaining[dynamicsId] = rem - 1;
+          }
+
+          if (rem <= 0) {
+            timer.cancel();
+            _generatingDynamics.remove(dynamicsId);
+            _db
+                .ref(
+                  'avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating',
+                )
+                .remove();
+            _loadDynamicsData(_avatarData!.id);
+          }
+        });
+      });
+
+      debugPrint('⏳ Timer für "$dynamicsId" wiederhergestellt: ${remaining}s');
+    } catch (e) {
+      debugPrint('❌ Fehler beim Wiederherstellen Timer: $e');
+    }
+  }
+
+  Future<void> _deleteDynamicsVideo(String dynamicsId) async {
+    if (_avatarData == null) return;
+
+    final dynamicsName =
+        (_dynamicsData[dynamicsId]?['name'] as String?) ??
+        (dynamicsId == 'basic' ? 'Basic' : dynamicsId);
+
+    // Bestätigung
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Video löschen?'),
+        content: Text(
+          'Möchtest du das generierte Video für "$dynamicsName" wirklich löschen?\n\n'
+          '${dynamicsId == 'basic' ? 'Im Chat wird dann nur das Hero-Image angezeigt.' : ''}',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Löschen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      // Lösche Video-URL aus Firestore
+      await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .update({
+            'dynamics.$dynamicsId.video_url': FieldValue.delete(),
+            'dynamics.$dynamicsId.status': 'pending',
+          });
+
+      // Aktualisiere lokalen State
+      setState(() {
+        _dynamicsData[dynamicsId]?['video_url'] = null;
+        _dynamicsData[dynamicsId]?['status'] = 'pending';
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Video für "$dynamicsName" gelöscht'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Fehler beim Löschen: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Fehler beim Löschen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  void _cancelDynamicsGeneration(String dynamicsId) {
+    if (!_generatingDynamics.contains(dynamicsId)) return;
+
+    // Timer stoppen
+    _dynamicsTimers[dynamicsId]?.cancel();
+    _dynamicsTimers.remove(dynamicsId);
+
+    // Lösche generating-Status aus Firebase
+    if (_avatarData != null) {
+      _db
+          .ref('avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating')
+          .remove();
+    }
+
+    // Status zurücksetzen
+    setState(() {
+      _generatingDynamics.remove(dynamicsId);
+      _dynamicsTimeRemaining.remove(dynamicsId);
+    });
+
+    final dynamicsName =
+        (_dynamicsData[dynamicsId]?['name'] as String?) ??
+        (dynamicsId == 'basic' ? 'Basic' : dynamicsId);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('⚠️ Generierung von "$dynamicsName" abgebrochen'),
+        backgroundColor: Colors.orange,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   Future<void> _generateDynamics(String dynamicsId) async {
     if (_avatarData == null) return;
+
+    // Verhindere mehrfaches Starten
+    if (_generatingDynamics.contains(dynamicsId)) {
+      debugPrint('⚠️ Dynamics "$dynamicsId" wird bereits generiert');
+      return;
+    }
 
     setState(() => _generatingDynamics.add(dynamicsId));
 
@@ -7037,9 +7415,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       if (response.statusCode == 200) {
         if (mounted) {
-          // Starte Countdown-Timer pro Dynamics
+          // Parse Response um geschätzte Zeit zu bekommen
+          final responseData = jsonDecode(response.body);
+          final estimatedSeconds =
+              responseData['estimated_seconds'] as int? ?? 210;
+
+          debugPrint(
+            '⏱️ Backend schätzt $estimatedSeconds Sekunden für $dynamicsId',
+          );
+
+          // Speichere Start-Zeitpunkt in Firebase für Persistenz
+          final startTime = DateTime.now().millisecondsSinceEpoch;
+          _db
+              .ref('avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating')
+              .set({'startTime': startTime, 'duration': estimatedSeconds});
+
+          // Starte Countdown-Timer pro Dynamics mit echter geschätzter Zeit
           setState(() {
-            _dynamicsTimeRemaining[dynamicsId] = 210; // 3:30 Min
+            _dynamicsTimeRemaining[dynamicsId] = estimatedSeconds;
           });
 
           _dynamicsTimers[dynamicsId]?.cancel();
@@ -7057,8 +7450,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 _dynamicsTimeRemaining[dynamicsId] = remaining - 1;
               }
 
-              // Safety: Nach 5 Min (300s) abbrechen
-              if (remaining > 300) {
+              // Safety: Nach 10 Min (600s) abbrechen (für große Bilder)
+              if (remaining > 600) {
                 timer.cancel();
                 _generatingDynamics.remove(dynamicsId);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -7078,6 +7471,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               if (remaining <= 0) {
                 timer.cancel();
                 _generatingDynamics.remove(dynamicsId);
+                // Lösche generating-Status aus Firebase
+                _db
+                    .ref(
+                      'avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating',
+                    )
+                    .remove();
                 // Automatisch Dynamics-Daten neu laden
                 _loadDynamicsData(_avatarData!.id);
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -7092,10 +7491,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             });
           });
 
+          final dynamicsName =
+              (_dynamicsData[dynamicsId]?['name'] as String?) ??
+              (dynamicsId == 'basic' ? 'Basic' : dynamicsId);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '⏳ Dynamics "${_dynamicsData[dynamicsId]?['name']}" wird generiert...\n'
+                '⏳ Dynamics "$dynamicsName" wird generiert...\n'
                 'Dauer: ca. 3-4 Minuten (max. 5 Min)',
               ),
               backgroundColor: Colors.orange,
@@ -7109,6 +7511,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     } catch (e) {
       debugPrint('❌ Dynamics Generation Error ($dynamicsId): $e');
       if (mounted) {
+        // Nur bei Fehler aus Set entfernen
+        setState(() => _generatingDynamics.remove(dynamicsId));
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Fehler bei "$dynamicsId": $e'),
@@ -7116,11 +7520,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ),
         );
       }
-    } finally {
-      if (mounted) {
-        setState(() => _generatingDynamics.remove(dynamicsId));
-      }
     }
+    // KEIN finally - Timer übernimmt das Management von _generatingDynamics
   }
 
   Future<void> _showCreateDynamicsDialog() async {
@@ -7270,11 +7671,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           // Setze Default-Parameter für neue Dynamics
           _drivingMultipliers[dynamicsId] = 0.41;
           _animationScales[dynamicsId] = 1.7;
-          _sourceMaxDims[dynamicsId] = 2048;
+          _sourceMaxDims[dynamicsId] = 1600; // Wird automatisch berechnet
           _flagsNormalizeLip[dynamicsId] = true;
           _flagsPasteback[dynamicsId] = true;
           _animationRegions[dynamicsId] = 'all';
         });
+
+        // 🎯 Auto-berechne optimalen source-max-dim für neue Dynamics
+        _autoCalculateSourceMaxDim(dynamicsId);
 
         // Hinweis: Video hochladen
         if (mounted) {
@@ -7320,9 +7724,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       setState(() {
         _dynamicsData = Map<String, Map<String, dynamic>>.from(
-          dynamics.map(
-            (k, v) => MapEntry(k, Map<String, dynamic>.from(v as Map)),
-          ),
+          dynamics.map((k, v) {
+            final dynamicsMap = Map<String, dynamic>.from(v as Map);
+            // Setze Default-Status auf 'pending', falls nicht vorhanden
+            if (!dynamicsMap.containsKey('status') ||
+                dynamicsMap['status'] == null) {
+              dynamicsMap['status'] = 'pending';
+            }
+            return MapEntry(k, dynamicsMap);
+          }),
         );
 
         // Lade Parameter für ALLE Dynamics
@@ -7332,6 +7742,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       });
 
       debugPrint('✅ Dynamics-Daten geladen: ${_dynamicsData.keys.join(', ')}');
+
+      // Prüfe auf laufende Generierungen und stelle Timer wieder her
+      for (final dynamicsId in _dynamicsData.keys) {
+        _restoreGeneratingTimer(dynamicsId);
+      }
+
+      // 🎯 Auto-berechne optimalen source-max-dim für alle Dynamics
+      for (final dynamicsId in _dynamicsData.keys) {
+        await _autoCalculateSourceMaxDim(dynamicsId);
+      }
     } catch (e) {
       debugPrint('❌ Fehler beim Laden der Dynamics-Daten: $e');
     }
@@ -7467,43 +7887,50 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('⏳ Video wird getrimmt...'),
-          duration: Duration(seconds: 3),
+          duration: Duration(seconds: 5),
         ),
       );
 
-      // Video herunterladen
-      final response = await http.get(Uri.parse(videoUrl));
-      if (response.statusCode != 200) {
-        throw Exception('Video konnte nicht geladen werden');
+      // Backend-URL ermitteln (läuft auf Port 8002)
+      // IMMER localhost verwenden, wenn die App lokal läuft
+      String backendUrl = 'http://127.0.0.1:8002';
+
+      // Video-Trimming über Backend
+      debugPrint('🔗 Backend URL: $backendUrl/trim-video');
+
+      final trimResponse = await http
+          .post(
+            Uri.parse('$backendUrl/trim-video'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'video_url': videoUrl,
+              'start_time': start,
+              'end_time': end,
+            }),
+          )
+          .timeout(const Duration(seconds: 120));
+
+      if (trimResponse.statusCode != 200) {
+        String errorMessage = 'Backend-Fehler';
+        try {
+          final errorData = jsonDecode(trimResponse.body);
+          errorMessage = errorData['detail'] ?? 'Backend-Fehler';
+        } catch (e) {
+          errorMessage = 'Backend-Fehler: ${trimResponse.statusCode}';
+        }
+        throw Exception(errorMessage);
       }
 
-      final tempDir = Directory.systemTemp;
-      final inputFile = File(
-        '${tempDir.path}/hero_input_${DateTime.now().millisecondsSinceEpoch}.mp4',
-      );
+      debugPrint('✅ Video getrimmt, speichere...');
+
+      // Temporäre Datei erstellen (Backend liefert Video direkt)
+      final tempDir = await getTemporaryDirectory();
       final outputFile = File(
         '${tempDir.path}/hero_trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4',
       );
 
-      await inputFile.writeAsBytes(response.bodyBytes);
-
-      // FFmpeg: Video trimmen
-      final result = await Process.run('ffmpeg', [
-        '-i',
-        inputFile.path,
-        '-ss',
-        start.toString(),
-        '-t',
-        (end - start).toString(),
-        '-c',
-        'copy',
-        '-y',
-        outputFile.path,
-      ]);
-
-      if (result.exitCode != 0) {
-        throw Exception('FFmpeg Fehler: ${result.stderr}');
-      }
+      await outputFile.writeAsBytes(trimResponse.bodyBytes);
+      debugPrint('💾 Video gespeichert: ${outputFile.path}');
 
       // Getrimmtes Video zu Firebase hochladen
       final timestamp = DateTime.now().millisecondsSinceEpoch;
@@ -7519,12 +7946,29 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         throw Exception('Upload fehlgeschlagen');
       }
 
+      // Altes Hero-Video aus Liste entfernen (falls es das zu trimmende Video war)
+      final oldHeroUrl = _getHeroVideoUrl();
+      if (oldHeroUrl != null && oldHeroUrl == videoUrl) {
+        setState(() {
+          _videoUrls.remove(videoUrl);
+        });
+      }
+
+      // Neues getrimmtes Video zu Liste hinzufügen
+      setState(() {
+        if (!_videoUrls.contains(newVideoUrl)) {
+          _videoUrls.insert(0, newVideoUrl); // Am Anfang einfügen
+        }
+      });
+
+      // Persistiere aktualisierte Video-Liste
+      await _persistTextFileUrls();
+
       // Als neues Hero-Video setzen
       await _setHeroVideo(newVideoUrl);
 
       // Cleanup
       try {
-        await inputFile.delete();
         await outputFile.delete();
       } catch (_) {}
 
@@ -7546,6 +7990,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           SnackBar(
             content: Text('❌ Fehler beim Trimmen: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }

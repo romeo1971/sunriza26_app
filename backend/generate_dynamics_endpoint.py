@@ -90,9 +90,18 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     lp_output_dir = f'/tmp/{avatar_id}_lp_output'
     os.makedirs(lp_output_dir, exist_ok=True)
     
+    # Python-Interpreter: Verwende das aktuelle Python (aus venv oder System)
+    python_executable = sys.executable
+    
+    # LivePortrait-Pfad: aus Umgebungsvariable oder Default (lokal)
+    liveportrait_path = os.getenv(
+        'LIVEPORTRAIT_PATH',
+        '/Users/hhsw/Desktop/sunriza/LivePortrait/inference.py'
+    )
+    
     lp_cmd = [
-        'python',
-        '/Users/hhsw/Desktop/sunriza/LivePortrait/inference.py',
+        python_executable,
+        liveportrait_path,
         '-s', hero_image_path,
         '-d', trimmed_video_path,
         '-o', lp_output_dir,

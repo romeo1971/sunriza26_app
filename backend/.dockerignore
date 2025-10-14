@@ -1,0 +1,51 @@
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+venv
+env
+.venv
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.log.*
+
+# Temporäre Files
+*.tmp
+/tmp/*
+
+# Git
+.git
+.gitignore
+
+# Andere Backend Files (nicht nötig für main.py)
+avatar_backend.py
+bithuman_service.py
+start_*.sh
+
+# Models (werden zur Laufzeit geladen)
+models/
+avatars/
+
+# Tests
+tests/
+*.test.py
+
