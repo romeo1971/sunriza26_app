@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../../theme/app_theme.dart';
 import 'expansion_tile_base.dart';
 import 'dynamics_item_tile.dart';
 
@@ -30,10 +29,11 @@ class DynamicsExpansionTile extends StatelessWidget {
   final Function(String dynamicsId) onResetDefaults;
   final Function(String dynamicsId, double value) onDrivingMultiplierChanged;
   final Function(String dynamicsId, double value) onAnimationScaleChanged;
-  final Function(String dynamicsId, int value) onSourceMaxDimChanged;
+  // onSourceMaxDimChanged entfernt - Wert wird automatisch berechnet
   final Function(String dynamicsId, bool value) onFlagNormalizeLipChanged;
   final Function(String dynamicsId, bool value) onFlagPastebackChanged;
   final Function(String dynamicsId) onGenerate;
+  final Function(String dynamicsId) onCancelGeneration;
   final Function(String dynamicsId)? onSelectVideo;
   final Function(String dynamicsId)? onDeselectVideo;
   final Function(String dynamicsId)? onDeleteDynamics;
@@ -68,10 +68,11 @@ class DynamicsExpansionTile extends StatelessWidget {
     required this.onResetDefaults,
     required this.onDrivingMultiplierChanged,
     required this.onAnimationScaleChanged,
-    required this.onSourceMaxDimChanged,
+    // onSourceMaxDimChanged entfernt
     required this.onFlagNormalizeLipChanged,
     required this.onFlagPastebackChanged,
     required this.onGenerate,
+    required this.onCancelGeneration,
     this.onSelectVideo,
     this.onDeselectVideo,
     this.onDeleteDynamics,
@@ -85,7 +86,7 @@ class DynamicsExpansionTile extends StatelessWidget {
 
     return BaseExpansionTile(
       title: 'Dynamics',
-      emoji: '🎭',
+      emoji: '', // Kein Icon
       initiallyExpanded: false,
       children: [
         // Info Text: Kein Hero-Video
@@ -186,7 +187,9 @@ class DynamicsExpansionTile extends StatelessWidget {
           ...dynamicsData.entries.map((entry) {
             final id = entry.key;
             final data = entry.value;
-            final name = (data['name'] as String?) ?? id;
+            // Name aus Daten oder ID mit Großbuchstaben am Anfang
+            String name = (data['name'] as String?) ?? id;
+            if (name == 'basic') name = 'Basic'; // Großschreibung
             final icon = (data['icon'] as String?);
 
             return Padding(
@@ -209,18 +212,19 @@ class DynamicsExpansionTile extends StatelessWidget {
                 onDrivingMultiplierChanged: (v) =>
                     onDrivingMultiplierChanged(id, v),
                 onAnimationScaleChanged: (v) => onAnimationScaleChanged(id, v),
-                onSourceMaxDimChanged: (v) => onSourceMaxDimChanged(id, v),
+                // onSourceMaxDimChanged entfernt
                 onFlagNormalizeLipChanged: (v) =>
                     onFlagNormalizeLipChanged(id, v),
                 onFlagPastebackChanged: (v) => onFlagPastebackChanged(id, v),
                 onGenerate: () => onGenerate(id),
+                onCancelGeneration: () => onCancelGeneration(id),
                 onSelectVideo: onSelectVideo != null
                     ? () => onSelectVideo!(id)
                     : null,
                 onDeselectVideo: onDeselectVideo != null
                     ? () => onDeselectVideo!(id)
                     : null,
-                onDelete: id != 'basic' && onDeleteDynamics != null
+                onDelete: onDeleteDynamics != null
                     ? () => onDeleteDynamics!(id)
                     : null,
                 buildSlider: buildSlider,
@@ -228,39 +232,39 @@ class DynamicsExpansionTile extends StatelessWidget {
             );
           }),
 
-          const SizedBox(height: 16),
+          // const SizedBox(height: 16),
 
-          // + Neue Dynamics Button (nur wenn Basic ready)
-          if (dynamicsData['basic']?['status'] == 'ready')
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton(
-                onPressed: onShowCreateDynamicsDialog,
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  side: BorderSide(
-                    color: AppColors.magenta.withValues(alpha: 0.5),
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.add, color: AppColors.magenta, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Neue Dynamics anlegen',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
+          // + Neue Dynamics Button - OBSOLETE (auskommentiert)
+          // if (dynamicsData['basic']?['status'] == 'ready')
+          //   SizedBox(
+          //     width: double.infinity,
+          //     child: OutlinedButton(
+          //       onPressed: onShowCreateDynamicsDialog,
+          //       style: OutlinedButton.styleFrom(
+          //         padding: const EdgeInsets.symmetric(vertical: 14),
+          //         side: BorderSide(
+          //           color: AppColors.magenta.withValues(alpha: 0.5),
+          //         ),
+          //         shape: RoundedRectangleBorder(
+          //           borderRadius: BorderRadius.circular(12),
+          //         ),
+          //       ),
+          //       child: Row(
+          //         mainAxisAlignment: MainAxisAlignment.center,
+          //         children: [
+          //           const Icon(Icons.add, color: AppColors.magenta, size: 20),
+          //           const SizedBox(width: 8),
+          //           Text(
+          //             'Neue Dynamics anlegen',
+          //             style: TextStyle(
+          //               color: Colors.white.withValues(alpha: 0.9),
+          //               fontWeight: FontWeight.w500,
+          //             ),
+          //           ),
+          //         ],
+          //       ),
+          //     ),
+          //   ),
         ],
       ],
     );

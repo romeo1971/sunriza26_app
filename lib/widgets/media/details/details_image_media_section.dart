@@ -92,6 +92,7 @@ class DetailsImageMediaSection extends StatelessWidget {
   final VoidCallback onDeleteConfirm;
   final Future<void> Function() onGenerateAvatar;
   final ValueChanged<String> onSetHeroImage;
+  final ValueChanged<String> onCropImage;
 
   // Helper functions
   final String Function(String url) fileNameFromUrl;
@@ -129,6 +130,7 @@ class DetailsImageMediaSection extends StatelessWidget {
     required this.onDeleteConfirm,
     required this.onGenerateAvatar,
     required this.onSetHeroImage,
+    required this.onCropImage,
     required this.fileNameFromUrl,
     required this.getTotalEndTime,
     required this.getImageStartTime,
@@ -886,6 +888,34 @@ class DetailsImageMediaSection extends StatelessWidget {
                                               ),
                                             ),
                                         ],
+                                      ),
+                                    ),
+                                  // Crop-Icon unten links (nur wenn NICHT Delete-Mode und NICHT Hero)
+                                  if (!isDeleteMode && !isHero)
+                                    Positioned(
+                                      bottom: nameHeight + 6,
+                                      left: 6,
+                                      child: MouseRegion(
+                                        cursor: SystemMouseCursors.click,
+                                        child: GestureDetector(
+                                          onTap: () => onCropImage(url),
+                                          child: Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: const Color(0x30000000),
+                                              borderRadius:
+                                                  BorderRadius.circular(8),
+                                              border: Border.all(
+                                                color: const Color(0x66FFFFFF),
+                                              ),
+                                            ),
+                                            child: const Icon(
+                                              Icons.crop,
+                                              color: Colors.white,
+                                              size: 16,
+                                            ),
+                                          ),
+                                        ),
                                       ),
                                     ),
                                 ],
