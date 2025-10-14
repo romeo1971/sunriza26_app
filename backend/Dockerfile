@@ -18,7 +18,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 # LivePortrait installieren
 RUN git clone https://github.com/KwaiVGI/LivePortrait.git /opt/liveportrait
 WORKDIR /opt/liveportrait
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Installiere PyTorch CPU-only (ohne CUDA)
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# Installiere andere LivePortrait Dependencies
+RUN pip install --no-cache-dir opencv-python numpy pillow tyro pyyaml tqdm imageio
 
 # Pretrained Weights herunterladen
 # Note: Diese müssen separat heruntergeladen werden, siehe README
