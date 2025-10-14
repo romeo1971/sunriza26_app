@@ -33,10 +33,18 @@ import '../services/media_service.dart';
 import '../models/media_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
-import '../widgets/video_player_widget.dart';
+// import '../widgets/video_player_widget.dart'; // Jetzt in VideoMediaSection Widget
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_date_field.dart';
 import '../widgets/custom_dropdown.dart';
+import '../widgets/expansion_tiles/dynamics_expansion_tile.dart';
+import '../widgets/expansion_tiles/greeting_text_expansion_tile.dart';
+import '../widgets/expansion_tiles/texts_expansion_tile.dart';
+import '../widgets/expansion_tiles/voice_selection_expansion_tile.dart';
+import '../widgets/expansion_tiles/person_data_expansion_tile.dart';
+import '../widgets/media/details/details_media_navigation_bar.dart';
+import '../widgets/media/details/details_image_media_section.dart';
+import '../widgets/media/details/details_video_media_section.dart';
 
 // Custom Gradient Thumb für Slider
 class GradientSliderThumbShape extends SliderComponentShape {
@@ -389,19 +397,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   String? _selectedVoiceId;
   bool _voicesLoading = false;
 
-  // Dynamics Parameter ✨
-  double _drivingMultiplier = 0.41; // 0.0 .. 1.0
-  double _animationScale = 1.7; // 1.0 .. 2.5
-  int _sourceMaxDim = 2048; // 512 .. 2048
-  bool _flagNormalizeLip = true; // Neutralisiert Lächeln
-  bool _flagPasteback = true; // Behält Körper
-  String _animationRegion = 'all'; // exp, pose, lip, eyes, all
-  String _currentDynamicsId = 'basic'; // basic, lachen, herz, etc.
+  // Dynamics Parameter ✨ - PRO DYNAMICS-ID!
+  Map<String, double> _drivingMultipliers = {
+    'basic': 0.41,
+  }; // dynamicsId -> value
+  Map<String, double> _animationScales = {'basic': 1.7};
+  Map<String, int> _sourceMaxDims = {'basic': 2048};
+  Map<String, bool> _flagsNormalizeLip = {'basic': true};
+  Map<String, bool> _flagsPasteback = {'basic': true};
+  Map<String, String> _animationRegions = {'basic': 'all'};
   Map<String, Map<String, dynamic>> _dynamicsData = {}; // dynamicsId -> data
-  bool _isDynamicsGenerating = false;
-  int _dynamicsTimeRemaining = 0; // Sekunden bis fertig
-  int _dynamicsMaxWait = 300; // Max 5 Minuten Safety-Timeout
-  Timer? _dynamicsTimer;
+  Set<String> _generatingDynamics = {}; // Set der gerade generierenden IDs
+  Map<String, int> _dynamicsTimeRemaining = {}; // dynamicsId -> seconds
+  Map<String, Timer?> _dynamicsTimers = {}; // dynamicsId -> Timer
   double _heroVideoDuration = 0; // Hero-Video Dauer in Sekunden
   bool _heroVideoTooLong = false; // Hero-Video > 10 Sek
   bool get _hasNoClonedVoice {
@@ -584,6 +592,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   bool _isGeneratingAvatar = false;
   // Entfernt: dispose hier, da es unten bereits eine vollständige dispose()-Methode gibt
 
+  // _mediaWidth Methode nicht mehr benötigt - jetzt in Media Section Widgets
+  /*
   double _mediaWidth(BuildContext context) {
     final double available =
         MediaQuery.of(context).size.width -
@@ -593,6 +603,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (w > 360) w = 360;
     return w;
   }
+  */
 
   bool get _regionCanApply {
     final input = _regionInputController.text.trim();
@@ -1111,155 +1122,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   // Hero-Media Navigation (außerhalb ScrollView, direkt unter AppBar)
   Widget _buildHeroMediaNav() {
-    return Stack(
-      children: [
-        // Hintergrund: quasi black
-        Container(height: 35, color: const Color(0xFF0D0D0D)),
-        // Weißes Overlay #ffffff15
-        Positioned.fill(child: Container(color: const Color(0x15FFFFFF))),
-        // Inhalt
-        Container(
-          height: 35,
-          padding: EdgeInsets.zero,
-          child: Row(
-            children: [
-              _buildTopTabBtn('images', Icons.image_outlined),
-              _buildTopTabBtn('videos', Icons.videocam_outlined),
-              // Upload-Button
-              Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: SizedBox(
-                  height: 35,
-                  child: TextButton(
-                    onPressed: (_mediaTab == 'images' && _imageUrls.length >= 4)
-                        ? null
-                        : (_mediaTab == 'images' ? _onAddImages : _onAddVideos),
-                    style: ButtonStyle(
-                      padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-                      minimumSize: const WidgetStatePropertyAll(Size(40, 35)),
-                    ),
-                    child: Container(
-                      height: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: Theme.of(
-                          context,
-                        ).extension<AppGradients>()!.magentaBlue,
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: const Icon(
-                        Icons.file_upload,
-                        size: 18,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const Spacer(),
-              // Info-Button für Explorer-Dialog
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: SizedBox(
-                  height: 35,
-                  width: 35,
-                  child: IconButton(
-                    onPressed: () async {
-                      await _showExplorerInfoDialog(forceShow: true);
-                    },
-                    padding: EdgeInsets.zero,
-                    icon: const Icon(
-                      Icons.info_outline,
-                      size: 20,
-                      color: Colors.white70,
-                    ),
-                  ),
-                ),
-              ),
-              // Toggle View-Mode (Kacheln / Liste) - ganz rechts
-              SizedBox(
-                height: 35,
-                width: 35,
-                child: TextButton(
-                  onPressed: () {
-                    setState(() {
-                      _heroViewMode = _heroViewMode == 'grid' ? 'list' : 'grid';
-                    });
-                  },
-                  style: ButtonStyle(
-                    padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-                    minimumSize: const WidgetStatePropertyAll(Size(35, 35)),
-                    backgroundColor: WidgetStatePropertyAll(
-                      _heroViewMode == 'grid'
-                          ? Colors.transparent
-                          : Colors.transparent,
-                    ),
-                    foregroundColor: const WidgetStatePropertyAll(Colors.white),
-                    overlayColor: WidgetStateProperty.resolveWith<Color?>((
-                      states,
-                    ) {
-                      if (states.contains(WidgetState.hovered) ||
-                          states.contains(WidgetState.focused) ||
-                          states.contains(WidgetState.pressed)) {
-                        final mix = Color.lerp(
-                          AppColors.magenta,
-                          AppColors.lightBlue,
-                          0.5,
-                        )!;
-                        return mix.withValues(alpha: 0.12);
-                      }
-                      return null;
-                    }),
-                    shape: const WidgetStatePropertyAll(
-                      RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                    ),
-                  ),
-                  child: _heroViewMode == 'grid'
-                      ? Container(
-                          width: 35,
-                          height: 35,
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                Color(0xFFE91E63),
-                                AppColors.lightBlue,
-                                Color(0xFF00E5FF),
-                              ],
-                            ),
-                          ),
-                          child: const Icon(
-                            Icons.view_headline,
-                            size: 20,
-                            color: Colors.white,
-                          ),
-                        )
-                      : SizedBox(
-                          width: 35,
-                          height: 35,
-                          child: Center(
-                            child: ShaderMask(
-                              shaderCallback: (bounds) => const LinearGradient(
-                                colors: [
-                                  Color(0xFFE91E63),
-                                  AppColors.lightBlue,
-                                  Color(0xFF00E5FF),
-                                ],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ).createShader(bounds),
-                              child: const Icon(
-                                Icons.window,
-                                size: 22,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ),
-                        ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+    return MediaNavigationBar(
+      currentTab: _mediaTab,
+      currentViewMode: _heroViewMode,
+      imageCount: _imageUrls.length,
+      onTabChanged: (tab) => setState(() => _mediaTab = tab),
+      onUpload: _mediaTab == 'images' ? _onAddImages : _onAddVideos,
+      onInfoPressed: () async {
+        await _showExplorerInfoDialog(forceShow: true);
+      },
+      onViewModeToggle: () {
+        setState(() {
+          _heroViewMode = _heroViewMode == 'grid' ? 'list' : 'grid';
+        });
+      },
     );
   }
 
@@ -1281,9 +1157,141 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
         // Medienbereich (gelber Rahmen-Bereich) – show/hide
         if (_mediaTab == 'images')
-          _buildImagesRowLayout(_mediaWidth(context))
+          DetailsImageMediaSection(
+            // View Mode
+            heroViewMode: _heroViewMode,
+            isListViewExpanded: _isListViewExpanded,
+            // Images
+            imageUrls: _imageUrls,
+            profileImageUrl: _profileImageUrl,
+            profileLocalPath: _profileLocalPath,
+            // Timeline State
+            imageActive: _imageActive,
+            imageDurations: _imageDurations,
+            imageExplorerVisible: _imageExplorerVisible,
+            isImageLoopMode: _isImageLoopMode,
+            isTimelineEnabled: _isTimelineEnabled,
+            // Delete Mode
+            isDeleteMode: _isDeleteMode,
+            selectedRemoteImages: _selectedRemoteImages,
+            selectedLocalImages: _selectedLocalImages,
+            isGeneratingAvatar: _isGeneratingAvatar,
+            avatarData: _avatarData,
+            // Callbacks
+            onExpansionChanged: (expanded) {
+              setState(() {
+                _isListViewExpanded = expanded;
+              });
+            },
+            onLoopModeToggle: () {
+              setState(() {
+                _isImageLoopMode = !_isImageLoopMode;
+              });
+              _saveTimelineData();
+            },
+            onTimelineEnabledToggle: () {
+              setState(() {
+                _isTimelineEnabled = !_isTimelineEnabled;
+              });
+              _saveTimelineData();
+            },
+            onReorder: (oldIndex, newIndex) async {
+              final currentHero = _profileImageUrl;
+              setState(() {
+                if (oldIndex < newIndex) {
+                  newIndex -= 1;
+                }
+                final item = _imageUrls.removeAt(oldIndex);
+                _imageUrls.insert(newIndex, item);
+                if (newIndex == 0 &&
+                    item != currentHero &&
+                    _imageUrls.isNotEmpty) {
+                  _setHeroImage(_imageUrls[0]);
+                }
+                if (oldIndex == 0 &&
+                    item == currentHero &&
+                    _imageUrls.isNotEmpty) {
+                  _setHeroImage(_imageUrls[0]);
+                }
+              });
+              await _saveTimelineData();
+              await _saveHeroImageAndUrls();
+            },
+            onImageActiveTap: (url) {
+              setState(() {
+                final currentActive = _imageActive[url] ?? true;
+                _imageActive[url] = !currentActive;
+              });
+              _saveTimelineData();
+            },
+            onExplorerVisibleTap: (url) async {
+              await _showExplorerInfoDialog();
+              setState(() {
+                final currentVisible = _imageExplorerVisible[url] ?? false;
+                _imageExplorerVisible[url] = !currentVisible;
+              });
+              await _saveTimelineData();
+            },
+            onDurationChanged: (url, minutes) {
+              setState(() {
+                _imageDurations[url] = minutes * 60;
+              });
+              _saveTimelineData();
+            },
+            onDeleteModeCancel: () {
+              setState(() {
+                _isDeleteMode = false;
+                _selectedRemoteImages.clear();
+                _selectedLocalImages.clear();
+              });
+            },
+            onDeleteConfirm: _confirmDeleteSelectedImages,
+            onGenerateAvatar: _handleGenerateAvatar,
+            // Helper functions
+            fileNameFromUrl: _fileNameFromUrl,
+            getTotalEndTime: _getTotalEndTime,
+            getImageStartTime: _getImageStartTime,
+            handleImageError: _handleImageError,
+            buildHeroImageThumbNetwork: _buildHeroImageThumbNetwork,
+          )
         else
-          _buildVideosRowLayout(_mediaWidth(context)),
+          DetailsVideoMediaSection(
+            // Videos
+            videoUrls: _videoUrls,
+            inlineVideoController: _inlineVideoController,
+            // Audio State
+            videoAudioEnabled: _videoAudioEnabled,
+            // Delete Mode
+            isDeleteMode: _isDeleteMode,
+            selectedRemoteVideos: _selectedRemoteVideos,
+            selectedLocalVideos: _selectedLocalVideos,
+            // Callbacks
+            getHeroVideoUrl: _getHeroVideoUrl,
+            playNetworkInline: _playNetworkInline,
+            thumbnailForRemote: _thumbnailForRemote,
+            toggleVideoAudio: _toggleVideoAudio,
+            setHeroVideo: _setHeroVideo,
+            onDeleteModeCancel: () {
+              setState(() {
+                _isDeleteMode = false;
+                _selectedRemoteVideos.clear();
+                _selectedLocalVideos.clear();
+              });
+            },
+            onDeleteConfirm: _confirmDeleteSelectedImages,
+            onTrashIconTap: (url) {
+              setState(() {
+                _isDeleteMode = true;
+                if (_selectedRemoteVideos.contains(url)) {
+                  _selectedRemoteVideos.remove(url);
+                } else {
+                  _selectedRemoteVideos.add(url);
+                }
+              });
+            },
+            // Video Controller Helper
+            videoControllerForThumb: _videoControllerForThumb,
+          ),
         const SizedBox.shrink(),
 
         const SizedBox(height: 12),
@@ -1299,76 +1307,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           child: Column(
             children: [
               // Begrüßungstext
-              Theme(
-                data: Theme.of(context).copyWith(
-                  dividerColor: Colors.white24,
-                  listTileTheme: const ListTileThemeData(
-                    iconColor: AppColors.magenta, // GMBC Arrow
-                  ),
-                ),
-                child: ExpansionTile(
-                  initiallyExpanded: false,
-                  collapsedBackgroundColor: Colors.white.withValues(
-                    alpha: 0.04,
-                  ),
-                  backgroundColor: Colors.white.withValues(alpha: 0.06),
-                  collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
-                  iconColor: AppColors.lightBlue, // GMBC Arrow expanded
-                  title: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        context.read<LocalizationService>().t('greetingText'),
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                      if (((_avatarData?.training?['voice']?['elevenVoiceId']
-                                  as String?)
-                              ?.trim()
-                              .isNotEmpty ??
-                          false))
-                        IconButton(
-                          icon: const Icon(
-                            Icons.volume_up,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          tooltip: context.read<LocalizationService>().t(
-                            'avatars.details.voiceTestTooltip',
-                          ),
-                          onPressed: _isTestingVoice
-                              ? null
-                              : _testVoicePlayback,
-                        ),
-                    ],
-                  ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8.0,
-                        vertical: 6.0,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          CustomTextArea(
-                            label: context.read<LocalizationService>().t(
-                              'avatars.details.greetingLabel',
-                            ),
-                            controller: _greetingController,
-                            hintText: context.read<LocalizationService>().t(
-                              'avatars.details.greetingHint',
-                            ),
-                            minLines: 3,
-                            maxLines: 6,
-                            onChanged: (_) => _updateDirty(),
-                          ),
-                          const SizedBox(height: 16),
-                          _buildRoleDropdown(),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+              GreetingTextExpansionTile(
+                greetingController: _greetingController,
+                currentVoiceId:
+                    _avatarData?.training?['voice']?['elevenVoiceId']
+                        as String?,
+                isTestingVoice: _isTestingVoice,
+                onTestVoice: _testVoicePlayback,
+                onChanged: _updateDirty,
+                roleDropdown: _buildRoleDropdown(),
               ),
               const SizedBox(height: 12),
 
@@ -1377,231 +1324,42 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
               const SizedBox(height: 12),
               // Texte & Freitext
-              Theme(
-                data: Theme.of(context).copyWith(
-                  dividerColor: Colors.white24,
-                  listTileTheme: const ListTileThemeData(
-                    iconColor: AppColors.magenta, // GMBC Arrow
-                  ),
-                ),
-                child: ExpansionTile(
-                  initiallyExpanded: false,
-                  collapsedBackgroundColor: Colors.white.withValues(
-                    alpha: 0.04,
-                  ),
-                  backgroundColor: Colors.white.withValues(alpha: 0.06),
-                  collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
-                  iconColor: AppColors.lightBlue, // GMBC Arrow expanded
-                  title: Text(
-                    context.read<LocalizationService>().t('texts'),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 6,
+              TextsExpansionTile(
+                onAddTexts: _onAddTexts,
+                textAreaController: _textAreaController,
+                onChanged: _updateDirty,
+                chunkingParams: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      context.read<LocalizationService>().t(
+                        'avatars.details.chunkingLabel',
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: _onAddTexts,
-                              style: ElevatedButton.styleFrom(
-                                alignment: Alignment.centerLeft,
-                                backgroundColor: Colors.white,
-                                foregroundColor: Colors.white,
-                                shadowColor: Colors.transparent,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 18, // Mehr Padding oben/unten
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: ShaderMask(
-                                blendMode: BlendMode.srcIn,
-                                shaderCallback: (bounds) => Theme.of(context)
-                                    .extension<AppGradients>()!
-                                    .magentaBlue
-                                    .createShader(bounds),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      context.read<LocalizationService>().t(
-                                        'avatars.details.textUploadTitle',
-                                      ),
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 16,
-                                        color: Colors.white,
-                                        height: 1.0,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      context.read<LocalizationService>().t(
-                                        'avatars.details.textUploadSubtitle',
-                                      ),
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w300,
-                                        fontSize: 13,
-                                        color: Colors.white,
-                                        height: 1.0,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                          CustomTextArea(
-                            label: context.read<LocalizationService>().t(
-                              'avatars.details.freeTextLabel',
-                            ),
-                            controller: _textAreaController,
-                            hintText: context.read<LocalizationService>().t(
-                              'avatars.details.freeTextHint',
-                            ),
-                            minLines: 4,
-                            maxLines: 8,
-                            onChanged: (_) => _updateDirty(),
-                          ),
-                          const SizedBox(height: 12),
-                          // Chunking Parameter
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              context.read<LocalizationService>().t(
-                                'avatars.details.chunkingLabel',
-                              ),
-                              style: const TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          _buildChunkingControls(),
-                          const SizedBox(height: 12),
-                          if (_textFileUrls.isNotEmpty ||
-                              _newTextFiles.isNotEmpty)
-                            _buildTextFilesList(),
-                        ],
-                      ),
+                      style: const TextStyle(color: Colors.white70),
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                  _buildChunkingControls(),
+                  const SizedBox(height: 12),
+                  if (_textFileUrls.isNotEmpty || _newTextFiles.isNotEmpty)
+                    _buildTextFilesList(),
+                ],
               ),
               const SizedBox(height: 12),
               // Audio (Stimmauswahl) inkl. Stimmeinstellungen
-              Theme(
-                data: Theme.of(context).copyWith(
-                  dividerColor: Colors.white24,
-                  listTileTheme: const ListTileThemeData(
-                    iconColor: AppColors.magenta, // GMBC Arrow
-                  ),
-                ),
-                child: ExpansionTile(
-                  initiallyExpanded: false,
-                  collapsedBackgroundColor: Colors.white.withValues(
-                    alpha: 0.04,
-                  ),
-                  backgroundColor: Colors.white.withValues(alpha: 0.06),
-                  collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
-                  iconColor: AppColors.lightBlue, // GMBC Arrow expanded
-                  title: Text(
-                    context.read<LocalizationService>().t('voiceSelection'),
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 6,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // ElevenLabs Voice Auswahl
-                          _buildVoiceSelect(),
-                          const SizedBox(height: 12),
-                          SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: _onAddAudio,
-                              style: ElevatedButton.styleFrom(
-                                alignment: Alignment.centerLeft,
-                                backgroundColor: Colors.white,
-                                foregroundColor: Colors.white,
-                                shadowColor: Colors.transparent,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 18,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                              ),
-                              child: ShaderMask(
-                                shaderCallback: (bounds) =>
-                                    const LinearGradient(
-                                      colors: [
-                                        AppColors.magenta,
-                                        AppColors.lightBlue,
-                                      ],
-                                    ).createShader(bounds),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      context.read<LocalizationService>().t(
-                                        'avatars.details.audioUploadTitle',
-                                      ),
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 16,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                    SizedBox(height: 2),
-                                    Text(
-                                      context.read<LocalizationService>().t(
-                                        'avatars.details.audioUploadSubtitle',
-                                      ),
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.w300,
-                                        fontSize: 13,
-                                        color: Colors.white,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          if (_avatarData?.audioUrls.isNotEmpty == true)
-                            _buildAudioFilesList(),
-
-                          const SizedBox(height: 12),
-                          // Stimmeinstellungen (nur anzeigen, wenn ein Klon/Voice-ID vorhanden ist)
-                          if (((_avatarData
-                                          ?.training?['voice']?['elevenVoiceId'])
-                                      as String?)
-                                  ?.trim()
-                                  .isNotEmpty ==
-                              true)
-                            _buildVoiceParams(),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+              VoiceSelectionExpansionTile(
+                voiceSelectWidget: _buildVoiceSelect(),
+                onAddAudio: _onAddAudio,
+                audioFilesList: _avatarData?.audioUrls.isNotEmpty == true
+                    ? _buildAudioFilesList()
+                    : null,
+                voiceParamsWidget: _buildVoiceParams(),
+                hasVoiceId:
+                    ((_avatarData?.training?['voice']?['elevenVoiceId'])
+                            as String?)
+                        ?.trim()
+                        .isNotEmpty ==
+                    true,
               ),
               const SizedBox(height: 12),
             ],
@@ -1611,7 +1369,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
   }
 
-  // Tab-Button für Hero-Navigation (identisch zu media_gallery_screen)
+  // Tab-Button für Hero-Navigation - ERSETZT durch MediaTabButton Widget
+  /* AUSKOMMENTIERT - Widget wird nun verwendet
   Widget _buildTopTabBtn(String tab, IconData icon) {
     final selected = _mediaTab == tab;
     return SizedBox(
@@ -1667,6 +1426,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ),
     );
   }
+  */
 
   Widget _buildRoleDropdown() {
     final items = <Map<String, String>>[
@@ -1706,443 +1466,33 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   // 🎭 Dynamics Section (Live Avatar Animation) ✨
   Widget _buildDynamicsSection() {
-    final heroVideoUrl = _getHeroVideoUrl();
-    final hasHeroVideo = heroVideoUrl != null && heroVideoUrl.isNotEmpty;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Header
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
-          child: Row(
-            children: [
-              const Text('🎭', style: TextStyle(fontSize: 20)),
-              const SizedBox(width: 8),
-              const Text(
-                'Dynamics',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-                // Info Text
-                if (!hasHeroVideo)
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.orange.withValues(alpha: 0.5),
-                      ),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: Colors.orange,
-                          size: 20,
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Bitte Hero-Video hochladen, um Dynamics zu generieren',
-                            style: TextStyle(
-                              color: Colors.orange,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                // Warnung: Hero-Video zu lang (> 10 Sek) + Trim-Option
-                if (hasHeroVideo && _heroVideoTooLong)
-                  Container(
-                    margin: const EdgeInsets.only(top: 12),
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.red.withValues(alpha: 0.2),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.red.withValues(alpha: 0.5),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Icon(
-                              Icons.error_outline,
-                              color: Colors.red,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Text(
-                                '⚠️ Hero-Video ist ${_heroVideoDuration.toStringAsFixed(1)}s lang!\n'
-                                'Für Dynamics MAX 10 Sekunden erlaubt.',
-                                style: const TextStyle(
-                                  color: Colors.red,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: ElevatedButton.icon(
-                                onPressed: _showVideoTrimDialog,
-                                icon: const Icon(Icons.content_cut, size: 18),
-                                label: const Text('Video trimmen (0-10s)'),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.orange,
-                                  foregroundColor: Colors.white,
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                onPressed: () => _mediaTab = 'videos',
-                                icon: const Icon(Icons.video_library, size: 18),
-                                label: const Text('Anderes Video'),
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  side: const BorderSide(color: Colors.red),
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 12,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-
-                if (hasHeroVideo) ...[
-                  // Dynamics Auswahl
-                  Text(
-                    'Aktive Dynamics:',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-
-                  // Dropdown für Dynamics
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: DropdownButton<String>(
-                      value: _currentDynamicsId,
-                      isExpanded: true,
-                      dropdownColor: const Color(0xFF1A1A1A),
-                      underline: const SizedBox.shrink(),
-                      style: const TextStyle(color: Colors.white),
-                      items: [
-                        const DropdownMenuItem(
-                          value: 'basic',
-                          child: Text('Basic'),
-                        ),
-                        ..._dynamicsData.keys
-                            .where((k) => k != 'basic')
-                            .map(
-                              (id) => DropdownMenuItem(
-                                value: id,
-                                child: Text(_dynamicsData[id]?['name'] ?? id),
-                              ),
-                            ),
-                      ],
-                      onChanged: (v) {
-                        if (v != null) {
-                          setState(() => _currentDynamicsId = v);
-                          _loadDynamicsParameters(v);
-                        }
-                      },
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Parameter Header + Default Button
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Parameter:',
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: _resetToDefaults,
-                        style: TextButton.styleFrom(
-                          backgroundColor: Colors.black,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 6,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                        ),
-                        child: const Text(
-                          'Standard',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 1. Driving Multiplier
-                  _buildSlider(
-                    label: 'Expression Strength (Intensität)',
-                    value: _drivingMultiplier,
-                    min: 0.0,
-                    max: 1.0,
-                    divisions: 100,
-                    onChanged: (v) => setState(() => _drivingMultiplier = v),
-                    valueLabel: _drivingMultiplier.toStringAsFixed(2),
-                    recommendation: '💡 Empfohlen: 0.40-0.42 (natürlich)',
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 2. Animation Scale
-                  _buildSlider(
-                    label: 'Animation Scale (Region)',
-                    value: _animationScale,
-                    min: 1.0,
-                    max: 2.5,
-                    divisions: 30,
-                    onChanged: (v) => setState(() => _animationScale = v),
-                    valueLabel: _animationScale.toStringAsFixed(2),
-                    recommendation:
-                        '💡 Empfohlen: 1.7 (Gesicht + Hals + Schultern)',
-                  ),
-                  const SizedBox(height: 12),
-
-                  // 3. Source Max Dimension
-                  _buildSlider(
-                    label: 'Max Dimension (Auflösung)',
-                    value: _sourceMaxDim.toDouble(),
-                    min: 512,
-                    max: 2048,
-                    divisions: 15,
-                    onChanged: (v) => setState(() => _sourceMaxDim = v.round()),
-                    valueLabel: '$_sourceMaxDim px',
-                    recommendation: '💡 Empfohlen: 2048 (maximale Qualität)',
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Toggle-Optionen
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.1),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Erweiterte Optionen:',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-
-                        // Normalize Lip
-                        SwitchListTile(
-                          title: const Text(
-                            'Neutralisiere Lächeln',
-                            style: TextStyle(color: Colors.white, fontSize: 13),
-                          ),
-                          subtitle: Text(
-                            'Schließt Mund im Source-Bild vor Animation',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              fontSize: 11,
-                            ),
-                          ),
-                          value: _flagNormalizeLip,
-                          activeThumbColor: AppColors.lightBlue,
-                          onChanged: (v) =>
-                              setState(() => _flagNormalizeLip = v),
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
-                        ),
-
-                        // Pasteback
-                        SwitchListTile(
-                          title: const Text(
-                            'Körper behalten (Pasteback)',
-                            style: TextStyle(color: Colors.white, fontSize: 13),
-                          ),
-                          subtitle: Text(
-                            '✅ WICHTIG: Behält vollen Körper + Original-Qualität!',
-                            style: TextStyle(
-                              color: Colors.green.withValues(alpha: 0.8),
-                              fontSize: 11,
-                            ),
-                          ),
-                          value: _flagPasteback,
-                          activeThumbColor: AppColors.lightBlue,
-                          onChanged: (v) => setState(() => _flagPasteback = v),
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Generieren Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: (_isDynamicsGenerating || _heroVideoTooLong)
-                          ? null
-                          : _generateDynamics,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: _isDynamicsGenerating
-                          ? Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const SizedBox(
-                                  height: 20,
-                                  width: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation(
-                                      AppColors.magenta,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  _formatCountdown(_dynamicsTimeRemaining),
-                                  style: const TextStyle(
-                                    color: AppColors.magenta,
-                                    fontWeight: FontWeight.w600,
-                                    fontSize: 16,
-                                  ),
-                                ),
-                              ],
-                            )
-                          : ShaderMask(
-                              blendMode: BlendMode.srcIn,
-                              shaderCallback: (bounds) => Theme.of(context)
-                                  .extension<AppGradients>()!
-                                  .magentaBlue
-                                  .createShader(bounds),
-                              child: const Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(Icons.auto_awesome, size: 20),
-                                  SizedBox(width: 8),
-                                  Text(
-                                    'Generieren',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      fontSize: 16,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 12),
-
-                  // + Neue Dynamics Button (nur wenn Basic ready)
-                  if (_dynamicsData['basic']?['status'] == 'ready')
-                    SizedBox(
-                      width: double.infinity,
-                      child: OutlinedButton(
-                        onPressed: _showCreateDynamicsDialog,
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          side: BorderSide(
-                            color: AppColors.magenta.withValues(alpha: 0.5),
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.add,
-                              color: AppColors.magenta,
-                              size: 20,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Neue Dynamics anlegen',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.9),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+    return DynamicsExpansionTile(
+      heroVideoUrl: _getHeroVideoUrl(),
+      heroVideoTooLong: _heroVideoTooLong,
+      heroVideoDuration: _heroVideoDuration,
+      dynamicsData: _dynamicsData,
+      drivingMultipliers: _drivingMultipliers,
+      animationScales: _animationScales,
+      sourceMaxDims: _sourceMaxDims,
+      flagsNormalizeLip: _flagsNormalizeLip,
+      flagsPasteback: _flagsPasteback,
+      generatingDynamics: _generatingDynamics,
+      dynamicsTimeRemaining: _dynamicsTimeRemaining,
+      onShowVideoTrimDialog: _showVideoTrimDialog,
+      onSwitchToVideos: () => setState(() => _mediaTab = 'videos'),
+      onResetDefaults: (id) => _resetToDefaults(id),
+      onDrivingMultiplierChanged: (id, v) =>
+          setState(() => _drivingMultipliers[id] = v),
+      onAnimationScaleChanged: (id, v) =>
+          setState(() => _animationScales[id] = v),
+      onSourceMaxDimChanged: (id, v) => setState(() => _sourceMaxDims[id] = v),
+      onFlagNormalizeLipChanged: (id, v) =>
+          setState(() => _flagsNormalizeLip[id] = v),
+      onFlagPastebackChanged: (id, v) =>
+          setState(() => _flagsPasteback[id] = v),
+      onGenerate: (id) => _generateDynamics(id),
+      onShowCreateDynamicsDialog: _showCreateDynamicsDialog,
+      buildSlider: _buildSlider,
     );
   }
 
@@ -2521,6 +1871,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
+  // ============================================================================
+  // ALTE MEDIA SECTION METHODEN - AUSKOMMENTIERT (JETZT IN WIDGETS)
+  // ============================================================================
+  // Diese Methoden wurden in separate, modulare Widgets extrahiert:
+  // - lib/widgets/media/details/details_image_media_section.dart
+  // - lib/widgets/media/details/details_video_media_section.dart
+  // 
+  // Sie bleiben hier auskommentiert als Referenz, falls später benötigt.
+  // ============================================================================
+
+  /*
   Widget _buildImagesRowLayout([double? mediaW]) {
     // Verwende unterschiedliche Layouts je nach View-Mode
     if (_heroViewMode == 'list') {
@@ -3576,6 +2937,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ),
     );
   }
+  */
+
+  // ============================================================================
+  // ENDE ALTE MEDIA SECTION METHODEN
+  // ============================================================================
 
   Widget _buildTextFilesList() {
     // Kombiniere Remote- und lokale Textdateien
@@ -5391,6 +4757,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   // _deleteRemoteVideo ungenutzt entfernt
 
+  // ============================================================================
+  // ALTE VIDEO TILE METHODEN - AUSKOMMENTIERT (JETZT IN VIDEO SECTION WIDGET)
+  // ============================================================================
+  // Diese Methoden wurden in das VideoMediaSection Widget integriert:
+  // - lib/widgets/media/details/details_video_media_section.dart
+  // 
+  // Sie bleiben hier auskommentiert als Referenz, falls später benötigt.
+  // ============================================================================
+
+  /*
   Widget _videoTile(String url, double w, double h) {
     final heroUrl = _getHeroVideoUrl();
     final isHero = heroUrl != null && url == heroUrl;
@@ -5573,6 +4949,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ),
     );
   }
+  */
+
+  // ============================================================================
+  // ENDE ALTE VIDEO TILE METHODEN
+  // ============================================================================
 
   // _videoThumbLocal ungenutzt entfernt
 
@@ -7149,33 +6530,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Widget _buildPersonDataTile() {
-    return Theme(
-      data: Theme.of(context).copyWith(
-        dividerColor: Colors.white24,
-        listTileTheme: const ListTileThemeData(
-          iconColor: AppColors.magenta, // GMBC Arrow
-        ),
-      ),
-      child: ExpansionTile(
-        initiallyExpanded: false,
-        collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
-        backgroundColor: Colors.white.withValues(alpha: 0.06),
-        collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
-        iconColor: AppColors.lightBlue, // GMBC Arrow expanded
-        title: Text(
-          context.read<LocalizationService>().t(
-            'avatars.details.personDataTitle',
-          ),
-          style: const TextStyle(color: Colors.white),
-        ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 1.0),
-            child: _buildInputFields(),
-          ),
-        ],
-      ),
-    );
+    return PersonDataExpansionTile(inputFieldsWidget: _buildInputFields());
   }
 
   Widget _buildAgeDisplay() {
@@ -8198,8 +7553,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       controller.dispose();
     }
     _thumbControllers.clear();
-    // Dynamics Timer aufräumen
-    _dynamicsTimer?.cancel();
+    // Dynamics Timer aufräumen (ALLE Timer!)
+    for (final timer in _dynamicsTimers.values) {
+      timer?.cancel();
+    }
+    _dynamicsTimers.clear();
     super.dispose();
   }
 
@@ -8809,11 +8167,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   // 🎭 Dynamics Methoden ✨
 
+  // _formatCountdown jetzt in DynamicsExpansionTile Widget
+  /*
   String _formatCountdown(int seconds) {
     final minutes = seconds ~/ 60;
     final secs = seconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
+  */
 
   Future<void> _checkHeroVideoDuration() async {
     final heroVideoUrl = _getHeroVideoUrl();
@@ -8849,20 +8210,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
-  void _resetToDefaults() {
+  void _resetToDefaults(String dynamicsId) {
     setState(() {
-      _drivingMultiplier = 0.41;
-      _animationScale = 1.7;
-      _sourceMaxDim = 2048;
-      _flagNormalizeLip = true;
-      _flagPasteback = true;
-      _animationRegion = 'all';
+      _drivingMultipliers[dynamicsId] = 0.41;
+      _animationScales[dynamicsId] = 1.7;
+      _sourceMaxDims[dynamicsId] = 2048;
+      _flagsNormalizeLip[dynamicsId] = true;
+      _flagsPasteback[dynamicsId] = true;
+      _animationRegions[dynamicsId] = 'all';
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('✅ Standard-Parameter wiederhergestellt'),
-        duration: Duration(seconds: 2),
+      SnackBar(
+        content: Text(
+          '✅ Standard-Parameter für "${_dynamicsData[dynamicsId]?['name'] ?? dynamicsId}" wiederhergestellt',
+        ),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
@@ -8872,21 +8235,25 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (data != null && data['parameters'] != null) {
       final params = data['parameters'] as Map<String, dynamic>;
       setState(() {
-        _drivingMultiplier =
+        _drivingMultipliers[dynamicsId] =
             (params['driving_multiplier'] as num?)?.toDouble() ?? 0.41;
-        _animationScale = (params['scale'] as num?)?.toDouble() ?? 1.7;
-        _sourceMaxDim = (params['source_max_dim'] as int?) ?? 1600;
-        _flagNormalizeLip = (params['flag_normalize_lip'] as bool?) ?? true;
-        _flagPasteback = (params['flag_pasteback'] as bool?) ?? true;
-        _animationRegion = (params['animation_region'] as String?) ?? 'all';
+        _animationScales[dynamicsId] =
+            (params['scale'] as num?)?.toDouble() ?? 1.7;
+        _sourceMaxDims[dynamicsId] = (params['source_max_dim'] as int?) ?? 2048;
+        _flagsNormalizeLip[dynamicsId] =
+            (params['flag_normalize_lip'] as bool?) ?? true;
+        _flagsPasteback[dynamicsId] =
+            (params['flag_pasteback'] as bool?) ?? true;
+        _animationRegions[dynamicsId] =
+            (params['animation_region'] as String?) ?? 'all';
       });
     }
   }
 
-  Future<void> _generateDynamics() async {
+  Future<void> _generateDynamics(String dynamicsId) async {
     if (_avatarData == null) return;
 
-    setState(() => _isDynamicsGenerating = true);
+    setState(() => _generatingDynamics.add(dynamicsId));
 
     try {
       final base =
@@ -8899,69 +8266,68 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'avatar_id': _avatarData!.id,
-              'dynamics_id': _currentDynamicsId,
+              'dynamics_id': dynamicsId,
               'parameters': {
-                'driving_multiplier': _drivingMultiplier,
-                'scale': _animationScale,
-                'source_max_dim': _sourceMaxDim,
-                'flag_normalize_lip': _flagNormalizeLip,
-                'flag_pasteback': _flagPasteback,
-                'animation_region': _animationRegion,
+                'driving_multiplier': _drivingMultipliers[dynamicsId] ?? 0.41,
+                'scale': _animationScales[dynamicsId] ?? 1.7,
+                'source_max_dim': _sourceMaxDims[dynamicsId] ?? 2048,
+                'flag_normalize_lip': _flagsNormalizeLip[dynamicsId] ?? true,
+                'flag_pasteback': _flagsPasteback[dynamicsId] ?? true,
+                'animation_region': _animationRegions[dynamicsId] ?? 'all',
               },
             }),
           )
           .timeout(const Duration(minutes: 10));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-
         if (mounted) {
-          // Starte Countdown-Timer (3:30 Min = 210 Sek, realistisch)
+          // Starte Countdown-Timer pro Dynamics
           setState(() {
-            _dynamicsTimeRemaining = 210; // 3:30 Min
-            _dynamicsMaxWait = 300; // Max 5 Min Safety
+            _dynamicsTimeRemaining[dynamicsId] = 210; // 3:30 Min
           });
 
-          _dynamicsTimer?.cancel();
-          _dynamicsTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          _dynamicsTimers[dynamicsId]?.cancel();
+          _dynamicsTimers[dynamicsId] = Timer.periodic(const Duration(seconds: 1), (
+            timer,
+          ) {
             if (!mounted) {
               timer.cancel();
               return;
             }
 
             setState(() {
-              if (_dynamicsTimeRemaining > 0) {
-                _dynamicsTimeRemaining--;
-                _dynamicsMaxWait--;
+              final remaining = _dynamicsTimeRemaining[dynamicsId] ?? 0;
+              if (remaining > 0) {
+                _dynamicsTimeRemaining[dynamicsId] = remaining - 1;
               }
 
-              // Safety: Nach 5 Min IMMER abbrechen
-              if (_dynamicsMaxWait <= 0) {
+              // Safety: Nach 5 Min (300s) abbrechen
+              if (remaining > 300) {
                 timer.cancel();
-                _isDynamicsGenerating = false;
+                _generatingDynamics.remove(dynamicsId);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
+                  SnackBar(
                     content: Text(
-                      '⚠️ Generierung läuft länger als erwartet.\n'
-                      'Bitte später neu prüfen.',
+                      '⚠️ Generierung von "${_dynamicsData[dynamicsId]?['name']}" dauert länger.\n'
+                      'Bitte später prüfen.',
                     ),
                     backgroundColor: Colors.orange,
-                    duration: Duration(seconds: 5),
+                    duration: const Duration(seconds: 5),
                   ),
                 );
                 return;
               }
 
               // Normaler Ablauf nach 3:30
-              if (_dynamicsTimeRemaining <= 0) {
+              if (remaining <= 0) {
                 timer.cancel();
-                _isDynamicsGenerating = false;
+                _generatingDynamics.remove(dynamicsId);
                 // Automatisch Dynamics-Daten neu laden
                 _loadDynamicsData(_avatarData!.id);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
+                  SnackBar(
                     content: Text(
-                      '✅ Dynamics sollte jetzt fertig sein! Prüfe die Daten.',
+                      '✅ Dynamics "${_dynamicsData[dynamicsId]?['name']}" fertig!',
                     ),
                     backgroundColor: Colors.green,
                   ),
@@ -8973,7 +8339,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '⏳ Dynamics "${data['dynamics_id']}" wird generiert...\n'
+                '⏳ Dynamics "${_dynamicsData[dynamicsId]?['name']}" wird generiert...\n'
                 'Dauer: ca. 3-4 Minuten (max. 5 Min)',
               ),
               backgroundColor: Colors.orange,
@@ -8985,15 +8351,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         throw Exception('Backend error: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('❌ Dynamics Generation Error: $e');
+      debugPrint('❌ Dynamics Generation Error ($dynamicsId): $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text('Fehler bei "$dynamicsId": $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
       if (mounted) {
-        setState(() => _isDynamicsGenerating = false);
+        setState(() => _generatingDynamics.remove(dynamicsId));
       }
     }
   }
@@ -9142,7 +8511,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
         setState(() {
           _dynamicsData[dynamicsId] = newDynamicsData;
-          _currentDynamicsId = dynamicsId;
+          // Setze Default-Parameter für neue Dynamics
+          _drivingMultipliers[dynamicsId] = 0.41;
+          _animationScales[dynamicsId] = 1.7;
+          _sourceMaxDims[dynamicsId] = 2048;
+          _flagsNormalizeLip[dynamicsId] = true;
+          _flagsPasteback[dynamicsId] = true;
+          _animationRegions[dynamicsId] = 'all';
         });
 
         // Hinweis: Video hochladen
@@ -9194,9 +8569,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ),
         );
 
-        // Lade Parameter der aktuell ausgewählten Dynamics
-        if (_dynamicsData.containsKey(_currentDynamicsId)) {
-          _loadDynamicsParameters(_currentDynamicsId);
+        // Lade Parameter für ALLE Dynamics
+        for (final dynamicsId in _dynamicsData.keys) {
+          _loadDynamicsParameters(dynamicsId);
         }
       });
 
@@ -9332,8 +8707,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   ) async {
     if (_avatarData == null) return;
 
-    setState(() => _isDynamicsGenerating = true);
-
     try {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -9419,10 +8792,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             backgroundColor: Colors.red,
           ),
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isDynamicsGenerating = false);
       }
     }
   }
