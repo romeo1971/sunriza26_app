@@ -592,7 +592,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   bool _isGeneratingAvatar = false;
   // Entfernt: dispose hier, da es unten bereits eine vollständige dispose()-Methode gibt
 
-
   bool get _regionCanApply {
     final input = _regionInputController.text.trim();
     if (input.isEmpty) return false;

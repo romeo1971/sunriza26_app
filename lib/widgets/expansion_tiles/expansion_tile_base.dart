@@ -31,7 +31,7 @@ class BaseExpansionTile extends StatelessWidget {
         initiallyExpanded: initiallyExpanded,
         collapsedBackgroundColor: collapsedBackgroundColor ??
             Colors.white.withValues(alpha: 0.04),
-        backgroundColor: backgroundColor ?? Colors.white.withValues(alpha: 0.06),
+        backgroundColor: backgroundColor ?? Colors.black.withValues(alpha: 0.95),
         collapsedIconColor: AppColors.magenta,
         iconColor: AppColors.lightBlue,
         title: Row(
