@@ -78,6 +78,7 @@ class DetailsImageMediaSection extends StatelessWidget {
   final Set<String> selectedLocalImages;
   final bool isGeneratingAvatar;
   final dynamic avatarData; // Typ aus der App
+  final Map<String, bool> isRecropping; // URL -> Loading Spinner anzeigen
 
   // Callbacks
   final ValueChanged<bool> onExpansionChanged;
@@ -116,6 +117,7 @@ class DetailsImageMediaSection extends StatelessWidget {
     required this.selectedLocalImages,
     required this.isGeneratingAvatar,
     required this.avatarData,
+    required this.isRecropping,
     required this.onExpansionChanged,
     required this.onLoopModeToggle,
     required this.onTimelineEnabledToggle,
@@ -498,26 +500,59 @@ class DetailsImageMediaSection extends StatelessWidget {
                                                 ),
                                               ),
                                               const SizedBox(height: 4),
-                                              // Reihe 3: Name
+                                              // Reihe 3: Name oder Loading Spinner
                                               Row(
                                                 children: [
                                                   Expanded(
-                                                    child: Text(
-                                                      imageName,
-                                                      style: TextStyle(
-                                                        color: isHero
-                                                            ? Colors.white
-                                                            : (imageActive[url] ??
-                                                                  true)
-                                                            ? Colors.white
-                                                            : Colors.grey,
-                                                        fontSize: 12,
-                                                        fontWeight:
-                                                            FontWeight.w500,
-                                                      ),
-                                                      overflow:
-                                                          TextOverflow.ellipsis,
-                                                    ),
+                                                    child:
+                                                        (isRecropping[url] ==
+                                                            true)
+                                                        ? Row(
+                                                            children: [
+                                                              SizedBox(
+                                                                width: 12,
+                                                                height: 12,
+                                                                child: CircularProgressIndicator(
+                                                                  strokeWidth:
+                                                                      2,
+                                                                  color: Colors
+                                                                      .white70,
+                                                                ),
+                                                              ),
+                                                              const SizedBox(
+                                                                width: 8,
+                                                              ),
+                                                              Text(
+                                                                'Cropping...',
+                                                                style: TextStyle(
+                                                                  color: Colors
+                                                                      .white70,
+                                                                  fontSize: 12,
+                                                                  fontStyle:
+                                                                      FontStyle
+                                                                          .italic,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          )
+                                                        : Text(
+                                                            imageName,
+                                                            style: TextStyle(
+                                                              color: isHero
+                                                                  ? Colors.white
+                                                                  : (imageActive[url] ??
+                                                                        true)
+                                                                  ? Colors.white
+                                                                  : Colors.grey,
+                                                              fontSize: 12,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w500,
+                                                            ),
+                                                            overflow:
+                                                                TextOverflow
+                                                                    .ellipsis,
+                                                          ),
                                                   ),
                                                 ],
                                               ),
@@ -753,22 +788,50 @@ class DetailsImageMediaSection extends StatelessWidget {
                                         SizedBox(
                                           height: nameHeight,
                                           child: Center(
-                                            child: Text(
-                                              imageName,
-                                              style: TextStyle(
-                                                color: isHero
-                                                    ? Colors.white
-                                                    : (isActive
-                                                          ? Colors.white70
-                                                          : Colors.grey),
-                                                fontSize: 11,
-                                                fontWeight: isHero
-                                                    ? FontWeight.w600
-                                                    : FontWeight.normal,
-                                              ),
-                                              overflow: TextOverflow.ellipsis,
-                                              maxLines: 1,
-                                            ),
+                                            child: (isRecropping[url] == true)
+                                                ? Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      SizedBox(
+                                                        width: 10,
+                                                        height: 10,
+                                                        child:
+                                                            CircularProgressIndicator(
+                                                              strokeWidth: 1.5,
+                                                              color: Colors
+                                                                  .white70,
+                                                            ),
+                                                      ),
+                                                      const SizedBox(width: 6),
+                                                      Text(
+                                                        'Cropping...',
+                                                        style: TextStyle(
+                                                          color: Colors.white70,
+                                                          fontSize: 10,
+                                                          fontStyle:
+                                                              FontStyle.italic,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  )
+                                                : Text(
+                                                    imageName,
+                                                    style: TextStyle(
+                                                      color: isHero
+                                                          ? Colors.white
+                                                          : (isActive
+                                                                ? Colors.white70
+                                                                : Colors.grey),
+                                                      fontSize: 11,
+                                                      fontWeight: isHero
+                                                          ? FontWeight.w600
+                                                          : FontWeight.normal,
+                                                    ),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    maxLines: 1,
+                                                  ),
                                           ),
                                         ),
                                       ],

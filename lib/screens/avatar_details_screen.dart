@@ -152,6 +152,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final List<String> _videoUrls = [];
   final List<String> _textFileUrls = [];
   final Map<String, String> _mediaOriginalNames = {}; // URL -> originalFileName
+  final Map<String, bool> _isRecropping =
+      {}; // URL -> isRecropping (Loading Spinner)
   final Map<String, int> _imageDurations =
       {}; // URL -> duration in seconds (default 60)
   bool _isImageLoopMode = true; // Kreislauf (true) oder Ende (false)
@@ -1027,6 +1029,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           data.avatarImageUrl ??
           (_imageUrls.isNotEmpty ? _imageUrls.first : null);
 
+      // Recropping-Status zurücksetzen (wichtig nach Hot Reload)
+      _isRecropping.clear();
+
       // WICHTIG: Hero-Image MUSS an Position 0 sein!
       if (_profileImageUrl != null && _imageUrls.isNotEmpty) {
         final heroUrl = _profileImageUrl!;
@@ -1171,6 +1176,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             selectedLocalImages: _selectedLocalImages,
             isGeneratingAvatar: _isGeneratingAvatar,
             avatarData: _avatarData,
+            isRecropping: _isRecropping,
             // Callbacks
             onExpansionChanged: (expanded) {
               setState(() {
@@ -6227,6 +6233,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Future<void> _onImageRecrop(String url, [String? tempPath]) async {
+    // Recropping-Status setzen → UI zeigt Loading Spinner
+    if (mounted) {
+      setState(() => _isRecropping[url] = true);
+    }
+
     try {
       File? source;
       if (tempPath != null && tempPath.isNotEmpty) {
@@ -6236,20 +6247,31 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       source ??= await _downloadToTemp(url, suffix: '.png');
       if (!mounted) return;
       if (source == null) {
+        if (mounted) {
+          setState(() => _isRecropping.remove(url));
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Bild konnte nicht geladen werden.')),
         );
         return;
       }
       final newCrop = await _cropToPortrait916(source);
-      if (newCrop == null) return;
+      if (newCrop == null) {
+        if (mounted) {
+          setState(() => _isRecropping.remove(url));
+        }
+        return;
+      }
       final bytes = await newCrop.readAsBytes();
       final dir = await getTemporaryDirectory();
       final cached = await File(
         '${dir.path}/reCrop_${DateTime.now().millisecondsSinceEpoch}.png',
       ).create(recursive: true);
       await cached.writeAsBytes(bytes, flush: true);
-      if (mounted) setState(() => _profileLocalPath = cached.path);
+      // Gecropptes Bild NUR anzeigen, wenn es das Hero-Image ist!
+      if (mounted && _profileImageUrl == url) {
+        setState(() => _profileLocalPath = cached.path);
+      }
 
       final originalPath = FirebaseStorageService.pathFromUrl(url);
       if (originalPath.isEmpty) {
@@ -6292,9 +6314,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         return;
       }
       if (mounted) {
-        PaintingBinding.instance.imageCache
-          ..evict(NetworkImage(url))
-          ..evict(NetworkImage(newUrl));
+        // Cache für alte URL leeren
+        PaintingBinding.instance.imageCache.evict(NetworkImage(url));
 
         // ERST: Altes thumbUrl aus Firestore holen UND alte Files aus Storage löschen
         // (BEVOR Firestore geändert wird, wegen Storage Rules!)
@@ -6320,47 +6341,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             );
           }
 
-          // CRITICAL: setState mit originalFileName ZUERST, DANN URL ändern!
-          setState(() {
-            // ZUERST originalFileName setzen - IMMER (aus Firestore ODER aus alter Map)!
-            final nameToUse =
-                savedOriginalFileName ??
-                _mediaOriginalNames[url] ??
-                _fileNameFromUrl(url);
-            _mediaOriginalNames[newUrl] = nameToUse;
-            debugPrint(
-              'RECROP: Setze originalFileName für newUrl: $nameToUse (savedOriginalFileName=$savedOriginalFileName, fromOldMap=${_mediaOriginalNames[url]})',
-            );
+          // Timeline-Daten vorbereiten (OHNE setState - kein UI rebuild!)
+          final oldDuration = _imageDurations[url];
+          final oldActive = _imageActive[url];
+          final oldExplorerVisible = _imageExplorerVisible[url];
 
-            // Timeline-Daten übertragen
-            final oldDuration = _imageDurations[url];
-            final oldActive = _imageActive[url];
-            final oldExplorerVisible = _imageExplorerVisible[url];
+          if (oldDuration != null) {
+            _imageDurations[newUrl] = oldDuration;
+          }
+          if (oldActive != null) {
+            _imageActive[newUrl] = oldActive;
+          }
+          if (oldExplorerVisible != null) {
+            _imageExplorerVisible[newUrl] = oldExplorerVisible;
+          }
 
-            if (oldDuration != null) {
-              _imageDurations[newUrl] = oldDuration;
-            }
-            if (oldActive != null) {
-              _imageActive[newUrl] = oldActive;
-            }
-            if (oldExplorerVisible != null) {
-              _imageExplorerVisible[newUrl] = oldExplorerVisible;
-            }
-
-            // JETZT URL ändern (UI zeigt sofort korrekten Namen!)
-            final index = _imageUrls.indexOf(url);
-            if (index != -1) {
-              _imageUrls[index] = newUrl;
-            }
-            if (_profileImageUrl == url) _setHeroImage(newUrl);
-            if (_profileLocalPath == cached.path) _profileLocalPath = null;
-
-            // Alte Einträge entfernen
-            _imageDurations.remove(url);
-            _imageActive.remove(url);
-            _imageExplorerVisible.remove(url);
-            _mediaOriginalNames.remove(url);
-          });
+          // Alte Einträge aus Maps entfernen
+          _imageDurations.remove(url);
+          _imageActive.remove(url);
+          _imageExplorerVisible.remove(url);
+          _mediaOriginalNames.remove(url);
 
           await _persistTextFileUrls();
           await _saveTimelineData();
@@ -6446,9 +6446,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 DateTime.now().millisecondsSinceEpoch;
             final tags = (data['tags'] as List?)?.cast<String>();
             final avatarIdField = (data['avatarId'] as String?) ?? avatarId;
+            debugPrint('RECROP: Lösche altes Firestore-Dokument: ${d.id}');
             try {
               await d.reference.delete();
-            } catch (_) {}
+              debugPrint('RECROP: Altes Firestore-Dokument gelöscht ✓');
+            } catch (e) {
+              debugPrint('RECROP: Fehler beim Löschen des alten Dokuments: $e');
+            }
+            debugPrint(
+              'RECROP: Erstelle neues Firestore-Dokument mit newUrl: $newUrl, originalFileName: $finalOriginalFileName',
+            );
             await d.reference.set({
               'avatarId': avatarIdField,
               'type': 'image',
@@ -6461,22 +6468,72 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 'originalFileName': finalOriginalFileName,
             });
             debugPrint(
-              'RECROP: Firestore-Dokument mit thumbUrl + originalFileName erstellt',
+              'RECROP: Firestore-Dokument erstellt ✓ (ID: ${d.id}, url: $newUrl, originalFileName: $finalOriginalFileName)',
             );
           }
 
-          // CRITICAL: originalFileNames aus Firestore NEU laden (mit neuer URL!)
+          // originalFileName direkt setzen (OHNE extra setState!)
+          if (finalOriginalFileName != null) {
+            _mediaOriginalNames[newUrl] = finalOriginalFileName;
+          }
+          debugPrint(
+            'RECROP: _mediaOriginalNames[newUrl] = $finalOriginalFileName',
+          );
+
+          // Prüfen ob es das Hero-Image ist (BEVOR _setHeroImage aufgerufen wird)
+          final wasHeroImage = (_profileImageUrl == url);
+
+          // JETZT ERST URL wechseln → EIN EINZIGES setState() für ALLES!
+          if (mounted) {
+            setState(() {
+              final index = _imageUrls.indexOf(url);
+              if (index != -1) {
+                _imageUrls[index] = newUrl;
+              }
+              if (wasHeroImage) {
+                _setHeroImage(newUrl);
+                // _profileLocalPath BEHALTEN bis Bild geladen ist (kein Flicker!)
+                // ExtendedImage.network lädt im Hintergrund, dann ersetzt es cached
+              }
+              // Recropping-Status entfernen → UI zeigt wieder Namen
+              _isRecropping.remove(url);
+              debugPrint(
+                'RECROP: UI rebuild - URL + originalFileName gleichzeitig gesetzt, Loading Spinner aus',
+              );
+            });
+          }
+
+          // CRITICAL: Neue URL in Firestore speichern (für Hot Reload!)
+          await _saveHeroImageAndUrls();
+          debugPrint(
+            'RECROP: imageUrls mit neuer URL in Firestore gespeichert',
+          );
+
+          // Media-OriginalNames neu laden (um sicherzustellen dass newUrl → originalFileName mapping da ist)
           await _loadMediaOriginalNames(avatarId);
           debugPrint('RECROP: _mediaOriginalNames neu geladen aus Firestore');
+
+          // _profileLocalPath nach 2 Sekunden auf null setzen (Bild sollte geladen sein)
+          if (wasHeroImage && mounted) {
+            Future.delayed(const Duration(seconds: 2), () {
+              if (mounted) {
+                setState(() => _profileLocalPath = null);
+              }
+            });
+          }
         } catch (_) {}
 
-        // Temp-Datei aufräumen
-        try {
-          await cached.delete();
-        } catch (_) {}
+        // Temp-Datei nach 3 Sekunden löschen (nach _profileLocalPath = null)
+        Future.delayed(const Duration(seconds: 3), () async {
+          try {
+            await cached.delete();
+          } catch (_) {}
+        });
       }
     } catch (e) {
       if (!mounted) return;
+      // Recropping-Status entfernen bei Fehler
+      setState(() => _isRecropping.remove(url));
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Zuschneiden fehlgeschlagen: $e')));
