@@ -26,8 +26,6 @@ class _AuthScreenState extends State<AuthScreen> {
   var _enteredEmail = '';
   var _enteredPassword = '';
   var _isLoading = false;
-  bool _isEmailValid = false;
-  bool _isPasswordValid = false;
 
   // GoogleSignIn wird über AuthService genutzt
   final AuthService _authService = AuthService();
@@ -628,8 +626,6 @@ class _AuthScreenState extends State<AuthScreen> {
         setState(() {
           _enteredEmail = '';
           _enteredPassword = '';
-          _isEmailValid = false;
-          _isPasswordValid = false;
           _emailController.clear();
           _passwordController.clear();
         });

@@ -71,13 +71,13 @@ class _Painter extends CustomPainter {
       atlas,
       srcA,
       roi,
-      p..color = const Color(0xffffffff).withOpacity(1.0 - k),
+      p..color = const Color(0xffffffff).withValues(alpha: 1.0 - k),
     );
     c.drawImageRect(
       atlas,
       srcB,
       roi,
-      p..color = const Color(0xffffffff).withOpacity(k),
+      p..color = const Color(0xffffffff).withValues(alpha: k),
     );
     c.drawImageRect(
       mask,

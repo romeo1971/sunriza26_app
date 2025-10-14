@@ -92,7 +92,8 @@ service cloud.firestore {
           'birthDate','deathDate','calculatedAge','avatarImageUrl',
           'imageUrls','videoUrls','textFileUrls','audioUrls','writtenTexts',
           'lastMessage','lastMessageTime','createdAt','updatedAt','isPublic',
-          'training','role','greetingText','city','postalCode','country'
+          'training','role','greetingText','city','postalCode','country',
+          'liveAvatar','imageTimeline','videoAudioEnabled'
         ])
         && validString(request.resource.data.firstName, 1, 100)
         && validTimestamp(request.resource.data.createdAt)
@@ -195,7 +196,8 @@ service cloud.firestore {
           'birthDate','deathDate','calculatedAge','avatarImageUrl',
           'imageUrls','videoUrls','textFileUrls','audioUrls','writtenTexts',
           'lastMessage','lastMessageTime','createdAt','updatedAt','isPublic',
-          'training','role','greetingText','city','postalCode','country'
+          'training','role','greetingText','city','postalCode','country',
+          'liveAvatar','imageTimeline','videoAudioEnabled'
         ])
         && validString(request.resource.data.firstName, 1, 100)
         && validTimestamp(request.resource.data.createdAt)

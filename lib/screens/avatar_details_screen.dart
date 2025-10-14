@@ -152,6 +152,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       {}; // URL -> aktiv (true) oder inaktiv (false)
   final Map<String, bool> _imageExplorerVisible =
       {}; // URL -> Explorer-Sichtbarkeit
+  final Map<String, bool> _videoAudioEnabled =
+      {}; // URL -> Audio ON (true) oder OFF (false) ✅
   final TextEditingController _textAreaController = TextEditingController();
 
   // Timeline-Daten in Firebase speichern
@@ -189,6 +191,27 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       debugPrint('✅ Timeline-Daten gespeichert (Hero immer aktiv & sichtbar)');
     } catch (e) {
       debugPrint('❌ Fehler beim Speichern der Timeline-Daten: $e');
+    }
+  }
+
+  // Video-Audio Toggle + Firestore speichern ✅
+  void _toggleVideoAudio(String url) async {
+    if (_avatarData == null) return;
+
+    setState(() {
+      _videoAudioEnabled[url] = !(_videoAudioEnabled[url] ?? false);
+    });
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .update({'videoAudioEnabled': _videoAudioEnabled});
+      debugPrint(
+        '✅ Video-Audio-Toggle gespeichert: $url → ${_videoAudioEnabled[url]}',
+      );
+    } catch (e) {
+      debugPrint('❌ Fehler beim Speichern Video-Audio: $e');
     }
   }
 
@@ -235,6 +258,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           .doc(avatarId)
           .get();
       if (doc.exists && doc.data() != null) {
+        // Timeline-Daten laden
         final timeline = doc.data()!['imageTimeline'] as Map<String, dynamic>?;
         if (timeline != null) {
           // Durations laden (URL -> Sekunden)
@@ -293,6 +317,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             '✅ Timeline-Daten geladen: ${_imageDurations.length} Bilder, Loop: $_isImageLoopMode, Enabled: $_isTimelineEnabled',
           );
         }
+
+        // Video-Audio-Settings laden ✅
+        final videoAudioMap =
+            doc.data()!['videoAudioEnabled'] as Map<String, dynamic>?;
+        if (videoAudioMap != null) {
+          _videoAudioEnabled.clear();
+          videoAudioMap.forEach((key, value) {
+            if (value is bool) {
+              _videoAudioEnabled[key] = value;
+            }
+          });
+          debugPrint(
+            '✅ Video-Audio-Settings geladen: ${_videoAudioEnabled.length} Videos',
+          );
+        }
       }
     } catch (e) {
       debugPrint('❌ Fehler beim Laden der Timeline-Daten: $e');
@@ -349,6 +388,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   List<Map<String, dynamic>> _elevenVoices = [];
   String? _selectedVoiceId;
   bool _voicesLoading = false;
+
+  // Dynamics Parameter ✨
+  double _drivingMultiplier = 0.41; // 0.0 .. 1.0
+  double _animationScale = 1.7; // 1.0 .. 2.5
+  int _sourceMaxDim = 1600; // 512 .. 2048
+  bool _flagNormalizeLip = true; // Neutralisiert Lächeln
+  bool _flagPasteback = true; // Behält Körper
+  String _animationRegion = 'all'; // exp, pose, lip, eyes, all
+  String _currentDynamicsId = 'basic'; // basic, lachen, herz, etc.
+  Map<String, Map<String, dynamic>> _dynamicsData = {}; // dynamicsId -> data
+  bool _isDynamicsGenerating = false;
+  int _dynamicsTimeRemaining = 0; // Sekunden bis fertig
+  int _dynamicsMaxWait = 300; // Max 5 Minuten Safety-Timeout
+  Timer? _dynamicsTimer;
+  double _heroVideoDuration = 0; // Hero-Video Dauer in Sekunden
+  bool _heroVideoTooLong = false; // Hero-Video > 10 Sek
   bool get _hasNoClonedVoice {
     try {
       final v = _avatarData?.training?['voice'] as Map<String, dynamic>?;
@@ -1036,6 +1091,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     await _loadMediaOriginalNames(data.id);
     // Timeline-Daten laden
     await _loadTimelineData(data.id);
+    // 🎭 Dynamics-Daten laden ✨
+    await _loadDynamicsData(data.id);
+    // 🎬 Hero-Video Dauer prüfen (Max 10 Sek für Dynamics)
+    await _checkHeroVideoDuration();
     if (!mounted) return;
     // Greeting vorbelegen
     final locSvc = context.read<LocalizationService>();
@@ -1311,6 +1370,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   ],
                 ),
               ),
+              const SizedBox(height: 12),
+
+              // 🎭 DYNAMICS (Live Avatar Animation) ✨
+              _buildDynamicsSection(),
+
               const SizedBox(height: 12),
               // Texte & Freitext
               Theme(
@@ -1637,6 +1701,570 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         setState(() => _role = v);
         await _saveRoleImmediately(v);
       },
+    );
+  }
+
+  // 🎭 Dynamics Section (Live Avatar Animation) ✨
+  Widget _buildDynamicsSection() {
+    final heroVideoUrl = _getHeroVideoUrl();
+    final hasHeroVideo = heroVideoUrl != null && heroVideoUrl.isNotEmpty;
+
+    return Theme(
+      data: Theme.of(context).copyWith(
+        dividerColor: Colors.white24,
+        listTileTheme: const ListTileThemeData(iconColor: AppColors.magenta),
+      ),
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
+        backgroundColor: Colors.white.withValues(alpha: 0.06),
+        collapsedIconColor: AppColors.magenta,
+        iconColor: AppColors.lightBlue,
+        title: const Row(
+          children: [
+            Text('🎭', style: TextStyle(fontSize: 20)),
+            SizedBox(width: 8),
+            Text('Dynamics', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Info Text
+                if (!hasHeroVideo)
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.orange.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.orange,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Bitte Hero-Video hochladen, um Dynamics zu generieren',
+                            style: TextStyle(
+                              color: Colors.orange,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // Warnung: Hero-Video zu lang (> 10 Sek) + Trim-Option
+                if (hasHeroVideo && _heroVideoTooLong)
+                  Container(
+                    margin: const EdgeInsets.only(top: 12),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.red.withValues(alpha: 0.5),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              color: Colors.red,
+                              size: 20,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '⚠️ Hero-Video ist ${_heroVideoDuration.toStringAsFixed(1)}s lang!\n'
+                                'Für Dynamics MAX 10 Sekunden erlaubt.',
+                                style: const TextStyle(
+                                  color: Colors.red,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: ElevatedButton.icon(
+                                onPressed: _showVideoTrimDialog,
+                                icon: const Icon(Icons.content_cut, size: 18),
+                                label: const Text('Video trimmen (0-10s)'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.orange,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: () => _mediaTab = 'videos',
+                                icon: const Icon(Icons.video_library, size: 18),
+                                label: const Text('Anderes Video'),
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.red,
+                                  side: const BorderSide(color: Colors.red),
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                if (hasHeroVideo) ...[
+                  // Dynamics Auswahl
+                  Text(
+                    'Aktive Dynamics:',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Dropdown für Dynamics
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: DropdownButton<String>(
+                      value: _currentDynamicsId,
+                      isExpanded: true,
+                      dropdownColor: const Color(0xFF1A1A1A),
+                      underline: const SizedBox.shrink(),
+                      style: const TextStyle(color: Colors.white),
+                      items: [
+                        const DropdownMenuItem(
+                          value: 'basic',
+                          child: Text('Basic'),
+                        ),
+                        ..._dynamicsData.keys
+                            .where((k) => k != 'basic')
+                            .map(
+                              (id) => DropdownMenuItem(
+                                value: id,
+                                child: Text(_dynamicsData[id]?['name'] ?? id),
+                              ),
+                            ),
+                      ],
+                      onChanged: (v) {
+                        if (v != null) {
+                          setState(() => _currentDynamicsId = v);
+                          _loadDynamicsParameters(v);
+                        }
+                      },
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Parameter Header + Default Button
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Parameter:',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: _resetToDefaults,
+                        style: TextButton.styleFrom(
+                          backgroundColor: Colors.black,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text(
+                          'Standard',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 1. Driving Multiplier
+                  _buildSlider(
+                    label: 'Expression Strength (Intensität)',
+                    value: _drivingMultiplier,
+                    min: 0.0,
+                    max: 1.0,
+                    divisions: 100,
+                    onChanged: (v) => setState(() => _drivingMultiplier = v),
+                    valueLabel: _drivingMultiplier.toStringAsFixed(2),
+                    recommendation: '💡 Empfohlen: 0.40-0.42 (natürlich)',
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 2. Animation Scale
+                  _buildSlider(
+                    label: 'Animation Scale (Region)',
+                    value: _animationScale,
+                    min: 1.0,
+                    max: 2.5,
+                    divisions: 30,
+                    onChanged: (v) => setState(() => _animationScale = v),
+                    valueLabel: _animationScale.toStringAsFixed(2),
+                    recommendation:
+                        '💡 Empfohlen: 1.7 (Gesicht + Hals + Schultern)',
+                  ),
+                  const SizedBox(height: 12),
+
+                  // 3. Source Max Dimension
+                  _buildSlider(
+                    label: 'Max Dimension (Auflösung)',
+                    value: _sourceMaxDim.toDouble(),
+                    min: 512,
+                    max: 2048,
+                    divisions: 15,
+                    onChanged: (v) => setState(() => _sourceMaxDim = v.round()),
+                    valueLabel: '$_sourceMaxDim px',
+                    recommendation: '💡 Empfohlen: 1600 (hohe Qualität)',
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Toggle-Optionen
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.05),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Erweiterte Optionen:',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.9),
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+
+                        // Normalize Lip
+                        SwitchListTile(
+                          title: const Text(
+                            'Neutralisiere Lächeln',
+                            style: TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                          subtitle: Text(
+                            'Schließt Mund im Source-Bild vor Animation',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 11,
+                            ),
+                          ),
+                          value: _flagNormalizeLip,
+                          activeThumbColor: AppColors.lightBlue,
+                          onChanged: (v) =>
+                              setState(() => _flagNormalizeLip = v),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                        ),
+
+                        // Pasteback
+                        SwitchListTile(
+                          title: const Text(
+                            'Körper behalten (Pasteback)',
+                            style: TextStyle(color: Colors.white, fontSize: 13),
+                          ),
+                          subtitle: Text(
+                            '✅ WICHTIG: Behält vollen Körper + Original-Qualität!',
+                            style: TextStyle(
+                              color: Colors.green.withValues(alpha: 0.8),
+                              fontSize: 11,
+                            ),
+                          ),
+                          value: _flagPasteback,
+                          activeThumbColor: AppColors.lightBlue,
+                          onChanged: (v) => setState(() => _flagPasteback = v),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // Animation Region
+                        Text(
+                          'Animation Region:',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.7),
+                            fontSize: 12,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        DropdownButton<String>(
+                          value: _animationRegion,
+                          isExpanded: true,
+                          dropdownColor: const Color(0xFF1A1A1A),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                          underline: const SizedBox.shrink(),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'all',
+                              child: Text('Alle (Expression + Pose)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'exp',
+                              child: Text('Nur Expression'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'pose',
+                              child: Text('Nur Pose'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'lip',
+                              child: Text('Nur Lippen'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'eyes',
+                              child: Text('Nur Augen'),
+                            ),
+                          ],
+                          onChanged: (v) {
+                            if (v != null) setState(() => _animationRegion = v);
+                          },
+                        ),
+                        Text(
+                          '💡 Empfohlen: "Alle" für volle Animation',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.5),
+                            fontSize: 10,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // Generieren Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: (_isDynamicsGenerating || _heroVideoTooLong)
+                          ? null
+                          : _generateDynamics,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: _isDynamicsGenerating
+                          ? Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation(
+                                      AppColors.magenta,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  _formatCountdown(_dynamicsTimeRemaining),
+                                  style: const TextStyle(
+                                    color: AppColors.magenta,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : ShaderMask(
+                              blendMode: BlendMode.srcIn,
+                              shaderCallback: (bounds) => Theme.of(context)
+                                  .extension<AppGradients>()!
+                                  .magentaBlue
+                                  .createShader(bounds),
+                              child: const Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.auto_awesome, size: 20),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Generieren',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+
+                  // + Neue Dynamics Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton(
+                      onPressed: _showCreateDynamicsDialog,
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        side: BorderSide(
+                          color: AppColors.magenta.withValues(alpha: 0.5),
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.add,
+                            color: AppColors.magenta,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Neue Dynamics anlegen',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSlider({
+    required String label,
+    required double value,
+    required double min,
+    required double max,
+    required int divisions,
+    required ValueChanged<double> onChanged,
+    required String valueLabel,
+    String? recommendation,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 13,
+                ),
+              ),
+            ),
+            Text(
+              valueLabel,
+              style: const TextStyle(
+                color: AppColors.lightBlue,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        SliderTheme(
+          data: SliderTheme.of(context).copyWith(
+            thumbShape: const GradientSliderThumbShape(thumbRadius: 8),
+            overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+          ),
+          child: Slider(
+            value: value,
+            min: min,
+            max: max,
+            divisions: divisions,
+            activeColor: AppColors.lightBlue,
+            inactiveColor: Colors.white.withValues(alpha: 0.2),
+            onChanged: onChanged,
+          ),
+        ),
+        if (recommendation != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              recommendation,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.5),
+                fontSize: 11,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
+      ],
     );
   }
 
@@ -2801,7 +3429,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Widget _buildVideosRowLayout([double? mediaW]) {
-    final List<String> remoteFour = _videoUrls.take(4).toList();
+    final List<String> remoteFour = _videoUrls.take(15).toList();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: LayoutBuilder(
@@ -2925,7 +3553,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                           height: leftH,
                           child: ListView.separated(
                             scrollDirection: Axis.horizontal,
-                            itemCount: remoteFour.length.clamp(0, 4),
+                            itemCount: remoteFour.length.clamp(0, 15),
                             separatorBuilder: (context, index) =>
                                 const SizedBox(width: gridSpacing),
                             itemBuilder: (context, index) {
@@ -4676,53 +5304,60 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ],
     );
 
-    return GestureDetector(
-      onTap: () async {
-        if (_isDeleteMode) {
-          setState(() {
+    return MouseRegion(
+      cursor: isHero && !_isDeleteMode
+          ? SystemMouseCursors.basic
+          : SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: isHero && !_isDeleteMode
+            ? null
+            : () async {
+                if (_isDeleteMode) {
+                  setState(() {
+                    if (selected) {
+                      _selectedRemoteImages.remove(url);
+                    } else {
+                      _selectedRemoteImages.add(url);
+                    }
+                  });
+                } else {
+                  setState(() {
+                    _setHeroImage(url);
+                    _updateDirty();
+                  });
+                  // Hero-Image sofort persistent speichern
+                  await _persistTextFileUrls();
+                }
+              },
+        onLongPress: () => setState(() {
+          // Long-Press nur im Löschmodus relevant
+          if (_isDeleteMode) {
             if (selected) {
               _selectedRemoteImages.remove(url);
             } else {
               _selectedRemoteImages.add(url);
             }
-          });
-        } else {
-          setState(() {
-            _setHeroImage(url);
-            _updateDirty();
-          });
-          // Hero-Image sofort persistent speichern
-          await _persistTextFileUrls();
-        }
-      },
-      onLongPress: () => setState(() {
-        // Long-Press nur im Löschmodus relevant
-        if (_isDeleteMode) {
-          if (selected) {
-            _selectedRemoteImages.remove(url);
-          } else {
-            _selectedRemoteImages.add(url);
           }
-        }
-      }),
-      child: isHero
-          ? Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: const LinearGradient(
-                  colors: [
-                    Color(0xFFE91E63),
-                    AppColors.lightBlue,
-                    Color(0xFF00E5FF),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+        }),
+        child: isHero
+            ? Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFFE91E63),
+                      AppColors.lightBlue,
+                      Color(0xFF00E5FF),
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
                 ),
-              ),
-              padding: const EdgeInsets.all(2),
-              child: imageContent,
-            )
-          : imageContent,
+                padding: const EdgeInsets.all(2),
+                child: imageContent,
+              )
+            : imageContent,
+      ),
     );
   }
 
@@ -4815,10 +5450,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Widget _videoTile(String url, double w, double h) {
     final heroUrl = _getHeroVideoUrl();
     final isHero = heroUrl != null && url == heroUrl;
-    debugPrint('🎬 _videoTile url=$url | heroUrl=$heroUrl | isHero=$isHero');
+    final audioOn = isHero
+        ? false
+        : (_videoAudioEnabled[url] ?? false); // Hero = IMMER OFF
+    debugPrint(
+      '🎬 _videoTile url=$url | heroUrl=$heroUrl | isHero=$isHero | audioOn=$audioOn',
+    );
     return Stack(
       children: [
-        Positioned.fill(child: _videoThumbNetwork(url)),
+        Positioned.fill(child: _videoThumbNetwork(url, isHero: isHero)),
         // Hero-Video-Overlay (star) – nur beim Hero-Video sichtbar
         if (isHero)
           Positioned(
@@ -4839,13 +5479,61 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ),
             ),
           ),
+        // Audio ON/OFF Toggle (oben rechts) ✅
+        // Hero-Video: Icon anzeigen (immer OFF), aber NICHT klickbar!
+        Positioned(
+          top: 4,
+          right: 6,
+          child: MouseRegion(
+            cursor: isHero
+                ? SystemMouseCursors.basic
+                : SystemMouseCursors.click,
+            child: GestureDetector(
+              onTap: isHero ? null : () => _toggleVideoAudio(url),
+              child: Container(
+                width: 40,
+                height: 40,
+                padding: const EdgeInsets.all(4),
+                decoration: const BoxDecoration(
+                  color: Colors
+                      .transparent, // Background transparent, keine Border
+                ),
+                child: audioOn
+                    ? ShaderMask(
+                        blendMode: BlendMode.srcIn, // ✅ WICHTIG für Gradient!
+                        shaderCallback: (bounds) =>
+                            LinearGradient(
+                              colors: const [
+                                AppColors.magenta,
+                                AppColors.lightBlue,
+                              ],
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                            ).createShader(
+                              Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                            ),
+                        child: const Icon(
+                          Icons.volume_up,
+                          color: Colors.white, // Required for ShaderMask
+                          size: 28,
+                        ),
+                      )
+                    : const Icon(
+                        Icons.volume_off,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
 
-  Widget _videoThumbNetwork(String url) {
+  Widget _videoThumbNetwork(String url, {required bool isHero}) {
     final selected = _selectedRemoteVideos.contains(url);
-    debugPrint('🎬 _videoThumbNetwork -> $url');
+    debugPrint('🎬 _videoThumbNetwork -> $url | isHero=$isHero');
     return AspectRatio(
       aspectRatio: 9 / 16,
       child: Container(
@@ -4882,48 +5570,56 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ),
             // Mini-Play-Icon entfernt – Galerie klickt nur Hero-Video/Trash
             // Tap in Galerie: setzt Hero-Video (wie verlangt). Delete funktioniert weiter über Icon.
-            Positioned.fill(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(onTap: () => _setHeroVideo(url)),
+            // ABER: Wenn bereits Hero-Video → kein Klick! ✅
+            if (!isHero)
+              Positioned.fill(
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(onTap: () => _setHeroVideo(url)),
+                  ),
+                ),
               ),
-            ),
             Positioned(
               right: 6,
               bottom: 6,
-              child: GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _isDeleteMode = true;
-                    if (selected) {
-                      _selectedRemoteVideos.remove(url);
-                    } else {
-                      _selectedRemoteVideos.add(url);
-                    }
-                  });
-                },
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: selected ? null : const Color(0x30000000),
-                    gradient: selected
-                        ? Theme.of(
-                            context,
-                          ).extension<AppGradients>()!.magentaBlue
-                        : null,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: selected
-                          ? AppColors.lightBlue.withValues(alpha: 0.7)
-                          : const Color(0x66FFFFFF),
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _isDeleteMode = true;
+                      if (selected) {
+                        _selectedRemoteVideos.remove(url);
+                      } else {
+                        _selectedRemoteVideos.add(url);
+                      }
+                    });
+                  },
+                  child: Container(
+                    width: 32,
+                    height: 32,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: selected ? null : const Color(0x30000000),
+                      gradient: selected
+                          ? Theme.of(
+                              context,
+                            ).extension<AppGradients>()!.magentaBlue
+                          : null,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selected
+                            ? AppColors.lightBlue.withValues(alpha: 0.7)
+                            : const Color(0x66FFFFFF),
+                      ),
                     ),
-                  ),
-                  child: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.white,
-                    size: 16,
+                    child: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.white,
+                      size: 16,
+                    ),
                   ),
                 ),
               ),
@@ -5713,7 +6409,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
             if (url != null) {
               if (!mounted) return;
-              final isFirstVideo = _videoUrls.isEmpty;
+              final hasNoHeroVideo =
+                  _getHeroVideoUrl() == null || _getHeroVideoUrl()!.isEmpty;
               setState(() {
                 _videoUrls.add(url);
               });
@@ -5723,8 +6420,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 AvatarMediaType.video,
                 originalFileName: origName,
               );
-              // Erstes Video → automatisch als Hero setzen
-              if (isFirstVideo) {
+              // Nur wenn noch KEIN Hero-Video existiert → erstes Video als Hero setzen
+              if (hasNoHeroVideo && _videoUrls.length == 1) {
                 await _setHeroVideo(url);
               }
             } else {
@@ -5736,7 +6433,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         }
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          final scaffoldMessenger = ScaffoldMessenger.of(context);
+          // Timeline neu laden für korrekte Anzeige
+          await _loadTimelineData(_avatarData!.id);
+
+          scaffoldMessenger.showSnackBar(
             SnackBar(
               content: Text(
                 '${result.files.length} Videos erfolgreich hochgeladen',
@@ -5793,7 +6494,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
               if (url != null) {
                 if (!mounted) return;
-                final isFirstVideo = _videoUrls.isEmpty;
+                final hasNoHeroVideo =
+                    _getHeroVideoUrl() == null || _getHeroVideoUrl()!.isEmpty;
                 setState(() {
                   _videoUrls.add(url);
                 });
@@ -5803,8 +6505,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   AvatarMediaType.video,
                   originalFileName: origName,
                 );
-                // Erstes Video → automatisch als Hero setzen
-                if (isFirstVideo) {
+                // Nur wenn noch KEIN Hero-Video existiert → erstes Video als Hero setzen
+                if (hasNoHeroVideo && _videoUrls.length == 1) {
                   await _setHeroVideo(url);
                 }
               }
@@ -5814,7 +6516,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
 
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            final scaffoldMessenger = ScaffoldMessenger.of(context);
+            // Timeline neu laden für korrekte Anzeige
+            await _loadTimelineData(_avatarData!.id);
+
+            scaffoldMessenger.showSnackBar(
               SnackBar(
                 content: Text(
                   '${result.files.length} Videos erfolgreich hochgeladen',
@@ -5847,7 +6553,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
             if (url != null) {
               if (!mounted) return;
-              final isFirstVideo = _videoUrls.isEmpty;
+              final hasNoHeroVideo =
+                  _getHeroVideoUrl() == null || _getHeroVideoUrl()!.isEmpty;
               setState(() {
                 _videoUrls.add(url);
               });
@@ -5858,13 +6565,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 AvatarMediaType.video,
                 originalFileName: origName,
               );
-              // Erstes Video → automatisch als Hero setzen
-              if (isFirstVideo) {
+              // Nur wenn noch KEIN Hero-Video existiert → erstes Video als Hero setzen
+              if (hasNoHeroVideo && _videoUrls.length == 1) {
                 await _setHeroVideo(url);
               }
 
               if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
+                final scaffoldMessenger = ScaffoldMessenger.of(context);
+                // Timeline neu laden für korrekte Anzeige
+                await _loadTimelineData(_avatarData!.id);
+
+                scaffoldMessenger.showSnackBar(
                   const SnackBar(
                     content: Text('Video erfolgreich hochgeladen'),
                   ),
@@ -7543,6 +8254,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       controller.dispose();
     }
     _thumbControllers.clear();
+    // Dynamics Timer aufräumen
+    _dynamicsTimer?.cancel();
     super.dispose();
   }
 
@@ -8148,6 +8861,605 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return parts.isEmpty
         ? context.read<LocalizationService>().t('regionSummaryPlaceholder')
         : parts.join(', ');
+  }
+
+  // 🎭 Dynamics Methoden ✨
+
+  String _formatCountdown(int seconds) {
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _checkHeroVideoDuration() async {
+    final heroVideoUrl = _getHeroVideoUrl();
+    if (heroVideoUrl == null || heroVideoUrl.isEmpty) {
+      setState(() {
+        _heroVideoDuration = 0;
+        _heroVideoTooLong = false;
+      });
+      return;
+    }
+
+    try {
+      // Versuche Video-Dauer auszulesen
+      final controller = VideoPlayerController.networkUrl(
+        Uri.parse(heroVideoUrl),
+      );
+      await controller.initialize();
+      final duration = controller.value.duration.inSeconds.toDouble();
+      controller.dispose();
+
+      setState(() {
+        _heroVideoDuration = duration;
+        _heroVideoTooLong = duration > 10;
+      });
+
+      debugPrint('🎬 Hero-Video Dauer: ${duration}s (Max: 10s)');
+    } catch (e) {
+      debugPrint('❌ Fehler beim Auslesen der Video-Dauer: $e');
+      setState(() {
+        _heroVideoDuration = 0;
+        _heroVideoTooLong = false;
+      });
+    }
+  }
+
+  void _resetToDefaults() {
+    setState(() {
+      _drivingMultiplier = 0.41;
+      _animationScale = 1.7;
+      _sourceMaxDim = 1600;
+      _flagNormalizeLip = true;
+      _flagPasteback = true;
+      _animationRegion = 'all';
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('✅ Standard-Parameter wiederhergestellt'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  void _loadDynamicsParameters(String dynamicsId) {
+    final data = _dynamicsData[dynamicsId];
+    if (data != null && data['parameters'] != null) {
+      final params = data['parameters'] as Map<String, dynamic>;
+      setState(() {
+        _drivingMultiplier =
+            (params['driving_multiplier'] as num?)?.toDouble() ?? 0.41;
+        _animationScale = (params['scale'] as num?)?.toDouble() ?? 1.7;
+        _sourceMaxDim = (params['source_max_dim'] as int?) ?? 1600;
+        _flagNormalizeLip = (params['flag_normalize_lip'] as bool?) ?? true;
+        _flagPasteback = (params['flag_pasteback'] as bool?) ?? true;
+        _animationRegion = (params['animation_region'] as String?) ?? 'all';
+      });
+    }
+  }
+
+  Future<void> _generateDynamics() async {
+    if (_avatarData == null) return;
+
+    setState(() => _isDynamicsGenerating = true);
+
+    try {
+      final base =
+          dotenv.env['DYNAMICS_API_BASE_URL'] ?? 'http://localhost:8002';
+      final uri = Uri.parse('$base/generate-dynamics');
+
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'avatar_id': _avatarData!.id,
+              'dynamics_id': _currentDynamicsId,
+              'parameters': {
+                'driving_multiplier': _drivingMultiplier,
+                'scale': _animationScale,
+                'source_max_dim': _sourceMaxDim,
+                'flag_normalize_lip': _flagNormalizeLip,
+                'flag_pasteback': _flagPasteback,
+                'animation_region': _animationRegion,
+              },
+            }),
+          )
+          .timeout(const Duration(minutes: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+
+        if (mounted) {
+          // Starte Countdown-Timer (3:30 Min = 210 Sek, realistisch)
+          setState(() {
+            _dynamicsTimeRemaining = 210; // 3:30 Min
+            _dynamicsMaxWait = 300; // Max 5 Min Safety
+          });
+
+          _dynamicsTimer?.cancel();
+          _dynamicsTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+            if (!mounted) {
+              timer.cancel();
+              return;
+            }
+
+            setState(() {
+              if (_dynamicsTimeRemaining > 0) {
+                _dynamicsTimeRemaining--;
+                _dynamicsMaxWait--;
+              }
+
+              // Safety: Nach 5 Min IMMER abbrechen
+              if (_dynamicsMaxWait <= 0) {
+                timer.cancel();
+                _isDynamicsGenerating = false;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      '⚠️ Generierung läuft länger als erwartet.\n'
+                      'Bitte später neu prüfen.',
+                    ),
+                    backgroundColor: Colors.orange,
+                    duration: Duration(seconds: 5),
+                  ),
+                );
+                return;
+              }
+
+              // Normaler Ablauf nach 3:30
+              if (_dynamicsTimeRemaining <= 0) {
+                timer.cancel();
+                _isDynamicsGenerating = false;
+                // Automatisch Dynamics-Daten neu laden
+                _loadDynamicsData(_avatarData!.id);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      '✅ Dynamics sollte jetzt fertig sein! Prüfe die Daten.',
+                    ),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              }
+            });
+          });
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '⏳ Dynamics "${data['dynamics_id']}" wird generiert...\n'
+                'Dauer: ca. 3-4 Minuten (max. 5 Min)',
+              ),
+              backgroundColor: Colors.orange,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+        }
+      } else {
+        throw Exception('Backend error: ${response.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('❌ Dynamics Generation Error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isDynamicsGenerating = false);
+      }
+    }
+  }
+
+  Future<void> _showCreateDynamicsDialog() async {
+    final controller = TextEditingController();
+    final icons = {
+      'Lachen': '😄',
+      'Herz': '❤️',
+      'Traurig': '😢',
+      'Daumen hoch': '👍',
+      'Überrascht': '😮',
+      'Wütend': '😠',
+    };
+
+    String? selectedIcon;
+
+    final result = await showDialog<Map<String, String>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text(
+            'Neue Dynamics anlegen',
+            style: TextStyle(color: Colors.white),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: controller,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  hintText: 'Name (z.B. Lachen)',
+                  hintStyle: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.5),
+                  ),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.3),
+                    ),
+                  ),
+                  focusedBorder: const UnderlineInputBorder(
+                    borderSide: BorderSide(color: AppColors.magenta),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Oder wähle ein Preset:',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: icons.entries.map((e) {
+                  final isSelected = selectedIcon == e.key;
+                  return GestureDetector(
+                    onTap: () {
+                      setDialogState(() {
+                        selectedIcon = e.key;
+                        controller.text = e.key;
+                      });
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.magenta.withValues(alpha: 0.3)
+                            : Colors.white.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: isSelected
+                              ? AppColors.magenta
+                              : Colors.white.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(e.value, style: const TextStyle(fontSize: 16)),
+                          const SizedBox(width: 4),
+                          Text(
+                            e.key,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final name = controller.text.trim();
+                if (name.isNotEmpty) {
+                  Navigator.pop(ctx, {'name': name, 'icon': selectedIcon});
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.magenta,
+              ),
+              child: const Text('Anlegen'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != null && result['name'] != null) {
+      final dynamicsId = result['name']!.toLowerCase().replaceAll(' ', '_');
+      setState(() {
+        _dynamicsData[dynamicsId] = {
+          'name': result['name'],
+          'icon': result['icon'],
+          'status': 'pending',
+          'parameters': {
+            'driving_multiplier': _drivingMultiplier,
+            'scale': _animationScale,
+            'source_max_dim': _sourceMaxDim,
+            'flag_normalize_lip': _flagNormalizeLip,
+            'flag_pasteback': _flagPasteback,
+            'animation_region': _animationRegion,
+          },
+        };
+        _currentDynamicsId = dynamicsId;
+      });
+
+      // Hinweis: Video hochladen
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Dynamics "${result['name']}" angelegt! Bitte Hero-Video hochladen und Parameter anpassen.',
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadDynamicsData(String avatarId) async {
+    // Lade Dynamics-Daten aus Firestore
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(avatarId)
+          .get();
+
+      if (!doc.exists) return;
+
+      final data = doc.data();
+      if (data == null) return;
+
+      final dynamics = data['dynamics'] as Map<String, dynamic>?;
+      if (dynamics == null || dynamics.isEmpty) return;
+
+      setState(() {
+        _dynamicsData = Map<String, Map<String, dynamic>>.from(
+          dynamics.map(
+            (k, v) => MapEntry(k, Map<String, dynamic>.from(v as Map)),
+          ),
+        );
+
+        // Lade Parameter der aktuell ausgewählten Dynamics
+        if (_dynamicsData.containsKey(_currentDynamicsId)) {
+          _loadDynamicsParameters(_currentDynamicsId);
+        }
+      });
+
+      debugPrint('✅ Dynamics-Daten geladen: ${_dynamicsData.keys.join(', ')}');
+    } catch (e) {
+      debugPrint('❌ Fehler beim Laden der Dynamics-Daten: $e');
+    }
+  }
+
+  Future<void> _showVideoTrimDialog() async {
+    final heroVideoUrl = _getHeroVideoUrl();
+    if (heroVideoUrl == null) return;
+
+    double startTime = 0.0;
+    double endTime = 10.0; // Max 10 Sekunden
+    final maxDuration = _heroVideoDuration;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Row(
+            children: [
+              Icon(Icons.content_cut, color: AppColors.magenta),
+              SizedBox(width: 8),
+              Text('Video trimmen', style: TextStyle(color: Colors.white)),
+            ],
+          ),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Wähle 0-10 Sekunden aus dem ${maxDuration.toStringAsFixed(1)}s Video:',
+                  style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
+                ),
+                const SizedBox(height: 20),
+
+                // Range Slider
+                RangeSlider(
+                  values: RangeValues(startTime, endTime),
+                  min: 0,
+                  max: maxDuration,
+                  divisions: (maxDuration * 10).round(),
+                  activeColor: AppColors.lightBlue,
+                  inactiveColor: Colors.white.withValues(alpha: 0.2),
+                  labels: RangeLabels(
+                    '${startTime.toStringAsFixed(1)}s',
+                    '${endTime.toStringAsFixed(1)}s',
+                  ),
+                  onChanged: (values) {
+                    setDialogState(() {
+                      startTime = values.start;
+                      endTime = values.end.clamp(startTime, startTime + 10);
+                      // Max 10 Sekunden Differenz
+                      if (endTime - startTime > 10) {
+                        endTime = startTime + 10;
+                      }
+                    });
+                  },
+                ),
+
+                const SizedBox(height: 8),
+
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Start: ${startTime.toStringAsFixed(1)}s',
+                      style: const TextStyle(
+                        color: AppColors.lightBlue,
+                        fontSize: 13,
+                      ),
+                    ),
+                    Text(
+                      'Ende: ${endTime.toStringAsFixed(1)}s',
+                      style: const TextStyle(
+                        color: AppColors.lightBlue,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 8),
+
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '✂️ Neue Länge: ${(endTime - startTime).toStringAsFixed(1)}s',
+                    style: const TextStyle(
+                      color: Colors.green,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Abbrechen'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _trimAndSaveHeroVideo(heroVideoUrl, startTime, endTime);
+              },
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('Trimmen & Speichern'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.magenta,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _trimAndSaveHeroVideo(
+    String videoUrl,
+    double start,
+    double end,
+  ) async {
+    if (_avatarData == null) return;
+
+    setState(() => _isDynamicsGenerating = true);
+
+    try {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⏳ Video wird getrimmt...'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+
+      // Video herunterladen
+      final response = await http.get(Uri.parse(videoUrl));
+      if (response.statusCode != 200) {
+        throw Exception('Video konnte nicht geladen werden');
+      }
+
+      final tempDir = Directory.systemTemp;
+      final inputFile = File(
+        '${tempDir.path}/hero_input_${DateTime.now().millisecondsSinceEpoch}.mp4',
+      );
+      final outputFile = File(
+        '${tempDir.path}/hero_trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4',
+      );
+
+      await inputFile.writeAsBytes(response.bodyBytes);
+
+      // FFmpeg: Video trimmen
+      final result = await Process.run('ffmpeg', [
+        '-i',
+        inputFile.path,
+        '-ss',
+        start.toString(),
+        '-t',
+        (end - start).toString(),
+        '-c',
+        'copy',
+        '-y',
+        outputFile.path,
+      ]);
+
+      if (result.exitCode != 0) {
+        throw Exception('FFmpeg Fehler: ${result.stderr}');
+      }
+
+      // Getrimmtes Video zu Firebase hochladen
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final storagePath =
+          'avatars/${_avatarData!.id}/videos/${timestamp}_trimmed_hero.mp4';
+
+      final newVideoUrl = await FirebaseStorageService.uploadVideo(
+        outputFile,
+        customPath: storagePath,
+      );
+
+      if (newVideoUrl == null) {
+        throw Exception('Upload fehlgeschlagen');
+      }
+
+      // Als neues Hero-Video setzen
+      await _setHeroVideo(newVideoUrl);
+
+      // Cleanup
+      try {
+        await inputFile.delete();
+        await outputFile.delete();
+      } catch (_) {}
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Video getrimmt und als Hero-Video gesetzt!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+
+        // Video-Dauer neu prüfen
+        await _checkHeroVideoDuration();
+      }
+    } catch (e) {
+      debugPrint('❌ Trim Fehler: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Fehler beim Trimmen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isDynamicsGenerating = false);
+      }
+    }
   }
 }
 

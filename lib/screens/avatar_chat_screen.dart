@@ -408,31 +408,38 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           .get();
 
       if (!doc.exists) {
-        debugPrint('⚠️ Live Avatar: Avatar nicht gefunden in Firestore');
+        debugPrint('⚠️ Dynamics-Video: Avatar nicht gefunden in Firestore');
+        setState(() => _liveAvatarEnabled = false);
         return;
       }
 
       final data = doc.data();
-      final liveAssets = data?['liveAssets'] as Map<String, dynamic>?;
+      // Checke nach dynamics.basic (statt liveAvatar)
+      final dynamics = data?['dynamics'] as Map<String, dynamic>?;
+      final basicDynamics = dynamics?['basic'] as Map<String, dynamic>?;
 
-      if (liveAssets == null) {
+      if (basicDynamics == null || basicDynamics['status'] != 'ready') {
         debugPrint(
-          '⚠️ Live Avatar: Keine liveAssets für $avatarId - verwende lokale Assets für Test',
+          '⚠️ Dynamics-Video: Kein "basic" Dynamics vorhanden für $avatarId\n'
+          '→ Fallback: Nur Hero-Image wird angezeigt',
         );
-        // Fallback für Test: Lokale Assets
-        await _initLiveAvatarLocal(avatarId);
+        setState(() => _liveAvatarEnabled = false);
         return;
       }
 
       // URLs aus Firebase Storage
-      final idleUrl = liveAssets['idleUrl'] as String?;
-      final atlasUrl = liveAssets['atlasUrl'] as String?;
-      final maskUrl = liveAssets['maskUrl'] as String?;
-      final atlasJson = liveAssets['atlasJson'] as String?;
-      final roiJson = liveAssets['roiJson'] as String?;
+      final idleUrl = basicDynamics['idleVideoUrl'] as String?;
+      final atlasUrl = basicDynamics['atlasUrl'] as String?;
+      final maskUrl = basicDynamics['maskUrl'] as String?;
+      final atlasJsonUrl = basicDynamics['atlasJsonUrl'] as String?;
+      final roiJsonUrl = basicDynamics['roiJsonUrl'] as String?;
 
       if (idleUrl == null || atlasUrl == null || maskUrl == null) {
-        debugPrint('⚠️ Live Avatar: Unvollständige Assets');
+        debugPrint(
+          '⚠️ Dynamics-Video: Unvollständige Assets\n'
+          '→ Fallback: Nur Hero-Image wird angezeigt',
+        );
+        setState(() => _liveAvatarEnabled = false);
         return;
       }
 
@@ -458,9 +465,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       Map<String, dynamic> atlasMapParsed;
       Map<String, dynamic> roiMapParsed;
 
-      if (atlasJson != null && roiJson != null) {
-        atlasMapParsed = json.decode(atlasJson);
-        roiMapParsed = json.decode(roiJson);
+      if (atlasJsonUrl != null && roiJsonUrl != null) {
+        // JSON-Dateien von Firebase Storage laden
+        final atlasJsonRes = await http.get(Uri.parse(atlasJsonUrl));
+        final roiJsonRes = await http.get(Uri.parse(roiJsonUrl));
+        atlasMapParsed = json.decode(atlasJsonRes.body);
+        roiMapParsed = json.decode(roiJsonRes.body);
       } else {
         // Fallback: Lokale JSON-Dateien
         final atlasJsonLocal = await rootBundle.loadString(
@@ -505,13 +515,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         _liveAvatarEnabled = true;
       });
 
-      debugPrint('✅ Live Avatar initialisiert (Firebase Storage)');
+      debugPrint('✅ Dynamics-Video "basic" initialisiert (Firebase Storage)');
     } catch (e) {
-      debugPrint('❌ Live Avatar Init Fehler: $e');
+      debugPrint('❌ Dynamics-Video Init Fehler: $e');
+      setState(() => _liveAvatarEnabled = false);
     }
   }
 
-  // Fallback für lokale Tests
+  // Fallback für lokale Tests (auskommentiert - evtl. später gebraucht)
+  /*
   Future<void> _initLiveAvatarLocal(String avatarId) async {
     try {
       final assetPath = 'assets/avatars/schatzy';
@@ -573,6 +585,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       debugPrint('❌ Live Avatar Local Init Fehler: $e');
     }
   }
+  */
 
   Future<void> _connectOrchestrator(String avatarId) async {
     try {
@@ -617,6 +630,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     }
   }
 
+  // Live Speak (auskommentiert - evtl. später gebraucht)
+  /*
   Future<void> _liveSpeak(String text) async {
     if (_liveSessionId == null) return;
 
@@ -631,6 +646,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       debugPrint('❌ Live Speak Fehler: $e');
     }
   }
+  */
 
   @override
   Widget build(BuildContext context) {
