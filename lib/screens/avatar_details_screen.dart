@@ -392,7 +392,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   // Dynamics Parameter ✨
   double _drivingMultiplier = 0.41; // 0.0 .. 1.0
   double _animationScale = 1.7; // 1.0 .. 2.5
-  int _sourceMaxDim = 1600; // 512 .. 2048
+  int _sourceMaxDim = 2048; // 512 .. 2048
   bool _flagNormalizeLip = true; // Neutralisiert Lächeln
   bool _flagPasteback = true; // Behält Körper
   String _animationRegion = 'all'; // exp, pose, lip, eyes, all
@@ -1709,30 +1709,28 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final heroVideoUrl = _getHeroVideoUrl();
     final hasHeroVideo = heroVideoUrl != null && heroVideoUrl.isNotEmpty;
 
-    return Theme(
-      data: Theme.of(context).copyWith(
-        dividerColor: Colors.white24,
-        listTileTheme: const ListTileThemeData(iconColor: AppColors.magenta),
-      ),
-      child: ExpansionTile(
-        initiallyExpanded: false,
-        collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
-        backgroundColor: Colors.white.withValues(alpha: 0.06),
-        collapsedIconColor: AppColors.magenta,
-        iconColor: AppColors.lightBlue,
-        title: const Row(
-          children: [
-            Text('🎭', style: TextStyle(fontSize: 20)),
-            SizedBox(width: 8),
-            Text('Dynamics', style: TextStyle(color: Colors.white)),
-          ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Header
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+          child: Row(
+            children: [
+              const Text('🎭', style: TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+              const Text(
+                'Dynamics',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+        const SizedBox(height: 8),
                 // Info Text
                 if (!hasHeroVideo)
                   Container(
@@ -1965,7 +1963,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     divisions: 15,
                     onChanged: (v) => setState(() => _sourceMaxDim = v.round()),
                     valueLabel: '$_sourceMaxDim px',
-                    recommendation: '💡 Empfohlen: 1600 (hohe Qualität)',
+                    recommendation: '💡 Empfohlen: 2048 (maximale Qualität)',
                   ),
                   const SizedBox(height: 16),
 
@@ -2031,61 +2029,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                           onChanged: (v) => setState(() => _flagPasteback = v),
                           contentPadding: EdgeInsets.zero,
                           dense: true,
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        // Animation Region
-                        Text(
-                          'Animation Region:',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        DropdownButton<String>(
-                          value: _animationRegion,
-                          isExpanded: true,
-                          dropdownColor: const Color(0xFF1A1A1A),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                          underline: const SizedBox.shrink(),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'all',
-                              child: Text('Alle (Expression + Pose)'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'exp',
-                              child: Text('Nur Expression'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'pose',
-                              child: Text('Nur Pose'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'lip',
-                              child: Text('Nur Lippen'),
-                            ),
-                            DropdownMenuItem(
-                              value: 'eyes',
-                              child: Text('Nur Augen'),
-                            ),
-                          ],
-                          onChanged: (v) {
-                            if (v != null) setState(() => _animationRegion = v);
-                          },
-                        ),
-                        Text(
-                          '💡 Empfohlen: "Alle" für volle Animation',
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            fontSize: 10,
-                            fontStyle: FontStyle.italic,
-                          ),
                         ),
                       ],
                     ),
@@ -2159,40 +2102,41 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
                   const SizedBox(height: 12),
 
-                  // + Neue Dynamics Button
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton(
-                      onPressed: _showCreateDynamicsDialog,
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        side: BorderSide(
-                          color: AppColors.magenta.withValues(alpha: 0.5),
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.add,
-                            color: AppColors.magenta,
-                            size: 20,
+                  // + Neue Dynamics Button (nur wenn Basic ready)
+                  if (_dynamicsData['basic']?['status'] == 'ready')
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: _showCreateDynamicsDialog,
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: BorderSide(
+                            color: AppColors.magenta.withValues(alpha: 0.5),
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Neue Dynamics anlegen',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.9),
-                              fontWeight: FontWeight.w500,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.add,
+                              color: AppColors.magenta,
+                              size: 20,
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: 8),
+                            Text(
+                              'Neue Dynamics anlegen',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.9),
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
                 ],
               ],
             ),
@@ -8909,7 +8853,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     setState(() {
       _drivingMultiplier = 0.41;
       _animationScale = 1.7;
-      _sourceMaxDim = 1600;
+      _sourceMaxDim = 2048;
       _flagNormalizeLip = true;
       _flagPasteback = true;
       _animationRegion = 'all';
@@ -9173,35 +9117,56 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ),
     );
 
-    if (result != null && result['name'] != null) {
-      final dynamicsId = result['name']!.toLowerCase().replaceAll(' ', '_');
-      setState(() {
-        _dynamicsData[dynamicsId] = {
+    if (result != null && result['name'] != null && _avatarData != null) {
+      try {
+        final dynamicsId = result['name']!.toLowerCase().replaceAll(' ', '_');
+        final newDynamicsData = {
           'name': result['name'],
           'icon': result['icon'],
           'status': 'pending',
           'parameters': {
-            'driving_multiplier': _drivingMultiplier,
-            'scale': _animationScale,
-            'source_max_dim': _sourceMaxDim,
-            'flag_normalize_lip': _flagNormalizeLip,
-            'flag_pasteback': _flagPasteback,
-            'animation_region': _animationRegion,
+            'driving_multiplier': 0.41,
+            'scale': 1.7,
+            'source_max_dim': 2048,
+            'flag_normalize_lip': true,
+            'flag_pasteback': true,
+            'animation_region': 'all',
           },
         };
-        _currentDynamicsId = dynamicsId;
-      });
 
-      // Hinweis: Video hochladen
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Dynamics "${result['name']}" angelegt! Bitte Hero-Video hochladen und Parameter anpassen.',
+        // Firestore persistieren
+        await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(_avatarData!.id)
+            .update({'dynamics.$dynamicsId': newDynamicsData});
+
+        setState(() {
+          _dynamicsData[dynamicsId] = newDynamicsData;
+          _currentDynamicsId = dynamicsId;
+        });
+
+        // Hinweis: Video hochladen
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Dynamics "${result['name']}" angelegt! Bitte Parameter anpassen und generieren.',
+              ),
+              duration: const Duration(seconds: 4),
+              backgroundColor: AppColors.primaryGreen,
             ),
-            duration: const Duration(seconds: 4),
-          ),
-        );
+          );
+        }
+      } catch (e) {
+        debugPrint('❌ Fehler beim Anlegen der Dynamics: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fehler beim Anlegen: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
       }
     }
   }
