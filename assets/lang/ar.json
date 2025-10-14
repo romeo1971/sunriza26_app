@@ -281,6 +281,6 @@
   "auth.errorGeneric": "خطأ: {msg}",
   "auth.errorTooManyRequests": "محاولات فاشلة كثيرة جدًا. يرجى الانتظار لحظة والمحاولة مرة أخرى.",
   "auth.errorNetworkFailed": "خطأ في الشبكة. يرجى التحقق من اتصالك بالإنترنت.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "نص الترحيب",
+  "avatars.details.textFileFilterLabel": "تصفية الملفات النصية"
 }

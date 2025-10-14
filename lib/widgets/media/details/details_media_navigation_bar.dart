@@ -52,28 +52,33 @@ class MediaNavigationBar extends StatelessWidget {
               // Upload-Button
               Padding(
                 padding: const EdgeInsets.only(left: 8),
-                child: SizedBox(
-                  height: 35,
-                  child: TextButton(
-                    onPressed: (currentTab == 'images' && imageCount >= 4)
-                        ? null
-                        : onUpload,
-                    style: ButtonStyle(
-                      padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-                      minimumSize: const WidgetStatePropertyAll(Size(40, 35)),
-                    ),
-                    child: Container(
-                      height: double.infinity,
-                      decoration: BoxDecoration(
-                        gradient: Theme.of(
-                          context,
-                        ).extension<AppGradients>()!.magentaBlue,
+                child: MouseRegion(
+                  cursor: (currentTab == 'images' && imageCount >= 15)
+                      ? SystemMouseCursors.forbidden
+                      : SystemMouseCursors.click,
+                  child: SizedBox(
+                    height: 35,
+                    child: TextButton(
+                      onPressed: (currentTab == 'images' && imageCount >= 15)
+                          ? null
+                          : onUpload,
+                      style: ButtonStyle(
+                        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+                        minimumSize: const WidgetStatePropertyAll(Size(40, 35)),
                       ),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: const Icon(
-                        Icons.file_upload,
-                        size: 18,
-                        color: Colors.white,
+                      child: Container(
+                        height: double.infinity,
+                        decoration: BoxDecoration(
+                          gradient: Theme.of(
+                            context,
+                          ).extension<AppGradients>()!.magentaBlue,
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        child: const Icon(
+                          Icons.file_upload,
+                          size: 18,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),

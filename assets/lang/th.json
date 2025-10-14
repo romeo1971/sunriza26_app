@@ -281,6 +281,6 @@
   "auth.errorGeneric": "ข้อผิดพลาด: {msg}",
   "auth.errorTooManyRequests": "พยายามล้มเหลวมากเกินไป โปรดรอสักครู่แล้วลองอีกครั้ง",
   "auth.errorNetworkFailed": "ข้อผิดพลาดเครือข่าย โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของคุณ",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "ข้อความทักทาย",
+  "avatars.details.textFileFilterLabel": "กรองไฟล์ข้อความ"
 }

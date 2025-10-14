@@ -281,6 +281,6 @@
   "auth.errorGeneric": "त्रुटी: {msg}",
   "auth.errorTooManyRequests": "खूप अयशस्वी प्रयत्न. कृपया थोडा वेळ थांबा आणि पुन्हा प्रयत्न करा.",
   "auth.errorNetworkFailed": "नेटवर्क त्रुटी. कृपया तुमचे इंटरनेट कनेक्शन तपासा.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "अभिवादन मजकूर",
+  "avatars.details.textFileFilterLabel": "मजकूर फायली फिल्टर करा"
 }

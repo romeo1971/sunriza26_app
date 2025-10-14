@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Chyba: {msg}",
   "auth.errorTooManyRequests": "Příliš mnoho neúspěšných pokusů. Počkejte prosím chvíli a zkuste to znovu.",
   "auth.errorNetworkFailed": "Chyba sítě. Zkontrolujte prosím své připojení k internetu.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Uvítací text",
+  "avatars.details.textFileFilterLabel": "Filtrovat textové soubory"
 }

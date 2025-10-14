@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Hiba: {msg}",
   "auth.errorTooManyRequests": "Túl sok sikertelen próbálkozás. Várj egy pillanatot, majd próbáld újra.",
   "auth.errorNetworkFailed": "Hálózati hiba. Ellenőrizd az internetkapcsolatod.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Üdvözlő szöveg",
+  "avatars.details.textFileFilterLabel": "Szöveges fájlok szűrése"
 }

@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import '../theme/app_theme.dart';
 
 /// CustomDateField für Datumseingaben mit integriertem Label
 ///
 /// Features:
 /// - Label wird innerhalb des Feldes angezeigt
-/// - Grüner Border wenn Datum ausgewählt, grau wenn leer
+/// - GMBC Gradient Icon wenn Datum ausgewählt, grau wenn leer
 /// - Öffnet DatePicker beim Tap
+/// - Clear-Button (X) um Datum zu löschen
 /// - Konsistentes Design mit CustomTextField
 class CustomDateField extends StatelessWidget {
   final String label;
@@ -17,6 +19,7 @@ class CustomDateField extends StatelessWidget {
   final String? Function(DateTime?)? validator;
   final bool enabled;
   final String dateFormat;
+  final bool allowClear;
 
   const CustomDateField({
     super.key,
@@ -28,6 +31,7 @@ class CustomDateField extends StatelessWidget {
     this.validator,
     this.enabled = true,
     this.dateFormat = 'dd.MM.yyyy',
+    this.allowClear = true,
   });
 
   @override
@@ -66,11 +70,60 @@ class CustomDateField extends StatelessWidget {
             horizontal: 12,
             vertical: 16,
           ),
-          suffixIcon: Icon(
-            Icons.calendar_today,
-            color: hasValue ? const Color(0xFF00E676) : Colors.white54,
-            size: 20,
-          ),
+          suffixIcon: hasValue && allowClear
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [
+                          Color(0xFFE91E63), // Magenta
+                          AppColors.lightBlue,
+                          Color(0xFF00E5FF), // Cyan
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ).createShader(bounds),
+                      child: const Icon(
+                        Icons.calendar_today,
+                        color: Colors.white,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: enabled ? () => onDateSelected(null) : null,
+                      child: const Icon(
+                        Icons.clear,
+                        color: Colors.white54,
+                        size: 20,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                )
+              : hasValue
+              ? ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [
+                      Color(0xFFE91E63), // Magenta
+                      AppColors.lightBlue,
+                      Color(0xFF00E5FF), // Cyan
+                    ],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ).createShader(bounds),
+                  child: const Icon(
+                    Icons.calendar_today,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                )
+              : const Icon(
+                  Icons.calendar_today,
+                  color: Colors.white54,
+                  size: 20,
+                ),
         ),
         child: Text(
           displayText.isEmpty ? label : displayText,
@@ -95,8 +148,8 @@ class CustomDateField extends StatelessWidget {
         return Theme(
           data: ThemeData.dark().copyWith(
             colorScheme: const ColorScheme.dark(
-              primary: Color(0xFF00E676),
-              onPrimary: Colors.black,
+              primary: AppColors.magenta, // GMBC
+              onPrimary: Colors.white,
               surface: Color(0xFF1E1E1E),
               onSurface: Colors.white,
             ),

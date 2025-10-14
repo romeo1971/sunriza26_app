@@ -275,6 +275,6 @@
   "auth.errorGeneric": "خطا: {msg}",
   "auth.errorTooManyRequests": "تلاش‌های ناموفق بیش از حد. لطفاً لحظه‌ای صبر کنید و دوباره تلاش کنید.",
   "auth.errorNetworkFailed": "خطای شبکه. لطفاً اتصال اینترنت خود را بررسی کنید.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "متن خوش‌آمدگویی",
+  "avatars.details.textFileFilterLabel": "فیلتر کردن فایل‌های متنی"
 }

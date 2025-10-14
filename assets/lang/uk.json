@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Помилка: {msg}",
   "auth.errorTooManyRequests": "Занадто багато невдалих спроб. Зачекайте трохи і спробуйте ще раз.",
   "auth.errorNetworkFailed": "Помилка мережі. Перевірте підключення до інтернету.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Текст привітання",
+  "avatars.details.textFileFilterLabel": "Фільтр текстових файлів"
 }

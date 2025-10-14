@@ -281,6 +281,6 @@
   "auth.errorGeneric": "ਗਲਤੀ: {msg}",
   "auth.errorTooManyRequests": "ਬਹੁਤ ਸਾਰੀਆਂ ਅਸਫਲ ਕੋਸ਼ਿਸ਼ਾਂ। ਕਿਰਪਾ ਕਰਕੇ ਥੋੜ੍ਹੀ ਦੇਰ ਉਡੀਕ ਕਰੋ ਅਤੇ ਦੁਬਾਰਾ ਕੋਸ਼ਿਸ਼ ਕਰੋ।",
   "auth.errorNetworkFailed": "ਨੈੱਟਵਰਕ ਗਲਤੀ। ਕਿਰਪਾ ਕਰਕੇ ਆਪਣਾ ਇੰਟਰਨੈਟ ਕਨੈਕਸ਼ਨ ਜਾਂਚੋ।",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "ਸਵਾਗਤ ਲਿਖਤ",
+  "avatars.details.textFileFilterLabel": "ਟੈਕਸਟ ਫਾਈਲਾਂ ਫਿਲਟਰ ਕਰੋ"
 }

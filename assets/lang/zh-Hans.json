@@ -281,6 +281,6 @@
   "auth.errorGeneric": "错误：{msg}",
   "auth.errorTooManyRequests": "失败尝试次数过多。请稍等片刻后重试。",
   "auth.errorNetworkFailed": "网络错误。请检查您的互联网连接。",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "问候文本",
+  "avatars.details.textFileFilterLabel": "过滤文本文件"
 }

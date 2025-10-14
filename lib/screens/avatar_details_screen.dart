@@ -1114,7 +1114,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       currentViewMode: _heroViewMode,
       imageCount: _imageUrls.length,
       onTabChanged: (tab) => setState(() => _mediaTab = tab),
-      onUpload: _mediaTab == 'images' ? _onAddImages : _onAddVideos,
+      onUpload: () {
+        // Zur Klick-Zeit entscheiden welcher Upload-Handler aufgerufen wird
+        if (_mediaTab == 'images') {
+          _onAddImages();
+        } else {
+          _onAddVideos();
+        }
+      },
       onInfoPressed: () async {
         await _showExplorerInfoDialog(forceShow: true);
       },
@@ -1234,6 +1241,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             },
             onDeleteConfirm: _confirmDeleteSelectedImages,
             onGenerateAvatar: _handleGenerateAvatar,
+            onSetHeroImage: _setHeroImage,
             // Helper functions
             fileNameFromUrl: _fileNameFromUrl,
             getTotalEndTime: _getTotalEndTime,
@@ -1358,61 +1366,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   // Tab-Button für Hero-Navigation - ERSETZT durch MediaTabButton Widget
   /* AUSKOMMENTIERT - Widget wird nun verwendet
-  Widget _buildTopTabBtn(String tab, IconData icon) {
-    final selected = _mediaTab == tab;
-    return SizedBox(
-      height: 35,
-      child: TextButton(
-        onPressed: () {
-          setState(() {
-            _mediaTab = tab;
-          });
-        },
-        style: ButtonStyle(
-          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-          minimumSize: const WidgetStatePropertyAll(Size(60, 35)),
-          backgroundColor: WidgetStateProperty.resolveWith<Color?>((states) {
-            if (selected) {
-              return const Color(0x26FFFFFF); // ausgewählt: hellgrau
-            }
-            return Colors.transparent;
-          }),
-          overlayColor: WidgetStateProperty.resolveWith<Color?>((states) {
-            if (states.contains(WidgetState.hovered) ||
-                states.contains(WidgetState.focused) ||
-                states.contains(WidgetState.pressed)) {
-              final mix = Color.lerp(
-                AppColors.magenta,
-                AppColors.lightBlue,
-                0.5,
-              )!;
-              return mix.withValues(alpha: 0.12);
-            }
-            return null;
-          }),
-          foregroundColor: const WidgetStatePropertyAll(Colors.white),
-          shape: WidgetStateProperty.resolveWith<OutlinedBorder>((states) {
-            final isHover =
-                states.contains(WidgetState.hovered) ||
-                states.contains(WidgetState.focused);
-            if (selected || isHover) {
-              return const RoundedRectangleBorder(
-                borderRadius: BorderRadius.zero,
-              );
-            }
-            return RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8),
-            );
-          }),
-        ),
-        child: Icon(
-          icon,
-          size: 22,
-          color: selected ? Colors.white : Colors.white54,
-        ),
-      ),
-    );
-  }
   */
 
   Widget _buildRoleDropdown() {
@@ -3388,7 +3341,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               left: 6,
               bottom: 6,
               child: InkWell(
-                onTap: () => _reopenCrop(url),
+                onTap: () => _onImageRecrop(url),
                 child: Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
@@ -3480,7 +3433,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             left: 6,
             bottom: 6,
             child: InkWell(
-              onTap: () => _reopenCrop(url),
+              onTap: () => _onImageRecrop(url),
               child: Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
@@ -5220,6 +5173,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             _updateDirty();
           },
           lastDate: DateTime.now(),
+          allowClear: true,
         ),
 
         const SizedBox(height: 16),
@@ -5242,6 +5196,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           },
           firstDate: _birthDate,
           lastDate: DateTime.now(),
+          allowClear: true,
         ),
 
         const SizedBox(height: 16),
@@ -5257,32 +5212,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Widget _buildAgeDisplay() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0x80FFFFFF),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: AppColors.magenta.withValues(alpha: 0.35), // GMBC
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 16),
+      child: Text(
+        context.read<LocalizationService>().t(
+          'avatars.details.calculatedAge',
+          params: {'age': _calculatedAge?.toString() ?? ''},
         ),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.cake, color: AppColors.magenta), // GMBC
-          const SizedBox(width: 12),
-          Text(
-            context.read<LocalizationService>().t(
-              'avatars.details.calculatedAge',
-              params: {'age': _calculatedAge?.toString() ?? ''},
-            ),
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: AppColors.magenta, // GMBC
-            ),
-          ),
-        ],
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w300,
+          color: Colors.white.withValues(alpha: 0.5),
+          letterSpacing: 0.2,
+        ),
       ),
     );
   }
@@ -6284,7 +6226,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     super.dispose();
   }
 
-  Future<void> _reopenCrop(String url, [String? tempPath]) async {
+  Future<void> _onImageRecrop(String url, [String? tempPath]) async {
     try {
       File? source;
       if (tempPath != null && tempPath.isNotEmpty) {
@@ -6328,7 +6270,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ? p.extension(cached.path)
           : origExt;
       final avatarIdNew = _avatarData!.id;
-      final newPath = 'avatars/$avatarIdNew/images/recrop_$ts$cropExt';
+      final newPath = 'avatars/$avatarIdNew/images/$ts$cropExt';
 
       // Upload recrop direkt mit korrektem Content-Type
       String newUrl;
@@ -6354,40 +6296,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ..evict(NetworkImage(url))
           ..evict(NetworkImage(newUrl));
 
-        setState(() {
-          final index = _imageUrls.indexOf(url);
-          if (index != -1) {
-            _imageUrls[index] = newUrl;
-          }
-          if (_profileImageUrl == url) _setHeroImage(newUrl);
-          if (_profileLocalPath == cached.path) _profileLocalPath = null;
-
-          // WICHTIG: Timeline-Daten für neue URL übertragen
-          final oldDuration = _imageDurations[url];
-          final oldActive = _imageActive[url];
-          final oldExplorerVisible = _imageExplorerVisible[url];
-
-          if (oldDuration != null) {
-            _imageDurations[newUrl] = oldDuration;
-            _imageDurations.remove(url);
-          }
-          if (oldActive != null) {
-            _imageActive[newUrl] = oldActive;
-            _imageActive.remove(url);
-          }
-          if (oldExplorerVisible != null) {
-            _imageExplorerVisible[newUrl] = oldExplorerVisible;
-            _imageExplorerVisible.remove(url);
-          }
-        });
-
-        await _persistTextFileUrls();
-        // WICHTIG: Timeline-Daten speichern (nach URL-Änderung!)
-        await _saveTimelineData();
-
         // ERST: Altes thumbUrl aus Firestore holen UND alte Files aus Storage löschen
         // (BEVOR Firestore geändert wird, wegen Storage Rules!)
         String? oldThumbUrl;
+        String? savedOriginalFileName;
         try {
           final avatarId = _avatarData!.id;
           final qs = await FirebaseFirestore.instance
@@ -6401,8 +6313,58 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             final data = d.data();
             debugPrint('RECROP: Dokument-Daten: ${data.keys.join(", ")}');
             oldThumbUrl = (data['thumbUrl'] as String?);
+            savedOriginalFileName = (data['originalFileName'] as String?);
             debugPrint('RECROP: Altes thumbUrl gefunden: $oldThumbUrl');
+            debugPrint(
+              'RECROP: originalFileName gefunden: $savedOriginalFileName',
+            );
           }
+
+          // CRITICAL: setState mit originalFileName ZUERST, DANN URL ändern!
+          setState(() {
+            // ZUERST originalFileName setzen - IMMER (aus Firestore ODER aus alter Map)!
+            final nameToUse =
+                savedOriginalFileName ??
+                _mediaOriginalNames[url] ??
+                _fileNameFromUrl(url);
+            _mediaOriginalNames[newUrl] = nameToUse;
+            debugPrint(
+              'RECROP: Setze originalFileName für newUrl: $nameToUse (savedOriginalFileName=$savedOriginalFileName, fromOldMap=${_mediaOriginalNames[url]})',
+            );
+
+            // Timeline-Daten übertragen
+            final oldDuration = _imageDurations[url];
+            final oldActive = _imageActive[url];
+            final oldExplorerVisible = _imageExplorerVisible[url];
+
+            if (oldDuration != null) {
+              _imageDurations[newUrl] = oldDuration;
+            }
+            if (oldActive != null) {
+              _imageActive[newUrl] = oldActive;
+            }
+            if (oldExplorerVisible != null) {
+              _imageExplorerVisible[newUrl] = oldExplorerVisible;
+            }
+
+            // JETZT URL ändern (UI zeigt sofort korrekten Namen!)
+            final index = _imageUrls.indexOf(url);
+            if (index != -1) {
+              _imageUrls[index] = newUrl;
+            }
+            if (_profileImageUrl == url) _setHeroImage(newUrl);
+            if (_profileLocalPath == cached.path) _profileLocalPath = null;
+
+            // Alte Einträge entfernen
+            _imageDurations.remove(url);
+            _imageActive.remove(url);
+            _imageExplorerVisible.remove(url);
+            _mediaOriginalNames.remove(url);
+          });
+
+          await _persistTextFileUrls();
+          await _saveTimelineData();
+
           debugPrint('RECROP: Lösche ALTE Files JETZT (vor Firestore-Update)');
           // ALLE Thumbnails zum alten Bild löschen (nicht nur das eine aus Firestore!)
           final originalPath = FirebaseStorageService.pathFromUrl(url);
@@ -6444,8 +6406,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           // ERST Thumbnail erstellen, DANN Firestore mit thumbUrl updaten
           String? newThumbUrl;
           try {
-            final thumbPath =
-                'avatars/$avatarIdNew/images/thumbs/recrop_$ts.jpg';
+            final thumbPath = 'avatars/$avatarIdNew/images/thumbs/$ts.jpg';
             final imgBytes = await cached.readAsBytes();
             final decoded = img.decodeImage(imgBytes);
             if (decoded != null) {
@@ -6471,6 +6432,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           try {
             ar = await _calculateAspectRatio(File(cached.path));
           } catch (_) {}
+          // Verwende den BEREITS in setState gesetzten originalFileName für NEUE URL!
+          final finalOriginalFileName =
+              _mediaOriginalNames[newUrl] ?? savedOriginalFileName;
+          debugPrint(
+            'RECROP: Firestore update mit originalFileName: $finalOriginalFileName (aus _mediaOriginalNames[newUrl])',
+          );
+
           for (final d in qs.docs) {
             final data = d.data();
             final createdAt =
@@ -6489,9 +6457,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               'createdAt': createdAt,
               if (ar != null) 'aspectRatio': ar,
               if (tags != null) 'tags': tags,
+              if (finalOriginalFileName != null)
+                'originalFileName': finalOriginalFileName,
             });
-            debugPrint('RECROP: Firestore-Dokument mit thumbUrl erstellt');
+            debugPrint(
+              'RECROP: Firestore-Dokument mit thumbUrl + originalFileName erstellt',
+            );
           }
+
+          // CRITICAL: originalFileNames aus Firestore NEU laden (mit neuer URL!)
+          await _loadMediaOriginalNames(avatarId);
+          debugPrint('RECROP: _mediaOriginalNames neu geladen aus Firestore');
         } catch (_) {}
 
         // Temp-Datei aufräumen

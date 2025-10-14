@@ -265,24 +265,45 @@ class _AvatarListScreenState extends State<AvatarListScreen>
         ? []
         : _filteredAvatars.sublist(start, end);
 
-    return ListView(
-      padding: const EdgeInsets.all(16),
+    return Column(
       children: [
-        _buildSearchField(),
-        const SizedBox(height: 12),
-        if (pageItems.isEmpty)
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 48),
-            alignment: Alignment.center,
-            child: Text(
-              context.read<LocalizationService>().t('avatars.noSearchResults'),
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _buildSearchField(),
+              const SizedBox(height: 12),
+              if (pageItems.isEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 48),
+                  alignment: Alignment.center,
+                  child: Text(
+                    context.read<LocalizationService>().t(
+                      'avatars.noSearchResults',
+                    ),
+                    style: TextStyle(color: Colors.grey.shade500, fontSize: 16),
+                  ),
+                )
+              else
+                ...pageItems.map(_buildAvatarCard),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+        // Pagination fixed am Ende
+        Container(
+          padding: EdgeInsets.zero,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.95),
+            border: Border(
+              top: BorderSide(
+                color: Colors.white.withValues(alpha: 0.1),
+                width: 1,
+              ),
             ),
-          )
-        else
-          ...pageItems.map(_buildAvatarCard),
-        const SizedBox(height: 12),
-        _buildPagination(total),
+          ),
+          child: _buildPagination(total),
+        ),
       ],
     );
   }
@@ -312,26 +333,41 @@ class _AvatarListScreenState extends State<AvatarListScreen>
 
   Widget _buildPagination(int total) {
     if (total <= _avatarsPerPage) return const SizedBox.shrink();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        IconButton(
-          icon: const Icon(Icons.chevron_left, color: Colors.white70),
-          onPressed: _currentPage > 0
-              ? () => setState(() => _currentPage--)
-              : null,
-        ),
-        Text(
-          '${_currentPage + 1} / $totalPages',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        IconButton(
-          icon: const Icon(Icons.chevron_right, color: Colors.white70),
-          onPressed: _currentPage < totalPages - 1
-              ? () => setState(() => _currentPage++)
-              : null,
-        ),
-      ],
+    return SizedBox(
+      height: 36,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          IconButton(
+            icon: const Icon(
+              Icons.chevron_left,
+              color: Colors.white70,
+              size: 20,
+            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            onPressed: _currentPage > 0
+                ? () => setState(() => _currentPage--)
+                : null,
+          ),
+          Text(
+            '${_currentPage + 1} / $totalPages',
+            style: const TextStyle(color: Colors.white70, fontSize: 14),
+          ),
+          IconButton(
+            icon: const Icon(
+              Icons.chevron_right,
+              color: Colors.white70,
+              size: 20,
+            ),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            onPressed: _currentPage < totalPages - 1
+                ? () => setState(() => _currentPage++)
+                : null,
+          ),
+        ],
+      ),
     );
   }
 

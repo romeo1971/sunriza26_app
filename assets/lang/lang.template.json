@@ -248,6 +248,6 @@
   "sharedMoments.rejected": "Rejected",
   "sharedMoments.shown": "Shown",
   "sharedMoments.title": "Shared moments",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Greeting Text",
+  "avatars.details.textFileFilterLabel": "Filter Text Files"
 }

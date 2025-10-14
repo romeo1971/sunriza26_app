@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Kesalahan: {msg}",
   "auth.errorTooManyRequests": "Terlalu banyak percobaan gagal. Tunggu sebentar dan coba lagi.",
   "auth.errorNetworkFailed": "Kesalahan jaringan. Periksa koneksi internet Anda.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Teks sambutan",
+  "avatars.details.textFileFilterLabel": "Filter file teks"
 }

@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Hata: {msg}",
   "auth.errorTooManyRequests": "Çok fazla başarısız deneme. Lütfen bir süre bekleyin ve tekrar deneyin.",
   "auth.errorNetworkFailed": "Ağ hatası. Lütfen internet bağlantınızı kontrol edin.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Karşılama metni",
+  "avatars.details.textFileFilterLabel": "Metin dosyalarını filtrele"
 }

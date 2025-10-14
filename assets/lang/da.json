@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Fejl: {msg}",
   "auth.errorTooManyRequests": "For mange fejlede forsøg. Vent venligst et øjeblik og prøv igen.",
   "auth.errorNetworkFailed": "Netværksfejl. Tjek venligst din internetforbindelse.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Hilsningstekst",
+  "avatars.details.textFileFilterLabel": "Filtrer tekstfiler"
 }

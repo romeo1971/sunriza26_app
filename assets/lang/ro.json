@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Eroare: {msg}",
   "auth.errorTooManyRequests": "Prea multe încercări eșuate. Așteaptă puțin și încearcă din nou.",
   "auth.errorNetworkFailed": "Eroare de rețea. Verifică conexiunea la internet.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Text de salut",
+  "avatars.details.textFileFilterLabel": "Filtrează fișiere text"
 }

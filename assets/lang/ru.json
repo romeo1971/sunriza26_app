@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Ошибка: {msg}",
   "auth.errorTooManyRequests": "Слишком много неудачных попыток. Подождите немного и попробуйте снова.",
   "auth.errorNetworkFailed": "Ошибка сети. Проверьте подключение к интернету.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Текст приветствия",
+  "avatars.details.textFileFilterLabel": "Фильтр текстовых файлов"
 }

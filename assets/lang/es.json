@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Error: {msg}",
   "auth.errorTooManyRequests": "Demasiados intentos fallidos. Espera un momento e inténtalo de nuevo.",
   "auth.errorNetworkFailed": "Error de red. Verifica tu conexión a internet.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Texto de saludo",
+  "avatars.details.textFileFilterLabel": "Filtrar archivos de texto"
 }

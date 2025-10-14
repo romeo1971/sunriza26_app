@@ -281,6 +281,6 @@
   "auth.errorGeneric": "エラー: {msg}",
   "auth.errorTooManyRequests": "試行回数が多すぎます。しばらく待ってから再度お試しください。",
   "auth.errorNetworkFailed": "ネットワークエラー。インターネット接続を確認してください。",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "挨拶テキスト",
+  "avatars.details.textFileFilterLabel": "テキストファイルをフィルター"
 }

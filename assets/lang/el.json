@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Σφάλμα: {msg}",
   "auth.errorTooManyRequests": "Πάρα πολλές αποτυχημένες προσπάθειες. Περιμένετε λίγο και δοκιμάστε ξανά.",
   "auth.errorNetworkFailed": "Σφάλμα δικτύου. Ελέγξτε τη σύνδεσή σας στο διαδίκτυο.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Κείμενο χαιρετισμού",
+  "avatars.details.textFileFilterLabel": "Φιλτράρισμα αρχείων κειμένου"
 }

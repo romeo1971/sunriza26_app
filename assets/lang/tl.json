@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Error: {msg}",
   "auth.errorTooManyRequests": "Masyadong maraming nabigong pagtatangka. Mangyaring maghintay sandali at subukan muli.",
   "auth.errorNetworkFailed": "Network error. Pakisuri ang iyong internet connection.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Tekstong pangbati",
+  "avatars.details.textFileFilterLabel": "I-filter ang mga text file"
 }

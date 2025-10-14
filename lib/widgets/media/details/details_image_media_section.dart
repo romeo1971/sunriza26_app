@@ -90,6 +90,7 @@ class DetailsImageMediaSection extends StatelessWidget {
   final VoidCallback onDeleteModeCancel;
   final VoidCallback onDeleteConfirm;
   final Future<void> Function() onGenerateAvatar;
+  final ValueChanged<String> onSetHeroImage;
 
   // Helper functions
   final String Function(String url) fileNameFromUrl;
@@ -125,6 +126,7 @@ class DetailsImageMediaSection extends StatelessWidget {
     required this.onDeleteModeCancel,
     required this.onDeleteConfirm,
     required this.onGenerateAvatar,
+    required this.onSetHeroImage,
     required this.fileNameFromUrl,
     required this.getTotalEndTime,
     required this.getImageStartTime,
@@ -737,7 +739,7 @@ class DetailsImageMediaSection extends StatelessWidget {
                                           child: GestureDetector(
                                             onTap: isHero
                                                 ? null
-                                                : () => onImageActiveTap(url),
+                                                : () => onSetHeroImage(url),
                                             child: SizedBox(
                                               width: tileWidth,
                                               height: tileImageHeight,

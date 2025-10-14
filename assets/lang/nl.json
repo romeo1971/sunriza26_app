@@ -281,6 +281,6 @@
   "auth.errorGeneric": "Fout: {msg}",
   "auth.errorTooManyRequests": "Te veel mislukte pogingen. Wacht even en probeer het opnieuw.",
   "auth.errorNetworkFailed": "Netwerkfout. Controleer je internetverbinding.",
-  "avatars.details.greetingLabel": "Begrüßungstext",
-  "avatars.details.textFileFilterLabel": "Textdateien filtern"
+  "avatars.details.greetingLabel": "Begroetingstekst",
+  "avatars.details.textFileFilterLabel": "Filter tekstbestanden"
 }
