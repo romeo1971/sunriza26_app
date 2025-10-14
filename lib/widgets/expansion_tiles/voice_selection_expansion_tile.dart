@@ -32,7 +32,7 @@ class VoiceSelectionExpansionTile extends StatelessWidget {
       child: ExpansionTile(
         initiallyExpanded: false,
         collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
-        backgroundColor: Colors.white.withValues(alpha: 0.06),
+        backgroundColor: Colors.black.withValues(alpha: 0.95),
         collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
         iconColor: AppColors.lightBlue, // GMBC Arrow expanded
         title: Text(

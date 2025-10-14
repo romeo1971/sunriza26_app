@@ -29,9 +29,10 @@ class BaseExpansionTile extends StatelessWidget {
       ),
       child: ExpansionTile(
         initiallyExpanded: initiallyExpanded,
-        collapsedBackgroundColor: collapsedBackgroundColor ??
-            Colors.white.withValues(alpha: 0.04),
-        backgroundColor: backgroundColor ?? Colors.black.withValues(alpha: 0.95),
+        collapsedBackgroundColor:
+            collapsedBackgroundColor ?? Colors.white.withValues(alpha: 0.04),
+        backgroundColor:
+            backgroundColor ?? Colors.black.withValues(alpha: 0.95),
         collapsedIconColor: AppColors.magenta,
         iconColor: AppColors.lightBlue,
         title: Row(
@@ -54,4 +55,3 @@ class BaseExpansionTile extends StatelessWidget {
     );
   }
 }
-
