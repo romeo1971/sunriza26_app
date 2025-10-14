@@ -247,5 +247,7 @@
   "sharedMoments.empty": "No entries",
   "sharedMoments.rejected": "Rejected",
   "sharedMoments.shown": "Shown",
-  "sharedMoments.title": "Shared moments"
+  "sharedMoments.title": "Shared moments",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

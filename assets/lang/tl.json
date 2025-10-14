@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "Nabigo ang pag-login gamit ang Google.",
   "auth.errorGeneric": "Error: {msg}",
   "auth.errorTooManyRequests": "Masyadong maraming nabigong pagtatangka. Mangyaring maghintay sandali at subukan muli.",
-  "auth.errorNetworkFailed": "Network error. Pakisuri ang iyong internet connection."
+  "auth.errorNetworkFailed": "Network error. Pakisuri ang iyong internet connection.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

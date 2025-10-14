@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "Google登入失敗。",
   "auth.errorGeneric": "錯誤：{msg}",
   "auth.errorTooManyRequests": "失敗嘗試次數過多。請稍等片刻後重試。",
-  "auth.errorNetworkFailed": "網路錯誤。請檢查您的網際網路連接。"
+  "auth.errorNetworkFailed": "網路錯誤。請檢查您的網際網路連接。",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

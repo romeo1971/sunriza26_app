@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "Вход через Google не удался.",
   "auth.errorGeneric": "Ошибка: {msg}",
   "auth.errorTooManyRequests": "Слишком много неудачных попыток. Подождите немного и попробуйте снова.",
-  "auth.errorNetworkFailed": "Ошибка сети. Проверьте подключение к интернету."
+  "auth.errorNetworkFailed": "Ошибка сети. Проверьте подключение к интернету.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "Masuk dengan Google gagal.",
   "auth.errorGeneric": "Kesalahan: {msg}",
   "auth.errorTooManyRequests": "Terlalu banyak percobaan gagal. Tunggu sebentar dan coba lagi.",
-  "auth.errorNetworkFailed": "Kesalahan jaringan. Periksa koneksi internet Anda."
+  "auth.errorNetworkFailed": "Kesalahan jaringan. Periksa koneksi internet Anda.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

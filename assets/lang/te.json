@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "Google లాగిన్ విఫలమైంది.",
   "auth.errorGeneric": "లోపం: {msg}",
   "auth.errorTooManyRequests": "చాలా విఫల ప్రయత్నాలు. దయచేసి కొంత సమయం వేచి ఉండండి మరియు మళ్లీ ప్రయత్నించండి.",
-  "auth.errorNetworkFailed": "నెట్‌వర్క్ లోపం. దయచేసి మీ ఇంటర్నెట్ కనెక్షన్ తనిఖీ చేయండి."
+  "auth.errorNetworkFailed": "నెట్‌వర్క్ లోపం. దయచేసి మీ ఇంటర్నెట్ కనెక్షన్ తనిఖీ చేయండి.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

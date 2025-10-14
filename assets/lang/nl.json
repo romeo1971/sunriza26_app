@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "Inloggen met Google mislukt.",
   "auth.errorGeneric": "Fout: {msg}",
   "auth.errorTooManyRequests": "Te veel mislukte pogingen. Wacht even en probeer het opnieuw.",
-  "auth.errorNetworkFailed": "Netwerkfout. Controleer je internetverbinding."
+  "auth.errorNetworkFailed": "Netwerkfout. Controleer je internetverbinding.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

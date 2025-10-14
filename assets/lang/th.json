@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "การเข้าสู่ระบบด้วย Google ล้มเหลว",
   "auth.errorGeneric": "ข้อผิดพลาด: {msg}",
   "auth.errorTooManyRequests": "พยายามล้มเหลวมากเกินไป โปรดรอสักครู่แล้วลองอีกครั้ง",
-  "auth.errorNetworkFailed": "ข้อผิดพลาดเครือข่าย โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของคุณ"
+  "auth.errorNetworkFailed": "ข้อผิดพลาดเครือข่าย โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตของคุณ",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

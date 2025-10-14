@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "Innlogging med Google mislyktes.",
   "auth.errorGeneric": "Feil: {msg}",
   "auth.errorTooManyRequests": "For mange mislykkede forsøk. Vent litt og prøv igjen.",
-  "auth.errorNetworkFailed": "Nettverksfeil. Sjekk internettforbindelsen din."
+  "auth.errorNetworkFailed": "Nettverksfeil. Sjekk internettforbindelsen din.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

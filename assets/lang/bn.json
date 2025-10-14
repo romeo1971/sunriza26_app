@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "Google লগইন ব্যর্থ হয়েছে।",
   "auth.errorGeneric": "ত্রুটি: {msg}",
   "auth.errorTooManyRequests": "অনেক বেশি ব্যর্থ প্রচেষ্টা। দয়া করে একটু অপেক্ষা করুন এবং আবার চেষ্টা করুন।",
-  "auth.errorNetworkFailed": "নেটওয়ার্ক ত্রুটি। দয়া করে আপনার ইন্টারনেট সংযোগ পরীক্ষা করুন।"
+  "auth.errorNetworkFailed": "নেটওয়ার্ক ত্রুটি। দয়া করে আপনার ইন্টারনেট সংযোগ পরীক্ষা করুন।",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

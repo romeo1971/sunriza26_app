@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "فشل تسجيل الدخول بواسطة Google.",
   "auth.errorGeneric": "خطأ: {msg}",
   "auth.errorTooManyRequests": "محاولات فاشلة كثيرة جدًا. يرجى الانتظار لحظة والمحاولة مرة أخرى.",
-  "auth.errorNetworkFailed": "خطأ في الشبكة. يرجى التحقق من اتصالك بالإنترنت."
+  "auth.errorNetworkFailed": "خطأ في الشبكة. يرجى التحقق من اتصالك بالإنترنت.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

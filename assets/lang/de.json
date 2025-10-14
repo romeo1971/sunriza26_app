@@ -287,5 +287,7 @@
   "auth.errorTooManyRequests": "Zu viele fehlgeschlagene Versuche. Bitte warte einen Moment und versuche es erneut.",
   "auth.errorNetworkFailed": "Netzwerkfehler. Bitte überprüfe deine Internetverbindung.",
   "auth.errorGoogleSignInFailed": "Google-Anmeldung fehlgeschlagen.",
-  "auth.errorGeneric": "Fehler: {msg}"
+  "auth.errorGeneric": "Fehler: {msg}",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

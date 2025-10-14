@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "La connexion avec Google a échoué.",
   "auth.errorGeneric": "Erreur : {msg}",
   "auth.errorTooManyRequests": "Trop de tentatives échouées. Veuillez patienter un moment et réessayer.",
-  "auth.errorNetworkFailed": "Erreur réseau. Vérifiez votre connexion internet."
+  "auth.errorNetworkFailed": "Erreur réseau. Vérifiez votre connexion internet.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

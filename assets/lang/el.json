@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "Η σύνδεση με Google απέτυχε.",
   "auth.errorGeneric": "Σφάλμα: {msg}",
   "auth.errorTooManyRequests": "Πάρα πολλές αποτυχημένες προσπάθειες. Περιμένετε λίγο και δοκιμάστε ξανά.",
-  "auth.errorNetworkFailed": "Σφάλμα δικτύου. Ελέγξτε τη σύνδεσή σας στο διαδίκτυο."
+  "auth.errorNetworkFailed": "Σφάλμα δικτύου. Ελέγξτε τη σύνδεσή σας στο διαδίκτυο.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

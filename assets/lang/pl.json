@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "Logowanie przez Google nie powiodło się.",
   "auth.errorGeneric": "Błąd: {msg}",
   "auth.errorTooManyRequests": "Zbyt wiele nieudanych prób. Poczekaj chwilę i spróbuj ponownie.",
-  "auth.errorNetworkFailed": "Błąd sieci. Sprawdź połączenie z internetem."
+  "auth.errorNetworkFailed": "Błąd sieci. Sprawdź połączenie z internetem.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

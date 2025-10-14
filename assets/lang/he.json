@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "התחברות עם Google נכשלה.",
   "auth.errorGeneric": "שגיאה: {msg}",
   "auth.errorTooManyRequests": "יותר מדי ניסיונות כושלים. אנא המתן רגע ונסה שוב.",
-  "auth.errorNetworkFailed": "שגיאת רשת. אנא בדוק את חיבור האינטרנט שלך."
+  "auth.errorNetworkFailed": "שגיאת רשת. אנא בדוק את חיבור האינטרנט שלך.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

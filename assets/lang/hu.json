@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "A Google bejelentkezés sikertelen.",
   "auth.errorGeneric": "Hiba: {msg}",
   "auth.errorTooManyRequests": "Túl sok sikertelen próbálkozás. Várj egy pillanatot, majd próbáld újra.",
-  "auth.errorNetworkFailed": "Hálózati hiba. Ellenőrizd az internetkapcsolatod."
+  "auth.errorNetworkFailed": "Hálózati hiba. Ellenőrizd az internetkapcsolatod.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

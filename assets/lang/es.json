@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "El inicio de sesión con Google falló.",
   "auth.errorGeneric": "Error: {msg}",
   "auth.errorTooManyRequests": "Demasiados intentos fallidos. Espera un momento e inténtalo de nuevo.",
-  "auth.errorNetworkFailed": "Error de red. Verifica tu conexión a internet."
+  "auth.errorNetworkFailed": "Error de red. Verifica tu conexión a internet.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }

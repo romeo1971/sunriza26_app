@@ -280,5 +280,7 @@
   "auth.errorGoogleSignInFailed": "Đăng nhập bằng Google thất bại.",
   "auth.errorGeneric": "Lỗi: {msg}",
   "auth.errorTooManyRequests": "Quá nhiều lần thử không thành công. Vui lòng đợi một chút và thử lại.",
-  "auth.errorNetworkFailed": "Lỗi mạng. Vui lòng kiểm tra kết nối internet của bạn."
+  "auth.errorNetworkFailed": "Lỗi mạng. Vui lòng kiểm tra kết nối internet của bạn.",
+  "avatars.details.greetingLabel": "Begrüßungstext",
+  "avatars.details.textFileFilterLabel": "Textdateien filtern"
 }
