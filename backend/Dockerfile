@@ -11,8 +11,8 @@ RUN apt-get update && apt-get install -y \
 # Arbeitsverzeichnis
 WORKDIR /app
 
-# Python Dependencies installieren
-COPY requirements.txt .
+# Python Dependencies installieren (Render.com CPU-only)
+COPY requirements-render.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # LivePortrait installieren
