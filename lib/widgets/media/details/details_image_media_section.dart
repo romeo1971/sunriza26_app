@@ -5,36 +5,36 @@ import '../../../theme/app_theme.dart';
 import '../../../services/localization_service.dart';
 
 /// Image Media Section für Details Screen
-/// 
+///
 /// Vollständig extrahierte, modulare Widget-Sektion für den Image-Bereich.
 /// Unterstützt List-View (Timeline) und Grid-View (Kacheln).
-/// 
+///
 /// Verwendung:
 /// ```dart
 /// DetailsImageMediaSection(
 ///   // View Mode
 ///   heroViewMode: _heroViewMode,
 ///   isListViewExpanded: _isListViewExpanded,
-///   
+///
 ///   // Images
 ///   imageUrls: _imageUrls,
 ///   profileImageUrl: _profileImageUrl,
 ///   profileLocalPath: _profileLocalPath,
-///   
+///
 ///   // Timeline State
 ///   imageActive: _imageActive,
 ///   imageDurations: _imageDurations,
 ///   imageExplorerVisible: _imageExplorerVisible,
 ///   isImageLoopMode: _isImageLoopMode,
 ///   isTimelineEnabled: _isTimelineEnabled,
-///   
+///
 ///   // Delete Mode
 ///   isDeleteMode: _isDeleteMode,
 ///   selectedRemoteImages: _selectedRemoteImages,
 ///   selectedLocalImages: _selectedLocalImages,
 ///   isGeneratingAvatar: _isGeneratingAvatar,
 ///   avatarData: _avatarData,
-///   
+///
 ///   // Callbacks
 ///   onExpansionChanged: (expanded) => setState(() => _isListViewExpanded = expanded),
 ///   onLoopModeToggle: () { setState(() => _isImageLoopMode = !_isImageLoopMode); _saveTimelineData(); },
@@ -46,7 +46,7 @@ import '../../../services/localization_service.dart';
 ///   onDeleteModeCancel: () { setState(() { _isDeleteMode = false; _selectedRemoteImages.clear(); _selectedLocalImages.clear(); }); },
 ///   onDeleteConfirm: _confirmDeleteSelectedImages,
 ///   onGenerateAvatar: _handleGenerateAvatar,
-///   
+///
 ///   // Helper functions
 ///   fileNameFromUrl: _fileNameFromUrl,
 ///   getTotalEndTime: _getTotalEndTime,
@@ -59,26 +59,26 @@ class DetailsImageMediaSection extends StatelessWidget {
   // View Mode
   final String heroViewMode; // 'list' oder 'grid'
   final bool isListViewExpanded;
-  
+
   // Images
   final List<String> imageUrls;
   final String? profileImageUrl;
   final String? profileLocalPath;
-  
+
   // Timeline State (Maps: URL -> Value)
   final Map<String, bool> imageActive;
   final Map<String, int> imageDurations; // in Sekunden
   final Map<String, bool> imageExplorerVisible;
   final bool isImageLoopMode;
   final bool isTimelineEnabled;
-  
+
   // Delete Mode
   final bool isDeleteMode;
   final Set<String> selectedRemoteImages;
   final Set<String> selectedLocalImages;
   final bool isGeneratingAvatar;
   final dynamic avatarData; // Typ aus der App
-  
+
   // Callbacks
   final ValueChanged<bool> onExpansionChanged;
   final VoidCallback onLoopModeToggle;
@@ -90,7 +90,7 @@ class DetailsImageMediaSection extends StatelessWidget {
   final VoidCallback onDeleteModeCancel;
   final VoidCallback onDeleteConfirm;
   final Future<void> Function() onGenerateAvatar;
-  
+
   // Helper functions
   final String Function(String url) fileNameFromUrl;
   final String Function() getTotalEndTime;
@@ -175,7 +175,9 @@ class DetailsImageMediaSection extends StatelessWidget {
                 child: ExpansionTile(
                   initiallyExpanded: isListViewExpanded,
                   onExpansionChanged: onExpansionChanged,
-                  collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
+                  collapsedBackgroundColor: Colors.white.withValues(
+                    alpha: 0.04,
+                  ),
                   backgroundColor: Colors.white.withValues(alpha: 0.06),
                   collapsedIconColor: AppColors.magenta,
                   iconColor: AppColors.lightBlue,
@@ -208,9 +210,9 @@ class DetailsImageMediaSection extends StatelessWidget {
                                 ),
                                 decoration: BoxDecoration(
                                   gradient: isImageLoopMode
-                                      ? Theme.of(context)
-                                          .extension<AppGradients>()!
-                                          .magentaBlue
+                                      ? Theme.of(
+                                          context,
+                                        ).extension<AppGradients>()!.magentaBlue
                                       : null,
                                   borderRadius: const BorderRadius.only(
                                     topLeft: Radius.circular(4),
@@ -234,7 +236,9 @@ class DetailsImageMediaSection extends StatelessWidget {
                             ),
                             // Pipe
                             Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 6),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                              ),
                               child: Text(
                                 '|',
                                 style: TextStyle(
@@ -254,9 +258,9 @@ class DetailsImageMediaSection extends StatelessWidget {
                                 ),
                                 decoration: BoxDecoration(
                                   gradient: isTimelineEnabled
-                                      ? Theme.of(context)
-                                          .extension<AppGradients>()!
-                                          .magentaBlue
+                                      ? Theme.of(
+                                          context,
+                                        ).extension<AppGradients>()!.magentaBlue
                                       : null,
                                   borderRadius: const BorderRadius.only(
                                     topRight: Radius.circular(4),
@@ -483,7 +487,10 @@ class DetailsImageMediaSection extends StatelessWidget {
                                                           .toList(),
                                                   onChanged: (newMin) {
                                                     if (newMin != null) {
-                                                      onDurationChanged(url, newMin);
+                                                      onDurationChanged(
+                                                        url,
+                                                        newMin,
+                                                      );
                                                     }
                                                   },
                                                 ),
@@ -662,7 +669,9 @@ class DetailsImageMediaSection extends StatelessWidget {
                                         ),
                                         minimumSize: Size.zero,
                                         shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(8),
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
                                         ),
                                       ),
                                       child: Text(
@@ -732,11 +741,10 @@ class DetailsImageMediaSection extends StatelessWidget {
                                             child: SizedBox(
                                               width: tileWidth,
                                               height: tileImageHeight,
-                                              child:
-                                                  buildHeroImageThumbNetwork(
-                                                    url,
-                                                    isHero,
-                                                  ),
+                                              child: buildHeroImageThumbNetwork(
+                                                url,
+                                                isHero,
+                                              ),
                                             ),
                                           ),
                                         ),
@@ -878,4 +886,3 @@ class DetailsImageMediaSection extends StatelessWidget {
     );
   }
 }
-

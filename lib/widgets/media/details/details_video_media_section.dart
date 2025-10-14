@@ -5,25 +5,25 @@ import '../../../theme/app_theme.dart';
 import '../../video_player_widget.dart';
 
 /// Video Media Section für Details Screen
-/// 
+///
 /// Vollständig extrahierte, modulare Widget-Sektion für den Video-Bereich.
 /// Zeigt Hero-Video links und Galerie rechts.
-/// 
+///
 /// Verwendung:
 /// ```dart
 /// DetailsVideoMediaSection(
 ///   // Videos
 ///   videoUrls: _videoUrls,
 ///   inlineVideoController: _inlineVideoController,
-///   
+///
 ///   // Audio State
 ///   videoAudioEnabled: _videoAudioEnabled,
-///   
+///
 ///   // Delete Mode
 ///   isDeleteMode: _isDeleteMode,
 ///   selectedRemoteVideos: _selectedRemoteVideos,
 ///   selectedLocalVideos: _selectedLocalVideos,
-///   
+///
 ///   // Callbacks
 ///   getHeroVideoUrl: _getHeroVideoUrl,
 ///   playNetworkInline: _playNetworkInline,
@@ -33,7 +33,7 @@ import '../../video_player_widget.dart';
 ///   onDeleteModeCancel: () { setState(() { _isDeleteMode = false; _selectedRemoteVideos.clear(); _selectedLocalVideos.clear(); }); },
 ///   onDeleteConfirm: _confirmDeleteSelectedImages,
 ///   onTrashIconTap: (url) { setState(() { _isDeleteMode = true; if (_selectedRemoteVideos.contains(url)) { _selectedRemoteVideos.remove(url); } else { _selectedRemoteVideos.add(url); } }); },
-///   
+///
 ///   // Video Controller Helpers
 ///   videoControllerForThumb: _videoControllerForThumb,
 /// )
@@ -42,15 +42,15 @@ class DetailsVideoMediaSection extends StatelessWidget {
   // Videos
   final List<String> videoUrls;
   final VideoPlayerController? inlineVideoController;
-  
+
   // Audio State (Map: URL -> bool)
   final Map<String, bool> videoAudioEnabled;
-  
+
   // Delete Mode
   final bool isDeleteMode;
   final Set<String> selectedRemoteVideos;
   final Set<String> selectedLocalVideos;
-  
+
   // Callbacks
   final String? Function() getHeroVideoUrl;
   final Future<void> Function(String url) playNetworkInline;
@@ -60,10 +60,10 @@ class DetailsVideoMediaSection extends StatelessWidget {
   final VoidCallback onDeleteModeCancel;
   final VoidCallback onDeleteConfirm;
   final ValueChanged<String> onTrashIconTap; // (url) => { setState... }
-  
+
   // Video Controller Helper
   final Future<VideoPlayerController?> Function(String url)
-      videoControllerForThumb;
+  videoControllerForThumb;
 
   const DetailsVideoMediaSection({
     super.key,
@@ -158,7 +158,9 @@ class DetailsVideoMediaSection extends StatelessWidget {
                                           : AspectRatio(
                                               aspectRatio: 9 / 16,
                                               child: FutureBuilder<Uint8List?>(
-                                                future: thumbnailForRemote(hero),
+                                                future: thumbnailForRemote(
+                                                  hero,
+                                                ),
                                                 builder: (context, snapshot) {
                                                   if (snapshot.hasData &&
                                                       snapshot.data != null) {
@@ -212,7 +214,12 @@ class DetailsVideoMediaSection extends StatelessWidget {
                               return SizedBox(
                                 width: thumbW,
                                 height: thumbH,
-                                child: _buildVideoTile(context, url, thumbW, thumbH),
+                                child: _buildVideoTile(
+                                  context,
+                                  url,
+                                  thumbW,
+                                  thumbH,
+                                ),
                               );
                             },
                           ),
@@ -281,7 +288,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
     final audioOn = isHero
         ? false
         : (videoAudioEnabled[url] ?? false); // Hero = IMMER OFF
-    
+
     return Stack(
       children: [
         Positioned.fill(
@@ -299,10 +306,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
                 alignment: Alignment.topLeft,
                 child: Text(
                   '⭐',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFFFFD700),
-                  ),
+                  style: TextStyle(fontSize: 14, color: Color(0xFFFFD700)),
                 ),
               ),
             ),
@@ -321,18 +325,13 @@ class DetailsVideoMediaSection extends StatelessWidget {
                 width: 40,
                 height: 40,
                 padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(
-                  color: Colors.transparent,
-                ),
+                decoration: const BoxDecoration(color: Colors.transparent),
                 child: audioOn
                     ? ShaderMask(
                         blendMode: BlendMode.srcIn,
                         shaderCallback: (bounds) =>
                             const LinearGradient(
-                              colors: [
-                                AppColors.magenta,
-                                AppColors.lightBlue,
-                              ],
+                              colors: [AppColors.magenta, AppColors.lightBlue],
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                             ).createShader(
@@ -364,7 +363,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
     required bool isHero,
   }) {
     final selected = selectedRemoteVideos.contains(url);
-    
+
     return AspectRatio(
       aspectRatio: 9 / 16,
       child: Container(
@@ -424,9 +423,9 @@ class DetailsVideoMediaSection extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: selected ? null : const Color(0x30000000),
                       gradient: selected
-                          ? Theme.of(context)
-                              .extension<AppGradients>()!
-                              .magentaBlue
+                          ? Theme.of(
+                              context,
+                            ).extension<AppGradients>()!.magentaBlue
                           : null,
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(
@@ -450,4 +449,3 @@ class DetailsVideoMediaSection extends StatelessWidget {
     );
   }
 }
-
