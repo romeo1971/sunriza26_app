@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Python Dependencies
-COPY backend/requirements.txt /app/requirements.txt
+COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # LivePortrait installieren
@@ -29,8 +29,8 @@ RUN pip install --no-cache-dir opencv-python-headless numpy pillow tyro pyyaml t
 WORKDIR /app
 
 # Backend Code kopieren
-COPY backend/main.py /app/
-COPY backend/generate_dynamics_endpoint.py /app/
+COPY main.py /app/
+COPY generate_dynamics_endpoint.py /app/
 
 # Environment Variables
 ENV PYTHONUNBUFFERED=1
