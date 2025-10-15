@@ -7390,7 +7390,41 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     setState(() => _generatingDynamics.add(dynamicsId));
 
     try {
-      // 🚀 Nutze Modal.com Service (GPU-powered!)
+      // 🎯 Starte Countdown-Timer (geschätzt 60 Sekunden mit GPU)
+      final estimatedSeconds = 60;
+      setState(() => _dynamicsTimeRemaining[dynamicsId] = estimatedSeconds);
+      
+      _dynamicsTimers[dynamicsId]?.cancel();
+      _dynamicsTimers[dynamicsId] = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (!mounted) {
+          timer.cancel();
+          return;
+        }
+        setState(() {
+          final remaining = _dynamicsTimeRemaining[dynamicsId] ?? 0;
+          if (remaining > 0) {
+            _dynamicsTimeRemaining[dynamicsId] = remaining - 1;
+          }
+        });
+      });
+      
+      if (mounted) {
+        final dynamicsName =
+            (_dynamicsData[dynamicsId]?['name'] as String?) ??
+            (dynamicsId == 'basic' ? 'Basic' : dynamicsId);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '⏳ Dynamics "$dynamicsName" wird generiert...\n'
+              '🚀 Mit GPU: ca. 30-60 Sekunden!',
+            ),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      
+      // 🚀 Sende Request an Modal.com (läuft asynchron!)
       final response = await http
           .post(
             Uri.parse(
@@ -7410,31 +7444,31 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           )
           .timeout(const Duration(minutes: 10));
 
+      // Stoppe Timer
+      _dynamicsTimers[dynamicsId]?.cancel();
+      
       if (response.statusCode == 200) {
-        // 🚀 Modal.com gibt SOFORT das fertige Video zurück!
         final responseData = jsonDecode(response.body);
-
+        
         if (responseData['status'] == 'success') {
-          final videoUrl = responseData['video_url'] as String;
-
-          debugPrint('✅ Dynamics Video erstellt: $videoUrl');
-
+          debugPrint('✅ Dynamics Video erstellt');
+          
           // Fertig! Entferne aus generierenden
           setState(() => _generatingDynamics.remove(dynamicsId));
-
-          // Lade Dynamics-Daten neu (Video ist jetzt in Firestore)
+          
+          // Lade Dynamics-Daten neu
           await _loadDynamicsData(_avatarData!.id);
-
+          
           if (mounted) {
             final dynamicsName =
                 (_dynamicsData[dynamicsId]?['name'] as String?) ??
                 (dynamicsId == 'basic' ? 'Basic' : dynamicsId);
-
+            
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
-                  '✅ Dynamics "$dynamicsName" fertig erstellt! 🎉\n'
-                  '🚀 Mit GPU in unter 1 Minute!',
+                  '✅ Dynamics "$dynamicsName" fertig! 🎉\n'
+                  '🚀 Generiert in ${estimatedSeconds - (_dynamicsTimeRemaining[dynamicsId] ?? 0)} Sekunden!',
                 ),
                 backgroundColor: Colors.green,
                 duration: const Duration(seconds: 4),
