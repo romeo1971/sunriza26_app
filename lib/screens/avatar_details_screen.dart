@@ -7390,13 +7390,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     setState(() => _generatingDynamics.add(dynamicsId));
 
     try {
-      final base =
-          dotenv.env['DYNAMICS_API_BASE_URL'] ?? 'http://localhost:8002';
-      final uri = Uri.parse('$base/generate-dynamics');
-
+      // 🚀 Nutze Modal.com Service (GPU-powered!)
       final response = await http
           .post(
-            uri,
+            Uri.parse(
+              'https://romeo1971--sunriza-dynamics-api-generate-dynamics.modal.run',
+            ),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'avatar_id': _avatarData!.id,
@@ -7404,9 +7403,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               'parameters': {
                 'driving_multiplier': _drivingMultipliers[dynamicsId] ?? 0.41,
                 'scale': _animationScales[dynamicsId] ?? 1.7,
-                'source_max_dim': _sourceMaxDims[dynamicsId] ?? 2048,
-                'flag_normalize_lip': _flagsNormalizeLip[dynamicsId] ?? true,
-                'flag_pasteback': _flagsPasteback[dynamicsId] ?? true,
+                'source_max_dim': _sourceMaxDims[dynamicsId] ?? 1600,
                 'animation_region': _animationRegions[dynamicsId] ?? 'all',
               },
             }),
@@ -7414,96 +7411,38 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           .timeout(const Duration(minutes: 10));
 
       if (response.statusCode == 200) {
-        if (mounted) {
-          // Parse Response um geschätzte Zeit zu bekommen
-          final responseData = jsonDecode(response.body);
-          final estimatedSeconds =
-              responseData['estimated_seconds'] as int? ?? 210;
-
-          debugPrint(
-            '⏱️ Backend schätzt $estimatedSeconds Sekunden für $dynamicsId',
-          );
-
-          // Speichere Start-Zeitpunkt in Firebase für Persistenz
-          final startTime = DateTime.now().millisecondsSinceEpoch;
-          _db
-              .ref('avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating')
-              .set({'startTime': startTime, 'duration': estimatedSeconds});
-
-          // Starte Countdown-Timer pro Dynamics mit echter geschätzter Zeit
-          setState(() {
-            _dynamicsTimeRemaining[dynamicsId] = estimatedSeconds;
-          });
-
-          _dynamicsTimers[dynamicsId]?.cancel();
-          _dynamicsTimers[dynamicsId] = Timer.periodic(const Duration(seconds: 1), (
-            timer,
-          ) {
-            if (!mounted) {
-              timer.cancel();
-              return;
-            }
-
-            setState(() {
-              final remaining = _dynamicsTimeRemaining[dynamicsId] ?? 0;
-              if (remaining > 0) {
-                _dynamicsTimeRemaining[dynamicsId] = remaining - 1;
-              }
-
-              // Safety: Nach 10 Min (600s) abbrechen (für große Bilder)
-              if (remaining > 600) {
-                timer.cancel();
-                _generatingDynamics.remove(dynamicsId);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      '⚠️ Generierung von "${_dynamicsData[dynamicsId]?['name']}" dauert länger.\n'
-                      'Bitte später prüfen.',
-                    ),
-                    backgroundColor: Colors.orange,
-                    duration: const Duration(seconds: 5),
-                  ),
-                );
-                return;
-              }
-
-              // Normaler Ablauf nach 3:30
-              if (remaining <= 0) {
-                timer.cancel();
-                _generatingDynamics.remove(dynamicsId);
-                // Lösche generating-Status aus Firebase
-                _db
-                    .ref(
-                      'avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating',
-                    )
-                    .remove();
-                // Automatisch Dynamics-Daten neu laden
-                _loadDynamicsData(_avatarData!.id);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      '✅ Dynamics "${_dynamicsData[dynamicsId]?['name']}" fertig!',
-                    ),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              }
-            });
-          });
-
-          final dynamicsName =
-              (_dynamicsData[dynamicsId]?['name'] as String?) ??
-              (dynamicsId == 'basic' ? 'Basic' : dynamicsId);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '⏳ Dynamics "$dynamicsName" wird generiert...\n'
-                'Dauer: ca. 3-4 Minuten (max. 5 Min)',
+        // 🚀 Modal.com gibt SOFORT das fertige Video zurück!
+        final responseData = jsonDecode(response.body);
+        
+        if (responseData['status'] == 'success') {
+          final videoUrl = responseData['video_url'] as String;
+          
+          debugPrint('✅ Dynamics Video erstellt: $videoUrl');
+          
+          // Fertig! Entferne aus generierenden
+          setState(() => _generatingDynamics.remove(dynamicsId));
+          
+          // Lade Dynamics-Daten neu (Video ist jetzt in Firestore)
+          await _loadDynamicsData(_avatarData!.id);
+          
+          if (mounted) {
+            final dynamicsName =
+                (_dynamicsData[dynamicsId]?['name'] as String?) ??
+                (dynamicsId == 'basic' ? 'Basic' : dynamicsId);
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '✅ Dynamics "$dynamicsName" fertig erstellt! 🎉\n'
+                  '🚀 Mit GPU in unter 1 Minute!',
+                ),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 4),
               ),
-              backgroundColor: Colors.orange,
-              duration: const Duration(seconds: 4),
-            ),
-          );
+            );
+          }
+        } else {
+          throw Exception('Fehler: ${responseData['error']}');
         }
       } else {
         throw Exception('Backend error: ${response.statusCode}');
