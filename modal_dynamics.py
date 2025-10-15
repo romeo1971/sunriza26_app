@@ -192,38 +192,38 @@ def generate_dynamics_gpu(avatar_id: str, dynamics_id: str, parameters: dict):
 
 
 @app.function(image=image)
-@modal.web_endpoint(method="POST")
-def api_generate_dynamics(data: dict):
-    """
-    REST API Endpoint für Flutter App
+@modal.asgi_app()
+def api_generate_dynamics():
+    """REST API Endpoint für Flutter App"""
+    from fastapi import FastAPI, Request, HTTPException
+    web_app = FastAPI()
     
-    POST /api_generate_dynamics
-    Body: {
-        "avatar_id": "xyz",
-        "dynamics_id": "basic",
-        "parameters": {
-            "driving_multiplier": 0.41,
-            "scale": 1.7,
-            "source_max_dim": 1600
-        }
-    }
-    """
-    avatar_id = data.get("avatar_id")
-    dynamics_id = data.get("dynamics_id", "basic")
-    parameters = data.get("parameters", {})
+    @web_app.post("/")
+    async def generate(request: Request):
+        data = await request.json()
+        avatar_id = data.get("avatar_id")
+        dynamics_id = data.get("dynamics_id", "basic")
+        parameters = data.get("parameters", {})
+        
+        if not avatar_id:
+            raise HTTPException(status_code=400, detail="avatar_id required")
+        
+        # Starte GPU-Funktion
+        result = generate_dynamics_gpu.remote(avatar_id, dynamics_id, parameters)
+        return result
     
-    if not avatar_id:
-        return {"error": "avatar_id required"}, 400
-    
-    # Starte GPU-Funktion asynchron
-    result = generate_dynamics_gpu.remote(avatar_id, dynamics_id, parameters)
-    
-    return result
+    return web_app
 
 
 @app.function(image=image)
-@modal.web_endpoint(method="GET")
+@modal.asgi_app()
 def health():
-    """Health Check Endpoint"""
-    return {"status": "healthy", "service": "sunriza-dynamics-modal"}
+    from fastapi import FastAPI
+    web_app = FastAPI()
+    
+    @web_app.get("/")
+    async def check():
+        return {"status": "healthy", "service": "sunriza-dynamics-modal"}
+    
+    return web_app
 
