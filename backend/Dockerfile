@@ -32,9 +32,6 @@ WORKDIR /app
 COPY backend/main.py /app/
 COPY backend/generate_dynamics_endpoint.py /app/
 
-# Service Account Key für Firebase
-COPY service-account-key.json /app/service-account-key.json
-
 # Environment Variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app

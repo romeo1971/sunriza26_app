@@ -13,16 +13,23 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, storage, firestore
 
-# Service Account Key (in Cloud Run: /app/service-account-key.json)
+# Service Account Key (lokal: service-account-key.json, Cloud: Default Credentials)
 SERVICE_ACCOUNT_KEY = Path(__file__).parent / "service-account-key.json"
 
 def init_firebase():
     """Initialize Firebase Admin SDK"""
     if not firebase_admin._apps:
-        cred = credentials.Certificate(str(SERVICE_ACCOUNT_KEY))
-        firebase_admin.initialize_app(cred, {
-            'storageBucket': 'sunriza26.firebasestorage.app'
-        })
+        # Cloud Run: nutze Default Credentials, lokal: nutze Service Account Key
+        if SERVICE_ACCOUNT_KEY.exists():
+            cred = credentials.Certificate(str(SERVICE_ACCOUNT_KEY))
+            firebase_admin.initialize_app(cred, {
+                'storageBucket': 'sunriza26.firebasestorage.app'
+            })
+        else:
+            # Cloud Run / Production: Default Credentials
+            firebase_admin.initialize_app(options={
+                'storageBucket': 'sunriza26.firebasestorage.app'
+            })
     return storage.bucket(), firestore.client()
 
 def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
