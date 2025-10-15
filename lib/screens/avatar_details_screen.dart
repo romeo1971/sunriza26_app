@@ -7682,10 +7682,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       debugPrint('✅ Dynamics-Daten geladen: ${_dynamicsData.keys.join(', ')}');
 
-      // Prüfe auf laufende Generierungen und stelle Timer wieder her
-      for (final dynamicsId in _dynamicsData.keys) {
-        _restoreGeneratingTimer(dynamicsId);
-      }
+      // 🚀 Modal.com: Timer-Restore nicht mehr nötig (synchrone Generierung)
+      // for (final dynamicsId in _dynamicsData.keys) {
+      //   _restoreGeneratingTimer(dynamicsId);
+      // }
 
       // 🎯 Auto-berechne optimalen source-max-dim für alle Dynamics
       for (final dynamicsId in _dynamicsData.keys) {
