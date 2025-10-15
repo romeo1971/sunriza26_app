@@ -94,7 +94,7 @@ def _run_dynamics_generation(avatar_id: str, dynamics_id: str, parameters: dict)
             str(parameters.get('source_max_dim', 1600)),
         ]
         
-        subprocess.run(cmd, check=True, cwd='/Users/hhsw/Desktop/sunriza/sunriza26/backend')
+        subprocess.run(cmd, check=True, cwd='/app')
         print(f"✅ Dynamics '{dynamics_id}' für Avatar {avatar_id} erfolgreich generiert")
     except Exception as e:
         print(f"❌ Fehler bei Dynamics-Generierung: {e}")
