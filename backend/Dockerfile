@@ -40,5 +40,5 @@ ENV PYTORCH_ENABLE_MPS_FALLBACK="1"
 
 EXPOSE 8080
 
-# Start - Cloud Run setzt PORT automatisch
-CMD ["sh", "-c", "python3 -m uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# Start - Port 8080 (Cloud Run)
+CMD ["python3", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

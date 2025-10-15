@@ -13,14 +13,22 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, storage, firestore
 
-# Service Account Key (lokal: service-account-key.json, Cloud: Default Credentials)
-SERVICE_ACCOUNT_KEY = Path(__file__).parent / "service-account-key.json"
+# Service Account Key (lokal: service-account-key.json, Cloud: /secrets/)
+SERVICE_ACCOUNT_KEY_PATHS = [
+    Path(__file__).parent / "service-account-key.json",  # Lokal
+    Path("/secrets/service-account-key.json"),  # Cloud Run Secret Mount
+]
+SERVICE_ACCOUNT_KEY = None
+for path in SERVICE_ACCOUNT_KEY_PATHS:
+    if path.exists():
+        SERVICE_ACCOUNT_KEY = path
+        break
 
 def init_firebase():
     """Initialize Firebase Admin SDK"""
     if not firebase_admin._apps:
         # Cloud Run: nutze Default Credentials, lokal: nutze Service Account Key
-        if SERVICE_ACCOUNT_KEY.exists():
+        if SERVICE_ACCOUNT_KEY and SERVICE_ACCOUNT_KEY.exists():
             cred = credentials.Certificate(str(SERVICE_ACCOUNT_KEY))
             firebase_admin.initialize_app(cred, {
                 'storageBucket': 'sunriza26.firebasestorage.app'
