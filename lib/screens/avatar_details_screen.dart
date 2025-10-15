@@ -7413,23 +7413,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (response.statusCode == 200) {
         // 🚀 Modal.com gibt SOFORT das fertige Video zurück!
         final responseData = jsonDecode(response.body);
-        
+
         if (responseData['status'] == 'success') {
           final videoUrl = responseData['video_url'] as String;
-          
+
           debugPrint('✅ Dynamics Video erstellt: $videoUrl');
-          
+
           // Fertig! Entferne aus generierenden
           setState(() => _generatingDynamics.remove(dynamicsId));
-          
+
           // Lade Dynamics-Daten neu (Video ist jetzt in Firestore)
           await _loadDynamicsData(_avatarData!.id);
-          
+
           if (mounted) {
             final dynamicsName =
                 (_dynamicsData[dynamicsId]?['name'] as String?) ??
                 (dynamicsId == 'basic' ? 'Basic' : dynamicsId);
-            
+
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(
