@@ -168,4 +168,6 @@ async def trim_video(request: TrimVideoRequest):
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8002)
+    import os
+    port = int(os.getenv("PORT", 8002))  # Cloud Run nutzt PORT env var, lokal default 8002
+    uvicorn.run(app, host="0.0.0.0", port=port)
