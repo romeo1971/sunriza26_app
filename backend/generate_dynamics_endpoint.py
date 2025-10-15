@@ -13,8 +13,8 @@ from datetime import datetime
 import firebase_admin
 from firebase_admin import credentials, storage, firestore
 
-# Service Account Key
-SERVICE_ACCOUNT_KEY = Path(__file__).parent.parent / "service-account-key.json"
+# Service Account Key (in Cloud Run: /app/service-account-key.json)
+SERVICE_ACCOUNT_KEY = Path(__file__).parent / "service-account-key.json"
 
 def init_firebase():
     """Initialize Firebase Admin SDK"""
