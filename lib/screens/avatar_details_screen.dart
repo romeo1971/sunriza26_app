@@ -7393,9 +7393,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       // 🎯 Starte Countdown-Timer (geschätzt 60 Sekunden mit GPU)
       final estimatedSeconds = 60;
       setState(() => _dynamicsTimeRemaining[dynamicsId] = estimatedSeconds);
-      
+
       _dynamicsTimers[dynamicsId]?.cancel();
-      _dynamicsTimers[dynamicsId] = Timer.periodic(const Duration(seconds: 1), (timer) {
+      _dynamicsTimers[dynamicsId] = Timer.periodic(const Duration(seconds: 1), (
+        timer,
+      ) {
         if (!mounted) {
           timer.cancel();
           return;
@@ -7407,7 +7409,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
         });
       });
-      
+
       if (mounted) {
         final dynamicsName =
             (_dynamicsData[dynamicsId]?['name'] as String?) ??
@@ -7423,7 +7425,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ),
         );
       }
-      
+
       // 🚀 Sende Request an Modal.com (läuft asynchron!)
       final response = await http
           .post(
@@ -7446,24 +7448,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       // Stoppe Timer
       _dynamicsTimers[dynamicsId]?.cancel();
-      
+
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
-        
+
         if (responseData['status'] == 'success') {
           debugPrint('✅ Dynamics Video erstellt');
-          
+
           // Fertig! Entferne aus generierenden
           setState(() => _generatingDynamics.remove(dynamicsId));
-          
+
           // Lade Dynamics-Daten neu
           await _loadDynamicsData(_avatarData!.id);
-          
+
           if (mounted) {
             final dynamicsName =
                 (_dynamicsData[dynamicsId]?['name'] as String?) ??
                 (dynamicsId == 'basic' ? 'Basic' : dynamicsId);
-            
+
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text(

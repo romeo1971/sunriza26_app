@@ -17,16 +17,18 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("git", "ffmpeg")
     .pip_install(
-        "fastapi",  # Für Web Endpoints
+        "fastapi",
         "firebase-admin==6.4.0",
         "requests==2.31.0",
         "pillow==10.2.0",
+        "huggingface_hub",  # Für pretrained weights download
     )
-    # LivePortrait installieren
+    # LivePortrait installieren + Pretrained Weights laden
     .run_commands(
         "git clone https://github.com/KwaiVGI/LivePortrait.git /opt/liveportrait",
         "cd /opt/liveportrait && pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118",
         "cd /opt/liveportrait && pip install opencv-python-headless numpy tyro pyyaml tqdm imageio scikit-image",
+        "cd /opt/liveportrait && huggingface-cli download KwaiVGI/LivePortrait --local-dir pretrained_weights",
     )
 )
 
@@ -136,7 +138,17 @@ def generate_dynamics_gpu(avatar_id: str, dynamics_id: str, parameters: dict):
         '--flag-pasteback',
     ]
     
-    result = subprocess.run(lp_cmd, check=True, capture_output=True, text=True)
+    # Zeige LivePortrait Output (für Debugging!)
+    print(f"🔧 LivePortrait Command: {' '.join(lp_cmd)}")
+    result = subprocess.run(lp_cmd, capture_output=True, text=True)
+    
+    if result.returncode != 0:
+        print(f"❌ LivePortrait FAILED!")
+        print(f"STDOUT: {result.stdout}")
+        print(f"STDERR: {result.stderr}")
+        raise Exception(f"LivePortrait failed: {result.stderr}")
+    
+    print(f"✅ LivePortrait Success!")
     print(result.stdout)
     
     # 6. Output-Video finden
