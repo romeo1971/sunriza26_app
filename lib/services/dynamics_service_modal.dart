@@ -4,19 +4,18 @@ import 'package:http/http.dart' as http;
 /// Modal.com Dynamics Service
 /// GPU-basierte LivePortrait Avatar-Animation
 class DynamicsServiceModal {
-  // TODO: Nach dem Deployment die echte URL hier eintragen!
-  // Siehe: modal app show sunriza-dynamics
+  // Modal.com Backend URL (deployed)
   static const String BACKEND_URL =
-      'https://YOUR-WORKSPACE--sunriza-dynamics-api-generate-dynamics.modal.run';
+      'https://romeo1971--sunriza-dynamics-api-generate-dynamics.modal.run';
 
   /// Generiert Dynamics-Video für einen Avatar
-  /// 
+  ///
   /// [avatarId] - Firestore Avatar Document ID
   /// [dynamicsId] - Name der Dynamics (z.B. 'basic', 'lachen', 'sprechen')
   /// [parameters] - Optional: Custom Parameter für LivePortrait
-  /// 
+  ///
   /// Returns: Video URL in Firebase Storage
-  /// 
+  ///
   /// Throws: Exception bei Fehler
   static Future<String> generateDynamics({
     required String avatarId,
@@ -34,24 +33,27 @@ class DynamicsServiceModal {
 
     final finalParameters = parameters ?? defaultParameters;
 
-    final response = await http.post(
-      Uri.parse(BACKEND_URL),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'avatar_id': avatarId,
-        'dynamics_id': dynamicsId,
-        'parameters': finalParameters,
-      }),
-    ).timeout(
-      const Duration(minutes: 10),
-      onTimeout: () {
-        throw Exception('Dynamics-Generierung Timeout (10 Min)');
-      },
-    );
+    final response = await http
+        .post(
+          Uri.parse(BACKEND_URL),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'avatar_id': avatarId,
+            'dynamics_id': dynamicsId,
+            'parameters': finalParameters,
+          }),
+        )
+        .timeout(
+          const Duration(minutes: 10),
+          onTimeout: () {
+            throw Exception('Dynamics-Generierung Timeout (10 Min)');
+          },
+        );
 
     if (response.statusCode != 200) {
       throw Exception(
-          'Dynamics-Generierung fehlgeschlagen: ${response.statusCode} - ${response.body}');
+        'Dynamics-Generierung fehlgeschlagen: ${response.statusCode} - ${response.body}',
+      );
     }
 
     final data = jsonDecode(response.body);
@@ -69,11 +71,13 @@ class DynamicsServiceModal {
   static Future<bool> healthCheck() async {
     try {
       final healthUrl = BACKEND_URL.replaceAll(
-          'api-generate-dynamics', 'health');
-      
-      final response = await http.get(Uri.parse(healthUrl)).timeout(
-        const Duration(seconds: 5),
+        'api-generate-dynamics',
+        'health',
       );
+
+      final response = await http
+          .get(Uri.parse(healthUrl))
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -96,4 +100,3 @@ class DynamicsServiceModal {
     return 60; // 2048+
   }
 }
-

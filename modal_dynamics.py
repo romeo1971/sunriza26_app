@@ -17,6 +17,7 @@ image = (
     modal.Image.debian_slim(python_version="3.11")
     .apt_install("git", "ffmpeg")
     .pip_install(
+        "fastapi",  # Für Web Endpoints
         "firebase-admin==6.4.0",
         "requests==2.31.0",
         "pillow==10.2.0",
@@ -29,15 +30,10 @@ image = (
     )
 )
 
-# Shared Volume für temporäre Dateien
-volume = modal.Volume.from_name("sunriza-temp", create_if_missing=True)
-
-
 @app.function(
     image=image,
     gpu="T4",  # NVIDIA T4 GPU
     timeout=600,  # 10 Minuten max
-    volumes={"/tmp": volume},
     secrets=[modal.Secret.from_name("firebase-credentials")],
 )
 def generate_dynamics_gpu(avatar_id: str, dynamics_id: str, parameters: dict):
