@@ -140,7 +140,7 @@ def generate_dynamics_gpu(avatar_id: str, dynamics_id: str, parameters: dict):
     
     # Zeige LivePortrait Output (für Debugging!)
     print(f"🔧 LivePortrait Command: {' '.join(lp_cmd)}")
-    result = subprocess.run(lp_cmd, capture_output=True, text=True)
+    result = subprocess.run(lp_cmd, capture_output=True, text=True, cwd='/opt/liveportrait')
     
     if result.returncode != 0:
         print(f"❌ LivePortrait FAILED!")
