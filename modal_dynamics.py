@@ -49,8 +49,10 @@ image = (
         "cd /opt/liveportrait && huggingface-cli download KwaiVGI/LivePortrait --local-dir pretrained_weights",
         # Verify FFmpeg verfügbar
         "which ffmpeg && ffmpeg -version | head -1",
+        # KRITISCH: ONNX Runtime GPU Verifikation beim Build!
+        "python3 -c 'import onnxruntime as ort; providers = ort.get_available_providers(); print(f\"ONNX Providers: {providers}\"); assert \"CUDAExecutionProvider\" in providers, \"GPU NOT AVAILABLE IN ONNX RUNTIME!\"'",
         # Force rebuild marker
-        "echo 'IMAGE REBUILD V12 - full clean rebuild - '$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        "echo 'IMAGE REBUILD V13 - GPU VERIFIKATION - '$(date -u +%Y-%m-%dT%H:%M:%SZ)",
     )
 )
 
@@ -235,6 +237,9 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     
     env = os.environ.copy()
     env['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+    # ONNX Runtime GPU forcieren (wichtig für LivePortrait!)
+    env['CUDA_VISIBLE_DEVICES'] = '0'  # GPU 0 nutzen
+    env['ORT_TENSORRT_ENGINE_CACHE_ENABLE'] = '1'  # TensorRT Cache aktivieren
     
     # EXAKT wie lokaler Test: OHNE cwd, OHNE check, nur capture_output=False!
     print(f"🧩 LP-Parameter (normalisiert): {norm}")
@@ -248,6 +253,15 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     print(f"🔥 GPU verfügbar: {gpu_available} (Anzahl: {gpu_count})")
     if gpu_available:
         print(f"🔥 GPU Name: {torch.cuda.get_device_name(0)}")
+    
+    # ONNX Runtime GPU Check (KRITISCH für LivePortrait!)
+    import onnxruntime as ort
+    available_providers = ort.get_available_providers()
+    print(f"🔥 ONNX Runtime Providers: {available_providers}")
+    if 'CUDAExecutionProvider' in available_providers:
+        print(f"✅ ONNX Runtime nutzt GPU (CUDAExecutionProvider)!")
+    else:
+        print(f"⚠️ WARNING: ONNX Runtime nutzt nur CPU! LivePortrait wird LANGSAM sein!")
     
     # DEBUG: Welches FFmpeg nutzt imageio-ffmpeg?
     import imageio_ffmpeg
