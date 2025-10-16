@@ -406,7 +406,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Map<String, double> _drivingMultipliers = {
     'basic': 0.41,
   }; // dynamicsId -> value
-  Map<String, double> _animationScales = {'basic': 1.7};
+  Map<String, double> _animationScales = {'basic': 2.0};
   Map<String, int> _sourceMaxDims = {
     'basic': 1600,
   }; // Auto-berechnet aus Hero-Image!
@@ -7194,7 +7194,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   void _resetToDefaults(String dynamicsId) {
     setState(() {
       _drivingMultipliers[dynamicsId] = 0.41;
-      _animationScales[dynamicsId] = 1.7;
+      _animationScales[dynamicsId] = 2.0;
       _sourceMaxDims[dynamicsId] = 1600; // Fallback, wird gleich neu berechnet
       _flagsNormalizeLip[dynamicsId] = true;
       _flagsPasteback[dynamicsId] = true;
@@ -7436,8 +7436,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     setState(() => _generatingDynamics.add(dynamicsId));
 
     try {
-      // 🎯 Starte Countdown-Timer (geschätzt 60 Sekunden mit GPU)
-      final estimatedSeconds = 60;
+      // 🎯 Starte Countdown-Timer (geschätzt 120 Sekunden mit GPU)
+      final estimatedSeconds = 120;
       setState(() => _dynamicsTimeRemaining[dynamicsId] = estimatedSeconds);
 
       _dynamicsTimers[dynamicsId]?.cancel();
@@ -7464,7 +7464,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           SnackBar(
             content: Text(
               '⏳ Dynamics "$dynamicsName" wird generiert...\n'
-              '🚀 Mit GPU: ca. 30-60 Sekunden!',
+              '🚀 Mit GPU: ca. 60-120 Sekunden!',
             ),
             backgroundColor: Colors.orange,
             duration: const Duration(seconds: 3),
@@ -7691,7 +7691,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           _dynamicsData[dynamicsId] = newDynamicsData;
           // Setze Default-Parameter für neue Dynamics
           _drivingMultipliers[dynamicsId] = 0.41;
-          _animationScales[dynamicsId] = 1.7;
+          _animationScales[dynamicsId] = 2.0;
           _sourceMaxDims[dynamicsId] = 1600; // Wird automatisch berechnet
           _flagsNormalizeLip[dynamicsId] = true;
           _flagsPasteback[dynamicsId] = true;

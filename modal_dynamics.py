@@ -144,7 +144,7 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
         out.setdefault('flag_pasteback', True)
         out.setdefault('animation_region', 'all')
         out.setdefault('source_max_dim', 1600)
-        out.setdefault('scale', 1.7)
+        out.setdefault('scale', 2.0)
         return out
 
     # 2. Hero-Image & Hero-Video laden
@@ -230,6 +230,8 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     lp_cmd.extend([
         '--source-max-dim', str(norm.get('source_max_dim')),
         '--scale', str(norm.get('scale')),
+        '--flag-do-crop',  # Face Detection & Auto-Crop aktivieren (vermeidet manuelles Cropping)
+        '--mask_crop', '1.4,1.2,1.4,1.2',  # Paste-Mask vergrößern: links,oben,rechts,unten (1.4x = 40% größer)
     ])
     
     env = os.environ.copy()
