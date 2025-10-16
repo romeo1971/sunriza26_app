@@ -482,7 +482,7 @@ class _DynamicsItemTileState extends State<DynamicsItemTile> {
           divisions: 30,
           onChanged: widget.onAnimationScaleChanged,
           valueLabel: widget.animationScale.toStringAsFixed(2),
-          recommendation: '💡 Empfohlen: 1.7 (Gesicht + Hals + Schultern)',
+          recommendation: '💡 Empfohlen: 2.0 (Gesicht + Hals + Schultern)',
         ),
         const SizedBox(height: 16),
 

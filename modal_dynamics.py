@@ -231,7 +231,6 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
         '--source-max-dim', str(norm.get('source_max_dim')),
         '--scale', str(norm.get('scale')),
         '--flag-do-crop',  # Face Detection & Auto-Crop aktivieren (vermeidet manuelles Cropping)
-        '--mask_crop', '1.4,1.2,1.4,1.2',  # Paste-Mask vergrößern: links,oben,rechts,unten (1.4x = 40% größer)
     ])
     
     env = os.environ.copy()
