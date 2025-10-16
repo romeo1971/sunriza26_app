@@ -31,6 +31,7 @@ import '../services/firebase_storage_service.dart';
 import '../services/geo_service.dart';
 import '../services/localization_service.dart';
 import '../services/media_service.dart';
+import '../services/video_trim_service.dart';
 import '../models/media_models.dart';
 import '../theme/app_theme.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
@@ -1045,6 +1046,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           debugPrint('✅ Hero-Image an Position 0 verschoben: $heroUrl');
         }
       }
+
+      // WICHTIG: Hero-Video MUSS an Position 0 sein!
+      final heroVideoUrl = _getHeroVideoUrl();
+      if (heroVideoUrl != null && _videoUrls.isNotEmpty) {
+        if (_videoUrls.contains(heroVideoUrl) &&
+            _videoUrls[0] != heroVideoUrl) {
+          _videoUrls.remove(heroVideoUrl);
+          _videoUrls.insert(0, heroVideoUrl);
+          debugPrint('✅ Hero-Video an Position 0 verschoben: $heroVideoUrl');
+        }
+      }
+
       _profileLocalPath = null;
       // aktive Stimme aus training.voice.activeUrl lesen (falls vorhanden)
       final voice = (data.training != null) ? data.training!['voice'] : null;
@@ -1297,6 +1310,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             },
             // Video Controller Helper
             videoControllerForThumb: _videoControllerForThumb,
+            // Trim Hero-Video
+            onTrimHeroVideo: _showTrimDialogForHeroVideo,
+            // Trim beliebiges Video
+            onTrimVideo: (url) => _showTrimDialogForVideo(url),
           ),
         const SizedBox.shrink(),
 
@@ -3158,7 +3175,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         allTexts.length +
         // allAudios.length +
         (_avatarData!.writtenTexts.length);
+
+    // WICHTIG: Bestehendes training-Objekt mergen, nicht überschreiben!
+    final existingTraining = _avatarData!.training ?? {};
     final training = {
+      ...existingTraining, // Bestehende Felder beibehalten (z.B. heroVideoUrl, heroImageUrl, voice, dynamics)
       'status': 'pending',
       'startedAt': null,
       'finishedAt': null,
@@ -3557,12 +3578,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   // _imageThumbFile wurde im neuen Layout nicht mehr benötigt
   String? _getHeroVideoUrl() {
+    // Strikte Logik: NUR training.heroVideoUrl zählt (kein Fallback auf _videoUrls)
     try {
-      final tr = Map<String, dynamic>.from(_avatarData?.training ?? {});
-      final v = (tr['heroVideoUrl'] as String?)?.trim();
+      final v = (_avatarData?.training?['heroVideoUrl'] as String?)?.trim();
       if (v != null && v.isNotEmpty) return v;
     } catch (_) {}
-    if (_videoUrls.isNotEmpty) return _videoUrls.first;
     return null;
   }
 
@@ -4597,6 +4617,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           // Timeline neu laden für korrekte Anzeige
           await _loadTimelineData(_avatarData!.id);
 
+          // UI aktualisieren, damit Hero-Stern angezeigt wird
+          setState(() {});
+
           scaffoldMessenger.showSnackBar(
             SnackBar(
               content: Text(
@@ -4680,6 +4703,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             // Timeline neu laden für korrekte Anzeige
             await _loadTimelineData(_avatarData!.id);
 
+            // UI aktualisieren, damit Hero-Stern angezeigt wird
+            setState(() {});
+
             scaffoldMessenger.showSnackBar(
               SnackBar(
                 content: Text(
@@ -4734,6 +4760,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 final scaffoldMessenger = ScaffoldMessenger.of(context);
                 // Timeline neu laden für korrekte Anzeige
                 await _loadTimelineData(_avatarData!.id);
+
+                // UI aktualisieren, damit Hero-Stern angezeigt wird
+                setState(() {});
 
                 scaffoldMessenger.showSnackBar(
                   const SnackBar(
@@ -7387,6 +7416,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       return;
     }
 
+    // Prüfe zwingend: heroVideoUrl vorhanden
+    final heroVideoUrl = _getHeroVideoUrl();
+    if (heroVideoUrl == null || heroVideoUrl.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Bitte zuerst ein Hero-Video hochladen und definieren.',
+            ),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _generatingDynamics.add(dynamicsId));
 
     try {
@@ -7732,6 +7778,55 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
+  // Alias für Widget-Callback (Hero-Video)
+  void _showTrimDialogForHeroVideo() {
+    _showVideoTrimDialog();
+  }
+
+  // Trim beliebiges Video aus der Galerie
+  Future<void> _showTrimDialogForVideo(String videoUrl) async {
+    if (_avatarData == null) return;
+
+    // Nutze VideoTrimService für Trim-Dialog + Trimming
+    final newVideoUrl = await VideoTrimService.showTrimDialogAndTrim(
+      context: context,
+      videoUrl: videoUrl,
+      avatarId: _avatarData!.id,
+    );
+
+    if (newVideoUrl != null) {
+      // Neues Video zur Liste hinzufügen
+      setState(() {
+        if (!_videoUrls.contains(newVideoUrl)) {
+          _videoUrls.insert(0, newVideoUrl);
+        }
+      });
+
+      // Lösche altes Video
+      await VideoTrimService.deleteVideo(
+        avatarId: _avatarData!.id,
+        videoUrl: videoUrl,
+      );
+
+      // Altes Video aus Liste entfernen
+      setState(() {
+        _videoUrls.remove(videoUrl);
+      });
+
+      // Persistieren
+      await _persistTextFileUrls();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Video getrimmt!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _showVideoTrimDialog() async {
     final heroVideoUrl = _getHeroVideoUrl();
     if (heroVideoUrl == null) return;
@@ -7858,94 +7953,41 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   ) async {
     if (_avatarData == null) return;
 
+    // Nutze VideoTrimService
+    final newVideoUrl = await VideoTrimService.trimVideo(
+      context: context,
+      videoUrl: videoUrl,
+      avatarId: _avatarData!.id,
+      start: start,
+      end: end,
+    );
+
+    if (newVideoUrl == null) return; // Abbruch oder Fehler
+
     try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('⏳ Video wird getrimmt...'),
-          duration: Duration(seconds: 5),
-        ),
-      );
-
-      // Backend-URL ermitteln (läuft auf Port 8002)
-      // IMMER localhost verwenden, wenn die App lokal läuft
-      String backendUrl = 'http://127.0.0.1:8002';
-
-      // Video-Trimming über Backend
-      debugPrint('🔗 Backend URL: $backendUrl/trim-video');
-
-      final trimResponse = await http
-          .post(
-            Uri.parse('$backendUrl/trim-video'),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'video_url': videoUrl,
-              'start_time': start,
-              'end_time': end,
-            }),
-          )
-          .timeout(const Duration(seconds: 120));
-
-      if (trimResponse.statusCode != 200) {
-        String errorMessage = 'Backend-Fehler';
-        try {
-          final errorData = jsonDecode(trimResponse.body);
-          errorMessage = errorData['detail'] ?? 'Backend-Fehler';
-        } catch (e) {
-          errorMessage = 'Backend-Fehler: ${trimResponse.statusCode}';
-        }
-        throw Exception(errorMessage);
-      }
-
-      debugPrint('✅ Video getrimmt, speichere...');
-
-      // Temporäre Datei erstellen (Backend liefert Video direkt)
-      final tempDir = await getTemporaryDirectory();
-      final outputFile = File(
-        '${tempDir.path}/hero_trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4',
-      );
-
-      await outputFile.writeAsBytes(trimResponse.bodyBytes);
-      debugPrint('💾 Video gespeichert: ${outputFile.path}');
-
-      // Getrimmtes Video zu Firebase hochladen
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final storagePath =
-          'avatars/${_avatarData!.id}/videos/${timestamp}_trimmed_hero.mp4';
-
-      final newVideoUrl = await FirebaseStorageService.uploadVideo(
-        outputFile,
-        customPath: storagePath,
-      );
-
-      if (newVideoUrl == null) {
-        throw Exception('Upload fehlgeschlagen');
-      }
-
-      // Altes Hero-Video aus Liste entfernen (falls es das zu trimmende Video war)
-      final oldHeroUrl = _getHeroVideoUrl();
-      if (oldHeroUrl != null && oldHeroUrl == videoUrl) {
-        setState(() {
-          _videoUrls.remove(videoUrl);
-        });
-      }
-
-      // Neues getrimmtes Video zu Liste hinzufügen
+      // Neues Video zu lokaler Liste hinzufügen
       setState(() {
         if (!_videoUrls.contains(newVideoUrl)) {
-          _videoUrls.insert(0, newVideoUrl); // Am Anfang einfügen
+          _videoUrls.insert(0, newVideoUrl);
         }
       });
 
-      // Persistiere aktualisierte Video-Liste
-      await _persistTextFileUrls();
-
-      // Als neues Hero-Video setzen
+      // Als Hero-Video setzen
       await _setHeroVideo(newVideoUrl);
 
-      // Cleanup
-      try {
-        await outputFile.delete();
-      } catch (_) {}
+      // Altes Video löschen (nach Success!)
+      await VideoTrimService.deleteVideo(
+        avatarId: _avatarData!.id,
+        videoUrl: videoUrl,
+      );
+
+      // Aus lokaler Liste entfernen
+      setState(() {
+        _videoUrls.remove(videoUrl);
+      });
+
+      // Persistiere finale Video-Liste
+      await _persistTextFileUrls();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -7959,13 +8001,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         await _checkHeroVideoDuration();
       }
     } catch (e) {
-      debugPrint('❌ Trim Fehler: $e');
+      debugPrint('❌ Post-Trim Fehler: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ Fehler beim Trimmen: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
+            content: Text('⚠️ Video getrimmt, aber Fehler bei Hero-Set: $e'),
+            backgroundColor: Colors.orange,
           ),
         );
       }

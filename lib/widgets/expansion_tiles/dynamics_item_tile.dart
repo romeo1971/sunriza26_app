@@ -10,6 +10,7 @@ class DynamicsItemTile extends StatefulWidget {
   final String? dynamicsIcon;
   final Map<String, dynamic> dynamicsData;
   final String? selectedVideoUrl;
+  final bool heroVideoTooLong;
   final bool isGenerating;
   final int timeRemaining;
 
@@ -51,6 +52,7 @@ class DynamicsItemTile extends StatefulWidget {
     this.dynamicsIcon,
     required this.dynamicsData,
     this.selectedVideoUrl,
+    this.heroVideoTooLong = false,
     required this.isGenerating,
     required this.timeRemaining,
     required this.drivingMultiplier,
@@ -355,7 +357,9 @@ class _DynamicsItemTileState extends State<DynamicsItemTile> {
                     else
                       // Generieren Button
                       ElevatedButton(
-                        onPressed: !hasVideo ? null : widget.onGenerate,
+                        onPressed: (hasVideo && !widget.heroVideoTooLong)
+                            ? widget.onGenerate
+                            : null,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: Colors.white,
                           foregroundColor: AppColors.magenta,

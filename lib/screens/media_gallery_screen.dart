@@ -21,6 +21,7 @@ import 'dart:ui' as ui;
 import '../services/media_service.dart';
 import '../services/firebase_storage_service.dart';
 import '../services/cloud_vision_service.dart';
+import '../services/video_trim_service.dart';
 import '../models/media_models.dart';
 import '../services/playlist_service.dart';
 import '../models/playlist_models.dart';
@@ -948,6 +949,34 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     _audioTotalTime.clear();
   }
 
+  /// Trim Video
+  Future<void> _trimVideo(AvatarMedia media) async {
+    if (media.type != AvatarMediaType.video) return;
+
+    // Zeige Trim-Dialog und trimme Video
+    final newVideoUrl = await VideoTrimService.showTrimDialogAndTrim(
+      context: context,
+      videoUrl: media.url,
+      avatarId: widget.avatarId,
+      maxDuration: 10.0,
+    );
+
+    if (newVideoUrl == null) return; // Abbruch oder Fehler
+
+    // Lösche altes Video
+    try {
+      await VideoTrimService.deleteVideo(
+        videoUrl: media.url,
+        avatarId: widget.avatarId,
+      );
+    } catch (e) {
+      debugPrint('⚠️ Fehler beim Löschen des alten Videos: $e');
+    }
+
+    // Reload Medienliste
+    await _load();
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -1305,7 +1334,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     } catch (e) {
       if (!mounted) return;
       debugPrint('Fehler bei Video-Auswahl: $e');
-      messenger.showSnackBar(const SnackBar(content: Text('Fehler bei Video-Auswahl')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Fehler bei Video-Auswahl')),
+      );
     }
   }
 
@@ -1652,7 +1683,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                           ext,
                                           originalFileName,
                                         ).then((_) {
-                                          if (ctx.mounted) Navigator.of(ctx).pop();
+                                          if (ctx.mounted)
+                                            Navigator.of(ctx).pop();
                                         });
                                       }
                                     },
@@ -1959,20 +1991,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     if (widget.fromScreen == 'avatar-list') {
       // Von "Meine Avatare" → zurück zu "Meine Avatare" (ALLE Screens schließen)
-      nav.pushNamedAndRemoveUntil(
-        '/avatar-list',
-        (route) => false,
-      );
+      nav.pushNamedAndRemoveUntil('/avatar-list', (route) => false);
     } else {
       // Von anderen Screens → zurück zu Avatar Details
       final avatarService = AvatarService();
       final avatar = await avatarService.getAvatar(widget.avatarId);
       if (!mounted) return;
       if (avatar != null) {
-        nav.pushReplacementNamed(
-          '/avatar-details',
-          arguments: avatar,
-        );
+        nav.pushReplacementNamed('/avatar-details', arguments: avatar);
       } else {
         nav.pop();
       }
@@ -2382,14 +2408,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                 String text,
                                 TextStyle style,
                               ) {
-                              final tp = TextPainter(
-                                text: TextSpan(text: text, style: style),
-                                maxLines: 1,
-                                textScaler: MediaQuery.of(
-                                  ctx,
-                                ).textScaler,
-                                textDirection: TextDirection.ltr,
-                              )..layout();
+                                final tp = TextPainter(
+                                  text: TextSpan(text: text, style: style),
+                                  maxLines: 1,
+                                  textScaler: MediaQuery.of(ctx).textScaler,
+                                  textDirection: TextDirection.ltr,
+                                )..layout();
                                 return tp.width;
                               }
 
@@ -2507,123 +2531,123 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             },
                           )
                         : Stack(
-                      children: [
-                        // Zentrierter Inhalt (Infotext ODER Suchfeld)
-                        Center(
-                          child: !_showSearch
-                              ? Text(
-                                  'Verlinkbare Medien für Deine Playlists',
-                                  style: TextStyle(
+                            children: [
+                              // Zentrierter Inhalt (Infotext ODER Suchfeld)
+                              Center(
+                                child: !_showSearch
+                                    ? Text(
+                                        'Verlinkbare Medien für Deine Playlists',
+                                        style: TextStyle(
                                           color: Colors.white.withValues(
                                             alpha: 0.85,
                                           ),
-                                    fontSize: 12,
-                                  ),
-                                )
-                              : ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxWidth: 400,
-                                  ),
-                                  child: TextField(
-                                    controller: _searchController,
-                                    autofocus: true,
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 13,
-                                    ),
-                                    cursorColor: Colors.white,
-                                    decoration: InputDecoration(
-                                      hintText: 'Suche nach Medien',
-                                      hintStyle: TextStyle(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                        fontSize: 13,
-                                      ),
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 10,
-                                          ),
-                                      enabledBorder: OutlineInputBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                        borderSide: BorderSide(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.6,
-                                          ),
-                                          width: 1,
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(6),
-                                        borderSide: const BorderSide(
-                                          color: Colors.white,
-                                          width: 1,
-                                        ),
-                                      ),
-                                      hoverColor: Colors.transparent,
-                                      fillColor: Colors.transparent,
-                                      isDense: true,
-                                    ),
-                                    onChanged: (val) {
-                                      setState(() {
-                                        _searchTerm = val.toLowerCase();
-                                      });
-                                    },
-                                  ),
-                                ),
-                        ),
-                        // Lupe - IMMER rechts (fixed position)
-                        Positioned(
-                          right: 0,
-                          top: 0,
-                          bottom: 0,
-                          child: Center(
-                            child: InkWell(
-                              onTap: _items.isEmpty
-                                  ? null
-                                  : () {
-                                      setState(() {
-                                        _showSearch = !_showSearch;
-                                        if (!_showSearch) {
-                                          _searchController.clear();
-                                          _searchTerm = '';
-                                        }
-                                      });
-                                    },
-                              child: Padding(
-                                padding: const EdgeInsets.all(8),
-                                child: _showSearch
-                                    ? ShaderMask(
-                                        shaderCallback: (bounds) =>
-                                            const LinearGradient(
-                                              colors: [
-                                                AppColors.magenta,
-                                                AppColors.lightBlue,
-                                              ],
-                                            ).createShader(bounds),
-                                        child: const Icon(
-                                          Icons.search,
-                                          size: 18,
-                                          color: Colors.white,
+                                          fontSize: 12,
                                         ),
                                       )
-                                    : Icon(
-                                        Icons.search,
-                                        size: 18,
-                                        color: _items.isEmpty
-                                            ? Colors.grey.shade700
-                                            : Colors.grey.shade500,
+                                    : ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 400,
+                                        ),
+                                        child: TextField(
+                                          controller: _searchController,
+                                          autofocus: true,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 13,
+                                          ),
+                                          cursorColor: Colors.white,
+                                          decoration: InputDecoration(
+                                            hintText: 'Suche nach Medien',
+                                            hintStyle: TextStyle(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.4,
+                                              ),
+                                              fontSize: 13,
+                                            ),
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 12,
+                                                  vertical: 10,
+                                                ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              borderSide: BorderSide(
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.6,
+                                                ),
+                                                width: 1,
+                                              ),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(6),
+                                              borderSide: const BorderSide(
+                                                color: Colors.white,
+                                                width: 1,
+                                              ),
+                                            ),
+                                            hoverColor: Colors.transparent,
+                                            fillColor: Colors.transparent,
+                                            isDense: true,
+                                          ),
+                                          onChanged: (val) {
+                                            setState(() {
+                                              _searchTerm = val.toLowerCase();
+                                            });
+                                          },
+                                        ),
                                       ),
                               ),
-                            ),
+                              // Lupe - IMMER rechts (fixed position)
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                bottom: 0,
+                                child: Center(
+                                  child: InkWell(
+                                    onTap: _items.isEmpty
+                                        ? null
+                                        : () {
+                                            setState(() {
+                                              _showSearch = !_showSearch;
+                                              if (!_showSearch) {
+                                                _searchController.clear();
+                                                _searchTerm = '';
+                                              }
+                                            });
+                                          },
+                                    child: Padding(
+                                      padding: const EdgeInsets.all(8),
+                                      child: _showSearch
+                                          ? ShaderMask(
+                                              shaderCallback: (bounds) =>
+                                                  const LinearGradient(
+                                                    colors: [
+                                                      AppColors.magenta,
+                                                      AppColors.lightBlue,
+                                                    ],
+                                                  ).createShader(bounds),
+                                              child: const Icon(
+                                                Icons.search,
+                                                size: 18,
+                                                color: Colors.white,
+                                              ),
+                                            )
+                                          : Icon(
+                                              Icons.search,
+                                              size: 18,
+                                              color: _items.isEmpty
+                                                  ? Colors.grey.shade700
+                                                  : Colors.grey.shade500,
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
-                    ),
                   ),
                 ),
 
@@ -3536,9 +3560,36 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 ),
               ),
 
-            // Tag-Icon unten links (für Videos und Dokumente) ODER rechts oben (für Audio)
-            if ((it.type == AvatarMediaType.video ||
-                    it.type == AvatarMediaType.audio ||
+            // Trim-Icon rechts mittig: nur für Videos im VIDEO-TAB
+            if (it.type == AvatarMediaType.video &&
+                !_isDeleteMode &&
+                _mediaTab == 'videos')
+              Positioned(
+                right: 6,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: InkWell(
+                    onTap: () => _trimVideo(it),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0x30000000),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0x66FFFFFF)),
+                      ),
+                      child: const Icon(
+                        Icons.content_cut,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+            // Tag-Icon unten links (für Dokumente) ODER rechts oben (für Audio)
+            if ((it.type == AvatarMediaType.audio ||
                     it.type == AvatarMediaType.document) &&
                 !_isDeleteMode)
               Positioned(
@@ -3734,11 +3785,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       if (!mounted) return;
                       nav.pop();
                       messenger.showSnackBar(
-                          buildSuccessSnackBar('Aus Playlist entfernt'),
-                        );
+                        buildSuccessSnackBar('Aus Playlist entfernt'),
+                      );
                     } catch (e) {
                       if (!mounted) return;
-                      messenger.showSnackBar(SnackBar(content: Text('Fehler: $e')));
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Fehler: $e')),
+                      );
                     }
                   },
                 ),
@@ -3803,7 +3856,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         itemCount: selectedMedia.length,
-                        separatorBuilder: (context, index) => const SizedBox(width: 8),
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(width: 8),
                         itemBuilder: (_, i) {
                           final m = selectedMedia[i];
                           final double h = 120.0;
@@ -6248,7 +6302,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         );
                         debugPrint('💰 Collection: $collectionName');
 
-                        try{
+                        try {
                           debugPrint('💰 Firestore update STARTING...');
                           await FirebaseFirestore.instance
                               .collection('avatars')
@@ -6817,7 +6871,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     width: 400, // Maximal 400px Breite
                     constraints: const BoxConstraints(maxWidth: 400),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).dialogTheme.backgroundColor ?? Theme.of(context).cardColor,
+                      color:
+                          Theme.of(context).dialogTheme.backgroundColor ??
+                          Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: SingleChildScrollView(
@@ -6856,7 +6912,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                   onPressed: hasChanged
                                       ? () async {
                                           final nav = Navigator.of(ctx);
-                                          final messenger = ScaffoldMessenger.of(context);
+                                          final messenger =
+                                              ScaffoldMessenger.of(context);
                                           final newTags = controller.text
                                               .split(',')
                                               .map((tag) => tag.trim())
@@ -6873,10 +6930,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                           if (!mounted) return;
                                           nav.pop();
                                           messenger.showSnackBar(
-                                              buildSuccessSnackBar(
-                                                '${newTags.length} Tags gespeichert',
-                                              ),
-                                            );
+                                            buildSuccessSnackBar(
+                                              '${newTags.length} Tags gespeichert',
+                                            ),
+                                          );
                                         }
                                       : null,
                                   style: TextButton.styleFrom(
@@ -6920,116 +6977,116 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             else
                               Center(
                                 child: SizedBox(
-                                child: media.type == AvatarMediaType.video
-                                    ? (media.thumbUrl != null
-                                          ? ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              child: Image.network(
-                                                media.thumbUrl!,
-                                                fit: BoxFit.cover,
-                                                errorBuilder: (context, error, stack) {
-                                                  // Fallback zu VideoPlayer
-                                                  return FutureBuilder<
-                                                    VideoPlayerController?
-                                                  >(
-                                                    future:
-                                                        _videoControllerForThumb(
-                                                          media.url,
-                                                        ),
-                                                    builder: (context, snapshot) {
-                                                      if (snapshot.connectionState ==
-                                                              ConnectionState
-                                                                  .done &&
-                                                          snapshot.hasData &&
-                                                          snapshot.data !=
-                                                              null) {
-                                                        final controller =
-                                                            snapshot.data!;
-                                                        if (controller
-                                                            .value
-                                                            .isInitialized) {
-                                                          return AspectRatio(
-                                                            aspectRatio:
-                                                                controller
-                                                                    .value
-                                                                    .aspectRatio,
+                                  child: media.type == AvatarMediaType.video
+                                      ? (media.thumbUrl != null
+                                            ? ClipRRect(
+                                                borderRadius:
+                                                    BorderRadius.circular(8),
+                                                child: Image.network(
+                                                  media.thumbUrl!,
+                                                  fit: BoxFit.cover,
+                                                  errorBuilder: (context, error, stack) {
+                                                    // Fallback zu VideoPlayer
+                                                    return FutureBuilder<
+                                                      VideoPlayerController?
+                                                    >(
+                                                      future:
+                                                          _videoControllerForThumb(
+                                                            media.url,
+                                                          ),
+                                                      builder: (context, snapshot) {
+                                                        if (snapshot.connectionState ==
+                                                                ConnectionState
+                                                                    .done &&
+                                                            snapshot.hasData &&
+                                                            snapshot.data !=
+                                                                null) {
+                                                          final controller =
+                                                              snapshot.data!;
+                                                          if (controller
+                                                              .value
+                                                              .isInitialized) {
+                                                            return AspectRatio(
+                                                              aspectRatio:
+                                                                  controller
+                                                                      .value
+                                                                      .aspectRatio,
                                                               child:
                                                                   VideoPlayer(
-                                                              controller,
-                                                            ),
-                                                          );
+                                                                    controller,
+                                                                  ),
+                                                            );
+                                                          }
                                                         }
-                                                      }
-                                                      return Container(
-                                                        color: Colors.black26,
-                                                      );
-                                                    },
-                                                  );
-                                                },
-                                              ),
-                                            )
-                                          : FutureBuilder<
-                                              VideoPlayerController?
-                                            >(
+                                                        return Container(
+                                                          color: Colors.black26,
+                                                        );
+                                                      },
+                                                    );
+                                                  },
+                                                ),
+                                              )
+                                            : FutureBuilder<
+                                                VideoPlayerController?
+                                              >(
                                                 future:
                                                     _videoControllerForThumb(
-                                                media.url,
-                                              ),
-                                              builder: (context, snapshot) {
-                                                if (snapshot.connectionState ==
+                                                      media.url,
+                                                    ),
+                                                builder: (context, snapshot) {
+                                                  if (snapshot.connectionState ==
                                                           ConnectionState
                                                               .done &&
-                                                    snapshot.hasData &&
-                                                    snapshot.data != null) {
-                                                  final controller =
-                                                      snapshot.data!;
-                                                  if (controller
-                                                      .value
-                                                      .isInitialized) {
-                                                    return AspectRatio(
-                                                      aspectRatio: controller
-                                                          .value
-                                                          .aspectRatio,
-                                                      child: VideoPlayer(
-                                                        controller,
-                                                      ),
-                                                    );
+                                                      snapshot.hasData &&
+                                                      snapshot.data != null) {
+                                                    final controller =
+                                                        snapshot.data!;
+                                                    if (controller
+                                                        .value
+                                                        .isInitialized) {
+                                                      return AspectRatio(
+                                                        aspectRatio: controller
+                                                            .value
+                                                            .aspectRatio,
+                                                        child: VideoPlayer(
+                                                          controller,
+                                                        ),
+                                                      );
+                                                    }
                                                   }
-                                                }
-                                                return Container(
-                                                  color: Colors.black26,
-                                                );
-                                              },
-                                            ))
-                                    : LayoutBuilder(
-                                        builder: (context, cons) {
-                                          final ar =
-                                              media.aspectRatio ?? (9 / 16);
-                                          final maxH = ar < 1.0
+                                                  return Container(
+                                                    color: Colors.black26,
+                                                  );
+                                                },
+                                              ))
+                                      : LayoutBuilder(
+                                          builder: (context, cons) {
+                                            final ar =
+                                                media.aspectRatio ?? (9 / 16);
+                                            final maxH = ar < 1.0
                                                 ? 294.0
                                                 : 224.0; // Portrait höher als Landscape (30% kleiner)
-                                          return ConstrainedBox(
-                                            constraints: BoxConstraints(
-                                              maxHeight: maxH,
-                                            ),
-                                            child: AspectRatio(
-                                              aspectRatio: ar,
-                                              child:
-                                                  media.type ==
-                                                      AvatarMediaType.document
-                                                  ? _buildDocumentPreviewBackground(
-                                                      media,
-                                                    )
-                                                  : Image.network(
-                                                      media.url,
-                                                      fit: BoxFit.cover,
-                                                    ),
-                                            ),
-                                          );
-                                        },
+                                            return ConstrainedBox(
+                                              constraints: BoxConstraints(
+                                                maxHeight: maxH,
+                                              ),
+                                              child: AspectRatio(
+                                                aspectRatio: ar,
+                                                child:
+                                                    media.type ==
+                                                        AvatarMediaType.document
+                                                    ? _buildDocumentPreviewBackground(
+                                                        media,
+                                                      )
+                                                    : Image.network(
+                                                        media.url,
+                                                        fit: BoxFit.cover,
+                                                      ),
+                                              ),
+                                            );
+                                          },
                                         ),
-                                      ),
+                                ),
                               ),
                             const SizedBox(height: 16),
                             // Header mit Vorschläge/Verwerfen Icon-Button RECHTS neben Text
@@ -7743,12 +7800,16 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         return;
       }
 
-      debugPrint('🔄 Aktualisiere Tags für ${imagesWithoutTags.length} Bilder...');
+      debugPrint(
+        '🔄 Aktualisiere Tags für ${imagesWithoutTags.length} Bilder...',
+      );
 
       for (int i = 0; i < imagesWithoutTags.length; i++) {
         final image = imagesWithoutTags[i];
         try {
-          debugPrint('📸 Analysiere Bild ${i + 1}/${imagesWithoutTags.length}...');
+          debugPrint(
+            '📸 Analysiere Bild ${i + 1}/${imagesWithoutTags.length}...',
+          );
 
           // Lade Bild herunter für Analyse
           final tempFile = await _downloadToTemp(image.url, suffix: '.jpg');

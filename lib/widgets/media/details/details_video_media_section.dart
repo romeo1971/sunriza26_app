@@ -2,7 +2,6 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 import '../../../theme/app_theme.dart';
-import '../../video_player_widget.dart';
 
 /// Video Media Section für Details Screen
 ///
@@ -61,6 +60,10 @@ class DetailsVideoMediaSection extends StatelessWidget {
   final VoidCallback onDeleteConfirm;
   final ValueChanged<String> onTrashIconTap; // (url) => { setState... }
 
+  // Trim Callbacks (optional)
+  final VoidCallback? onTrimHeroVideo;
+  final ValueChanged<String>? onTrimVideo;
+
   // Video Controller Helper
   final Future<VideoPlayerController?> Function(String url)
   videoControllerForThumb;
@@ -82,6 +85,8 @@ class DetailsVideoMediaSection extends StatelessWidget {
     required this.onDeleteConfirm,
     required this.onTrashIconTap,
     required this.videoControllerForThumb,
+    this.onTrimHeroVideo,
+    this.onTrimVideo,
   });
 
   @override
@@ -92,22 +97,15 @@ class DetailsVideoMediaSection extends StatelessWidget {
       child: LayoutBuilder(
         builder: (ctx, cons) {
           const double spacing = 16.0;
-          const double minThumbWidth = 120.0;
           const double gridSpacing = 12.0;
           const double navBtnH = 40.0;
-          final double minNavWidth = (navBtnH * 3) + (8 * 2);
-          final double minRightWidth = (2 * minThumbWidth) + gridSpacing;
-          double leftW = cons.maxWidth - spacing - minRightWidth;
-          if (leftW > 148) leftW = 148;
-          if (leftW < minNavWidth) {
-            leftW = minNavWidth;
-          }
-          final double leftH = leftW * (16 / 9);
-          final double totalH = leftH;
-          final double rowWidth = leftW + spacing + leftW;
+          // MASTER: Image-Größe (wie in details_image_media_section.dart)
+          const double leftH = 223.0;
+          final double leftW = leftH * (9 / 16);
+          const double totalH = leftH;
 
           return SizedBox(
-            width: rowWidth,
+            width: cons.maxWidth, // Volle Breite nutzen wie bei Images
             height: totalH,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -122,76 +120,213 @@ class DetailsVideoMediaSection extends StatelessWidget {
                       child: Container(
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          color: Colors.black.withValues(alpha: 0.05),
+                          gradient: const LinearGradient(
+                            colors: [
+                              Color(0xFFE91E63),
+                              AppColors.lightBlue,
+                              Color(0xFF00E5FF),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
                         ),
-                        clipBehavior: Clip.hardEdge,
-                        child: Stack(
+                        padding: const EdgeInsets.all(2),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            color: Colors.black.withValues(alpha: 0.05),
+                          ),
                           clipBehavior: Clip.hardEdge,
-                          children: [
-                            if (inlineVideoController != null)
-                              Positioned.fill(
-                                child: VideoPlayerWidget(
-                                  controller: inlineVideoController!,
+                          child: Stack(
+                            clipBehavior: Clip.hardEdge,
+                            children: [
+                              // Video (gecroppt auf Container-Größe)
+                              if (inlineVideoController != null)
+                                Positioned.fill(
+                                  child: ClipRect(
+                                    child: FittedBox(
+                                      fit: BoxFit.cover,
+                                      alignment: Alignment.center,
+                                      child: SizedBox(
+                                        width: inlineVideoController!
+                                            .value
+                                            .size
+                                            .width,
+                                        height: inlineVideoController!
+                                            .value
+                                            .size
+                                            .height,
+                                        child: VideoPlayer(
+                                          inlineVideoController!,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            if (inlineVideoController == null)
-                              Positioned.fill(
-                                child: Builder(
-                                  builder: (context) {
-                                    final hero = getHeroVideoUrl();
-                                    return GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      onTap: () {
-                                        if ((hero ?? '').isNotEmpty) {
-                                          playNetworkInline(hero!);
-                                        }
-                                      },
-                                      child: (hero == null)
-                                          ? Container(
-                                              color: Colors.black26,
-                                              child: const Icon(
-                                                Icons.play_arrow,
-                                                color: Colors.white54,
-                                                size: 48,
-                                              ),
-                                            )
-                                          : AspectRatio(
-                                              aspectRatio: 9 / 16,
-                                              child: FutureBuilder<Uint8List?>(
-                                                future: thumbnailForRemote(
-                                                  hero,
-                                                ),
-                                                builder: (context, snapshot) {
-                                                  if (snapshot.hasData &&
-                                                      snapshot.data != null) {
-                                                    return Image.memory(
-                                                      snapshot.data!,
-                                                      fit: BoxFit.cover,
+                              // Controls (Overlay, NICHT gecroppt)
+                              if (inlineVideoController != null)
+                                Positioned.fill(
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      if (inlineVideoController!
+                                          .value
+                                          .isPlaying) {
+                                        inlineVideoController!.pause();
+                                      } else {
+                                        inlineVideoController!.play();
+                                      }
+                                    },
+                                    child: Container(
+                                      color: Colors.transparent,
+                                      child: Stack(
+                                        children: [
+                                          // Play/Pause Icon in der Mitte (50% kleiner)
+                                          Center(
+                                            child: ValueListenableBuilder(
+                                              valueListenable:
+                                                  inlineVideoController!,
+                                              builder:
+                                                  (
+                                                    context,
+                                                    VideoPlayerValue value,
+                                                    child,
+                                                  ) {
+                                                    return MouseRegion(
+                                                      cursor: SystemMouseCursors
+                                                          .click,
+                                                      child: Container(
+                                                        width: 24,
+                                                        height: 24,
+                                                        decoration:
+                                                            BoxDecoration(
+                                                              color: Colors
+                                                                  .black54,
+                                                              shape: BoxShape
+                                                                  .circle,
+                                                            ),
+                                                        child: Icon(
+                                                          value.isPlaying
+                                                              ? Icons.pause
+                                                              : Icons
+                                                                    .play_arrow,
+                                                          color: Colors.white,
+                                                          size: 16,
+                                                        ),
+                                                      ),
                                                     );
-                                                  }
-                                                  return Container(
-                                                    color: Colors.black26,
-                                                    child: const Icon(
-                                                      Icons.play_circle_outline,
-                                                      color: Colors.white70,
-                                                      size: 64,
-                                                    ),
-                                                  );
-                                                },
-                                              ),
+                                                  },
                                             ),
-                                    );
-                                  },
+                                          ),
+                                          // Zeitanzeige unten rechts (läuft hoch)
+                                          Positioned(
+                                            right: 8,
+                                            bottom: 8,
+                                            child: ValueListenableBuilder(
+                                              valueListenable:
+                                                  inlineVideoController!,
+                                              builder:
+                                                  (
+                                                    context,
+                                                    VideoPlayerValue value,
+                                                    child,
+                                                  ) {
+                                                    return Container(
+                                                      width: 50,
+                                                      padding:
+                                                          const EdgeInsets.symmetric(
+                                                            horizontal: 6,
+                                                            vertical: 4,
+                                                          ),
+                                                      decoration: BoxDecoration(
+                                                        color: Colors.black54,
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              4,
+                                                            ),
+                                                      ),
+                                                      child: Center(
+                                                        child: Text(
+                                                          _formatDuration(
+                                                            value.position,
+                                                          ),
+                                                          style: const TextStyle(
+                                                            color: Colors.white,
+                                                            fontSize: 11,
+                                                            fontFeatures: [
+                                                              FontFeature.tabularFigures(),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    );
+                                                  },
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ),
-                              ),
-                          ],
+                              if (inlineVideoController == null)
+                                Positioned.fill(
+                                  child: Builder(
+                                    builder: (context) {
+                                      final hero = getHeroVideoUrl();
+                                      return GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () {
+                                          if ((hero ?? '').isNotEmpty) {
+                                            playNetworkInline(hero!);
+                                          }
+                                        },
+                                        child: (hero == null)
+                                            ? Container(
+                                                color: Colors.black26,
+                                                child: const Icon(
+                                                  Icons.play_arrow,
+                                                  color: Colors.white54,
+                                                  size: 48,
+                                                ),
+                                              )
+                                            : AspectRatio(
+                                                aspectRatio: 9 / 16,
+                                                child: FutureBuilder<Uint8List?>(
+                                                  future: thumbnailForRemote(
+                                                    hero,
+                                                  ),
+                                                  builder: (context, snapshot) {
+                                                    if (snapshot.hasData &&
+                                                        snapshot.data != null) {
+                                                      return Image.memory(
+                                                        snapshot.data!,
+                                                        fit: BoxFit.cover,
+                                                      );
+                                                    }
+                                                    return Container(
+                                                      color: Colors.black26,
+                                                      child: const Icon(
+                                                        Icons
+                                                            .play_circle_outline,
+                                                        color: Colors.white70,
+                                                        size: 64,
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                      );
+                                    },
+                                  ),
+                                ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(width: spacing),
-                // Galerie (max. 15)
+                // Galerie (max. 15) - EXAKT wie bei Images
                 Expanded(
                   child: Stack(
                     clipBehavior: Clip.none,
@@ -201,24 +336,61 @@ class DetailsVideoMediaSection extends StatelessWidget {
                         right: 0,
                         bottom: 0,
                         child: SizedBox(
-                          height: leftH,
-                          child: ListView.separated(
+                          height: totalH,
+                          child: ListView.builder(
                             scrollDirection: Axis.horizontal,
                             itemCount: remoteFour.length.clamp(0, 15),
-                            separatorBuilder: (context, index) =>
-                                const SizedBox(width: gridSpacing),
                             itemBuilder: (context, index) {
                               final url = remoteFour[index];
-                              final thumbH = leftH;
-                              final thumbW = thumbH / 16 * 9;
-                              return SizedBox(
-                                width: thumbW,
-                                height: thumbH,
-                                child: _buildVideoTile(
-                                  context,
-                                  url,
-                                  thumbW,
-                                  thumbH,
+                              final heroUrl = getHeroVideoUrl();
+                              final isHero = heroUrl != null && url == heroUrl;
+
+                              // Dynamische Größe EXAKT wie bei Images
+                              const double nameHeight = 30.0;
+                              final double tileImageHeight = leftH - nameHeight;
+                              final double tileWidth =
+                                  tileImageHeight * (9 / 16);
+
+                              // Dateiname extrahieren (wie bei Images)
+                              String videoName = url.split('/').last;
+                              if (videoName.contains('?')) {
+                                videoName = videoName.split('?').first;
+                              }
+                              if (videoName.length > 20) {
+                                videoName = '${videoName.substring(0, 17)}...';
+                              }
+
+                              return Container(
+                                width: tileWidth,
+                                height: leftH,
+                                margin: EdgeInsets.only(
+                                  right: index < remoteFour.length - 1
+                                      ? gridSpacing
+                                      : 0,
+                                ),
+                                child: Column(
+                                  children: [
+                                    Expanded(
+                                      child: _buildVideoTile(
+                                        context,
+                                        url,
+                                        tileWidth,
+                                        tileImageHeight,
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      height: nameHeight,
+                                      child: Center(
+                                        child: Text(
+                                          videoName,
+                                          style: const TextStyle(fontSize: 11),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               );
                             },
@@ -364,6 +536,122 @@ class DetailsVideoMediaSection extends StatelessWidget {
   }) {
     final selected = selectedRemoteVideos.contains(url);
 
+    // Hero-Video bekommt GMBC Gradient Border
+    if (isHero) {
+      return AspectRatio(
+        aspectRatio: 9 / 16,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: const LinearGradient(
+              colors: [
+                Color(0xFFE91E63),
+                AppColors.lightBlue,
+                Color(0xFF00E5FF),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+          padding: const EdgeInsets.all(2),
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: Colors.black.withValues(alpha: 0.4),
+            ),
+            clipBehavior: Clip.hardEdge,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                FutureBuilder<VideoPlayerController?>(
+                  future: videoControllerForThumb(url),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.done &&
+                        snapshot.hasData &&
+                        snapshot.data != null) {
+                      final controller = snapshot.data!;
+                      if (controller.value.isInitialized) {
+                        return FittedBox(
+                          fit: BoxFit.cover,
+                          child: SizedBox(
+                            width: controller.value.size.width,
+                            height: controller.value.size.height,
+                            child: VideoPlayer(controller),
+                          ),
+                        );
+                      }
+                    }
+                    return Container(color: Colors.black26);
+                  },
+                ),
+                // Trash Icon (unten rechts)
+                Positioned(
+                  right: 6,
+                  bottom: 6,
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      onTap: () => onTrashIconTap(url),
+                      child: Container(
+                        width: 32,
+                        height: 32,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: selected ? null : const Color(0x30000000),
+                          gradient: selected
+                              ? Theme.of(
+                                  context,
+                                ).extension<AppGradients>()!.magentaBlue
+                              : null,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: selected
+                                ? AppColors.lightBlue.withValues(alpha: 0.7)
+                                : const Color(0x66FFFFFF),
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.delete_outline,
+                          color: Colors.white,
+                          size: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Trim Icon (unten links) - NUR für Hero-Video in Galerie
+                if (onTrimVideo != null)
+                  Positioned(
+                    left: 6,
+                    bottom: 6,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => onTrimVideo!(url),
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0x30000000),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: const Color(0x66FFFFFF)),
+                          ),
+                          child: const Icon(
+                            Icons.content_cut,
+                            color: Colors.white,
+                            size: 16,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Normale Videos OHNE GMBC Border
     return AspectRatio(
       aspectRatio: 9 / 16,
       child: Container(
@@ -447,5 +735,13 @@ class DetailsVideoMediaSection extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Format Duration für Video-Timer (mm:ss)
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = duration.inMinutes.remainder(60);
+    final seconds = duration.inSeconds.remainder(60);
+    return '${twoDigits(minutes)}:${twoDigits(seconds)}';
   }
 }

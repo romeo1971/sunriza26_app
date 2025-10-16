@@ -199,8 +199,8 @@ class DynamicsExpansionTile extends StatelessWidget {
                 dynamicsName: name,
                 dynamicsIcon: icon,
                 dynamicsData: data,
-                selectedVideoUrl:
-                    heroVideoUrl, // Für jetzt: alle nutzen Hero-Video
+                selectedVideoUrl: hasHeroVideo ? heroVideoUrl : null,
+                heroVideoTooLong: heroVideoTooLong,
                 isGenerating: generatingDynamics.contains(id),
                 timeRemaining: dynamicsTimeRemaining[id] ?? 0,
                 drivingMultiplier: drivingMultipliers[id] ?? 0.41,
@@ -216,7 +216,9 @@ class DynamicsExpansionTile extends StatelessWidget {
                 onFlagNormalizeLipChanged: (v) =>
                     onFlagNormalizeLipChanged(id, v),
                 onFlagPastebackChanged: (v) => onFlagPastebackChanged(id, v),
-                onGenerate: () => onGenerate(id),
+                onGenerate: () {
+                  if (hasHeroVideo && !heroVideoTooLong) onGenerate(id);
+                },
                 onCancelGeneration: () => onCancelGeneration(id),
                 onSelectVideo: onSelectVideo != null
                     ? () => onSelectVideo!(id)

@@ -309,6 +309,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     } catch (_) {}
   }
 
+  // Cache-Buster für Storage-URLs, um harte Caches (Safari/CDN) zu umgehen
+  String _addCacheBuster(String? url) {
+    if (url == null || url.isEmpty) return url ?? '';
+    final hasQuery = url.contains('?');
+    final sep = hasQuery ? '&' : '?';
+    return '$url${sep}v=${DateTime.now().millisecondsSinceEpoch}';
+  }
+
   StreamSubscription<DocumentSnapshot>? _avatarSub;
 
   void _startAvatarListener(String avatarId) {
@@ -427,12 +435,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         return;
       }
 
-      // URLs aus Firebase Storage
-      final idleUrl = basicDynamics['idleVideoUrl'] as String?;
-      final atlasUrl = basicDynamics['atlasUrl'] as String?;
-      final maskUrl = basicDynamics['maskUrl'] as String?;
-      final atlasJsonUrl = basicDynamics['atlasJsonUrl'] as String?;
-      final roiJsonUrl = basicDynamics['roiJsonUrl'] as String?;
+      // URLs aus Firebase Storage (+ Cache-Buster)
+      final idleUrl = _addCacheBuster(basicDynamics['idleVideoUrl'] as String?);
+      final atlasUrl = _addCacheBuster(basicDynamics['atlasUrl'] as String?);
+      final maskUrl = _addCacheBuster(basicDynamics['maskUrl'] as String?);
+      final atlasJsonUrl = _addCacheBuster(
+        basicDynamics['atlasJsonUrl'] as String?,
+      );
+      final roiJsonUrl = _addCacheBuster(
+        basicDynamics['roiJsonUrl'] as String?,
+      );
 
       if (idleUrl == null || atlasUrl == null || maskUrl == null) {
         debugPrint(
@@ -446,6 +458,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       // Video von Firebase Storage
       _idleController = VideoPlayerController.networkUrl(Uri.parse(idleUrl));
       await _idleController!.initialize();
+      await _idleController!.seekTo(Duration.zero);
       _idleController!.setLooping(true);
       _idleController!.play();
 
@@ -465,7 +478,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       Map<String, dynamic> atlasMapParsed;
       Map<String, dynamic> roiMapParsed;
 
-      if (atlasJsonUrl != null && roiJsonUrl != null) {
+      if (atlasJsonUrl.isNotEmpty && roiJsonUrl.isNotEmpty) {
         // JSON-Dateien von Firebase Storage laden
         final atlasJsonRes = await http.get(Uri.parse(atlasJsonUrl));
         final roiJsonRes = await http.get(Uri.parse(roiJsonUrl));

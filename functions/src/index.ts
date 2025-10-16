@@ -1903,6 +1903,77 @@ export const extractVideoFrameAtPosition = functions
     });
   });
 
+// HTTP Function: Video-Trimming
+export const trimVideo = functions
+  .runWith({ timeoutSeconds: 180, memory: '2GB' })
+  .https.onRequest(async (req, res) => {
+    const corsHandler = cors({ origin: true });
+    corsHandler(req, res, async () => {
+      try {
+        const { video_url, start_time, end_time } = req.body;
+        
+        if (!video_url || start_time === undefined || end_time === undefined) {
+          res.status(400).json({ 
+            error: 'Missing required parameters: video_url, start_time, end_time' 
+          });
+          return;
+        }
+
+        console.log(`✂️ Trimme Video: ${start_time}s bis ${end_time}s`);
+
+        // Download Video
+        if (ffmpegPath) (ffmpeg as any).setFfmpegPath(ffmpegPath);
+        const tmpDir = os.tmpdir();
+        const random = Math.random().toString(36).substring(7);
+        const src = path.join(tmpDir, `input_${random}.mp4`);
+        const output = path.join(tmpDir, `trimmed_${random}.mp4`);
+
+        const videoRes = await (fetch as any)(video_url);
+        if (!(videoRes as any).ok) {
+          throw new Error(`Video download failed: ${(videoRes as any).status}`);
+        }
+        const buf = Buffer.from(await (videoRes as any).arrayBuffer());
+        fs.writeFileSync(src, buf);
+
+        // Video mit ffmpeg trimmen (SCHNELL: Stream Copy ohne Re-Encoding!)
+        const duration = end_time - start_time;
+        await new Promise<void>((resolve, reject) => {
+          (ffmpeg as any)(src)
+            .on('end', () => {
+              console.log(`✅ Video getrimmt: ${duration}s`);
+              resolve();
+            })
+            .on('error', (e: any) => {
+              console.error(`❌ FFmpeg Fehler:`, e);
+              reject(e);
+            })
+            .seekInput(start_time)
+            .duration(duration)
+            .videoCodec('copy')  // STREAM COPY = SUPER SCHNELL!
+            .audioCodec('copy')  // STREAM COPY = SUPER SCHNELL!
+            .output(output)
+            .run();
+        });
+
+        // Getrimmtes Video zurückgeben
+        const trimmedBuffer = fs.readFileSync(output);
+        
+        // Cleanup
+        try { fs.unlinkSync(src); } catch {}
+        try { fs.unlinkSync(output); } catch {}
+
+        res.status(200)
+          .set('Content-Type', 'video/mp4')
+          .set('Content-Disposition', 'attachment; filename="trimmed_video.mp4"')
+          .send(trimmedBuffer);
+
+      } catch (e: any) {
+        console.error(`❌ Video-Trimming Fehler:`, e);
+        res.status(500).json({ error: e.message });
+      }
+    });
+  });
+
 // HTTP Function: Generiere Thumbnails für alle Videos ohne thumbUrl
 export const generateMissingVideoThumbs = functions
   .runWith({ timeoutSeconds: 540, memory: '2GB' })
