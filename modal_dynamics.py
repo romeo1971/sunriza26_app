@@ -22,6 +22,9 @@ FFPROBE_BIN = '/usr/local/bin/ffprobe' if os.path.exists('/usr/local/bin/ffprobe
 # Modal App
 app = modal.App("sunriza-dynamics")
 
+# TensorRT Cache Volume (persistent für alle Requests!)
+tensorrt_cache = modal.Volume.from_name("tensorrt-engine-cache", create_if_missing=True)
+
 # Docker Image mit GPU Support - NVIDIA CUDA 12.6 Base Image für neueste onnxruntime-gpu!
 # FORCE REBUILD v9: 2025-10-16-09:26 - FFmpeg 8.0 REQUIRED for xfade!
 image = (
@@ -61,6 +64,7 @@ image = (
     gpu="T4",
     timeout=600,
     secrets=[modal.Secret.from_name("firebase-credentials")],
+    volumes={"/tensorrt_cache": tensorrt_cache},  # TensorRT Cache persistent mounten
 )
 def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     """
@@ -239,10 +243,15 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     env['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
     # ONNX Runtime GPU forcieren (wichtig für LivePortrait!)
     env['CUDA_VISIBLE_DEVICES'] = '0'  # GPU 0 nutzen
+    # TensorRT Engine Caching (KRITISCH für Speed!)
+    engine_cache_dir = '/tensorrt_cache'  # Persistent Modal Volume!
+    os.makedirs(engine_cache_dir, exist_ok=True)
     env['ORT_TENSORRT_ENGINE_CACHE_ENABLE'] = '1'  # TensorRT Cache aktivieren
+    env['ORT_TENSORRT_CACHE_PATH'] = engine_cache_dir  # Cache-Pfad setzen
     env['ORT_TENSORRT_FP16_ENABLE'] = '1'  # FP16 für TensorRT (schneller!)
     # TensorRT als primären Provider forcieren (falls verfügbar)
     env['ORT_TENSORRT_MAX_WORKSPACE_SIZE'] = '2147483648'  # 2GB TensorRT Workspace
+    env['ORT_TENSORRT_MIN_SUBGRAPH_SIZE'] = '1'  # Nutze TensorRT auch für kleine Subgraphs
     
     # EXAKT wie lokaler Test: OHNE cwd, OHNE check, nur capture_output=False!
     print(f"🧩 LP-Parameter (normalisiert): {norm}")
@@ -506,6 +515,9 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     })
     
     print(f"🎉 Dynamics '{dynamics_id}' erfolgreich generiert!")
+    
+    # TensorRT Cache persistent speichern
+    tensorrt_cache.commit()
     
     return {
         'status': 'success',  # Flutter erwartet 'success'!
