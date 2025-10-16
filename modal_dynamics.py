@@ -240,6 +240,9 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     # ONNX Runtime GPU forcieren (wichtig für LivePortrait!)
     env['CUDA_VISIBLE_DEVICES'] = '0'  # GPU 0 nutzen
     env['ORT_TENSORRT_ENGINE_CACHE_ENABLE'] = '1'  # TensorRT Cache aktivieren
+    env['ORT_TENSORRT_FP16_ENABLE'] = '1'  # FP16 für TensorRT (schneller!)
+    # TensorRT als primären Provider forcieren (falls verfügbar)
+    env['ORT_TENSORRT_MAX_WORKSPACE_SIZE'] = '2147483648'  # 2GB TensorRT Workspace
     
     # EXAKT wie lokaler Test: OHNE cwd, OHNE check, nur capture_output=False!
     print(f"🧩 LP-Parameter (normalisiert): {norm}")
