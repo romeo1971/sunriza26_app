@@ -168,16 +168,19 @@ class StreamingStrategy implements LipsyncStrategy {
   }
 
   @override
+  Future<void> warmUp() async {
+    // Stelle sicher, dass die WS einmal aufgebaut ist (kaltstart vermeiden)
+    if (_channel == null && !_isConnecting) {
+      await _connect();
+    }
+  }
+
+  @override
   Future<void> speak(String text, String voiceId) async {
     // Sicherstellen: vorherige Wiedergabe stoppen, sonst startet 2. Audio nicht
     await _audioPlayer?.stop();
     _playbackStarted = false;
     _bytesAccumulated = 0;
-
-    // Vorherigen Stream serverseitig stoppen (verhindert Übersprechen)
-    try {
-      _channel?.sink.add(jsonEncode({'type': 'stop'}));
-    } catch (_) {}
     // Lazy connect on focus/input (deine Anweisung!)
     if (_channel == null && !_isConnecting) {
       await _connect();
@@ -233,7 +236,8 @@ class StreamingStrategy implements LipsyncStrategy {
     _currentSource!.addChunk(audioBytes);
 
     // Start erst, wenn genügend Daten gepuffert sind (verhindert -11800)
-    const int minStartBytes = 16 * 1024; // ~16 KB
+    const int minStartBytes =
+        8 * 1024; // ~8 KB – kurze Grüße starten zuverlässig
     if (!_playbackStarted && _bytesAccumulated >= minStartBytes) {
       _playbackStarted = true;
       _startPlayback();
@@ -308,6 +312,12 @@ class StreamingStrategy implements LipsyncStrategy {
     // ignore: avoid_print
     print('✅ Stream done ($_chunkCount chunks)');
 
+    // Falls noch nicht gestartet (sehr kurz), jetzt einmal anstoßen
+    if (!_playbackStarted && _bytesAccumulated > 0) {
+      _playbackStarted = true;
+      _startPlayback();
+    }
+
     // Stream als komplett markieren
     _currentSource?.complete();
 
@@ -318,9 +328,13 @@ class StreamingStrategy implements LipsyncStrategy {
   }
 
   @override
-  void stop() {
-    _channel?.sink.add(jsonEncode({'type': 'stop'}));
-    _audioPlayer?.stop();
+  Future<void> stop() async {
+    try {
+      _channel?.sink.add(jsonEncode({'type': 'stop'}));
+    } catch (_) {}
+    try {
+      await _audioPlayer?.stop();
+    } catch (_) {}
     _currentSource?.complete();
     _chunkCount = 0;
     _bytesAccumulated = 0;

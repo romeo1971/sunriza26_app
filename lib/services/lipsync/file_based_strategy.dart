@@ -26,8 +26,13 @@ class FileBasedStrategy implements LipsyncStrategy {
   }
 
   @override
-  void stop() {
-    _player.stop();
+  Future<void> stop() async {
+    await _player.stop();
+  }
+
+  @override
+  Future<void> warmUp() async {
+    // File-basiert: kein Warm-up nötig
   }
 
   @override

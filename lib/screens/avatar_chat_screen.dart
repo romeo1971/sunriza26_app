@@ -402,12 +402,23 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
       // Weiter mit Loading + Greeting
       if (_avatarData != null) {
-        // VoiceId ist BEREITS in _avatarData!
+        // VoiceId robust ermitteln (alle möglichen Felder)
         _cachedVoiceId =
-            _avatarData?.training?['voice']?['elevenVoiceId'] as String?;
+            (_avatarData?.training?['voice']?['elevenVoiceId'] as String?) ??
+            (_avatarData?.training?['voice']?['cloneVoiceId'] as String?) ??
+            (_avatarData?.training?['elevenVoiceId'] as String?) ??
+            (_avatarData?.training?['cloneVoiceId'] as String?);
         debugPrint(
           '✅ VoiceId from _avatarData: ${_cachedVoiceId?.substring(0, 8) ?? "NULL"}...',
         );
+
+        // Falls noch NULL: sofort aus User-Firestore nachladen
+        if (_cachedVoiceId == null || _cachedVoiceId!.isEmpty) {
+          _cachedVoiceId = await _reloadVoiceIdFromFirestore();
+          debugPrint(
+            '🔁 VoiceId reloaded: ${_cachedVoiceId?.substring(0, 8) ?? "NULL"}...',
+          );
+        }
 
         // Precache Hero-Image für nahtlosen Übergang
         final heroUrl = _avatarData?.avatarImageUrl;
@@ -416,6 +427,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         }
 
         await _loadPartnerName();
+        // Lipsync warm-up: WS vor der Begrüßung initialisieren (verhindert Stille bei 1. Audio)
+        try {
+          await _lipsync.warmUp();
+        } catch (_) {}
         final manual = (dotenv.env['LIVEKIT_MANUAL_START'] ?? '').trim() == '1';
         if (!manual) {
           await _maybeJoinLiveKit();
@@ -1422,6 +1437,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   Future<void> _sendMessage() async {
     if (_messageController.text.trim().isNotEmpty) {
+      // Aktuellen Stream sauber beenden, nur bei explizitem Senden
+      try {
+        await _lipsync.stop();
+      } catch (_) {}
+
       final text = _messageController.text.trim();
       // Direkte Beantwortung: "Weißt du, wer ich bin?"
       final whoAmI = RegExp(

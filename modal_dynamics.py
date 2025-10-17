@@ -406,63 +406,8 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     print(f"     NACH Upload zu Firebase: {final_debug.size / 1024 / 1024:.2f} MB")
     print(f"     🌐 URL: {final_url_dbg}")
     
-    # 8. Generiere Atlas/Mask/ROI für Lippen-Sync (NÖTIG für Flutter Chat!)
-    print(f"🎨 Generiere Atlas/Mask/ROI...")
-    
-    from PIL import Image, ImageFilter, ImageDraw
-    import math
-    
-    # Hero-Image laden
-    hero_img = Image.open(hero_image_path).convert("RGB")
-    W, H = hero_img.size
-    
-    # ROI berechnen (Mund-Region)
-    w = int(W * 0.32)
-    h = int(H * 0.18)
-    x = int(W * 0.34)
-    y = int(H * 0.68)
-    roi = {'x': x, 'y': y, 'w': w, 'h': h}
-    
-    # Maske mit Feathering erstellen
-    mask_img = Image.new('L', (w, h), 0)
-    mask_draw = ImageDraw.Draw(mask_img)
-    mask_draw.rounded_rectangle((0, 0, w-1, h-1), radius=int(min(w, h) * 0.12), fill=255)
-    mask_img = mask_img.filter(ImageFilter.GaussianBlur(radius=12))
-    
-    # Atlas erstellen (Viseme-Zellen)
-    visemes = ["Rest", "AI", "E", "U", "O", "MBP", "FV", "L", "WQ", "R", "CH", "TH"]
-    mouth = hero_img.crop((x, y, x+w, y+h)).convert("RGBA")
-    cols = rows = int(math.ceil(math.sqrt(len(visemes))))
-    cell_w, cell_h = w, h
-    atlas_img = Image.new("RGBA", (cell_w * cols, cell_h * rows), (0, 0, 0, 0))
-    cells = {}
-    
-    for idx, name in enumerate(visemes):
-        cx, cy = idx % cols, idx // cols
-        atlas_img.paste(mouth, (cx * cell_w, cy * cell_h))
-        cells[name] = {"x": cx * cell_w, "y": cy * cell_h, "w": cell_w, "h": cell_h}
-    
-    atlas_meta = {
-        "grid": {"cols": cols, "rows": rows},
-        "classes": visemes,
-        "cells": cells,
-        "mask": "mask.png",
-        "roi": roi
-    }
-    
-    # Assets speichern
-    atlas_path = f'/tmp/{avatar_id}_atlas.png'
-    mask_path = f'/tmp/{avatar_id}_mask.png'
-    atlas_json_path = f'/tmp/{avatar_id}_atlas.json'
-    roi_json_path = f'/tmp/{avatar_id}_roi.json'
-    
-    atlas_img.save(atlas_path)
-    mask_img.save(mask_path)
-    
-    with open(atlas_json_path, 'w') as f:
-        json.dump(atlas_meta, f, indent=2)
-    with open(roi_json_path, 'w') as f:
-        json.dump(roi, f, indent=2)
+    # 8. (OBSOLET) Atlas/Mask/ROI – deaktiviert
+    print("🎨 Atlas/Mask/ROI: übersprungen (LivePortrait-Overlay nicht mehr genutzt)")
     
     # 9. ALLE Assets zu Firebase Storage hochladen
     print(f"📤 Uploading ALLE Assets zu Firebase Storage...")
@@ -475,37 +420,7 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     idle_blob.patch()
     idle_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{idle_blob.name.replace('/', '%2F')}?alt=media&token={idle_token}"
     
-    # atlas.png
-    atlas_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/atlas.png")
-    atlas_token = str(uuid.uuid4())
-    atlas_blob.metadata = {'firebaseStorageDownloadTokens': atlas_token}
-    atlas_blob.upload_from_filename(atlas_path, content_type='image/png')
-    atlas_blob.patch()
-    atlas_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{atlas_blob.name.replace('/', '%2F')}?alt=media&token={atlas_token}"
-    
-    # mask.png
-    mask_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/mask.png")
-    mask_token = str(uuid.uuid4())
-    mask_blob.metadata = {'firebaseStorageDownloadTokens': mask_token}
-    mask_blob.upload_from_filename(mask_path, content_type='image/png')
-    mask_blob.patch()
-    mask_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{mask_blob.name.replace('/', '%2F')}?alt=media&token={mask_token}"
-    
-    # atlas.json
-    atlas_json_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/atlas.json")
-    atlas_json_token = str(uuid.uuid4())
-    atlas_json_blob.metadata = {'firebaseStorageDownloadTokens': atlas_json_token}
-    atlas_json_blob.upload_from_filename(atlas_json_path, content_type='application/json')
-    atlas_json_blob.patch()
-    atlas_json_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{atlas_json_blob.name.replace('/', '%2F')}?alt=media&token={atlas_json_token}"
-    
-    # roi.json
-    roi_json_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/roi.json")
-    roi_json_token = str(uuid.uuid4())
-    roi_json_blob.metadata = {'firebaseStorageDownloadTokens': roi_json_token}
-    roi_json_blob.upload_from_filename(roi_json_path, content_type='application/json')
-    roi_json_blob.patch()
-    roi_json_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{roi_json_blob.name.replace('/', '%2F')}?alt=media&token={roi_json_token}"
+    # (keine Uploads von atlas/mask/roi)
     
     print(f"✅ Uploaded ALLE Assets!")
     
@@ -514,10 +429,6 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     
     dynamics_data = {
         'idleVideoUrl': idle_url,
-        'atlasUrl': atlas_url,
-        'maskUrl': mask_url,
-        'atlasJsonUrl': atlas_json_url,
-        'roiJsonUrl': roi_json_url,
         'parameters': parameters,
         'generatedAt': datetime.utcnow(),
         'status': 'ready'

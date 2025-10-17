@@ -6306,13 +6306,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // Persistiere Änderungen sofort (Storage + Firestore)
     // WICHTIG: imageUrls, videoUrls, heroVideoUrl UND textFileUrls müssen aktualisiert werden!
     final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
-    if (newHeroVideoUrl != null) {
+    // WICHTIG: heroVideoUrl NIEMALS beim Speichern löschen!
+    final currentHeroVideo = _getHeroVideoUrl();
+    if (newHeroVideoUrl != null && newHeroVideoUrl.isNotEmpty) {
       tr['heroVideoUrl'] = newHeroVideoUrl;
       debugPrint('🎬 Training: heroVideoUrl wird gesetzt auf $newHeroVideoUrl');
-    } else {
-      // newHeroVideoUrl ist null → heroVideoUrl muss gelöscht werden
-      tr.remove('heroVideoUrl');
-      debugPrint('🎬 Training: heroVideoUrl wird entfernt');
+    } else if (currentHeroVideo != null && currentHeroVideo.isNotEmpty) {
+      // Behalte bestehenden Wert unangetastet
+      tr['heroVideoUrl'] = currentHeroVideo;
+      debugPrint('🎬 Training: heroVideoUrl unverändert belassen');
     }
 
     final updated = _avatarData!.copyWith(
@@ -7795,26 +7797,49 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
 
     if (newVideoUrl != null) {
-      // Neues Video zur Liste hinzufügen
+      // Ersetze NUR das getrimmte Video – gleiche Position beibehalten
+      final oldIdx = _videoUrls.indexOf(videoUrl);
       setState(() {
-        if (!_videoUrls.contains(newVideoUrl)) {
+        if (oldIdx >= 0) {
+          _videoUrls[oldIdx] = newVideoUrl;
+        } else {
+          // Fallback: falls nicht gefunden, vorn einfügen
           _videoUrls.insert(0, newVideoUrl);
         }
       });
 
-      // Lösche altes Video
+      // Altes Video in Storage löschen (best effort)
       await VideoTrimService.deleteVideo(
         avatarId: _avatarData!.id,
         videoUrl: videoUrl,
       );
 
-      // Altes Video aus Liste entfernen
-      setState(() {
-        _videoUrls.remove(videoUrl);
-      });
-
-      // Persistieren
-      await _persistTextFileUrls();
+      // Persistiere atomar: altes raus, neues rein
+      try {
+        final ref = FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(_avatarData!.id);
+        final batch = FirebaseFirestore.instance.batch();
+        batch.update(ref, {
+          'videoUrls': FieldValue.arrayRemove([videoUrl]),
+        });
+        batch.update(ref, {
+          'videoUrls': FieldValue.arrayUnion([newVideoUrl]),
+          'updatedAt': DateTime.now().millisecondsSinceEpoch,
+        });
+        await batch.commit();
+        // Lokal spiegeln
+        setState(() {
+          _avatarData = _avatarData!.copyWith(
+            videoUrls: List<String>.from(_videoUrls),
+            updatedAt: DateTime.now(),
+          );
+        });
+      } catch (e) {
+        debugPrint(
+          '❌ Firestore-Update videoUrls (normal trim) fehlgeschlagen: $e',
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -7986,8 +8011,31 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         _videoUrls.remove(videoUrl);
       });
 
-      // Persistiere finale Video-Liste
-      await _persistTextFileUrls();
+      // Persistiere NUR videoUrls und heroVideoUrl gezielt (kein Whole-Object)
+      try {
+        await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(_avatarData!.id)
+            .update({
+              'videoUrls': _videoUrls,
+              'training.heroVideoUrl': newVideoUrl,
+              'updatedAt': DateTime.now().millisecondsSinceEpoch,
+            });
+        // Lokal in _avatarData widerspiegeln
+        setState(() {
+          final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
+          tr['heroVideoUrl'] = newVideoUrl;
+          _avatarData = _avatarData!.copyWith(
+            videoUrls: List<String>.from(_videoUrls),
+            training: tr,
+            updatedAt: DateTime.now(),
+          );
+        });
+      } catch (e) {
+        debugPrint(
+          '❌ Firestore-Update videoUrls/heroVideoUrl fehlgeschlagen: $e',
+        );
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

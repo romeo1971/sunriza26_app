@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class AvatarData {
   final String id;
   final String userId;
@@ -60,6 +62,17 @@ class AvatarData {
   });
 
   // Factory constructor für Firestore
+  static DateTime _toDate(dynamic v) {
+    if (v == null) return DateTime.fromMillisecondsSinceEpoch(0);
+    if (v is int) return DateTime.fromMillisecondsSinceEpoch(v);
+    if (v is Timestamp) return v.toDate();
+    if (v is String) {
+      final parsed = DateTime.tryParse(v);
+      if (parsed != null) return parsed;
+    }
+    return DateTime.fromMillisecondsSinceEpoch(0);
+  }
+
   factory AvatarData.fromMap(Map<String, dynamic> map) {
     return AvatarData(
       id: map['id'] ?? '',
@@ -67,12 +80,8 @@ class AvatarData {
       firstName: map['firstName'] ?? '',
       nickname: map['nickname'],
       lastName: map['lastName'],
-      birthDate: map['birthDate'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['birthDate'])
-          : null,
-      deathDate: map['deathDate'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['deathDate'])
-          : null,
+      birthDate: map['birthDate'] != null ? _toDate(map['birthDate']) : null,
+      deathDate: map['deathDate'] != null ? _toDate(map['deathDate']) : null,
       calculatedAge: map['calculatedAge'],
       avatarImageUrl: map['avatarImageUrl'],
       city: map['city'],
@@ -85,10 +94,10 @@ class AvatarData {
       writtenTexts: List<String>.from(map['writtenTexts'] ?? []),
       lastMessage: map['lastMessage'],
       lastMessageTime: map['lastMessageTime'] != null
-          ? DateTime.fromMillisecondsSinceEpoch(map['lastMessageTime'])
+          ? _toDate(map['lastMessageTime'])
           : null,
-      createdAt: DateTime.fromMillisecondsSinceEpoch(map['createdAt']),
-      updatedAt: DateTime.fromMillisecondsSinceEpoch(map['updatedAt']),
+      createdAt: _toDate(map['createdAt']),
+      updatedAt: _toDate(map['updatedAt']),
       training: map['training'],
       greetingText: map['greetingText'],
       role: map['role'],

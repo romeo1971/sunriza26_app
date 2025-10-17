@@ -3,7 +3,8 @@ import 'dart:async';
 /// Lipsync Strategy Interface
 abstract class LipsyncStrategy {
   Future<void> speak(String text, String voiceId);
-  void stop();
+  Future<void> stop();
+  Future<void> warmUp() async {}
   void dispose();
   Stream<VisemeEvent>? get visemeStream => null;
 

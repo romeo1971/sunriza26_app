@@ -4,6 +4,7 @@ service cloud.firestore {
     // Helper Functions (Struppi-System)
     function signedIn() { return request.auth != null; }
     function isOwner(data) { return signedIn() && data.userId == request.auth.uid; }
+    // Nur epoch millis zulässig (ursprüngliches Verhalten)
     function validTimestamp(ts) { return ts is int && ts > 0; }
     function validString(s, min, max) { return s is string && s.size() >= min && s.size() <= max; }
     function stringList(l, maxItems, maxLen) {
@@ -116,7 +117,7 @@ service cloud.firestore {
         && (!('training' in request.resource.data) || request.resource.data.training is map);
 
       allow get, list: if isOwner(resource.data) || (resource.data.isPublic == true);
-      // Allgemeines Update - erlaubt alle Avatar-Felder inkl. training
+      // Allgemeines Update (ursprünglich): Owner + Konsistenz der IDs + updatedAt Pflicht
       allow update: if isOwner(resource.data)
           && request.resource.data.userId == resource.data.userId
           && request.resource.data.id == resource.data.id

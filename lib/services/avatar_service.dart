@@ -202,7 +202,6 @@ class AvatarService {
 
       final updatedAvatar = avatar.copyWith(updatedAt: DateTime.now());
       final payload = updatedAvatar.toMap();
-      bool shouldDeleteHeroVideoUrl = false;
 
       // Wenn greetingText geleert wurde, Feld in Firestore entfernen → Standard greift
       try {
@@ -215,20 +214,8 @@ class AvatarService {
             (updatedAvatar.avatarImageUrl?.isEmpty ?? true)) {
           payload['avatarImageUrl'] = FieldValue.delete();
         }
-        // Falls heroVideoUrl aus training entfernt wurde, Variable für separates Update merken
-        if (payload['training'] is Map) {
-          final training = payload['training'] as Map;
-          debugPrint('🎬 Service: training keys = ${training.keys.toList()}');
-          debugPrint(
-            '🎬 Service: training.heroVideoUrl = ${training['heroVideoUrl']}',
-          );
-          // Wenn heroVideoUrl fehlt ODER null ist → merken für separates Update
-          if (!training.containsKey('heroVideoUrl') ||
-              training['heroVideoUrl'] == null) {
-            shouldDeleteHeroVideoUrl = true;
-            debugPrint('🎬 Service: heroVideoUrl soll gelöscht werden');
-          }
-        }
+        // WICHTIG: heroVideoUrl NIEMALS implizit löschen.
+        // Löschung darf nur explizit per update({'training.heroVideoUrl': FieldValue.delete()}) erfolgen.
       } catch (_) {}
       try {
         debugPrint('Avatar update payload keys: ${payload.keys.toList()}');
@@ -245,19 +232,30 @@ class AvatarService {
         debugPrint('Full update payload: $payload');
       } catch (_) {}
 
+      // Schutz: heroVideoUrl niemals unbeabsichtigt löschen
+      try {
+        final curSnap = await _avatarsCollection.doc(avatar.id).get();
+        final cur = curSnap.data();
+        if (cur != null) {
+          final curTraining = cur['training'] as Map<String, dynamic>?;
+          final curHero = curTraining != null
+              ? (curTraining['heroVideoUrl'] as String?)
+              : null;
+          if (payload['training'] is Map &&
+              curHero != null &&
+              curHero.isNotEmpty) {
+            final t = payload['training'] as Map<String, dynamic>;
+            // Wenn kein neuer heroVideoUrl gesetzt wurde, bestehenden Wert beibehalten
+            if (!t.containsKey('heroVideoUrl') || (t['heroVideoUrl'] == null)) {
+              t['heroVideoUrl'] = curHero;
+            }
+          }
+        }
+      } catch (_) {}
+
       await _avatarsCollection
           .doc(avatar.id)
           .set(payload, SetOptions(merge: true));
-
-      // Separates Update für heroVideoUrl-Löschung (dot-notation funktioniert nur mit update())
-      if (shouldDeleteHeroVideoUrl) {
-        await _avatarsCollection.doc(avatar.id).update({
-          'training.heroVideoUrl': FieldValue.delete(),
-        });
-        debugPrint(
-          '🎬 Service: training.heroVideoUrl mit separatem update() gelöscht',
-        );
-      }
 
       return true;
     } catch (e) {
