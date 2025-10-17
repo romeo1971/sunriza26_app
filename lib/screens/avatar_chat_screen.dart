@@ -420,7 +420,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         if (!manual) {
           await _maybeJoinLiveKit();
         }
-        await _loadHistory();
+        // History & Assets parallel laden (nicht blockierend!)
+        unawaited(_loadHistory());
+        unawaited(_initLiveAvatar(_avatarData!.id));
+        
+        // Begrüßung SOFORT (nicht auf History warten!)
         final hasAny = _messages.isNotEmpty;
         final lastIsBot = hasAny ? !_messages.last.isUser : false;
         if (!_greetedOnce && !lastIsBot) {
@@ -431,14 +435,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                     ? _friendlyGreet(_partnerName ?? '')
                     : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
           debugPrint(
-            '🎙️ Greeting: voiceId=$_cachedVoiceId, stream=${_lipsync.visemeStream != null}',
+            '🎙️ Greeting SOFORT: voiceId=$_cachedVoiceId',
           );
-          _botSay(greet);
+          unawaited(_botSay(greet));
         }
-        // Starte Teaser-Scheduling (vorübergehend deaktiviert, bis Fehler behoben)
-        // _scheduleTeaser();
-        // Live Avatar Assets laden
-        _initLiveAvatar(_avatarData!.id);
       }
     });
   }
@@ -574,7 +574,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             // Hero-Animation für nahtlosen Übergang vom Explorer!
             Hero(
               tag: 'avatar-${_avatarData?.id}',
-              child: (_liveAvatarEnabled &&
+              child:
+                  (_liveAvatarEnabled &&
                       _idleController != null &&
                       _idleController!.value.isInitialized)
                   ? Positioned.fill(
@@ -592,14 +593,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                       child: Image.network(
                         backgroundImage,
                         fit: BoxFit.cover,
-                        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                          // Zeige sofort wenn bereits gecached
-                          if (wasSynchronouslyLoaded || frame != null) {
-                            return child;
-                          }
-                          // Während Laden: Container schwarz
-                          return Container(color: Colors.black);
-                        },
+                        frameBuilder:
+                            (context, child, frame, wasSynchronouslyLoaded) {
+                              // Zeige sofort wenn bereits gecached
+                              if (wasSynchronouslyLoaded || frame != null) {
+                                return child;
+                              }
+                              // Während Laden: Container schwarz
+                              return Container(color: Colors.black);
+                            },
                       ),
                     )
                   : Container(color: Colors.black),
@@ -2364,6 +2366,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     _imageTimer?.cancel();
     // Live Avatar aufräumen
     _idleController?.dispose();
+    // Lipsync Strategy aufräumen (schließt WebSocket!)
+    _lipsync.dispose();
     // LiveKit sauber trennen (no-op wenn Feature deaktiviert)
     unawaited(LiveKitService().leave());
     super.dispose();
