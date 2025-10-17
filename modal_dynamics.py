@@ -246,6 +246,15 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     # TensorRT Engine Caching (KRITISCH für Speed!)
     engine_cache_dir = '/tensorrt_cache'  # Persistent Modal Volume!
     os.makedirs(engine_cache_dir, exist_ok=True)
+    
+    # DEBUG: Prüfe ob Cache existiert
+    cache_files = list(Path(engine_cache_dir).glob('**/*'))
+    print(f"🔍 TensorRT Cache Status: {len(cache_files)} Dateien in {engine_cache_dir}")
+    if cache_files:
+        print(f"✅ Cache existiert! Dateien: {[f.name for f in cache_files[:5]]}")
+    else:
+        print(f"⚠️ Cache leer - erste Generierung wird Engines kompilieren")
+    
     env['ORT_TENSORRT_ENGINE_CACHE_ENABLE'] = '1'  # TensorRT Cache aktivieren
     env['ORT_TENSORRT_CACHE_PATH'] = engine_cache_dir  # Cache-Pfad setzen
     env['ORT_TENSORRT_FP16_ENABLE'] = '1'  # FP16 für TensorRT (schneller!)
@@ -270,10 +279,14 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     import onnxruntime as ort
     available_providers = ort.get_available_providers()
     print(f"🔥 ONNX Runtime Providers: {available_providers}")
+    
+    # Prüfe welcher Provider tatsächlich PRIORITÄT hat
+    if 'TensorrtExecutionProvider' in available_providers:
+        print(f"🚀 TensorRT verfügbar! (schnellster Provider)")
     if 'CUDAExecutionProvider' in available_providers:
-        print(f"✅ ONNX Runtime nutzt GPU (CUDAExecutionProvider)!")
-    else:
-        print(f"⚠️ WARNING: ONNX Runtime nutzt nur CPU! LivePortrait wird LANGSAM sein!")
+        print(f"✅ CUDA verfügbar! (schnell)")
+    if len(available_providers) == 1 and available_providers[0] == 'CPUExecutionProvider':
+        print(f"⚠️ WARNING: Nur CPU verfügbar! LivePortrait wird LANGSAM sein!")
     
     # DEBUG: Welches FFmpeg nutzt imageio-ffmpeg?
     import imageio_ffmpeg
