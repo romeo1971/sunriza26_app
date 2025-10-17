@@ -710,36 +710,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               ],
             ),
 
-            // Fallback wenn nichts
-            if (!_liveAvatarEnabled &&
-                (backgroundImage == null || backgroundImage.isEmpty))
-              // Fallback: Statisches Bild
-              Positioned.fill(
-                child: ExtendedImage.network(
-                  backgroundImage ?? '',
-                  fit: BoxFit.cover,
-                  cache: true,
-                  height: double.infinity,
-                  width: double.infinity,
-                  loadStateChanged: (state) {
-                    switch (state.extendedImageLoadState) {
-                      case LoadState.loading:
-                        return Container(color: Colors.black);
-                      case LoadState.completed:
-                        return ExtendedRawImage(
-                          image: state.extendedImageInfo?.image,
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                        );
-                      case LoadState.failed:
-                        return Container(color: Colors.black);
-                    }
-                  },
-                ),
-              )
-            else
-              Container(color: Colors.black),
             // AppBar ist nun direkt im Scaffold eingebunden (siehe oben)
 
             // Content unten
