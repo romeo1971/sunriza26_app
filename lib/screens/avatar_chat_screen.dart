@@ -404,8 +404,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       // Weiter mit Loading + Greeting
       if (_avatarData != null) {
         // VoiceId ist BEREITS in _avatarData!
-        _cachedVoiceId = _avatarData?.training?['voice']?['elevenVoiceId'] as String?;
-        debugPrint('✅ VoiceId from _avatarData: ${_cachedVoiceId?.substring(0, 8) ?? "NULL"}...');
+        _cachedVoiceId =
+            _avatarData?.training?['voice']?['elevenVoiceId'] as String?;
+        debugPrint(
+          '✅ VoiceId from _avatarData: ${_cachedVoiceId?.substring(0, 8) ?? "NULL"}...',
+        );
 
         await _loadPartnerName();
         final manual = (dotenv.env['LIVEKIT_MANUAL_START'] ?? '').trim() == '1';
