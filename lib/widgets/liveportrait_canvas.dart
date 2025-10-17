@@ -39,10 +39,10 @@ class _LivePortraitCanvasState extends State<LivePortraitCanvas> {
   Future<void> _connect() async {
     try {
       _channel = WebSocketChannel.connect(Uri.parse(widget.wsUrl));
-      
+
       // ignore: avoid_print
       print('🎭 LivePortrait connecting: ${widget.wsUrl}');
-      
+
       // Stream-Listener
       _channel!.stream.listen(
         (message) {
@@ -58,13 +58,10 @@ class _LivePortraitCanvasState extends State<LivePortraitCanvas> {
           print('❌ LivePortrait WS error: $e');
         },
       );
-      
+
       // Send Hero Image
       final heroB64 = base64Encode(widget.heroImageBytes);
-      _channel!.sink.add(jsonEncode({
-        'type': 'init',
-        'hero_image': heroB64,
-      }));
+      _channel!.sink.add(jsonEncode({'type': 'init', 'hero_image': heroB64}));
     } catch (e) {
       // ignore: avoid_print
       print('❌ LivePortrait connect failed: $e');
@@ -75,7 +72,7 @@ class _LivePortraitCanvasState extends State<LivePortraitCanvas> {
     try {
       final data = jsonDecode(message);
       final type = data['type'];
-      
+
       switch (type) {
         case 'ready':
           // ignore: avoid_print
@@ -83,17 +80,17 @@ class _LivePortraitCanvasState extends State<LivePortraitCanvas> {
           setState(() => _isReady = true);
           widget.onReady?.call();
           break;
-        
+
         case 'frame':
           _handleFrame(data);
           break;
-        
+
         case 'done':
           // ignore: avoid_print
           print('✅ LivePortrait done');
           widget.onDone?.call();
           break;
-        
+
         case 'error':
           // ignore: avoid_print
           print('❌ LivePortrait error: ${data['message']}');
@@ -109,11 +106,11 @@ class _LivePortraitCanvasState extends State<LivePortraitCanvas> {
     try {
       final frameB64 = data['data'] as String;
       final frameBytes = base64Decode(frameB64);
-      
+
       // Decode JPEG → ui.Image
       final codec = await ui.instantiateImageCodec(frameBytes);
       final frame = await codec.getNextFrame();
-      
+
       if (mounted) {
         setState(() {
           _currentFrame = frame.image;
@@ -127,12 +124,14 @@ class _LivePortraitCanvasState extends State<LivePortraitCanvas> {
 
   void sendAudioChunk(Uint8List audioBytes, int ptsMs) {
     if (_channel == null || !_isReady) return;
-    
-    _channel!.sink.add(jsonEncode({
-      'type': 'audio',
-      'data': base64Encode(audioBytes),
-      'pts_ms': ptsMs,
-    }));
+
+    _channel!.sink.add(
+      jsonEncode({
+        'type': 'audio',
+        'data': base64Encode(audioBytes),
+        'pts_ms': ptsMs,
+      }),
+    );
   }
 
   void stop() {
@@ -152,12 +151,10 @@ class _LivePortraitCanvasState extends State<LivePortraitCanvas> {
     if (_currentFrame == null) {
       return Container(
         color: Colors.black,
-        child: Center(
-          child: CircularProgressIndicator(color: Colors.white30),
-        ),
+        child: Center(child: CircularProgressIndicator(color: Colors.white30)),
       );
     }
-    
+
     return CustomPaint(
       painter: _FramePainter(_currentFrame!),
       size: Size.infinite,
@@ -175,7 +172,7 @@ class _FramePainter extends CustomPainter {
     final paint = Paint()
       ..isAntiAlias = true
       ..filterQuality = FilterQuality.high;
-    
+
     // Frame auf Canvas zeichnen (fit: cover)
     final srcRect = Rect.fromLTWH(
       0,
@@ -183,9 +180,9 @@ class _FramePainter extends CustomPainter {
       frame.width.toDouble(),
       frame.height.toDouble(),
     );
-    
+
     final dstRect = Rect.fromLTWH(0, 0, size.width, size.height);
-    
+
     canvas.drawImageRect(frame, srcRect, dstRect, paint);
   }
 
@@ -194,4 +191,3 @@ class _FramePainter extends CustomPainter {
     return oldDelegate.frame != frame;
   }
 }
-

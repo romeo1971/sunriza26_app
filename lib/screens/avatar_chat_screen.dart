@@ -65,8 +65,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   Rect? _mouthROI;
   VisemeMixer? _visemeMixer;
   bool _liveAvatarEnabled = false;
-  WebSocketChannel? _orchestratorWS;
-  String? _liveSessionId;
 
   // Rate-Limiting für TTS-Requests
   DateTime? _lastTtsRequestTime;
@@ -593,12 +591,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   }
 
   // Fallback lokal entfernt
-
-  Future<void> _connectOrchestrator(String avatarId) async {
-    // DEAKTIVIERT - File-Based Lipsync verwendet keinen Orchestrator
-    return;
-  }
-
   // Live Speak entfernt
 
   @override
@@ -724,7 +716,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               // Fallback: Statisches Bild
               Positioned.fill(
                 child: ExtendedImage.network(
-                  backgroundImage,
+                  backgroundImage ?? '',
                   fit: BoxFit.cover,
                   cache: true,
                   height: double.infinity,
@@ -2518,7 +2510,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     // Live Avatar aufräumen
     _idleController?.dispose();
     _visemeMixer?.dispose();
-    _orchestratorWS?.sink.close();
     // LiveKit sauber trennen (no-op wenn Feature deaktiviert)
     unawaited(LiveKitService().leave());
     super.dispose();

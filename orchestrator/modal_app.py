@@ -5,7 +5,7 @@ import modal
 image = (
     modal.Image.debian_slim()
     .apt_install("bash", "nodejs", "npm", "git")
-    .add_local_dir("./orchestrator", "/app/orchestrator", copy=True)
+    .add_local_dir(".", "/app/orchestrator", copy=True)
     .run_commands([
         "bash -lc 'cd /app/orchestrator && npm ci --ignore-scripts'",
         "bash -lc 'cd /app/orchestrator && npm run build'",

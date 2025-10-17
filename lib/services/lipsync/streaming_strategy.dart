@@ -1,20 +1,77 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'lipsync_strategy.dart';
 
+/// MP3 Stream Audio Source für just_audio
+/// Spielt ersten Chunk SOFORT, weitere Chunks werden nachgestreamt
+class StreamingMp3Source extends StreamAudioSource {
+  final StreamController<List<int>> _controller =
+      StreamController<List<int>>.broadcast();
+  final List<List<int>> _buffer = [];
+  bool _isComplete = false;
+
+  void addChunk(List<int> bytes) {
+    _buffer.add(bytes);
+    _controller.add(bytes);
+  }
+
+  void complete() {
+    _isComplete = true;
+    if (!_controller.isClosed) {
+      _controller.close();
+    }
+  }
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    final controller = StreamController<List<int>>();
+
+    // Bereits gepufferte Daten SOFORT senden
+    for (final chunk in _buffer) {
+      controller.add(chunk);
+    }
+
+    // Neue Chunks weiterleiten
+    final sub = _controller.stream.listen(
+      (data) {
+        if (!controller.isClosed) {
+          controller.add(data);
+        }
+      },
+      onDone: () {
+        if (!controller.isClosed) {
+          controller.close();
+        }
+      },
+    );
+
+    controller.onCancel = () => sub.cancel();
+
+    // Geschätzte Länge basierend auf aktuellem Buffer
+    final bufferSize = _buffer.fold<int>(0, (sum, chunk) => sum + chunk.length);
+
+    return StreamAudioResponse(
+      sourceLength: _isComplete ? bufferSize : null,
+      contentLength: _isComplete ? bufferSize : null,
+      contentType: 'audio/mpeg',
+      stream: controller.stream,
+      offset: start ?? 0,
+      rangeRequestsSupported: false,
+    );
+  }
+}
+
 /// Streaming Strategy (WebSocket-basiert)
-/// Sammelt MP3-Chunks und spielt sie als komplette Datei ab
+/// ECHTES STREAMING: Spielt ersten Chunk nach ~200ms!
 class StreamingStrategy implements LipsyncStrategy {
   final String _orchestratorUrl;
   WebSocketChannel? _channel;
   AudioPlayer? _audioPlayer;
   bool _isConnecting = false;
-  final List<List<int>> _audioChunks = [];
-  bool _isCollecting = false;
+  StreamingMp3Source? _currentSource;
+  int _chunkCount = 0;
 
   final StreamController<VisemeEvent> _visemeController =
       StreamController<VisemeEvent>.broadcast();
@@ -58,7 +115,6 @@ class StreamingStrategy implements LipsyncStrategy {
                 _handleViseme(data);
                 break;
               case 'done':
-                // Stream fertig
                 _handleDone();
                 break;
               case 'error':
@@ -108,10 +164,15 @@ class StreamingStrategy implements LipsyncStrategy {
       return;
     }
 
-    // Reset
+    // Stop previous & create new stream source
     await _audioPlayer?.stop();
-    _audioChunks.clear();
-    _isCollecting = true;
+    _currentSource?.complete();
+
+    _currentSource = StreamingMp3Source();
+    _chunkCount = 0;
+
+    // ignore: avoid_print
+    print('🎵 Starting streaming playback');
 
     _channel!.sink.add(
       jsonEncode({'type': 'speak', 'text': text, 'voice_id': voiceId}),
@@ -120,11 +181,37 @@ class StreamingStrategy implements LipsyncStrategy {
 
   void _handleAudio(Map<String, dynamic> data) {
     final audioBytes = base64Decode(data['data']);
-    // ignore: avoid_print
-    print('🔊 audio ${audioBytes.length} bytes');
+    _chunkCount++;
 
-    if (_isCollecting) {
-      _audioChunks.add(audioBytes);
+    // ignore: avoid_print
+    print('🔊 Chunk $_chunkCount: ${audioBytes.length} bytes');
+
+    if (_currentSource == null) return;
+
+    // Chunk zum Stream hinzufügen
+    _currentSource!.addChunk(audioBytes);
+
+    // ERSTER Chunk → SOFORT abspielen!
+    if (_chunkCount == 1) {
+      _startPlayback();
+    }
+  }
+
+  Future<void> _startPlayback() async {
+    if (_currentSource == null || _audioPlayer == null) return;
+
+    try {
+      // ignore: avoid_print
+      print('▶️ Starting playback with first chunk!');
+
+      await _audioPlayer!.setAudioSource(_currentSource!);
+      await _audioPlayer!.play();
+
+      // ignore: avoid_print
+      print('✅ Playback started (streaming continues)');
+    } catch (e) {
+      // ignore: avoid_print
+      print('❌ Playback start error: $e');
     }
   }
 
@@ -138,55 +225,27 @@ class StreamingStrategy implements LipsyncStrategy {
     );
   }
 
-  Future<void> _handleDone() async {
+  void _handleDone() {
     // ignore: avoid_print
-    print('✅ Stream done, playing ${_audioChunks.length} chunks');
-    _isCollecting = false;
+    print('✅ Stream done ($_chunkCount chunks)');
 
-    if (_audioChunks.isEmpty) return;
-
-    // Alle Chunks zu einer MP3-Datei zusammenfügen
-    final allBytes = _audioChunks.expand((c) => c).toList();
-
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File(
-        '${tempDir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
-      );
-      await tempFile.writeAsBytes(allBytes);
-
-      // ignore: avoid_print
-      print('🎵 Playing MP3: ${tempFile.path} (${allBytes.length} bytes)');
-
-      await _audioPlayer?.setFilePath(tempFile.path);
-      await _audioPlayer?.play();
-
-      // File nach 10 Sek löschen
-      Future.delayed(Duration(seconds: 10), () {
-        try {
-          tempFile.deleteSync();
-        } catch (_) {}
-      });
-    } catch (e) {
-      // ignore: avoid_print
-      print('❌ Audio play error: $e');
-    }
-
-    _audioChunks.clear();
+    // Stream als komplett markieren
+    _currentSource?.complete();
   }
 
   @override
   void stop() {
     _channel?.sink.add(jsonEncode({'type': 'stop'}));
     _audioPlayer?.stop();
-    _isCollecting = false;
-    _audioChunks.clear();
+    _currentSource?.complete();
+    _chunkCount = 0;
   }
 
   @override
   void dispose() {
     _channel?.sink.close();
     _audioPlayer?.dispose();
+    _currentSource?.complete();
     _visemeController.close();
   }
 }
