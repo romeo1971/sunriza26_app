@@ -462,17 +462,24 @@ class ExploreScreenState extends State<ExploreScreen> {
           ),
         ],
       ),
-      body: Container(
-        decoration: BoxDecoration(
-          image: imageUrl != null
-              ? DecorationImage(
-                  image: NetworkImage(imageUrl),
-                  fit: BoxFit.cover,
-                )
-              : null,
-          color: imageUrl == null ? Colors.grey.shade800 : null,
-        ),
-        child: Stack(
+      body: Stack(
+        children: [
+          // Hero-Widget für nahtlosen Übergang zum Chat!
+          Hero(
+            tag: 'avatar-${avatar.id}',
+            child: Container(
+              decoration: BoxDecoration(
+                image: imageUrl != null
+                    ? DecorationImage(
+                        image: NetworkImage(imageUrl),
+                        fit: BoxFit.cover,
+                      )
+                    : null,
+                color: imageUrl == null ? Colors.grey.shade800 : null,
+              ),
+            ),
+          ),
+          Stack(
           children: [
             // Rechts Mitte: Favoriten-Herz (TikTok-Style)
             Positioned(
@@ -556,7 +563,8 @@ class ExploreScreenState extends State<ExploreScreen> {
               ),
             ),
           ],
-        ),
+          ),
+        ],
       ),
     );
   }

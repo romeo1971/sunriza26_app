@@ -26,7 +26,6 @@ import '../services/playlist_service.dart';
 import '../services/media_service.dart';
 import '../services/shared_moments_service.dart';
 import '../models/media_models.dart';
-import 'package:extended_image/extended_image.dart';
 
 class AvatarChatScreen extends StatefulWidget {
   final String? avatarId; // Optional: Für Overlay-Chat
@@ -410,6 +409,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           '✅ VoiceId from _avatarData: ${_cachedVoiceId?.substring(0, 8) ?? "NULL"}...',
         );
 
+        // Precache Hero-Image für nahtlosen Übergang
+        final heroUrl = _avatarData?.avatarImageUrl;
+        if (heroUrl != null && heroUrl.isNotEmpty && mounted) {
+          precacheImage(NetworkImage(heroUrl), context);
+        }
+
         await _loadPartnerName();
         final manual = (dotenv.env['LIVEKIT_MANUAL_START'] ?? '').trim() == '1';
         if (!manual) {
@@ -425,6 +430,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               : ((_partnerName ?? '').isNotEmpty
                     ? _friendlyGreet(_partnerName ?? '')
                     : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
+          debugPrint(
+            '🎙️ Greeting: voiceId=$_cachedVoiceId, stream=${_lipsync.visemeStream != null}',
+          );
           _botSay(greet);
         }
         // Starte Teaser-Scheduling (vorübergehend deaktiviert, bis Fehler behoben)
@@ -563,29 +571,39 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       body: SizedBox.expand(
         child: Stack(
           children: [
-            // Idle Video läuft IMMER (auch während Audio!)
-            (_liveAvatarEnabled &&
-                    _idleController != null &&
-                    _idleController!.value.isInitialized)
-                ? Positioned.fill(
-                    child: FittedBox(
-                      fit: BoxFit.cover,
-                      child: SizedBox(
-                        width: _idleController!.value.size.width,
-                        height: _idleController!.value.size.height,
-                        child: VideoPlayer(_idleController!),
+            // Hero-Animation für nahtlosen Übergang vom Explorer!
+            Hero(
+              tag: 'avatar-${_avatarData?.id}',
+              child: (_liveAvatarEnabled &&
+                      _idleController != null &&
+                      _idleController!.value.isInitialized)
+                  ? Positioned.fill(
+                      child: FittedBox(
+                        fit: BoxFit.cover,
+                        child: SizedBox(
+                          width: _idleController!.value.size.width,
+                          height: _idleController!.value.size.height,
+                          child: VideoPlayer(_idleController!),
+                        ),
                       ),
-                    ),
-                  )
-                : (backgroundImage != null && backgroundImage.isNotEmpty)
-                ? Positioned.fill(
-                    child: ExtendedImage.network(
-                      backgroundImage,
-                      fit: BoxFit.cover,
-                      cache: true,
-                    ),
-                  )
-                : Container(color: Colors.black),
+                    )
+                  : (backgroundImage != null && backgroundImage.isNotEmpty)
+                  ? Positioned.fill(
+                      child: Image.network(
+                        backgroundImage,
+                        fit: BoxFit.cover,
+                        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                          // Zeige sofort wenn bereits gecached
+                          if (wasSynchronouslyLoaded || frame != null) {
+                            return child;
+                          }
+                          // Während Laden: Container schwarz
+                          return Container(color: Colors.black);
+                        },
+                      ),
+                    )
+                  : Container(color: Colors.black),
+            ),
 
             // TODO: Später LivePortrait Canvas ÜBER idle.mp4 (wenn implementiert)
 
