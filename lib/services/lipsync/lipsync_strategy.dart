@@ -20,4 +20,3 @@ class VisemeEvent {
     required this.durationMs,
   });
 }
-

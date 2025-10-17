@@ -4,7 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:lipsync": "tsx watch src/lipsync_handler.ts",
     "start": "node dist/index.js",
+    "start:lipsync": "node dist/lipsync_handler.js",
     "build": "tsc"
   },
   "dependencies": {

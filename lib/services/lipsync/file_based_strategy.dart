@@ -32,4 +32,3 @@ class FileBasedStrategy implements LipsyncStrategy {
     _player.dispose();
   }
 }
-

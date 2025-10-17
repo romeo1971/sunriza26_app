@@ -17,7 +17,7 @@ class StreamingStrategy implements LipsyncStrategy {
   Stream<VisemeEvent> get visemeStream => _visemeController.stream;
 
   StreamingStrategy({required String orchestratorUrl})
-      : _orchestratorUrl = orchestratorUrl;
+    : _orchestratorUrl = orchestratorUrl;
 
   Future<void> _connect() async {
     if (_channel != null) return;
@@ -43,11 +43,9 @@ class StreamingStrategy implements LipsyncStrategy {
   Future<void> speak(String text, String voiceId) async {
     await _connect();
 
-    _channel!.sink.add(jsonEncode({
-      'type': 'speak',
-      'text': text,
-      'voice_id': voiceId,
-    }));
+    _channel!.sink.add(
+      jsonEncode({'type': 'speak', 'text': text, 'voice_id': voiceId}),
+    );
   }
 
   void _handleAudio(Map<String, dynamic> data) {
@@ -56,11 +54,13 @@ class StreamingStrategy implements LipsyncStrategy {
   }
 
   void _handleViseme(Map<String, dynamic> data) {
-    _visemeController.add(VisemeEvent(
-      viseme: data['value'],
-      ptsMs: data['pts_ms'],
-      durationMs: data['duration_ms'] ?? 100,
-    ));
+    _visemeController.add(
+      VisemeEvent(
+        viseme: data['value'],
+        ptsMs: data['pts_ms'],
+        durationMs: data['duration_ms'] ?? 100,
+      ),
+    );
   }
 
   @override
@@ -76,4 +76,3 @@ class StreamingStrategy implements LipsyncStrategy {
     _visemeController.close();
   }
 }
-

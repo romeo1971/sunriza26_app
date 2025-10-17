@@ -2,10 +2,7 @@ import 'file_based_strategy.dart';
 import 'streaming_strategy.dart';
 import 'lipsync_strategy.dart';
 
-enum LipsyncMode {
-  fileBased,
-  streaming,
-}
+enum LipsyncMode { fileBased, streaming }
 
 class LipsyncFactory {
   static LipsyncStrategy create({
@@ -25,4 +22,3 @@ class LipsyncFactory {
     }
   }
 }
-
