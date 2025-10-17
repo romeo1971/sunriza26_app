@@ -1,15 +1,12 @@
 import os
 import modal
 
-# Image: Debian + Node.js + unser Code
+# Image: Python ASGI + optional Node sources copied (nicht benötigt zur Laufzeit)
 image = (
     modal.Image.debian_slim()
-    .apt_install("bash", "nodejs", "npm", "git")
+    .apt_install("bash")
+    .pip_install("fastapi", "uvicorn", "websockets")
     .add_local_dir(".", "/app/orchestrator", copy=True)
-    .run_commands([
-        "bash -lc 'cd /app/orchestrator && npm ci --ignore-scripts'",
-        "bash -lc 'cd /app/orchestrator && npm run build'",
-    ])
 )
 
 app = modal.App("lipsync-orchestrator", image=image)
@@ -17,21 +14,14 @@ app = modal.App("lipsync-orchestrator", image=image)
 
 @app.function(
     secrets=[modal.Secret.from_name("lipsync-eleven")],
-    env={
-        "PORT": "3001",
-        "ELEVENLABS_BASE": os.getenv("ELEVENLABS_BASE", "api.elevenlabs.io"),
-        "ELEVENLABS_MODEL_ID": os.getenv(
-            "ELEVENLABS_MODEL_ID", "eleven_multilingual_v2"
-        ),
-    },
+    min_containers=1,
+    scaledown_window=300,
+    timeout=3600,
 )
-@modal.concurrent(max_inputs=100)
-@modal.web_server(3001)
-def web():
-    # Startet den vorhandenen Node-WS-Server
-    import subprocess
-    os.chdir("/app/orchestrator")
-    # Nur starten (Build bereits im Image erledigt)
-    subprocess.Popen("node dist/lipsync_handler.js", shell=True)
-
-
+@modal.asgi_app()
+def asgi():
+    """ASGI-WebSocket-Orchestrator (CPU) für ElevenLabs."""
+    import sys
+    sys.path.insert(0, "/app/orchestrator")
+    from py_asgi_app import app as fastapi_app
+    return fastapi_app

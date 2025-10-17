@@ -12,15 +12,6 @@ class StreamingMp3Source extends StreamAudioSource {
   final List<List<int>> _buffer = [];
   bool _isComplete = false;
 
-  void reset() {
-    _isComplete = false;
-    _buffer.clear();
-    if (!_controller.isClosed) {
-      _controller.close();
-    }
-    _controller = StreamController<List<int>>.broadcast();
-  }
-
   void addChunk(List<int> bytes) {
     _buffer.add(bytes);
     if (!_controller.isClosed) {
@@ -79,10 +70,14 @@ class StreamingMp3Source extends StreamAudioSource {
 class StreamingStrategy implements LipsyncStrategy {
   final String _orchestratorUrl;
   WebSocketChannel? _channel;
+  StreamSubscription? _channelSubscription;
   AudioPlayer? _audioPlayer;
   bool _isConnecting = false;
   StreamingMp3Source? _currentSource;
   int _chunkCount = 0;
+  bool _playbackStarted = false;
+  int _bytesAccumulated = 0;
+  int _activeSeq = 0;
 
   final StreamController<VisemeEvent> _visemeController =
       StreamController<VisemeEvent>.broadcast();
@@ -95,13 +90,16 @@ class StreamingStrategy implements LipsyncStrategy {
 
   StreamingStrategy({required String orchestratorUrl})
     : _orchestratorUrl = orchestratorUrl {
-    // Connect SOFORT beim Init!
-    _connect();
+    // LAZY: Connection erst beim ersten speak() (spart Ressourcen!)
   }
 
   Future<void> _connect() async {
     if (_channel != null || _isConnecting) return;
     _isConnecting = true;
+
+    // Alte Subscription canceln (verhindert Doppel-Events!)
+    await _channelSubscription?.cancel();
+    _channelSubscription = null;
 
     _audioPlayer = AudioPlayer();
 
@@ -113,7 +111,7 @@ class StreamingStrategy implements LipsyncStrategy {
       print('✅ WS connecting: $_orchestratorUrl');
 
       // Stream-Listener SOFORT!
-      _channel!.stream.listen(
+      _channelSubscription = _channel!.stream.listen(
         (message) {
           // ignore: avoid_print
           print('📩 WS msg (${message.toString().length} chars)');
@@ -143,13 +141,17 @@ class StreamingStrategy implements LipsyncStrategy {
         },
         onDone: () {
           // ignore: avoid_print
-          print('🔌 WS closed');
+          print('🔌 WS closed (will reconnect on next speak)');
+          _channelSubscription?.cancel();
+          _channelSubscription = null;
           _channel = null;
           _isConnecting = false;
         },
         onError: (e) {
           // ignore: avoid_print
           print('❌ WS stream error: $e');
+          _channelSubscription?.cancel();
+          _channelSubscription = null;
           _channel = null;
           _isConnecting = false;
         },
@@ -167,40 +169,60 @@ class StreamingStrategy implements LipsyncStrategy {
 
   @override
   Future<void> speak(String text, String voiceId) async {
-    // Warte bis Connection ready
+    // Sicherstellen: vorherige Wiedergabe stoppen, sonst startet 2. Audio nicht
+    await _audioPlayer?.stop();
+    _playbackStarted = false;
+    _bytesAccumulated = 0;
+
+    // Vorherigen Stream serverseitig stoppen (verhindert Übersprechen)
+    try {
+      _channel?.sink.add(jsonEncode({'type': 'stop'}));
+    } catch (_) {}
+    // Lazy connect on focus/input (deine Anweisung!)
+    if (_channel == null && !_isConnecting) {
+      await _connect();
+    }
+
     while (_isConnecting) {
       await Future.delayed(Duration(milliseconds: 50));
     }
 
     if (_channel == null) {
       // ignore: avoid_print
-      print('❌ No WS connection for speak');
+      print('❌ WS connection failed');
       return;
     }
 
-    // Stop previous playback
-    await _audioPlayer?.stop();
-
-    // Reset existing source ODER neue erstellen
-    if (_currentSource != null) {
-      _currentSource!.reset();
-    } else {
-      _currentSource = StreamingMp3Source();
-    }
-
+    // IMMER neuen Source erstellen (kein reset!)
+    // Alten Source loslassen → GC räumt auf
+    _currentSource = StreamingMp3Source();
     _chunkCount = 0;
 
     // ignore: avoid_print
     print('🎵 Starting streaming playback (reset: ${_currentSource != null})');
 
+    // Neue Sequenz-ID vergeben und mitsenden
+    _activeSeq += 1;
+    final seq = _activeSeq;
     _channel!.sink.add(
-      jsonEncode({'type': 'speak', 'text': text, 'voice_id': voiceId}),
+      jsonEncode({
+        'type': 'speak',
+        'text': text,
+        'voice_id': voiceId,
+        'seq': seq,
+      }),
     );
   }
 
   void _handleAudio(Map<String, dynamic> data) {
+    // Nur aktuelle Sequenz verarbeiten (späte Chunks werden ignoriert)
+    final int? seq = data['seq'] is int ? data['seq'] as int : null;
+    if (seq != null && seq != _activeSeq) {
+      return;
+    }
     final audioBytes = base64Decode(data['data']);
     _chunkCount++;
+    _bytesAccumulated += audioBytes.length;
 
     // ignore: avoid_print
     print('🔊 Chunk $_chunkCount: ${audioBytes.length} bytes');
@@ -210,14 +232,29 @@ class StreamingStrategy implements LipsyncStrategy {
     // Chunk zum Stream hinzufügen
     _currentSource!.addChunk(audioBytes);
 
-    // ERSTER Chunk → SOFORT abspielen!
-    if (_chunkCount == 1) {
+    // Start erst, wenn genügend Daten gepuffert sind (verhindert -11800)
+    const int minStartBytes = 16 * 1024; // ~16 KB
+    if (!_playbackStarted && _bytesAccumulated >= minStartBytes) {
+      _playbackStarted = true;
       _startPlayback();
     }
   }
 
   Future<void> _startPlayback() async {
-    if (_currentSource == null || _audioPlayer == null) return;
+    if (_currentSource == null || _audioPlayer == null) {
+      // ignore: avoid_print
+      print(
+        '❌ Cannot start playback: source=${_currentSource != null}, player=${_audioPlayer != null}',
+      );
+      return;
+    }
+
+    // Starte nur, wenn mind. 1 Chunk vorliegt
+    if (_chunkCount == 0) {
+      // ignore: avoid_print
+      print('⚠️ Skip start: no chunks yet');
+      return;
+    }
 
     try {
       // ignore: avoid_print
@@ -235,11 +272,27 @@ class StreamingStrategy implements LipsyncStrategy {
     } catch (e) {
       // ignore: avoid_print
       print('❌ Playback start error: $e');
-      onPlaybackStateChanged?.call(false);
+      // Einmaliger Recover: Player neu aufsetzen und erneut versuchen
+      try {
+        await _audioPlayer?.dispose();
+        _audioPlayer = AudioPlayer();
+        await _audioPlayer!.setAudioSource(_currentSource!);
+        onPlaybackStateChanged?.call(true);
+        await _audioPlayer!.play();
+        print('✅ Playback recovered and started');
+      } catch (e2) {
+        print('❌ Playback recover failed: $e2');
+        _playbackStarted = false;
+        onPlaybackStateChanged?.call(false);
+      }
     }
   }
 
   void _handleViseme(Map<String, dynamic> data) {
+    final int? seq = data['seq'] is int ? data['seq'] as int : null;
+    if (seq != null && seq != _activeSeq) {
+      return;
+    }
     _visemeController.add(
       VisemeEvent(
         viseme: data['value'],
@@ -250,6 +303,8 @@ class StreamingStrategy implements LipsyncStrategy {
   }
 
   void _handleDone() {
+    // done ohne Seq oder falsche Seq ignorieren
+    // (Listener ruft diese Methode nur über Schalter; hier keine Seq verfügbar)
     // ignore: avoid_print
     print('✅ Stream done ($_chunkCount chunks)');
 
@@ -258,6 +313,8 @@ class StreamingStrategy implements LipsyncStrategy {
 
     // Callback: Playback ends!
     onPlaybackStateChanged?.call(false);
+    _playbackStarted = false;
+    _bytesAccumulated = 0;
   }
 
   @override
@@ -266,10 +323,12 @@ class StreamingStrategy implements LipsyncStrategy {
     _audioPlayer?.stop();
     _currentSource?.complete();
     _chunkCount = 0;
+    _bytesAccumulated = 0;
   }
 
   @override
   void dispose() {
+    _channelSubscription?.cancel();
     _channel?.sink.close();
     _audioPlayer?.dispose();
     _currentSource?.complete();

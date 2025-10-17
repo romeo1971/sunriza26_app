@@ -6,5 +6,6 @@ class AppConfig {
 
   // Backend URLs
   static const backendUrl = 'https://backend.sunriza26.com';
-  static const orchestratorUrl = 'wss://romeo1971--lipsync-orchestrator-web.modal.run';
+  static const orchestratorUrl =
+      'wss://romeo1971--lipsync-orchestrator-asgi.modal.run/';
 }

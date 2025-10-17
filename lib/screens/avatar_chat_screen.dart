@@ -423,7 +423,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         // History & Assets parallel laden (nicht blockierend!)
         unawaited(_loadHistory());
         unawaited(_initLiveAvatar(_avatarData!.id));
-        
+
         // Begrüßung SOFORT (nicht auf History warten!)
         final hasAny = _messages.isNotEmpty;
         final lastIsBot = hasAny ? !_messages.last.isUser : false;
@@ -434,9 +434,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               : ((_partnerName ?? '').isNotEmpty
                     ? _friendlyGreet(_partnerName ?? '')
                     : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
-          debugPrint(
-            '🎙️ Greeting SOFORT: voiceId=$_cachedVoiceId',
-          );
+          debugPrint('🎙️ Greeting SOFORT: voiceId=$_cachedVoiceId');
           unawaited(_botSay(greet));
         }
       }
@@ -572,25 +570,24 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         child: Stack(
           children: [
             // Hero-Animation für nahtlosen Übergang vom Explorer!
-            Hero(
-              tag: 'avatar-${_avatarData?.id}',
-              child:
-                  (_liveAvatarEnabled &&
-                      _idleController != null &&
-                      _idleController!.value.isInitialized)
-                  ? Positioned.fill(
-                      child: FittedBox(
+            // Positioned MUSS außen sein, Hero innen!
+            Positioned.fill(
+              child: Hero(
+                tag: 'avatar-${_avatarData?.id}',
+                child:
+                    (_liveAvatarEnabled &&
+                        _idleController != null &&
+                        _idleController!.value.isInitialized)
+                    ? FittedBox(
                         fit: BoxFit.cover,
                         child: SizedBox(
                           width: _idleController!.value.size.width,
                           height: _idleController!.value.size.height,
                           child: VideoPlayer(_idleController!),
                         ),
-                      ),
-                    )
-                  : (backgroundImage != null && backgroundImage.isNotEmpty)
-                  ? Positioned.fill(
-                      child: Image.network(
+                      )
+                    : (backgroundImage != null && backgroundImage.isNotEmpty)
+                    ? Image.network(
                         backgroundImage,
                         fit: BoxFit.cover,
                         frameBuilder:
@@ -602,9 +599,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                               // Während Laden: Container schwarz
                               return Container(color: Colors.black);
                             },
-                      ),
-                    )
-                  : Container(color: Colors.black),
+                      )
+                    : Container(color: Colors.black),
+              ),
             ),
 
             // TODO: Später LivePortrait Canvas ÜBER idle.mp4 (wenn implementiert)
@@ -1853,30 +1850,35 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       } else {
         _addMessage(answer, false);
 
+        // DEBUG: Check Streaming Conditions
+        debugPrint(
+          '💬 Chat Response: stream=${_lipsync.visemeStream != null}, voiceId=${_cachedVoiceId != null ? _cachedVoiceId!.substring(0, 8) : "NULL"}',
+        );
+
         // PRIORITÄT: Streaming (schnell, < 500ms)
         if (_lipsync.visemeStream != null &&
             _cachedVoiceId != null &&
             _cachedVoiceId!.isNotEmpty) {
-          debugPrint('🚀 Using STREAMING audio (cached voiceId)');
+          debugPrint('🚀 Chat: Using STREAMING audio');
           unawaited(_lipsync.speak(answer, _cachedVoiceId!));
-          return; // ← KEIN Backend-MP3!
-        }
-
-        // FALLBACK: Backend-MP3 (langsam, ~3 Sekunden)
-        debugPrint('⚠️ Fallback to Backend MP3');
-        final tts = res?['tts_audio_b64'] as String?;
-        if (tts != null && tts.isNotEmpty) {
-          try {
-            await _stopPlayback();
-            final bytes = base64Decode(tts);
-            final dir = await getTemporaryDirectory();
-            final file = File(
-              '${dir.path}/avatar_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
-            );
-            await file.writeAsBytes(bytes, flush: true);
-            _lastRecordingPath = file.path;
-            unawaited(_playAudioAtPath(file.path));
-          } catch (_) {}
+          // KEIN return! finally muss ausgeführt werden!
+        } else {
+          // FALLBACK: Backend-MP3 (langsam, ~3 Sekunden)
+          debugPrint('⚠️ Chat: Fallback to Backend MP3');
+          final tts = res?['tts_audio_b64'] as String?;
+          if (tts != null && tts.isNotEmpty) {
+            try {
+              await _stopPlayback();
+              final bytes = base64Decode(tts);
+              final dir = await getTemporaryDirectory();
+              final file = File(
+                '${dir.path}/avatar_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
+              );
+              await file.writeAsBytes(bytes, flush: true);
+              _lastRecordingPath = file.path;
+              unawaited(_playAudioAtPath(file.path));
+            } catch (_) {}
+          }
         }
       }
     } catch (e) {

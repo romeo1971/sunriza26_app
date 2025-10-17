@@ -1,12 +1,24 @@
+// HTTP Server mit WebSocket Upgrade für Modal.com
+import { createServer } from "http";
 import { WebSocketServer } from "ws";
 import { startElevenStream } from "./eleven_adapter.js";
 import dotenv from "dotenv";
 dotenv.config();
 const PORT = parseInt(process.env.PORT || '3001', 10);
-const wss = new WebSocketServer({
-    port: PORT,
-    host: '0.0.0.0' // Bind auf alle Interfaces für Modal
+// HTTP Server für Modal
+const server = createServer((req, res) => {
+    // Health check
+    if (req.url === '/health') {
+        res.writeHead(200);
+        res.end('OK');
+    }
+    else {
+        res.writeHead(200);
+        res.end('Lipsync Orchestrator');
+    }
 });
+// WebSocket Server auf gleichem Port
+const wss = new WebSocketServer({ server });
 wss.on("connection", (clientWs) => {
     console.log("🎤 Lipsync client connected");
     let elevenWs = null;
@@ -148,4 +160,6 @@ function mapPhonemeToViseme(phoneme) {
     };
     return map[char] || "Rest";
 }
-console.log(`🚀 Lipsync Orchestrator läuft auf Port ${PORT}`);
+server.listen(PORT, () => {
+    console.log(`🚀 Lipsync Orchestrator läuft auf Port ${PORT}`);
+});
