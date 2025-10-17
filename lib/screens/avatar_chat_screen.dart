@@ -343,7 +343,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       backendUrl: AppConfig.backendUrl,
       orchestratorUrl: AppConfig.orchestratorUrl,
     );
-    
+
     // Callback für Streaming Playback Status
     _lipsync.onPlaybackStateChanged = (isPlaying) {
       if (mounted && _isSpeaking != isPlaying) {

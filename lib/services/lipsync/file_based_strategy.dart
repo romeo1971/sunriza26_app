@@ -1,7 +1,4 @@
-import 'dart:convert';
-import 'dart:io';
 import 'package:just_audio/just_audio.dart';
-import 'package:path_provider/path_provider.dart';
 import 'lipsync_strategy.dart';
 
 /// File-Based Strategy (Aktuelles System)
@@ -10,6 +7,9 @@ class FileBasedStrategy implements LipsyncStrategy {
 
   @override
   Stream<VisemeEvent>? get visemeStream => null;
+  
+  @override
+  void Function(bool isPlaying)? onPlaybackStateChanged;
 
   @override
   Future<void> speak(String text, String voiceId) async {
