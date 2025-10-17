@@ -668,41 +668,58 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       body: SizedBox.expand(
         child: Stack(
           children: [
-            // LIVE AVATAR: Video + Overlay ODER Fallback: Statisches Bild
-            if (_liveAvatarEnabled &&
-                _idleController != null &&
-                _idleController!.value.isInitialized) ...[
-              // Video + Overlay in gleicher FittedBox (gleiche Koordinaten)
-              Positioned.fill(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: _idleController!.value.size.width,
-                    height: _idleController!.value.size.height,
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        Positioned.fill(child: VideoPlayer(_idleController!)),
-                        if (_atlasImage != null &&
-                            _maskImage != null &&
-                            _atlasCells != null &&
-                            _mouthROI != null &&
-                            _visemeMixer != null)
-                          Positioned.fill(
-                            child: AvatarOverlay(
-                              atlas: _atlasImage!,
-                              mask: _maskImage!,
-                              cells: _atlasCells!,
-                              roi: _mouthROI!,
-                              mixer: _visemeMixer!,
+            // State Machine: IDLE (idle.mp4) vs STREAMING (LivePortrait)
+            Stack(
+              children: [
+                // 1) IDLE Video (Hintergrund, stumm)
+                AnimatedOpacity(
+                  duration: Duration(milliseconds: 250),
+                  opacity: _isSpeaking ? 0.0 : 1.0,
+                  child: (_liveAvatarEnabled &&
+                          _idleController != null &&
+                          _idleController!.value.isInitialized)
+                      ? Positioned.fill(
+                          child: FittedBox(
+                            fit: BoxFit.cover,
+                            child: SizedBox(
+                              width: _idleController!.value.size.width,
+                              height: _idleController!.value.size.height,
+                              child: VideoPlayer(_idleController!),
                             ),
                           ),
-                      ],
+                        )
+                      : (backgroundImage != null && backgroundImage.isNotEmpty)
+                          ? Positioned.fill(
+                              child: ExtendedImage.network(
+                                backgroundImage,
+                                fit: BoxFit.cover,
+                                cache: true,
+                              ),
+                            )
+                          : Container(color: Colors.black),
+                ),
+                // 2) STREAMING LivePortrait (Vordergrund)
+                // TODO: Hier kommt LivePortrait Canvas hin!
+                AnimatedOpacity(
+                  duration: Duration(milliseconds: 150),
+                  opacity: _isSpeaking ? 1.0 : 0.0,
+                  child: Container(
+                    color: Colors.black,
+                    child: Center(
+                      child: Text(
+                        'LivePortrait Streaming\n(Coming Soon)',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.white70, fontSize: 16),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ] else if (backgroundImage != null && backgroundImage.isNotEmpty)
+              ],
+            ),
+            
+            // Fallback wenn nichts
+            if (!_liveAvatarEnabled && 
+                (backgroundImage == null || backgroundImage.isEmpty))
               // Fallback: Statisches Bild
               Positioned.fill(
                 child: ExtendedImage.network(
