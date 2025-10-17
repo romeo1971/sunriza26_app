@@ -7,14 +7,25 @@ import 'lipsync_strategy.dart';
 /// MP3 Stream Audio Source für just_audio
 /// Spielt ersten Chunk SOFORT, weitere Chunks werden nachgestreamt
 class StreamingMp3Source extends StreamAudioSource {
-  final StreamController<List<int>> _controller =
+  StreamController<List<int>> _controller =
       StreamController<List<int>>.broadcast();
   final List<List<int>> _buffer = [];
   bool _isComplete = false;
 
+  void reset() {
+    _isComplete = false;
+    _buffer.clear();
+    if (!_controller.isClosed) {
+      _controller.close();
+    }
+    _controller = StreamController<List<int>>.broadcast();
+  }
+
   void addChunk(List<int> bytes) {
     _buffer.add(bytes);
-    _controller.add(bytes);
+    if (!_controller.isClosed) {
+      _controller.add(bytes);
+    }
   }
 
   void complete() {
@@ -164,15 +175,20 @@ class StreamingStrategy implements LipsyncStrategy {
       return;
     }
 
-    // Stop previous & create new stream source
+    // Stop previous playback
     await _audioPlayer?.stop();
-    _currentSource?.complete();
 
-    _currentSource = StreamingMp3Source();
+    // Reset existing source ODER neue erstellen
+    if (_currentSource != null) {
+      _currentSource!.reset();
+    } else {
+      _currentSource = StreamingMp3Source();
+    }
+    
     _chunkCount = 0;
 
     // ignore: avoid_print
-    print('🎵 Starting streaming playback');
+    print('🎵 Starting streaming playback (reset: ${_currentSource != null})');
 
     _channel!.sink.add(
       jsonEncode({'type': 'speak', 'text': text, 'voice_id': voiceId}),
