@@ -17,6 +17,9 @@ import 'package:http_parser/http_parser.dart';
 import 'package:provider/provider.dart';
 import '../services/localization_service.dart';
 import '../services/livekit_service.dart';
+import '../services/lipsync/lipsync_strategy.dart';
+import '../services/lipsync/lipsync_factory.dart';
+import '../config.dart';
 import 'package:livekit_client/livekit_client.dart' as lk;
 import 'package:video_player/video_player.dart';
 import '../services/playlist_service.dart';
@@ -83,6 +86,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   AvatarData? _avatarData;
   final AudioPlayer _player = AudioPlayer();
+  late LipsyncStrategy _lipsync;
   String? _lastRecordingPath;
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Amplitude>? _ampSub;
@@ -341,6 +345,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   @override
   void initState() {
     super.initState();
+
+    // Initialize Lipsync Strategy
+    _lipsync = LipsyncFactory.create(
+      mode: AppConfig.lipsyncMode,
+      backendUrl: AppConfig.backendUrl,
+      orchestratorUrl: AppConfig.orchestratorUrl,
+    );
 
     // Hör auf Audio-Player-Status, um Sprech-Indikator zu steuern
     _playerStateSub = _player.playerStateStream.listen((state) {
