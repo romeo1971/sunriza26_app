@@ -307,3 +307,4 @@ subprocess.run([
 **Getestet mit:** Modal.com, Tesla T4, LivePortrait, 10s Hero-Video  
 **Ergebnis:** 70-90s ist OPTIMAL für T4 GPU - weitere Optimierung nur mit teurerem Hardware möglich
 
+

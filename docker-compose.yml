@@ -1,4 +1,19 @@
 services:
+  orchestrator:
+    build:
+      context: ./orchestrator
+      dockerfile: Dockerfile
+    environment:
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - PORT=3001
+    ports:
+      - "3001:3001"
+    restart: always
+    command: ["node", "dist/lipsync_handler.js"]
+    depends_on:
+      - redis
+    networks:
+      - livekit-network
   # LiveKit server - Real-time communication server for WebRTC
   livekit:
     image: livekit/livekit-server:latest

@@ -63,28 +63,16 @@ class _Painter extends CustomPainter {
       ..isAntiAlias = true
       ..filterQuality = FilterQuality.high;
     final srcA = cells[mixer.a] ?? cells["Rest"]!;
-    final srcB = cells[mixer.b] ?? cells["Rest"]!;
-    final k = mixer.k;
 
+    // Mask-first: Maske zeichnen, dann Atlas mit srcIn in die Maske
     c.saveLayer(roi, Paint());
-    c.drawImageRect(
-      atlas,
-      srcA,
-      roi,
-      p..color = const Color(0xffffffff).withValues(alpha: 1.0 - k),
-    );
-    c.drawImageRect(
-      atlas,
-      srcB,
-      roi,
-      p..color = const Color(0xffffffff).withValues(alpha: k),
-    );
     c.drawImageRect(
       mask,
       Rect.fromLTWH(0, 0, mask.width.toDouble(), mask.height.toDouble()),
       roi,
-      Paint()..blendMode = BlendMode.dstIn,
+      Paint(),
     );
+    c.drawImageRect(atlas, srcA, roi, Paint()..blendMode = BlendMode.srcIn);
     c.restore();
   }
 

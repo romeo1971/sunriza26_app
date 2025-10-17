@@ -54,6 +54,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
   bool _isStoppingPlayback = false;
   StreamSubscription<PlayerState>? _playerStateSub;
+  StreamSubscription<Duration>? _playerPositionSub;
+  StreamSubscription<VisemeEvent>? _visemeSub;
 
   // Live Avatar Animation
   VideoPlayerController? _idleController;
@@ -363,6 +365,45 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         setState(() => _isSpeaking = speaking);
       }
     });
+
+    // Viseme-Stream (Streaming hat Priorität!)
+    if (_lipsync.visemeStream != null) {
+      debugPrint('✅ Using Streaming Visemes');
+      _visemeSub = _lipsync.visemeStream!.listen((ev) {
+        if (_visemeMixer == null) return;
+        debugPrint('👄 Viseme: ${ev.viseme} @ ${ev.ptsMs}ms');
+        _visemeMixer!.updateWeights({ev.viseme: 1.0});
+        // Reset nach Duration
+        Future.delayed(Duration(milliseconds: ev.durationMs), () {
+          _visemeMixer?.updateWeights({'Rest': 1.0});
+        });
+      });
+    } else {
+      // Fallback: Dummy-Animation für file-based
+      debugPrint('⚠️ Using Dummy Visemes (file-based)');
+      _playerPositionSub = _player.positionStream.listen((pos) {
+        if (_visemeMixer == null) return;
+        final isPlaying = _player.playing;
+        if (!isPlaying) {
+          _visemeMixer!.updateWeights({'Rest': 1.0});
+          return;
+        }
+        final t = pos.inMilliseconds;
+        String v;
+        final m = t % 600;
+        if (m < 120)
+          v = 'MBP';
+        else if (m < 240)
+          v = 'AI';
+        else if (m < 360)
+          v = 'E';
+        else if (m < 480)
+          v = 'O';
+        else
+          v = 'U';
+        _visemeMixer!.updateWeights({v: 1.0});
+      });
+    }
     // Empfange AvatarData SOFORT (synchron) von der vorherigen Seite
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final args = ModalRoute.of(context)?.settings.arguments;
@@ -410,8 +451,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                     : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
           _botSay(greet);
         }
-        // Starte Teaser-Scheduling
-        _scheduleTeaser();
+        // Starte Teaser-Scheduling (vorübergehend deaktiviert, bis Fehler behoben)
+        // _scheduleTeaser();
         // Live Avatar Assets laden
         _initLiveAvatar(_avatarData!.id);
       }
@@ -457,7 +498,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         basicDynamics['roiJsonUrl'] as String?,
       );
 
-      if (idleUrl == null || atlasUrl == null || maskUrl == null) {
+      if (idleUrl.isEmpty || atlasUrl.isEmpty || maskUrl.isEmpty) {
         debugPrint(
           '⚠️ Dynamics-Video: Unvollständige Assets\n'
           '→ Fallback: Nur Hero-Image wird angezeigt',
@@ -532,8 +573,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
       _visemeMixer = VisemeMixer(_atlasCells!);
 
-      // WebSocket zum Orchestrator aufbauen
-      await _connectOrchestrator(avatarId);
+      debugPrint('🎨 Live Avatar Assets geladen:');
+      debugPrint('   Atlas: ${_atlasImage!.width}x${_atlasImage!.height}');
+      debugPrint('   Mask: ${_maskImage!.width}x${_maskImage!.height}');
+      debugPrint(
+        '   ROI: ${_mouthROI!.left}, ${_mouthROI!.top}, ${_mouthROI!.width}, ${_mouthROI!.height}',
+      );
+      debugPrint('   Cells: ${_atlasCells!.keys}');
 
       setState(() {
         _liveAvatarEnabled = true;
@@ -546,131 +592,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     }
   }
 
-  // Fallback für lokale Tests (auskommentiert - evtl. später gebraucht)
-  /*
-  Future<void> _initLiveAvatarLocal(String avatarId) async {
-    try {
-      final assetPath = 'assets/avatars/schatzy';
-
-      _idleController = VideoPlayerController.asset('$assetPath/idle.mp4');
-      await _idleController!.initialize();
-      _idleController!.setLooping(true);
-      _idleController!.play();
-
-      final atlasData = await rootBundle.load('$assetPath/atlas.png');
-      final maskData = await rootBundle.load('$assetPath/mask.png');
-      final atlasJson = await rootBundle.loadString('$assetPath/atlas.json');
-      final roiJson = await rootBundle.loadString('$assetPath/roi.json');
-
-      final codec1 = await ui.instantiateImageCodec(
-        atlasData.buffer.asUint8List(),
-      );
-      final frame1 = await codec1.getNextFrame();
-      _atlasImage = frame1.image;
-
-      final codec2 = await ui.instantiateImageCodec(
-        maskData.buffer.asUint8List(),
-      );
-      final frame2 = await codec2.getNextFrame();
-      _maskImage = frame2.image;
-
-      final atlasMap = json.decode(atlasJson) as Map<String, dynamic>;
-      final roiMap = json.decode(roiJson) as Map<String, dynamic>;
-
-      _atlasCells = (atlasMap['cells'] as Map<String, dynamic>).map((k, v) {
-        final cell = v as Map<String, dynamic>;
-        return MapEntry(
-          k,
-          Rect.fromLTWH(
-            (cell['x'] as num).toDouble(),
-            (cell['y'] as num).toDouble(),
-            (cell['w'] as num).toDouble(),
-            (cell['h'] as num).toDouble(),
-          ),
-        );
-      });
-
-      _mouthROI = Rect.fromLTWH(
-        (roiMap['x'] as num).toDouble(),
-        (roiMap['y'] as num).toDouble(),
-        (roiMap['w'] as num).toDouble(),
-        (roiMap['h'] as num).toDouble(),
-      );
-
-      _visemeMixer = VisemeMixer(_atlasCells!);
-      await _connectOrchestrator(avatarId);
-
-      setState(() {
-        _liveAvatarEnabled = true;
-      });
-
-      debugPrint('✅ Live Avatar initialisiert (Lokal - Test)');
-    } catch (e) {
-      debugPrint('❌ Live Avatar Local Init Fehler: $e');
-    }
-  }
-  */
+  // Fallback lokal entfernt
 
   Future<void> _connectOrchestrator(String avatarId) async {
-    try {
-      // Session erstellen
-      final res = await http.post(
-        Uri.parse('http://localhost:8787/session-live'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
-          'avatar_id': avatarId,
-          'voice_id':
-              _avatarData?.training?['voice']?['elevenVoiceId'] ?? 'demo',
-        }),
-      );
-
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        _liveSessionId = data['session_id'];
-        final wsUrl = data['ws_url'] as String;
-
-        // WebSocket verbinden
-        _orchestratorWS = WebSocketChannel.connect(Uri.parse(wsUrl));
-
-        // Listener für Viseme/Prosody Events
-        _orchestratorWS!.stream.listen((message) {
-          try {
-            final data = json.decode(message as String);
-            if (data['type'] == 'viseme' && _visemeMixer != null) {
-              final weights = (data['weights'] as Map).map(
-                (k, v) => MapEntry(k as String, (v as num).toDouble()),
-              );
-              _visemeMixer!.updateWeights(weights);
-            }
-          } catch (e) {
-            debugPrint('❌ WebSocket message error: $e');
-          }
-        });
-
-        debugPrint('✅ Orchestrator verbunden: $_liveSessionId');
-      }
-    } catch (e) {
-      debugPrint('❌ Orchestrator Connect Fehler: $e');
-    }
+    // DEAKTIVIERT - File-Based Lipsync verwendet keinen Orchestrator
+    return;
   }
 
-  // Live Speak (auskommentiert - evtl. später gebraucht)
-  /*
-  Future<void> _liveSpeak(String text) async {
-    if (_liveSessionId == null) return;
-
-    try {
-      await http.post(
-        Uri.parse('http://localhost:8787/session-live/$_liveSessionId/speak'),
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({'text': text, 'barge_in': false}),
-      );
-      debugPrint('🗣️ Live Speak gestartet');
-    } catch (e) {
-      debugPrint('❌ Live Speak Fehler: $e');
-    }
-  }
-  */
+  // Live Speak entfernt
 
   @override
   Widget build(BuildContext context) {
@@ -743,32 +672,36 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
             if (_liveAvatarEnabled &&
                 _idleController != null &&
                 _idleController!.value.isInitialized) ...[
-              // Layer 0: Idle-Loop Video
+              // Video + Overlay in gleicher FittedBox (gleiche Koordinaten)
               Positioned.fill(
                 child: FittedBox(
                   fit: BoxFit.cover,
                   child: SizedBox(
                     width: _idleController!.value.size.width,
                     height: _idleController!.value.size.height,
-                    child: VideoPlayer(_idleController!),
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        Positioned.fill(child: VideoPlayer(_idleController!)),
+                        if (_atlasImage != null &&
+                            _maskImage != null &&
+                            _atlasCells != null &&
+                            _mouthROI != null &&
+                            _visemeMixer != null)
+                          Positioned.fill(
+                            child: AvatarOverlay(
+                              atlas: _atlasImage!,
+                              mask: _maskImage!,
+                              cells: _atlasCells!,
+                              roi: _mouthROI!,
+                              mixer: _visemeMixer!,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
                 ),
               ),
-              // Layer 1: Mund-Overlay
-              if (_atlasImage != null &&
-                  _maskImage != null &&
-                  _atlasCells != null &&
-                  _mouthROI != null &&
-                  _visemeMixer != null)
-                Positioned.fill(
-                  child: AvatarOverlay(
-                    atlas: _atlasImage!,
-                    mask: _maskImage!,
-                    cells: _atlasCells!,
-                    roi: _mouthROI!,
-                    mixer: _visemeMixer!,
-                  ),
-                ),
             ] else if (backgroundImage != null && backgroundImage.isNotEmpty)
               // Fallback: Statisches Bild
               Positioned.fill(
@@ -1753,6 +1686,29 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     }
     _lastTtsRequestTime = DateTime.now();
 
+    // Wenn Streaming aktiv: direkt an Orchestrator senden
+    if (_lipsync.visemeStream != null) {
+      try {
+        String? voiceId = (_avatarData?.training != null)
+            ? (_avatarData?.training?['voice'] != null
+                  ? (_avatarData?.training?['voice']?['elevenVoiceId']
+                        as String?)
+                  : null)
+            : null;
+        voiceId ??= await _reloadVoiceIdFromFirestore();
+        _addMessage(text, false);
+        if (voiceId != null && voiceId.isNotEmpty) {
+          await _lipsync.speak(text, voiceId);
+        } else {
+          _showSystemSnack('Keine Stimme für Streaming gefunden');
+        }
+        return;
+      } catch (e) {
+        _showSystemSnack('Streaming-Fehler: $e');
+        // Fallback auf file-based unten
+      }
+    }
+
     String? path;
     try {
       String? voiceId = (_avatarData?.training != null)
@@ -1760,29 +1716,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 ? (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
                 : null)
           : null;
-
-      // Fallback: neu aus Firestore laden, falls noch nicht vorhanden
       if (voiceId == null || voiceId.isEmpty) {
         voiceId = await _reloadVoiceIdFromFirestore();
       }
-
       final base = EnvService.memoryApiBaseUrl();
       if (base.isEmpty) {
-        // Fallback: Nur Text anzeigen, kein Audio
         _addMessage(text, false);
         return;
       }
       final uri = Uri.parse('$base/avatar/tts');
       final payload = <String, dynamic>{'text': text};
-      // Immer die geklonte Stimme verwenden
-      if (voiceId != null) {
-        payload['voice_id'] = voiceId;
-      } else {
-        // Fallback: Nur Text anzeigen, kein Audio
-        _addMessage(text, false);
-        return;
-      }
-      // Voice-Parameter aus training.voice übernehmen
+      if (voiceId != null) payload['voice_id'] = voiceId;
       final double? stability = (_avatarData?.training != null)
           ? (_avatarData?.training?['voice'] != null
                 ? (_avatarData?.training?['voice']?['stability'] as num?)
@@ -1816,7 +1760,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           )
           .timeout(const Duration(seconds: 8));
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        // Erwartet JSON { audio_b64: "..." }
         final Map<String, dynamic> j =
             jsonDecode(res.body) as Map<String, dynamic>;
         final String? b64 = j['audio_b64'] as String?;
@@ -2039,6 +1982,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         _showSystemSnack('Chat nicht verfügbar (keine Antwort)');
       } else {
         _addMessage(answer, false);
+        // 1) Streaming Visemes (optional)
+        if (_lipsync.visemeStream != null) {
+          String? voiceId = (_avatarData?.training != null)
+              ? (_avatarData?.training?['voice'] != null
+                    ? (_avatarData?.training?['voice']?['elevenVoiceId']
+                          as String?)
+                    : null)
+              : null;
+          voiceId ??= await _reloadVoiceIdFromFirestore();
+          if (voiceId != null && voiceId.isNotEmpty) {
+            unawaited(_lipsync.speak(answer, voiceId));
+          }
+        }
+
+        // 2) Immer: MP3 aus Backend abspielen, wenn vorhanden
         final tts = res?['tts_audio_b64'] as String?;
         if (tts != null && tts.isNotEmpty) {
           try {
@@ -2525,6 +2483,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   void dispose() {
     // _videoService.dispose(); // entfernt – kein lokales Lipsync mehr
     _playerStateSub?.cancel();
+    _playerPositionSub?.cancel();
+    _visemeSub?.cancel();
     _avatarSub?.cancel();
     _stopPlayback();
     _player.dispose();
