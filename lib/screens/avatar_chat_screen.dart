@@ -76,6 +76,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   bool _isLoadingMore = false;
 
   AvatarData? _avatarData;
+  String? _cachedVoiceId; // Cache für schnellen Zugriff!
   final AudioPlayer _player = AudioPlayer();
   late LipsyncStrategy _lipsync;
   String? _lastRecordingPath;
@@ -402,6 +403,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
       // Weiter mit Loading + Greeting
       if (_avatarData != null) {
+        // VoiceId SOFORT laden und cachen!
+        _cachedVoiceId = (_avatarData?.training?['voice']?['elevenVoiceId'] as String?) 
+            ?? await _reloadVoiceIdFromFirestore();
+        debugPrint('✅ VoiceId cached: ${_cachedVoiceId?.substring(0, 8)}...');
+        
         await _loadPartnerName();
         final manual = (dotenv.env['LIVEKIT_MANUAL_START'] ?? '').trim() == '1';
         if (!manual) {
@@ -557,28 +563,28 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           children: [
             // Idle Video läuft IMMER (auch während Audio!)
             (_liveAvatarEnabled &&
-                _idleController != null &&
-                _idleController!.value.isInitialized)
-            ? Positioned.fill(
-                child: FittedBox(
-                  fit: BoxFit.cover,
-                  child: SizedBox(
-                    width: _idleController!.value.size.width,
-                    height: _idleController!.value.size.height,
-                    child: VideoPlayer(_idleController!),
-                  ),
-                ),
-              )
-            : (backgroundImage != null && backgroundImage.isNotEmpty)
-            ? Positioned.fill(
-                child: ExtendedImage.network(
-                  backgroundImage,
-                  fit: BoxFit.cover,
-                  cache: true,
-                ),
-              )
-            : Container(color: Colors.black),
-            
+                    _idleController != null &&
+                    _idleController!.value.isInitialized)
+                ? Positioned.fill(
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: _idleController!.value.size.width,
+                        height: _idleController!.value.size.height,
+                        child: VideoPlayer(_idleController!),
+                      ),
+                    ),
+                  )
+                : (backgroundImage != null && backgroundImage.isNotEmpty)
+                ? Positioned.fill(
+                    child: ExtendedImage.network(
+                      backgroundImage,
+                      fit: BoxFit.cover,
+                      cache: true,
+                    ),
+                  )
+                : Container(color: Colors.black),
+
             // TODO: Später LivePortrait Canvas ÜBER idle.mp4 (wenn implementiert)
 
             // AppBar ist nun direkt im Scaffold eingebunden (siehe oben)
@@ -1538,23 +1544,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     _lastTtsRequestTime = DateTime.now();
 
     // PRIORITÄT: Streaming (schnell!)
-    if (_lipsync.visemeStream != null) {
-      String? voiceId = (_avatarData?.training != null)
-          ? (_avatarData?.training?['voice'] != null
-                ? (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
-                : null)
-          : null;
-      voiceId ??= await _reloadVoiceIdFromFirestore();
-
-      if (voiceId != null && voiceId.isNotEmpty) {
-        _addMessage(text, false);
-        debugPrint('🚀 _botSay: Using STREAMING');
-        await _lipsync.speak(text, voiceId);
-        return; // ← KEIN Backend-MP3!
-      } else {
-        debugPrint('⚠️ Keine voiceId für Streaming');
-      }
+    if (_lipsync.visemeStream != null && _cachedVoiceId != null && _cachedVoiceId!.isNotEmpty) {
+      _addMessage(text, false);
+      debugPrint('🚀 _botSay: Using STREAMING (cached voiceId)');
+      await _lipsync.speak(text, _cachedVoiceId!);
+      return; // ← KEIN Backend-MP3!
     }
+    
+    debugPrint('⚠️ Fallback: Kein Streaming (voiceId: $_cachedVoiceId, stream: ${_lipsync.visemeStream != null})');
 
     String? path;
     try {
@@ -1829,21 +1826,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         _showSystemSnack('Chat nicht verfügbar (keine Antwort)');
       } else {
         _addMessage(answer, false);
-
+        
         // PRIORITÄT: Streaming (schnell, < 500ms)
-        if (_lipsync.visemeStream != null) {
-          String? voiceId = (_avatarData?.training != null)
-              ? (_avatarData?.training?['voice'] != null
-                    ? (_avatarData?.training?['voice']?['elevenVoiceId']
-                          as String?)
-                    : null)
-              : null;
-          voiceId ??= await _reloadVoiceIdFromFirestore();
-          if (voiceId != null && voiceId.isNotEmpty) {
-            debugPrint('🚀 Using STREAMING audio');
-            unawaited(_lipsync.speak(answer, voiceId));
-            return; // ← KEIN Backend-MP3!
-          }
+        if (_lipsync.visemeStream != null && _cachedVoiceId != null && _cachedVoiceId!.isNotEmpty) {
+          debugPrint('🚀 Using STREAMING audio (cached voiceId)');
+          unawaited(_lipsync.speak(answer, _cachedVoiceId!));
+          return; // ← KEIN Backend-MP3!
         }
 
         // FALLBACK: Backend-MP3 (langsam, ~3 Sekunden)
