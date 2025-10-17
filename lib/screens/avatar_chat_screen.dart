@@ -403,11 +403,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
       // Weiter mit Loading + Greeting
       if (_avatarData != null) {
-        // VoiceId SOFORT laden und cachen!
-        _cachedVoiceId = (_avatarData?.training?['voice']?['elevenVoiceId'] as String?) 
-            ?? await _reloadVoiceIdFromFirestore();
-        debugPrint('✅ VoiceId cached: ${_cachedVoiceId?.substring(0, 8)}...');
-        
+        // VoiceId ist BEREITS in _avatarData!
+        _cachedVoiceId = _avatarData?.training?['voice']?['elevenVoiceId'] as String?;
+        debugPrint('✅ VoiceId from _avatarData: ${_cachedVoiceId?.substring(0, 8) ?? "NULL"}...');
+
         await _loadPartnerName();
         final manual = (dotenv.env['LIVEKIT_MANUAL_START'] ?? '').trim() == '1';
         if (!manual) {
@@ -1544,14 +1543,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     _lastTtsRequestTime = DateTime.now();
 
     // PRIORITÄT: Streaming (schnell!)
-    if (_lipsync.visemeStream != null && _cachedVoiceId != null && _cachedVoiceId!.isNotEmpty) {
+    if (_lipsync.visemeStream != null &&
+        _cachedVoiceId != null &&
+        _cachedVoiceId!.isNotEmpty) {
       _addMessage(text, false);
       debugPrint('🚀 _botSay: Using STREAMING (cached voiceId)');
       await _lipsync.speak(text, _cachedVoiceId!);
       return; // ← KEIN Backend-MP3!
     }
-    
-    debugPrint('⚠️ Fallback: Kein Streaming (voiceId: $_cachedVoiceId, stream: ${_lipsync.visemeStream != null})');
+
+    debugPrint(
+      '⚠️ Fallback: Kein Streaming (voiceId: $_cachedVoiceId, stream: ${_lipsync.visemeStream != null})',
+    );
 
     String? path;
     try {
@@ -1826,9 +1829,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         _showSystemSnack('Chat nicht verfügbar (keine Antwort)');
       } else {
         _addMessage(answer, false);
-        
+
         // PRIORITÄT: Streaming (schnell, < 500ms)
-        if (_lipsync.visemeStream != null && _cachedVoiceId != null && _cachedVoiceId!.isNotEmpty) {
+        if (_lipsync.visemeStream != null &&
+            _cachedVoiceId != null &&
+            _cachedVoiceId!.isNotEmpty) {
           debugPrint('🚀 Using STREAMING audio (cached voiceId)');
           unawaited(_lipsync.speak(answer, _cachedVoiceId!));
           return; // ← KEIN Backend-MP3!
