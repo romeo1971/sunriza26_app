@@ -6,6 +6,9 @@ abstract class LipsyncStrategy {
   void stop();
   void dispose();
   Stream<VisemeEvent>? get visemeStream => null;
+  
+  // Callback für Playback-Status
+  void Function(bool isPlaying)? onPlaybackStateChanged;
 }
 
 /// Viseme Event

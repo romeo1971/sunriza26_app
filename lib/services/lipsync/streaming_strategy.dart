@@ -215,19 +215,24 @@ class StreamingStrategy implements LipsyncStrategy {
 
   Future<void> _startPlayback() async {
     if (_currentSource == null || _audioPlayer == null) return;
-
+    
     try {
       // ignore: avoid_print
       print('▶️ Starting playback with first chunk!');
-
+      
       await _audioPlayer!.setAudioSource(_currentSource!);
+      
+      // Callback: Playback starts!
+      onPlaybackStateChanged?.call(true);
+      
       await _audioPlayer!.play();
-
+      
       // ignore: avoid_print
       print('✅ Playback started (streaming continues)');
     } catch (e) {
       // ignore: avoid_print
       print('❌ Playback start error: $e');
+      onPlaybackStateChanged?.call(false);
     }
   }
 
@@ -244,9 +249,12 @@ class StreamingStrategy implements LipsyncStrategy {
   void _handleDone() {
     // ignore: avoid_print
     print('✅ Stream done ($_chunkCount chunks)');
-
+    
     // Stream als komplett markieren
     _currentSource?.complete();
+    
+    // Callback: Playback ends!
+    onPlaybackStateChanged?.call(false);
   }
 
   @override

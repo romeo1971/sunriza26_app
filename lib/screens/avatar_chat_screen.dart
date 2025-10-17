@@ -343,6 +343,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       backendUrl: AppConfig.backendUrl,
       orchestratorUrl: AppConfig.orchestratorUrl,
     );
+    
+    // Callback für Streaming Playback Status
+    _lipsync.onPlaybackStateChanged = (isPlaying) {
+      if (mounted && _isSpeaking != isPlaying) {
+        debugPrint('🎙️ _isSpeaking changed: $isPlaying (streaming player)');
+        setState(() => _isSpeaking = isPlaying);
+      }
+    };
 
     // Hör auf Audio-Player-Status, um Sprech-Indikator zu steuern
     _playerStateSub = _player.playerStateStream.listen((state) {
@@ -351,6 +359,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           state.processingState != ProcessingState.completed &&
           state.processingState != ProcessingState.idle;
       if (_isSpeaking != speaking && mounted) {
+        debugPrint('🔊 _isSpeaking changed: $speaking (file-based player)');
         setState(() => _isSpeaking = speaking);
       }
     });
@@ -1556,12 +1565,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     if (_lipsync.visemeStream != null) {
       String? voiceId = (_avatarData?.training != null)
           ? (_avatarData?.training?['voice'] != null
-                ? (_avatarData?.training?['voice']?['elevenVoiceId']
-                      as String?)
+                ? (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
                 : null)
           : null;
       voiceId ??= await _reloadVoiceIdFromFirestore();
-      
+
       if (voiceId != null && voiceId.isNotEmpty) {
         _addMessage(text, false);
         debugPrint('🚀 _botSay: Using STREAMING');
@@ -1845,7 +1853,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         _showSystemSnack('Chat nicht verfügbar (keine Antwort)');
       } else {
         _addMessage(answer, false);
-        
+
         // PRIORITÄT: Streaming (schnell, < 500ms)
         if (_lipsync.visemeStream != null) {
           String? voiceId = (_avatarData?.training != null)
