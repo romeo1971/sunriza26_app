@@ -184,7 +184,7 @@ class StreamingStrategy implements LipsyncStrategy {
     } else {
       _currentSource = StreamingMp3Source();
     }
-    
+
     _chunkCount = 0;
 
     // ignore: avoid_print

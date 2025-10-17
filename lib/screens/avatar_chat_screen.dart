@@ -1552,26 +1552,23 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     }
     _lastTtsRequestTime = DateTime.now();
 
-    // Wenn Streaming aktiv: direkt an Orchestrator senden
+    // PRIORITÄT: Streaming (schnell!)
     if (_lipsync.visemeStream != null) {
-      try {
-        String? voiceId = (_avatarData?.training != null)
-            ? (_avatarData?.training?['voice'] != null
-                  ? (_avatarData?.training?['voice']?['elevenVoiceId']
-                        as String?)
-                  : null)
-            : null;
-        voiceId ??= await _reloadVoiceIdFromFirestore();
+      String? voiceId = (_avatarData?.training != null)
+          ? (_avatarData?.training?['voice'] != null
+                ? (_avatarData?.training?['voice']?['elevenVoiceId']
+                      as String?)
+                : null)
+          : null;
+      voiceId ??= await _reloadVoiceIdFromFirestore();
+      
+      if (voiceId != null && voiceId.isNotEmpty) {
         _addMessage(text, false);
-        if (voiceId != null && voiceId.isNotEmpty) {
-          await _lipsync.speak(text, voiceId);
-        } else {
-          _showSystemSnack('Keine Stimme für Streaming gefunden');
-        }
-        return;
-      } catch (e) {
-        _showSystemSnack('Streaming-Fehler: $e');
-        // Fallback auf file-based unten
+        debugPrint('🚀 _botSay: Using STREAMING');
+        await _lipsync.speak(text, voiceId);
+        return; // ← KEIN Backend-MP3!
+      } else {
+        debugPrint('⚠️ Keine voiceId für Streaming');
       }
     }
 
@@ -1848,7 +1845,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         _showSystemSnack('Chat nicht verfügbar (keine Antwort)');
       } else {
         _addMessage(answer, false);
-        // 1) Streaming Visemes (optional)
+        
+        // PRIORITÄT: Streaming (schnell, < 500ms)
         if (_lipsync.visemeStream != null) {
           String? voiceId = (_avatarData?.training != null)
               ? (_avatarData?.training?['voice'] != null
@@ -1858,11 +1856,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               : null;
           voiceId ??= await _reloadVoiceIdFromFirestore();
           if (voiceId != null && voiceId.isNotEmpty) {
+            debugPrint('🚀 Using STREAMING audio');
             unawaited(_lipsync.speak(answer, voiceId));
+            return; // ← KEIN Backend-MP3!
           }
         }
 
-        // 2) Immer: MP3 aus Backend abspielen, wenn vorhanden
+        // FALLBACK: Backend-MP3 (langsam, ~3 Sekunden)
+        debugPrint('⚠️ Fallback to Backend MP3');
         final tts = res?['tts_audio_b64'] as String?;
         if (tts != null && tts.isNotEmpty) {
           try {
