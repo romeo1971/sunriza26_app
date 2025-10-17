@@ -675,7 +675,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 AnimatedOpacity(
                   duration: Duration(milliseconds: 250),
                   opacity: _isSpeaking ? 0.0 : 1.0,
-                  child: (_liveAvatarEnabled &&
+                  child:
+                      (_liveAvatarEnabled &&
                           _idleController != null &&
                           _idleController!.value.isInitialized)
                       ? Positioned.fill(
@@ -689,14 +690,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                           ),
                         )
                       : (backgroundImage != null && backgroundImage.isNotEmpty)
-                          ? Positioned.fill(
-                              child: ExtendedImage.network(
-                                backgroundImage,
-                                fit: BoxFit.cover,
-                                cache: true,
-                              ),
-                            )
-                          : Container(color: Colors.black),
+                      ? Positioned.fill(
+                          child: ExtendedImage.network(
+                            backgroundImage,
+                            fit: BoxFit.cover,
+                            cache: true,
+                          ),
+                        )
+                      : Container(color: Colors.black),
                 ),
                 // 2) STREAMING LivePortrait (Vordergrund)
                 // TODO: Hier kommt LivePortrait Canvas hin!
@@ -716,9 +717,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                 ),
               ],
             ),
-            
+
             // Fallback wenn nichts
-            if (!_liveAvatarEnabled && 
+            if (!_liveAvatarEnabled &&
                 (backgroundImage == null || backgroundImage.isEmpty))
               // Fallback: Statisches Bild
               Positioned.fill(
