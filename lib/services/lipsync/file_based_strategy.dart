@@ -9,6 +9,9 @@ class FileBasedStrategy implements LipsyncStrategy {
   final AudioPlayer _player = AudioPlayer();
 
   @override
+  Stream<VisemeEvent>? get visemeStream => null;
+
+  @override
   Future<void> speak(String text, String voiceId) async {
     // Wird vom Chat-Screen mit bereits decodierter Audio-Datei aufgerufen
     // Diese Strategy ist kompatibel mit dem bestehenden Flow
