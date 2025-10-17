@@ -27,10 +27,6 @@ import '../services/media_service.dart';
 import '../services/shared_moments_service.dart';
 import '../models/media_models.dart';
 import 'package:extended_image/extended_image.dart';
-import '../widgets/avatar_overlay.dart';
-import 'dart:ui' as ui;
-import 'package:web_socket_channel/web_socket_channel.dart';
-import 'package:flutter/services.dart' show rootBundle;
 
 class AvatarChatScreen extends StatefulWidget {
   final String? avatarId; // Optional: Für Overlay-Chat
@@ -59,11 +55,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   // Live Avatar Animation
   VideoPlayerController? _idleController;
-  ui.Image? _atlasImage;
-  ui.Image? _maskImage;
-  Map<String, Rect>? _atlasCells;
-  Rect? _mouthROI;
-  VisemeMixer? _visemeMixer;
   bool _liveAvatarEnabled = false;
 
   // Rate-Limiting für TTS-Requests
@@ -364,42 +355,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       }
     });
 
-    // Viseme-Stream (Streaming hat Priorität!)
+    // Viseme-Stream (für LivePortrait später)
     if (_lipsync.visemeStream != null) {
-      debugPrint('✅ Using Streaming Visemes');
+      debugPrint('✅ Viseme Stream verfügbar (für LivePortrait)');
       _visemeSub = _lipsync.visemeStream!.listen((ev) {
-        if (_visemeMixer == null) return;
         debugPrint('👄 Viseme: ${ev.viseme} @ ${ev.ptsMs}ms');
-        _visemeMixer!.updateWeights({ev.viseme: 1.0});
-        // Reset nach Duration
-        Future.delayed(Duration(milliseconds: ev.durationMs), () {
-          _visemeMixer?.updateWeights({'Rest': 1.0});
-        });
-      });
-    } else {
-      // Fallback: Dummy-Animation für file-based
-      debugPrint('⚠️ Using Dummy Visemes (file-based)');
-      _playerPositionSub = _player.positionStream.listen((pos) {
-        if (_visemeMixer == null) return;
-        final isPlaying = _player.playing;
-        if (!isPlaying) {
-          _visemeMixer!.updateWeights({'Rest': 1.0});
-          return;
-        }
-        final t = pos.inMilliseconds;
-        String v;
-        final m = t % 600;
-        if (m < 120)
-          v = 'MBP';
-        else if (m < 240)
-          v = 'AI';
-        else if (m < 360)
-          v = 'E';
-        else if (m < 480)
-          v = 'O';
-        else
-          v = 'U';
-        _visemeMixer!.updateWeights({v: 1.0});
+        // TODO: An LivePortrait Canvas senden
       });
     }
     // Empfange AvatarData SOFORT (synchron) von der vorherigen Seite
@@ -487,18 +448,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
       // URLs aus Firebase Storage (+ Cache-Buster)
       final idleUrl = _addCacheBuster(basicDynamics['idleVideoUrl'] as String?);
-      final atlasUrl = _addCacheBuster(basicDynamics['atlasUrl'] as String?);
-      final maskUrl = _addCacheBuster(basicDynamics['maskUrl'] as String?);
-      final atlasJsonUrl = _addCacheBuster(
-        basicDynamics['atlasJsonUrl'] as String?,
-      );
-      final roiJsonUrl = _addCacheBuster(
-        basicDynamics['roiJsonUrl'] as String?,
-      );
 
-      if (idleUrl.isEmpty || atlasUrl.isEmpty || maskUrl.isEmpty) {
+      if (idleUrl.isEmpty) {
         debugPrint(
-          '⚠️ Dynamics-Video: Unvollständige Assets\n'
+          '⚠️ Dynamics-Video: Keine idleVideoUrl\n'
           '→ Fallback: Nur Hero-Image wird angezeigt',
         );
         setState(() => _liveAvatarEnabled = false);
@@ -512,80 +465,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       _idleController!.setLooping(true);
       _idleController!.play();
 
-      // Atlas & Mask von Firebase Storage
-      final atlasRes = await http.get(Uri.parse(atlasUrl));
-      final maskRes = await http.get(Uri.parse(maskUrl));
-
-      final codec1 = await ui.instantiateImageCodec(atlasRes.bodyBytes);
-      final frame1 = await codec1.getNextFrame();
-      _atlasImage = frame1.image;
-
-      final codec2 = await ui.instantiateImageCodec(maskRes.bodyBytes);
-      final frame2 = await codec2.getNextFrame();
-      _maskImage = frame2.image;
-
-      // Parse JSON (entweder von Firebase oder fallback lokal)
-      Map<String, dynamic> atlasMapParsed;
-      Map<String, dynamic> roiMapParsed;
-
-      if (atlasJsonUrl.isNotEmpty && roiJsonUrl.isNotEmpty) {
-        // JSON-Dateien von Firebase Storage laden
-        final atlasJsonRes = await http.get(Uri.parse(atlasJsonUrl));
-        final roiJsonRes = await http.get(Uri.parse(roiJsonUrl));
-        atlasMapParsed = json.decode(atlasJsonRes.body);
-        roiMapParsed = json.decode(roiJsonRes.body);
-      } else {
-        // Fallback: Lokale JSON-Dateien
-        final atlasJsonLocal = await rootBundle.loadString(
-          'assets/avatars/schatzy/atlas.json',
-        );
-        final roiJsonLocal = await rootBundle.loadString(
-          'assets/avatars/schatzy/roi.json',
-        );
-        atlasMapParsed = json.decode(atlasJsonLocal);
-        roiMapParsed = json.decode(roiJsonLocal);
-      }
-
-      _atlasCells = (atlasMapParsed['cells'] as Map<String, dynamic>).map((
-        k,
-        v,
-      ) {
-        final cell = v as Map<String, dynamic>;
-        return MapEntry(
-          k,
-          Rect.fromLTWH(
-            (cell['x'] as num).toDouble(),
-            (cell['y'] as num).toDouble(),
-            (cell['w'] as num).toDouble(),
-            (cell['h'] as num).toDouble(),
-          ),
-        );
-      });
-
-      _mouthROI = Rect.fromLTWH(
-        (roiMapParsed['x'] as num).toDouble(),
-        (roiMapParsed['y'] as num).toDouble(),
-        (roiMapParsed['w'] as num).toDouble(),
-        (roiMapParsed['h'] as num).toDouble(),
-      );
-
-      _visemeMixer = VisemeMixer(_atlasCells!);
-
-      debugPrint('🎨 Live Avatar Assets geladen:');
-      debugPrint('   Atlas: ${_atlasImage!.width}x${_atlasImage!.height}');
-      debugPrint('   Mask: ${_maskImage!.width}x${_maskImage!.height}');
-      debugPrint(
-        '   ROI: ${_mouthROI!.left}, ${_mouthROI!.top}, ${_mouthROI!.width}, ${_mouthROI!.height}',
-      );
-      debugPrint('   Cells: ${_atlasCells!.keys}');
-
       setState(() {
         _liveAvatarEnabled = true;
       });
 
-      debugPrint('✅ Dynamics-Video "basic" initialisiert (Firebase Storage)');
+      debugPrint('✅ Idle-Video initialisiert: $idleUrl');
     } catch (e) {
-      debugPrint('❌ Dynamics-Video Init Fehler: $e');
+      debugPrint('❌ Idle-Video Init Fehler: $e');
       setState(() => _liveAvatarEnabled = false);
     }
   }
@@ -2479,7 +2365,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     _imageTimer?.cancel();
     // Live Avatar aufräumen
     _idleController?.dispose();
-    _visemeMixer?.dispose();
     // LiveKit sauber trennen (no-op wenn Feature deaktiviert)
     unawaited(LiveKitService().leave());
     super.dispose();
