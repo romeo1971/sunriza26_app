@@ -89,7 +89,7 @@ class StreamingStrategy implements LipsyncStrategy {
 
   @override
   Stream<VisemeEvent> get visemeStream => _visemeController.stream;
-  
+
   @override
   void Function(bool isPlaying)? onPlaybackStateChanged;
 

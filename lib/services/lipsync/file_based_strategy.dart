@@ -7,7 +7,7 @@ class FileBasedStrategy implements LipsyncStrategy {
 
   @override
   Stream<VisemeEvent>? get visemeStream => null;
-  
+
   @override
   void Function(bool isPlaying)? onPlaybackStateChanged;
 

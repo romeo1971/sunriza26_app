@@ -555,55 +555,31 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       body: SizedBox.expand(
         child: Stack(
           children: [
-            // State Machine: IDLE (idle.mp4) vs STREAMING (LivePortrait)
-            Stack(
-              children: [
-                // 1) IDLE Video (Hintergrund, stumm)
-                AnimatedOpacity(
-                  duration: Duration(milliseconds: 250),
-                  opacity: _isSpeaking ? 0.0 : 1.0,
-                  child:
-                      (_liveAvatarEnabled &&
-                          _idleController != null &&
-                          _idleController!.value.isInitialized)
-                      ? Positioned.fill(
-                          child: FittedBox(
-                            fit: BoxFit.cover,
-                            child: SizedBox(
-                              width: _idleController!.value.size.width,
-                              height: _idleController!.value.size.height,
-                              child: VideoPlayer(_idleController!),
-                            ),
-                          ),
-                        )
-                      : (backgroundImage != null && backgroundImage.isNotEmpty)
-                      ? Positioned.fill(
-                          child: ExtendedImage.network(
-                            backgroundImage,
-                            fit: BoxFit.cover,
-                            cache: true,
-                          ),
-                        )
-                      : Container(color: Colors.black),
-                ),
-                // 2) STREAMING LivePortrait (Vordergrund)
-                // TODO: Hier kommt LivePortrait Canvas hin!
-                AnimatedOpacity(
-                  duration: Duration(milliseconds: 150),
-                  opacity: _isSpeaking ? 1.0 : 0.0,
-                  child: Container(
-                    color: Colors.black,
-                    child: Center(
-                      child: Text(
-                        'LivePortrait Streaming\n(Coming Soon)',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white70, fontSize: 16),
-                      ),
-                    ),
+            // Idle Video läuft IMMER (auch während Audio!)
+            (_liveAvatarEnabled &&
+                _idleController != null &&
+                _idleController!.value.isInitialized)
+            ? Positioned.fill(
+                child: FittedBox(
+                  fit: BoxFit.cover,
+                  child: SizedBox(
+                    width: _idleController!.value.size.width,
+                    height: _idleController!.value.size.height,
+                    child: VideoPlayer(_idleController!),
                   ),
                 ),
-              ],
-            ),
+              )
+            : (backgroundImage != null && backgroundImage.isNotEmpty)
+            ? Positioned.fill(
+                child: ExtendedImage.network(
+                  backgroundImage,
+                  fit: BoxFit.cover,
+                  cache: true,
+                ),
+              )
+            : Container(color: Colors.black),
+            
+            // TODO: Später LivePortrait Canvas ÜBER idle.mp4 (wenn implementiert)
 
             // AppBar ist nun direkt im Scaffold eingebunden (siehe oben)
 
