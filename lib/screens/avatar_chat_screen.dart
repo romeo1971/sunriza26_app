@@ -3,7 +3,9 @@ import 'package:just_audio/just_audio.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-// import 'dart:typed_data'; // nicht mehr benötigt
+import 'dart:typed_data';
+import 'package:flutter/foundation.dart'
+    show consolidateHttpClientResponseBytes;
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -26,6 +28,7 @@ import '../services/playlist_service.dart';
 import '../services/media_service.dart';
 import '../services/shared_moments_service.dart';
 import '../models/media_models.dart';
+import '../widgets/liveportrait_canvas.dart';
 
 class AvatarChatScreen extends StatefulWidget {
   final String? avatarId; // Optional: Für Overlay-Chat
@@ -51,6 +54,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<Duration>? _playerPositionSub;
   StreamSubscription<VisemeEvent>? _visemeSub;
+  final GlobalKey<LivePortraitCanvasState> _lpKey =
+      GlobalKey<LivePortraitCanvasState>();
+  StreamSubscription<PcmChunkEvent>? _pcmSub;
 
   // Live Avatar Animation
   VideoPlayerController? _idleController;
@@ -188,6 +194,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     }
   }
 
+  Future<Uint8List> _loadHeroBytes(String url) async {
+    final client = HttpClient();
+    try {
+      final req = await client.getUrl(Uri.parse(url));
+      final res = await req.close();
+      final bytes = await consolidateHttpClientResponseBytes(res);
+      return bytes;
+    } finally {
+      client.close();
+    }
+  }
+
   // Timer für Bildwechsel starten (nur aktive Bilder)
   void _startImageTimer() {
     _imageTimer?.cancel();
@@ -244,7 +262,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   static const int _minSegmentMs = 1200;
   static const bool kAutoSend = false;
 
-  bool _greetedOnce = false;
+  // Hinweis: Für Tests nicht genutzt; Tages-Limit wird später reaktiviert
+  // bool _greetedOnce = false;
 
   // Playlist/Teaser
   final PlaylistService _playlistSvc = PlaylistService();
@@ -364,12 +383,29 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       }
     });
 
-    // Viseme-Stream (für LivePortrait später)
+    // Viseme-Stream → LivePortrait (sofort verdrahten)
     if (_lipsync.visemeStream != null) {
       debugPrint('✅ Viseme Stream verfügbar (für LivePortrait)');
       _visemeSub = _lipsync.visemeStream!.listen((ev) {
+        // Während Sprechen Canvas sichtbar halten
+        if (mounted && !_isSpeaking) {
+          setState(() => _isSpeaking = true);
+        }
         debugPrint('👄 Viseme: ${ev.viseme} @ ${ev.ptsMs}ms');
-        // TODO: An LivePortrait Canvas senden
+        // Viseme an LivePortrait-Canvas weiterleiten (falls vorhanden)
+        _lpKey.currentState?.sendViseme(
+          ev.viseme,
+          ev.ptsMs,
+          ev.durationMs ?? 100,
+        );
+      });
+    }
+
+    // PCM-Stream → LivePortrait (Audio-Treiber)
+    if (_lipsync.pcmStream != null) {
+      _pcmSub = _lipsync.pcmStream!.listen((chunk) {
+        final bytes = Uint8List.fromList(chunk.bytes);
+        _lpKey.currentState?.sendAudioChunk(bytes, chunk.ptsMs);
       });
     }
     // Empfange AvatarData SOFORT (synchron) von der vorherigen Seite
@@ -439,19 +475,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         unawaited(_loadHistory());
         unawaited(_initLiveAvatar(_avatarData!.id));
 
-        // Begrüßung SOFORT (nicht auf History warten!)
-        final hasAny = _messages.isNotEmpty;
-        final lastIsBot = hasAny ? !_messages.last.isUser : false;
-        if (!_greetedOnce && !lastIsBot) {
-          _greetedOnce = true;
-          final greet = (_avatarData?.greetingText?.trim().isNotEmpty == true)
-              ? _avatarData!.greetingText!
-              : ((_partnerName ?? '').isNotEmpty
-                    ? _friendlyGreet(_partnerName ?? '')
-                    : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
-          debugPrint('🎙️ Greeting SOFORT: voiceId=$_cachedVoiceId');
-          unawaited(_botSay(greet));
-        }
+        // Begrüßung: für Tests JEDES Mal beim Öffnen abspielen
+        final greet = (_avatarData?.greetingText?.trim().isNotEmpty == true)
+            ? _avatarData!.greetingText!
+            : ((_partnerName ?? '').isNotEmpty
+                  ? _friendlyGreet(_partnerName ?? '')
+                  : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
+        debugPrint('🎙️ Greeting (immer): voiceId=$_cachedVoiceId');
+        unawaited(_botSay(greet));
       }
     });
   }
@@ -619,7 +650,33 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               ),
             ),
 
-            // TODO: Später LivePortrait Canvas ÜBER idle.mp4 (wenn implementiert)
+            // LivePortrait Canvas (einblendbar während des Sprechens)
+            if (_isSpeaking && _avatarData?.avatarImageUrl != null)
+              Positioned.fill(
+                child: FutureBuilder<Uint8List>(
+                  future: _loadHeroBytes(_avatarData!.avatarImageUrl!),
+                  builder: (context, snap) {
+                    if (!snap.hasData) return const SizedBox.shrink();
+                    return LivePortraitCanvas(
+                      key: _lpKey,
+                      wsUrl: AppConfig.livePortraitWsUrl,
+                      heroImageBytes: snap.data!,
+                      onReady: () {
+                        // Canvas bereit → nichts zu tun
+                      },
+                      onFirstFrame: () {
+                        // Sobald erster Frame da ist, ensure sichtbar (falls state nicht gesetzt)
+                        if (mounted && !_isSpeaking)
+                          setState(() => _isSpeaking = true);
+                      },
+                      onDone: () {
+                        if (mounted && _isSpeaking)
+                          setState(() => _isSpeaking = false);
+                      },
+                    );
+                  },
+                ),
+              ),
 
             // AppBar ist nun direkt im Scaffold eingebunden (siehe oben)
 
@@ -1109,31 +1166,59 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                   if (!isUser)
                     Padding(
                       padding: const EdgeInsets.only(left: 8),
-                      child: GestureDetector(
-                        onTap: () async {
-                          if (_player.playing) {
-                            await _player.pause();
-                            setState(() => _isSpeaking = false);
-                          } else {
-                            if (_player.processingState ==
-                                    ProcessingState.completed ||
-                                _player.processingState ==
-                                    ProcessingState.idle) {
-                              // Restart from beginning
-                              if (message.audioPath != null) {
-                                await _playAudioAtPath(message.audioPath!);
-                              }
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () async {
+                            if (_player.playing) {
+                              await _player.pause();
+                              setState(() => _isSpeaking = false);
                             } else {
-                              // Resume
-                              await _player.play();
-                              setState(() => _isSpeaking = true);
+                              if (_player.processingState ==
+                                      ProcessingState.completed ||
+                                  _player.processingState ==
+                                      ProcessingState.idle) {
+                                // Restart from beginning
+                                if (message.audioPath != null) {
+                                  await _playAudioAtPath(message.audioPath!);
+                                } else {
+                                  final p = await _ensureTtsForText(
+                                    message.text,
+                                  );
+                                  if (p != null) {
+                                    final idx = _messages.indexOf(message);
+                                    if (idx >= 0) {
+                                      setState(() {
+                                        _messages[idx] = ChatMessage(
+                                          text: message.text,
+                                          isUser: false,
+                                          audioPath: p,
+                                          timestamp: message.timestamp,
+                                        );
+                                      });
+                                    }
+                                    await _playAudioAtPath(p);
+                                  }
+                                }
+                              } else {
+                                // Resume
+                                await _player.play();
+                                setState(() => _isSpeaking = true);
+                              }
                             }
-                          }
-                        },
-                        child: Icon(
-                          _player.playing ? Icons.pause : Icons.volume_up,
-                          color: Colors.white70,
-                          size: 18,
+                          },
+                          child: const SizedBox(
+                            width: 36,
+                            height: 36,
+                            child: Center(
+                              child: Icon(
+                                Icons.volume_up,
+                                color: Colors.white70,
+                                size: 20,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -2374,6 +2459,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     _playerStateSub?.cancel();
     _playerPositionSub?.cancel();
     _visemeSub?.cancel();
+    _pcmSub?.cancel();
     _avatarSub?.cancel();
     _stopPlayback();
     _player.dispose();

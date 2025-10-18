@@ -7,6 +7,7 @@ abstract class LipsyncStrategy {
   Future<void> warmUp() async {}
   void dispose();
   Stream<VisemeEvent>? get visemeStream => null;
+  Stream<PcmChunkEvent>? get pcmStream => null;
 
   // Callback für Playback-Status
   void Function(bool isPlaying)? onPlaybackStateChanged;
@@ -23,4 +24,12 @@ class VisemeEvent {
     required this.ptsMs,
     required this.durationMs,
   });
+}
+
+/// PCM Audio Chunk (16kHz, 16-bit, mono)
+class PcmChunkEvent {
+  final List<int> bytes;
+  final int ptsMs;
+
+  PcmChunkEvent({required this.bytes, required this.ptsMs});
 }

@@ -13,7 +13,11 @@ app = modal.App("lipsync-orchestrator", image=image)
 
 
 @app.function(
-    secrets=[modal.Secret.from_name("lipsync-eleven")],
+    secrets=[
+        modal.Secret.from_name("lipsync-eleven"),
+        # Erwartet Key: LIVEPORTRAIT_WS_URL
+        modal.Secret.from_name("liveportrait-ws"),
+    ],
     min_containers=1,
     scaledown_window=300,
     timeout=3600,

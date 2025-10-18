@@ -9,6 +9,11 @@ class FileBasedStrategy implements LipsyncStrategy {
   Stream<VisemeEvent>? get visemeStream => null;
 
   @override
+  // File-basiert: Es gibt keinen PCM-Stream. Dieser Getter erfüllt nur den Interface‑Kontrakt,
+  // damit der Build stabil bleibt, wenn das Interface erweitert wurde.
+  Stream<PcmChunkEvent>? get pcmStream => null;
+
+  @override
   void Function(bool isPlaying)? onPlaybackStateChanged;
 
   @override

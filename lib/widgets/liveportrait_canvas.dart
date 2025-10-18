@@ -12,6 +12,7 @@ class LivePortraitCanvas extends StatefulWidget {
   final Uint8List heroImageBytes;
   final VoidCallback? onReady;
   final VoidCallback? onDone;
+  final VoidCallback? onFirstFrame; // signalisiere ersten Frame
 
   const LivePortraitCanvas({
     super.key,
@@ -19,13 +20,14 @@ class LivePortraitCanvas extends StatefulWidget {
     required this.heroImageBytes,
     this.onReady,
     this.onDone,
+    this.onFirstFrame,
   });
 
   @override
-  State<LivePortraitCanvas> createState() => _LivePortraitCanvasState();
+  State<LivePortraitCanvas> createState() => LivePortraitCanvasState();
 }
 
-class _LivePortraitCanvasState extends State<LivePortraitCanvas> {
+class LivePortraitCanvasState extends State<LivePortraitCanvas> {
   WebSocketChannel? _channel;
   ui.Image? _currentFrame;
   bool _isReady = false;
@@ -115,6 +117,12 @@ class _LivePortraitCanvasState extends State<LivePortraitCanvas> {
         setState(() {
           _currentFrame = frame.image;
         });
+        if (!_isReady && widget.onReady != null) {
+          // falls Server kein ready sendet, beim ersten Frame als ready werten
+          _isReady = true;
+          widget.onReady?.call();
+        }
+        widget.onFirstFrame?.call();
       }
     } catch (e) {
       // ignore: avoid_print
@@ -130,6 +138,19 @@ class _LivePortraitCanvasState extends State<LivePortraitCanvas> {
         'type': 'audio',
         'data': base64Encode(audioBytes),
         'pts_ms': ptsMs,
+      }),
+    );
+  }
+
+  // Optional: Viseme direkt senden (falls Server das unterstützt)
+  void sendViseme(String viseme, int ptsMs, int durationMs) {
+    if (_channel == null || !_isReady) return;
+    _channel!.sink.add(
+      jsonEncode({
+        'type': 'viseme',
+        'value': viseme,
+        'pts_ms': ptsMs,
+        'duration_ms': durationMs,
       }),
     );
   }

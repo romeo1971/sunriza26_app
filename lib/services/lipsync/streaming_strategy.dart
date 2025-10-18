@@ -81,9 +81,13 @@ class StreamingStrategy implements LipsyncStrategy {
 
   final StreamController<VisemeEvent> _visemeController =
       StreamController<VisemeEvent>.broadcast();
+  final StreamController<PcmChunkEvent> _pcmController =
+      StreamController<PcmChunkEvent>.broadcast();
 
   @override
   Stream<VisemeEvent> get visemeStream => _visemeController.stream;
+  @override
+  Stream<PcmChunkEvent> get pcmStream => _pcmController.stream;
 
   @override
   void Function(bool isPlaying)? onPlaybackStateChanged;
@@ -125,6 +129,9 @@ class StreamingStrategy implements LipsyncStrategy {
                 break;
               case 'viseme':
                 _handleViseme(data);
+                break;
+              case 'pcm':
+                _handlePcm(data);
                 break;
               case 'done':
                 _handleDone();
@@ -304,6 +311,14 @@ class StreamingStrategy implements LipsyncStrategy {
         durationMs: data['duration_ms'] ?? 100,
       ),
     );
+  }
+
+  void _handlePcm(Map<String, dynamic> data) {
+    final int pts = data['pts_ms'] ?? 0;
+    final String b64 = data['data'] ?? '';
+    if (b64.isEmpty) return;
+    final bytes = base64Decode(b64);
+    _pcmController.add(PcmChunkEvent(bytes: bytes, ptsMs: pts));
   }
 
   void _handleDone() {
