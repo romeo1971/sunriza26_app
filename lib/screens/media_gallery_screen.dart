@@ -1683,8 +1683,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                           ext,
                                           originalFileName,
                                         ).then((_) {
-                                          if (ctx.mounted)
+                                          if (ctx.mounted) {
                                             Navigator.of(ctx).pop();
+                                          }
                                         });
                                       }
                                     },

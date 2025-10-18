@@ -6,8 +6,9 @@ image = (
     modal.Image.debian_slim()
     .apt_install("bash")
     .pip_install("fastapi", "uvicorn", "websockets", "PyJWT")
-    # Bundle den gesamten Orchestrator-Ordner (klein) → stellt sicher, dass py_asgi_app.py vorhanden ist
-    .add_local_dir(".", "/app", copy=True)
+    # Nur die benötigte Datei bundlen (vermeidet Mount‑Limit)
+    # Wichtig: absoluter Pfad relativ zum Repo-Root, damit Modal ihn findet
+    .add_local_file("orchestrator/py_asgi_app.py", "/app/py_asgi_app.py")
 )
 
 app = modal.App("lipsync-orchestrator", image=image)

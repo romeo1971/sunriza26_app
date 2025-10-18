@@ -1,18 +1,21 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:just_audio/just_audio.dart';
+import 'package:audio_session/audio_session.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'lipsync_strategy.dart';
 
 /// MP3 Stream Audio Source für just_audio
 /// Spielt ersten Chunk SOFORT, weitere Chunks werden nachgestreamt
 class StreamingMp3Source extends StreamAudioSource {
-  StreamController<List<int>> _controller =
+  final StreamController<List<int>> _controller =
       StreamController<List<int>>.broadcast();
   final List<List<int>> _buffer = [];
   bool _isComplete = false;
+  bool _disposed = false;
 
   void addChunk(List<int> bytes) {
+    if (_disposed) return;
     _buffer.add(bytes);
     if (!_controller.isClosed) {
       _controller.add(bytes);
@@ -20,7 +23,15 @@ class StreamingMp3Source extends StreamAudioSource {
   }
 
   void complete() {
+    if (_disposed) return;
     _isComplete = true;
+    if (!_controller.isClosed) {
+      _controller.close();
+    }
+  }
+
+  void dispose() {
+    _disposed = true;
     if (!_controller.isClosed) {
       _controller.close();
     }
@@ -28,17 +39,31 @@ class StreamingMp3Source extends StreamAudioSource {
 
   @override
   Future<StreamAudioResponse> request([int? start, int? end]) async {
+    if (_disposed) {
+      // Wenn disposed, leeren Stream zurückgeben (verhindert Null-Check Crash)
+      return StreamAudioResponse(
+        sourceLength: 0,
+        contentLength: 0,
+        contentType: 'audio/mpeg',
+        stream: Stream.empty(),
+        offset: 0,
+        rangeRequestsSupported: false,
+      );
+    }
+
     final controller = StreamController<List<int>>();
 
     // Bereits gepufferte Daten SOFORT senden
     for (final chunk in _buffer) {
-      controller.add(chunk);
+      if (!controller.isClosed && !_disposed) {
+        controller.add(chunk);
+      }
     }
 
     // Neue Chunks weiterleiten
     final sub = _controller.stream.listen(
       (data) {
-        if (!controller.isClosed) {
+        if (!controller.isClosed && !_disposed) {
           controller.add(data);
         }
       },
@@ -210,7 +235,8 @@ class StreamingStrategy implements LipsyncStrategy {
     }
 
     // IMMER neuen Source erstellen (kein reset!)
-    // Alten Source loslassen → GC räumt auf
+    // Alten Source ERST disposen, dann neuen erstellen
+    _currentSource?.dispose();
     _currentSource = StreamingMp3Source();
     _chunkCount = 0;
 
@@ -277,6 +303,14 @@ class StreamingStrategy implements LipsyncStrategy {
       // ignore: avoid_print
       print('▶️ Starting playback with first chunk!');
 
+      // iOS: Audio-Session für Playback aktivieren
+      try {
+        final session = await AudioSession.instance;
+        await session.configure(const AudioSessionConfiguration.speech());
+      } catch (e) {
+        print('⚠️ Audio session config failed: $e');
+      }
+      
       await _audioPlayer!.setAudioSource(_currentSource!);
 
       // Callback: Playback starts!
@@ -284,12 +318,17 @@ class StreamingStrategy implements LipsyncStrategy {
 
       await _audioPlayer!.play();
 
-      // Nach Playback-Ende sauber schließen
+      // Nach Playback-Ende Callback setzen (OHNE Source zu completen!)
+      // Die Source bleibt offen, bis explizit stop()/dispose() aufgerufen wird
       _audioPlayer!.playerStateStream
           .firstWhere((s) => s.processingState == ProcessingState.completed)
           .then((_) {
             onPlaybackStateChanged?.call(false);
-            _currentSource?.complete();
+            // KEIN complete() hier! Player könnte noch auf Source zugreifen
+          })
+          .catchError((e) {
+            // ignore: avoid_print
+            print('⚠️ Player state stream error: $e');
           });
 
       // ignore: avoid_print
@@ -347,6 +386,11 @@ class StreamingStrategy implements LipsyncStrategy {
       _startPlayback();
     }
 
+    // JETZT Source schließen (alle Chunks sind angekommen)
+    // WICHTIG: complete() schließt den Stream, aber disposed NICHT die Source!
+    // Player kann danach noch auf gepufferte Daten zugreifen
+    _currentSource?.complete();
+
     // Nicht sofort complete/callback – warte auf tatsächliches Player-Ende
     _playbackStarted = false;
     _bytesAccumulated = 0;
@@ -360,7 +404,11 @@ class StreamingStrategy implements LipsyncStrategy {
     try {
       await _audioPlayer?.stop();
     } catch (_) {}
-    _currentSource?.complete();
+    // Source sauber schließen und disposen
+    try {
+      _currentSource?.complete();
+      _currentSource?.dispose();
+    } catch (_) {}
     _chunkCount = 0;
     _bytesAccumulated = 0;
   }
@@ -369,6 +417,8 @@ class StreamingStrategy implements LipsyncStrategy {
   void dispose() {
     _channelSubscription?.cancel();
     _channel?.sink.close();
+    // Source explizit disposen
+    _currentSource?.dispose();
     _audioPlayer?.dispose();
     _currentSource?.complete();
     _visemeController.close();

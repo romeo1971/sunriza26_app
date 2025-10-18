@@ -62,6 +62,22 @@ async def mint_livekit_token(req: Request):
     token = jwt.encode(payload, LIVEKIT_API_SECRET, algorithm="HS256")
     return {"url": LIVEKIT_URL, "room": room, "token": token}
 
+
+# --- Simple Publisher control stubs (wire-up) ---
+@app.post("/publisher/start")
+async def publisher_start(req: Request):
+    body = await req.json()
+    # Here we would start the real renderer/publisher into LiveKit
+    # using LIVEKIT_URL/KEY/SECRET and ElevenLabs stream-input.
+    # For now, acknowledge so the client flow works end-to-end.
+    return {"status": "started", "room": body.get("room", "sunriza26")}
+
+
+@app.post("/publisher/stop")
+async def publisher_stop(req: Request):
+    body = await req.json()
+    return {"status": "stopped", "room": body.get("room", "sunriza26")}
+
 async def stream_eleven(ws: WebSocket, voice_id: str, text: str):
     if not ELEVEN_KEY:
         await _safe_send(ws, {"type": "error", "message": "ELEVENLABS_API_KEY missing"})

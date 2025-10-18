@@ -403,20 +403,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   bool _voicesLoading = false;
 
   // Dynamics Parameter ✨ - PRO DYNAMICS-ID!
-  Map<String, double> _drivingMultipliers = {
+  final Map<String, double> _drivingMultipliers = {
     'basic': 0.41,
   }; // dynamicsId -> value
-  Map<String, double> _animationScales = {'basic': 2.0};
-  Map<String, int> _sourceMaxDims = {
+  final Map<String, double> _animationScales = {'basic': 2.0};
+  final Map<String, int> _sourceMaxDims = {
     'basic': 1600,
   }; // Auto-berechnet aus Hero-Image!
-  Map<String, bool> _flagsNormalizeLip = {'basic': true};
-  Map<String, bool> _flagsPasteback = {'basic': true};
-  Map<String, String> _animationRegions = {'basic': 'all'};
+  final Map<String, bool> _flagsNormalizeLip = {'basic': true};
+  final Map<String, bool> _flagsPasteback = {'basic': true};
+  final Map<String, String> _animationRegions = {'basic': 'all'};
   Map<String, Map<String, dynamic>> _dynamicsData = {}; // dynamicsId -> data
-  Set<String> _generatingDynamics = {}; // Set der gerade generierenden IDs
-  Map<String, int> _dynamicsTimeRemaining = {}; // dynamicsId -> seconds
-  Map<String, Timer?> _dynamicsTimers = {}; // dynamicsId -> Timer
+  final Set<String> _generatingDynamics =
+      {}; // Set der gerade generierenden IDs
+  final Map<String, int> _dynamicsTimeRemaining = {}; // dynamicsId -> seconds
+  final Map<String, Timer?> _dynamicsTimers = {}; // dynamicsId -> Timer
   double _heroVideoDuration = 0; // Hero-Video Dauer in Sekunden
   bool _heroVideoTooLong = false; // Hero-Video > 10 Sek
   bool get _hasNoClonedVoice {
@@ -3645,9 +3646,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         _sourceMaxDims[dynamicsId] = optimal;
       });
 
-      debugPrint(
-        '✅ source-max-dim berechnet: ${width}x${height} → $optimal px',
-      );
+      debugPrint('✅ source-max-dim berechnet: ${width}x$height → $optimal px');
       debugPrint('💡 Empfehlung: $optimal (basierend auf Bild-Größe)');
     } catch (e) {
       debugPrint('❌ Fehler beim Berechnen von source-max-dim: $e');

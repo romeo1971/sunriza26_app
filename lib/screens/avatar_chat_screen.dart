@@ -47,7 +47,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   final List<ChatMessage> _messages = [];
   bool _isRecording = false;
   bool _isTyping = false;
-  bool _isSpeaking = false; // legacy – bleibt für bestehende Bindings
   bool _isStreamingSpeaking = false; // steuert LivePortrait Canvas
   bool _isFileSpeaking = false; // steuert Datei‑Replay
   // ignore: unused_field
@@ -320,7 +319,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           }
         }
       } catch (_) {}
-      final uri = tokenUri!;
+      final uri = tokenUri;
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
@@ -346,6 +345,64 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       // Mapping wie im PDF: NEXT_PUBLIC_LIVEKIT_URL == LIVEKIT_URL → vom Backend geliefert
       await LiveKitService().join(room: room, token: token, urlOverride: lkUrl);
     } catch (_) {}
+  }
+
+  Future<void> _startLiveKitPublisher(
+    String room,
+    String avatarId,
+    String voiceId,
+  ) async {
+    try {
+      final orchUrl = AppConfig.orchestratorUrl
+          .replaceFirst('wss://', 'https://')
+          .replaceFirst('ws://', 'http://');
+      final url = orchUrl.endsWith('/')
+          ? '${orchUrl}publisher/start'
+          : '$orchUrl/publisher/start';
+      debugPrint('🎬 Starting LiveKit publisher: $url');
+
+      final res = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'room': room,
+          'avatar_id': avatarId,
+          'voice_id': voiceId,
+        }),
+      );
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        debugPrint('✅ LiveKit publisher started');
+      } else {
+        debugPrint('⚠️ Publisher start failed: ${res.statusCode}');
+      }
+    } catch (e) {
+      debugPrint('❌ Publisher start error: $e');
+    }
+  }
+
+  Future<void> _stopLiveKitPublisher(String room) async {
+    try {
+      final orchUrl = AppConfig.orchestratorUrl
+          .replaceFirst('wss://', 'https://')
+          .replaceFirst('ws://', 'http://');
+      final url = orchUrl.endsWith('/')
+          ? '${orchUrl}publisher/stop'
+          : '$orchUrl/publisher/stop';
+      debugPrint('🛑 Stopping LiveKit publisher: $url');
+
+      final res = await http.post(
+        Uri.parse(url),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'room': room}),
+      );
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        debugPrint('✅ LiveKit publisher stopped');
+      }
+    } catch (e) {
+      debugPrint('❌ Publisher stop error: $e');
+    }
   }
 
   // Cache-Buster für Storage-URLs, um harte Caches (Safari/CDN) zu umgehen
@@ -389,11 +446,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     );
 
     // Callback für Streaming Playback Status
-    _lipsync.onPlaybackStateChanged = (isPlaying) {
+    _lipsync.onPlaybackStateChanged = (isPlaying) async {
       if (!mounted) return;
       if (_isStreamingSpeaking != isPlaying) {
         debugPrint('🎙️ _isStreamingSpeaking: $isPlaying');
         setState(() => _isStreamingSpeaking = isPlaying);
+        
+        // LiveKit Publisher starten/stoppen basierend auf Playback-Status
+        final room = LiveKitService().roomName ?? 'sunriza26';
+        if (isPlaying && _avatarData?.id != null && _cachedVoiceId != null) {
+          await _startLiveKitPublisher(room, _avatarData!.id, _cachedVoiceId!);
+        } else if (!isPlaying) {
+          await _stopLiveKitPublisher(room);
+        }
       }
     };
 
@@ -422,7 +487,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         _lpKey.currentState?.sendViseme(
           ev.viseme,
           ev.ptsMs,
-          ev.durationMs ?? 100,
+          ev.durationMs,
         );
       });
     }
@@ -644,7 +709,34 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        actions: const [SizedBox(width: 48)],
+        actions: [
+          AnimatedBuilder(
+            animation: LiveKitService().connectionStatus,
+            builder: (context, _) {
+              final s = LiveKitService().connectionStatus.value;
+              Color bg = Colors.black.withValues(alpha: 0.6);
+              if (s == 'connected') bg = Colors.green.withValues(alpha: 0.7);
+              if (s == 'reconnecting') {
+                bg = Colors.orange.withValues(alpha: 0.7);
+              }
+              if (s == 'disconnected') bg = Colors.red.withValues(alpha: 0.7);
+              if (s == 'ended') bg = Colors.grey.withValues(alpha: 0.7);
+              return Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: bg,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'LK: $s',
+                  style: const TextStyle(color: Colors.white, fontSize: 12),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: SizedBox.expand(
         child: Stack(
@@ -1007,9 +1099,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                 animation: LiveKitService().connectionStatus,
                 builder: (context, _) {
                   final s = LiveKitService().connectionStatus.value;
-                  if (s == 'idle') return const SizedBox.shrink();
+                  // Immer den LiveKit-Status anzeigen (auch bei 'idle')
                   Color bg = Colors.black.withValues(alpha: 0.6);
-                  String label = s;
+                  String label = 'LK: $s';
                   if (s == 'connected') {
                     bg = Colors.green.withValues(alpha: 0.7);
                   }
@@ -2499,21 +2591,27 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _visemeSub?.cancel();
     _pcmSub?.cancel();
     _avatarSub?.cancel();
-    _stopPlayback();
-    _player.dispose();
-    _messageController.dispose();
-    _scrollController.dispose();
-    _ampSub?.cancel();
-    _recorder.dispose();
     // Teaser aufräumen
     _teaserTimer?.cancel();
     _teaserEntry?.remove();
     // Image Timeline aufräumen
     _imageTimer?.cancel();
+    // Audio/Player stoppen (ohne setState!)
+    try {
+      _player.stop();
+    } catch (_) {}
+    _player.dispose();
+    _messageController.dispose();
+    _scrollController.dispose();
+    _ampSub?.cancel();
+    _recorder.dispose();
     // Live Avatar aufräumen
     _idleController?.dispose();
     // Lipsync Strategy aufräumen (schließt WebSocket!)
     _lipsync.dispose();
+    // LiveKit Publisher stoppen (beim Verlassen des Chats)
+    final room = LiveKitService().roomName ?? 'sunriza26';
+    unawaited(_stopLiveKitPublisher(room));
     // LiveKit sauber trennen (no-op wenn Feature deaktiviert)
     unawaited(LiveKitService().leave());
     super.dispose();
