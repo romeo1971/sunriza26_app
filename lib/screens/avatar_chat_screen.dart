@@ -40,13 +40,16 @@ class AvatarChatScreen extends StatefulWidget {
   State<AvatarChatScreen> createState() => _AvatarChatScreenState();
 }
 
-class _AvatarChatScreenState extends State<AvatarChatScreen> {
+class _AvatarChatScreenState extends State<AvatarChatScreen>
+    with AutomaticKeepAliveClientMixin {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   bool _isRecording = false;
   bool _isTyping = false;
-  bool _isSpeaking = false;
+  bool _isSpeaking = false; // legacy – bleibt für bestehende Bindings
+  bool _isStreamingSpeaking = false; // steuert LivePortrait Canvas
+  bool _isFileSpeaking = false; // steuert Datei‑Replay
   // ignore: unused_field
   final bool _isMuted =
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
@@ -61,6 +64,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
   // Live Avatar Animation
   VideoPlayerController? _idleController;
   bool _liveAvatarEnabled = false;
+  String? _idleVideoUrl;
+  bool _lpHasFirstFrame = false; // Canvas erst anzeigen, wenn 1. Frame da ist
 
   // Rate-Limiting für TTS-Requests
   DateTime? _lastTtsRequestTime;
@@ -277,7 +282,27 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     try {
       if ((dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() != '1') return;
       final base = EnvService.memoryApiBaseUrl();
-      if (base.isEmpty) return;
+      final tokenUrlEnv = (dotenv.env['LIVEKIT_TOKEN_URL'] ?? '').trim();
+      Uri? tokenUri;
+
+      if (tokenUrlEnv.isNotEmpty) {
+        // Explizit gesetzter Token‑Endpoint (Orchestrator o.ä.)
+        tokenUri = Uri.parse(tokenUrlEnv);
+      } else if (base.isEmpty) {
+        // Fallback: Direkt aus .env joinen, wenn ein Test‑Token hinterlegt ist
+        final testToken = (dotenv.env['LIVEKIT_TEST_TOKEN'] ?? '').trim();
+        final url = (dotenv.env['LIVEKIT_URL'] ?? '').trim();
+        if (testToken.isNotEmpty && url.isNotEmpty) {
+          await LiveKitService().join(
+            room: (dotenv.env['LIVEKIT_TEST_ROOM'] ?? 'sunriza').trim(),
+            token: testToken,
+            urlOverride: url,
+          );
+        }
+        return;
+      } else {
+        tokenUri = Uri.parse('$base/livekit/token');
+      }
       final user = FirebaseAuth.instance.currentUser;
       if (user == null || _avatarData == null) return;
       // Avatar-Info vor Join abrufen und an Agent/Backend übermitteln (optional nutzbar)
@@ -295,7 +320,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           }
         }
       } catch (_) {}
-      final uri = Uri.parse('$base/livekit/token');
+      final uri = tokenUri!;
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
@@ -365,9 +390,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
     // Callback für Streaming Playback Status
     _lipsync.onPlaybackStateChanged = (isPlaying) {
-      if (mounted && _isSpeaking != isPlaying) {
-        debugPrint('🎙️ _isSpeaking changed: $isPlaying (streaming player)');
-        setState(() => _isSpeaking = isPlaying);
+      if (!mounted) return;
+      if (_isStreamingSpeaking != isPlaying) {
+        debugPrint('🎙️ _isStreamingSpeaking: $isPlaying');
+        setState(() => _isStreamingSpeaking = isPlaying);
       }
     };
 
@@ -377,9 +403,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
           state.playing &&
           state.processingState != ProcessingState.completed &&
           state.processingState != ProcessingState.idle;
-      if (_isSpeaking != speaking && mounted) {
-        debugPrint('🔊 _isSpeaking changed: $speaking (file-based player)');
-        setState(() => _isSpeaking = speaking);
+      if (mounted && _isFileSpeaking != speaking) {
+        debugPrint('🔊 _isFileSpeaking: $speaking');
+        setState(() => _isFileSpeaking = speaking);
       }
     });
 
@@ -388,8 +414,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
       debugPrint('✅ Viseme Stream verfügbar (für LivePortrait)');
       _visemeSub = _lipsync.visemeStream!.listen((ev) {
         // Während Sprechen Canvas sichtbar halten
-        if (mounted && !_isSpeaking) {
-          setState(() => _isSpeaking = true);
+        if (mounted && !_isStreamingSpeaking) {
+          setState(() => _isStreamingSpeaking = true);
         }
         debugPrint('👄 Viseme: ${ev.viseme} @ ${ev.ptsMs}ms');
         // Viseme an LivePortrait-Canvas weiterleiten (falls vorhanden)
@@ -527,18 +553,25 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
         return;
       }
 
-      // Video von Firebase Storage
-      _idleController = VideoPlayerController.networkUrl(Uri.parse(idleUrl));
-      await _idleController!.initialize();
-      await _idleController!.seekTo(Duration.zero);
-      _idleController!.setLooping(true);
-      _idleController!.play();
+      // Nur neu laden, wenn sich die URL geändert hat – vermeidet Black‑Flash
+      if (_idleVideoUrl == idleUrl && _idleController != null) {
+        setState(() => _liveAvatarEnabled = true);
+        return;
+      }
 
-      setState(() {
-        _liveAvatarEnabled = true;
-      });
+      final newCtrl = VideoPlayerController.networkUrl(Uri.parse(idleUrl));
+      await newCtrl.initialize();
+      await newCtrl.seekTo(Duration.zero);
+      newCtrl.setLooping(true);
+      newCtrl.play();
 
-      debugPrint('✅ Idle-Video initialisiert: $idleUrl');
+      final old = _idleController;
+      _idleController = newCtrl;
+      _idleVideoUrl = idleUrl;
+      old?.dispose();
+
+      setState(() => _liveAvatarEnabled = true);
+      debugPrint('✅ Idle-Video initialisiert (swap): $idleUrl');
     } catch (e) {
       debugPrint('❌ Idle-Video Init Fehler: $e');
       setState(() => _liveAvatarEnabled = false);
@@ -550,6 +583,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // wichtig für AutomaticKeepAliveClientMixin
     final backgroundImage =
         _currentBackgroundImage ?? _avatarData?.avatarImageUrl;
     // Hintergrund wird stets mit Avatar-Bild gefüllt; LiveKit/Video-Overlay liegt darüber
@@ -650,8 +684,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
               ),
             ),
 
-            // LivePortrait Canvas (einblendbar während des Sprechens)
-            if (_isSpeaking && _avatarData?.avatarImageUrl != null)
+            // LivePortrait Canvas (nur bei echtem Streaming UND erst ab 1. Frame)
+            if (_isStreamingSpeaking &&
+                _lpHasFirstFrame &&
+                _avatarData?.avatarImageUrl != null)
               Positioned.fill(
                 child: FutureBuilder<Uint8List>(
                   future: _loadHeroBytes(_avatarData!.avatarImageUrl!),
@@ -665,13 +701,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                         // Canvas bereit → nichts zu tun
                       },
                       onFirstFrame: () {
-                        // Sobald erster Frame da ist, ensure sichtbar (falls state nicht gesetzt)
-                        if (mounted && !_isSpeaking)
-                          setState(() => _isSpeaking = true);
+                        // Erst ab erstem Frame Canvas einblenden
+                        if (mounted && !_lpHasFirstFrame) {
+                          setState(() => _lpHasFirstFrame = true);
+                        }
                       },
                       onDone: () {
-                        if (mounted && _isSpeaking)
-                          setState(() => _isSpeaking = false);
+                        if (mounted && _lpHasFirstFrame) {
+                          setState(() => _lpHasFirstFrame = false);
+                        }
                       },
                     );
                   },
@@ -1173,7 +1211,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                           onTap: () async {
                             if (_player.playing) {
                               await _player.pause();
-                              setState(() => _isSpeaking = false);
+                              setState(() => _isFileSpeaking = false);
                             } else {
                               if (_player.processingState ==
                                       ProcessingState.completed ||
@@ -1204,7 +1242,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
                               } else {
                                 // Resume
                                 await _player.play();
-                                setState(() => _isSpeaking = true);
+                                setState(() => _isFileSpeaking = true);
                               }
                             }
                           },
@@ -2480,6 +2518,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen> {
     unawaited(LiveKitService().leave());
     super.dispose();
   }
+
+  @override
+  bool get wantKeepAlive => true;
 }
 
 class _MediaDecisionDialog extends StatefulWidget {
@@ -2623,7 +2664,7 @@ class _PixelateOverlay extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
-              'Verpixelt – tippe „Anzeigen“',
+              'Verpixelt – tippe „Anzeigen" ',
               style: TextStyle(color: Colors.white70),
             ),
           ),

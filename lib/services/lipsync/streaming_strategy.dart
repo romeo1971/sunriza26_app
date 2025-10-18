@@ -184,8 +184,14 @@ class StreamingStrategy implements LipsyncStrategy {
 
   @override
   Future<void> speak(String text, String voiceId) async {
-    // Sicherstellen: vorherige Wiedergabe stoppen, sonst startet 2. Audio nicht
-    await _audioPlayer?.stop();
+    // Sicherstellen: vorherige Wiedergabe stoppen und Player neu aufsetzen
+    try {
+      await _audioPlayer?.stop();
+    } catch (_) {}
+    try {
+      await _audioPlayer?.dispose();
+    } catch (_) {}
+    _audioPlayer = AudioPlayer();
     _playbackStarted = false;
     _bytesAccumulated = 0;
     // Lazy connect on focus/input (deine Anweisung!)
@@ -278,6 +284,14 @@ class StreamingStrategy implements LipsyncStrategy {
 
       await _audioPlayer!.play();
 
+      // Nach Playback-Ende sauber schließen
+      _audioPlayer!.playerStateStream
+          .firstWhere((s) => s.processingState == ProcessingState.completed)
+          .then((_) {
+            onPlaybackStateChanged?.call(false);
+            _currentSource?.complete();
+          });
+
       // ignore: avoid_print
       print('✅ Playback started (streaming continues)');
     } catch (e) {
@@ -333,11 +347,7 @@ class StreamingStrategy implements LipsyncStrategy {
       _startPlayback();
     }
 
-    // Stream als komplett markieren
-    _currentSource?.complete();
-
-    // Callback: Playback ends!
-    onPlaybackStateChanged?.call(false);
+    // Nicht sofort complete/callback – warte auf tatsächliches Player-Ende
     _playbackStarted = false;
     _bytesAccumulated = 0;
   }

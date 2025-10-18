@@ -2,7 +2,7 @@ import 'services/lipsync/lipsync_factory.dart';
 
 class AppConfig {
   // Lipsync Mode
-  static const lipsyncMode = LipsyncMode.streaming;
+  static const lipsyncMode = LipsyncMode.fileBased; // Stabiler Fallback
 
   // Backend URLs
   static const backendUrl = 'https://backend.sunriza26.com';

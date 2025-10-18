@@ -44,7 +44,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'boot/engineering_notes.dart';
 
-/// Deaktiviert jegliche Page-Transitions (kein Slide/Fade) für Navigator-Routen
+/// Deaktiviert jegliche Page-Transitions (kein Slide/Fade) für Navigator-Routen - das ist gut!
 class NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
   const NoAnimationPageTransitionsBuilder();
 
@@ -130,10 +130,10 @@ void main() async {
       }
     }
   } catch (_) {
-    // Timeout oder Fehler → mit Prefs-Wert weitermachen
+    // Timeout oder Fehler → mit Prefs-Wert weitermachen ja ok
   }
 
-  // Debug: Base-URL ausgeben
+  // Debug: Base-URL ausgeben immer
   // debugPrint('BASE=${EnvService.memoryApiBaseUrl()}');
 
   // Engineering-Anker: Log nur bei Fehlern, optional beim Boot in Debug

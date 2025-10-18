@@ -169,12 +169,8 @@ class LivePortraitCanvasState extends State<LivePortraitCanvas> {
 
   @override
   Widget build(BuildContext context) {
-    if (_currentFrame == null) {
-      return Container(
-        color: Colors.black,
-        child: Center(child: CircularProgressIndicator(color: Colors.white30)),
-      );
-    }
+    // Vor erstem Frame KEIN Spinner anzeigen, damit kein Overlay-Flackern entsteht
+    if (_currentFrame == null) return const SizedBox.shrink();
 
     return CustomPaint(
       painter: _FramePainter(_currentFrame!),
