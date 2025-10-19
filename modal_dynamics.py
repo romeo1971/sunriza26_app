@@ -347,25 +347,21 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     print(f"📊 LivePortrait Output Größe: {lp_size} bytes ({lp_size / 1024 / 1024:.2f} MB)")
     print(f"📊 LivePortrait Output Pfad: {lp_output}")
     
-    # 7. All‑I Re‑Encode mit imageio‑ffmpeg (robust in allen Playern)
-    print("🔧 Re-Encode: All‑I, stumm, 29 fps, Faststart, Timescale 90000…")
+    # 7. MuseTalk‑kompatibles Re‑Encode: H.264 yuv420p, 25fps, faststart (Auflösung beibehalten!)
+    print("🔧 Re-Encode (MuseTalk): 25 fps, yuv420p, faststart – originale Auflösung bleibt…")
     temp_final = f'/tmp/{avatar_id}_{dynamics_id}_idle.mp4'
     encode_cmd = [
         ENCODE_FFMPEG_BIN,
         '-y',
-        '-fflags', '+genpts',
         '-i', lp_output,
-        '-an',                 # Audio entfernen
-        '-vf', 'fps=29,setpts=N/(29*TB)',  # harte, saubere Timeline
-        '-r', '29',
-        '-vsync', 'cfr',
+        '-an',
+        '-r', '25',
         '-c:v', 'libx264',
         '-preset', 'slow',
         '-crf', '18',
-        '-x264opts', 'keyint=1:min-keyint=1:scenecut=0',
-        '-movflags', '+faststart',
-        '-video_track_timescale', '90000',
         '-pix_fmt', 'yuv420p',
+        # Profil/Level offen lassen für bessere Qualität/Kompatibilität
+        '-movflags', '+faststart',
         temp_final,
     ]
     enc_res = subprocess.run(encode_cmd, capture_output=True, text=True)
@@ -409,7 +405,30 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     # 8. (OBSOLET) Atlas/Mask/ROI – deaktiviert
     print("🎨 Atlas/Mask/ROI: übersprungen (LivePortrait-Overlay nicht mehr genutzt)")
     
-    # 9. ALLE Assets zu Firebase Storage hochladen
+    # 9. Zusätzlich: 25 PNG‑Frames als ZIP für MuseTalk (frames-first)
+    print("🧩 Erzeuge 25 PNG‑Frames + ZIP…")
+    import tempfile, shutil, zipfile, glob as _glob
+    frames_dir = tempfile.mkdtemp(prefix="idle_frames_")
+    frames_pattern = f"{frames_dir}/frame_%03d.png"
+    extract_cmd = [
+        ENCODE_FFMPEG_BIN,
+        '-y', '-v', 'error',
+        '-i', final_output,
+        '-vframes', '25',
+        frames_pattern,
+    ]
+    ex_res = subprocess.run(extract_cmd, capture_output=True, text=True)
+    if ex_res.returncode != 0:
+        print(f"⚠️ Frame‑Extraktion fehlgeschlagen: {ex_res.stderr}")
+        frames_zip_path = None
+    else:
+        frames_zip_path = f"/tmp/{avatar_id}_{dynamics_id}_frames.zip"
+        with zipfile.ZipFile(frames_zip_path, 'w', compression=zipfile.ZIP_STORED) as zf:
+            for p in sorted(_glob.glob(f"{frames_dir}/frame_*.png"))[:25]:
+                zf.write(p, arcname=os.path.basename(p))
+        shutil.rmtree(frames_dir, ignore_errors=True)
+
+    # 10. ALLE Assets zu Firebase Storage hochladen
     print(f"📤 Uploading ALLE Assets zu Firebase Storage...")
     
     # idle.mp4 (mit Download-Token, damit die Console einen klickbaren Link zeigt)
@@ -420,15 +439,26 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     idle_blob.patch()
     idle_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{idle_blob.name.replace('/', '%2F')}?alt=media&token={idle_token}"
     
+    # frames.zip (optional)
+    frames_zip_url = None
+    if frames_zip_path and os.path.exists(frames_zip_path):
+        f_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/frames.zip")
+        f_token = str(uuid.uuid4())
+        f_blob.metadata = {'firebaseStorageDownloadTokens': f_token}
+        f_blob.upload_from_filename(frames_zip_path, content_type='application/zip')
+        f_blob.patch()
+        frames_zip_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{f_blob.name.replace('/', '%2F')}?alt=media&token={f_token}"
+
     # (keine Uploads von atlas/mask/roi)
     
     print(f"✅ Uploaded ALLE Assets!")
     
-    # 10. Firestore aktualisieren
+    # 11. Firestore aktualisieren
     print(f"💾 Updating Firestore...")
     
     dynamics_data = {
         'idleVideoUrl': idle_url,
+        **({'framesZipUrl': frames_zip_url} if frames_zip_url else {}),
         'parameters': parameters,
         'generatedAt': datetime.utcnow(),
         'status': 'ready'

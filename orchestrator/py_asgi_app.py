@@ -77,6 +77,7 @@ async def publisher_start(req: Request):
     body = await req.json()
     room = body.get("room", "sunriza26")
     idle_video_url = body.get("idle_video_url")  # URL to idle.mp4
+    frames_zip_url = body.get("frames_zip_url")  # optional: URL to frames.zip
     
     if not idle_video_url:
         raise HTTPException(status_code=400, detail="idle_video_url required")
@@ -84,13 +85,23 @@ async def publisher_start(req: Request):
     try:
         import httpx
         
-        # Download idle video
-        print(f"📥 Downloading idle video: {idle_video_url[:100]}...")
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            video_resp = await client.get(idle_video_url)
-            video_resp.raise_for_status()
-            video_b64 = base64.b64encode(video_resp.content).decode()
-            print(f"✅ Video downloaded: {len(video_resp.content)} bytes")
+        # Download source (prefer frames.zip)
+        video_b64 = None
+        frames_zip_b64 = None
+        if frames_zip_url:
+            print(f"📥 Downloading frames.zip: {frames_zip_url[:100]}...")
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                zip_resp = await client.get(frames_zip_url)
+                zip_resp.raise_for_status()
+                frames_zip_b64 = base64.b64encode(zip_resp.content).decode()
+                print(f"✅ frames.zip downloaded: {len(zip_resp.content)} bytes")
+        else:
+            print(f"📥 Downloading idle video: {idle_video_url[:100]}...")
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                video_resp = await client.get(idle_video_url)
+                video_resp.raise_for_status()
+                video_b64 = base64.b64encode(video_resp.content).decode()
+                print(f"✅ Video downloaded: {len(video_resp.content)} bytes")
         
         # Warmup/Healthcheck (Modal kalter Start)
         try:
@@ -105,10 +116,12 @@ async def publisher_start(req: Request):
         for attempt in range(3):
             try:
                 async with httpx.AsyncClient(timeout=180.0) as client:
-                    resp = await client.post(
-                        f"{MUSETALK_URL}/session/start",
-                        json={"room": room, "video_b64": video_b64},
-                    )
+                    payload = {"room": room}
+                    if frames_zip_b64:
+                        payload["frames_zip_b64"] = frames_zip_b64
+                    else:
+                        payload["video_b64"] = video_b64
+                    resp = await client.post(f"{MUSETALK_URL}/session/start", json=payload)
                     if resp.status_code == 200:
                         print(f"✅ MuseTalk session started")
                         break

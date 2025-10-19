@@ -338,8 +338,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     String voiceId,
   ) async {
     try {
-      // Get idle video URL from Firestore
+      // Get idle video URL + frames.zip URL from Firestore
       String? idleVideoUrl;
+      String? framesZipUrl;
       if (_avatarData != null) {
         final doc = await FirebaseFirestore.instance
             .collection('avatars')
@@ -351,6 +352,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           final dynamics = data?['dynamics'] as Map<String, dynamic>?;
           final basicDynamics = dynamics?['basic'] as Map<String, dynamic>?;
           idleVideoUrl = basicDynamics?['idleVideoUrl'] as String?;
+          framesZipUrl = basicDynamics?['framesZipUrl'] as String?;
         }
       }
 
@@ -367,6 +369,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           : '$orchUrl/publisher/start';
       debugPrint('🎬 Starting MuseTalk publisher: $url');
       debugPrint('📹 Idle video: $idleVideoUrl');
+      if (framesZipUrl != null && framesZipUrl!.isNotEmpty) {
+        debugPrint('🖼️ Frames zip: $framesZipUrl');
+      }
 
       final res = await http.post(
         Uri.parse(url),
@@ -374,7 +379,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         body: jsonEncode({
           'room': room,
           'avatar_id': avatarId,
-          'idle_video_url': idleVideoUrl, // MuseTalk braucht idle.mp4!
+          'idle_video_url': idleVideoUrl, // MuseTalk kann mp4 nutzen…
+          if (framesZipUrl != null && framesZipUrl!.isNotEmpty)
+            'frames_zip_url':
+                framesZipUrl, // …bevorzugt aber vorbereitete Frames
         }),
       );
 
