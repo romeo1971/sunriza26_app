@@ -151,6 +151,31 @@ def asgi():
         if out is None:
             raise RuntimeError("VAE.decode not available")
         return out.sample if hasattr(out, 'sample') else out
+
+    def decode_pcm_to_float32(audio_bytes):
+        """Akzeptiert int16 oder float32 PCM (mono). Gibt float32 [-1,1] zurück."""
+        import numpy as _np
+        b = audio_bytes
+        n = len(b)
+        audio = None
+        # Versuch float32
+        if n % 4 == 0:
+            try:
+                a32 = _np.frombuffer(b, dtype=_np.float32)
+                if _np.isfinite(a32).all() and _np.percentile(_np.abs(a32), 99) <= 10.0:
+                    audio = a32
+            except Exception:
+                audio = None
+        # Fallback int16
+        if audio is None:
+            try:
+                usable = n - (n % 2)
+                audio = _np.frombuffer(b[:usable], dtype=_np.int16).astype(_np.float32) / 32768.0
+            except Exception:
+                audio = _np.zeros(0, dtype=_np.float32)
+        if audio.size:
+            audio = _np.clip(audio, -1.0, 1.0)
+        return audio.astype(_np.float32, copy=False)
     
     async def load_models():
         """Load MuseTalk models"""
@@ -461,8 +486,8 @@ def asgi():
                 return
             
             try:
-                # Convert PCM to numpy array (16kHz, mono, float32)
-                audio_array = np.frombuffer(audio_pcm, dtype=np.int16).astype(np.float32) / 32768.0
+                # Convert PCM robust (int16 oder float32) → float32 [-1,1]
+                audio_array = decode_pcm_to_float32(audio_pcm)
                 
                 # MuseTalk Real-Time Inference
                 try:
@@ -681,21 +706,47 @@ def asgi():
         room = body.get("room", "default")
         video_b64 = body.get("video_b64")  # idle.mp4 base64
         frames_zip_b64 = body.get("frames_zip_b64")  # optional zip of PNG frames
+        frames_zip_url = body.get("frames_zip_url")  # optional: URL zu frames.zip
+        idle_video_url = body.get("idle_video_url")  # optional: MP4-URL (serverseitig laden)
         connect_livekit = body.get("connect_livekit", False)
         
-        if not video_b64 and not frames_zip_b64:
-            raise HTTPException(400, "video_b64 or frames_zip_b64 required")
+        # Falls URL übergeben wurde, lade Datei serverseitig und ersetze video_b64
+        if not video_b64 and not frames_zip_b64 and not frames_zip_url and idle_video_url:
+            try:
+                import requests as _rq
+                resp = _rq.get(idle_video_url, timeout=15)
+                if resp.status_code >= 400 or not resp.content:
+                    raise HTTPException(400, f"idle_video_url fetch failed: {resp.status_code}")
+                import base64 as _b64
+                video_b64 = _b64.b64encode(resp.content).decode()
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(400, f"idle_video_url error: {e}")
+
+        if not video_b64 and not frames_zip_b64 and not frames_zip_url:
+            raise HTTPException(400, "video_b64 or frames_zip_b64 or frames_zip_url or idle_video_url required")
         
         try:
-            if frames_zip_b64:
+            if frames_zip_b64 or frames_zip_url:
                 # Unpack frames.zip to temp dir and synthesize input_latents directly
                 import tempfile, zipfile, numpy as _np
                 import os as _os
                 from PIL import Image as _PILImage
+                import base64 as _b64
+                import requests as _rq
                 tmpdir = tempfile.mkdtemp(prefix="mt_frames_")
-                with open(_os.path.join(tmpdir, "frames.zip"), "wb") as fz:
-                    fz.write(base64.b64decode(frames_zip_b64))
-                with zipfile.ZipFile(_os.path.join(tmpdir, "frames.zip"), 'r') as zf:
+                zip_path = _os.path.join(tmpdir, "frames.zip")
+                if frames_zip_b64:
+                    with open(zip_path, "wb") as fz:
+                        fz.write(_b64.b64decode(frames_zip_b64))
+                else:
+                    r = _rq.get(frames_zip_url, timeout=20)
+                    if r.status_code >= 400 or not r.content:
+                        raise HTTPException(400, f"frames_zip_url fetch failed: {r.status_code}")
+                    with open(zip_path, "wb") as fz:
+                        fz.write(r.content)
+                with zipfile.ZipFile(zip_path, 'r') as zf:
                     zf.extractall(tmpdir)
                 # Build a session with precomputed latents (kein Video-Preprocessing)
                 frames = []

@@ -318,8 +318,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (res.statusCode < 200 || res.statusCode >= 300) return;
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final token = (data['token'] as String?)?.trim();
-      final room = (data['room'] as String?)?.trim() ?? 'sunriza';
+      String? room = (data['room'] as String?)?.trim();
       final lkUrl = (data['url'] as String?)?.trim();
+      // Dynamischer Raum auch bei bekannten statischen Defaults
+      const knownStatic = {'sunriza26', 'sunriza'};
+      if (room == null || room.isEmpty || knownStatic.contains(room)) {
+        final uid = user.uid;
+        final short = uid.length >= 8 ? uid.substring(0, 8) : uid;
+        room = 'mt-$short-${DateTime.now().millisecondsSinceEpoch}';
+      }
       if (token == null || token.isEmpty) return;
       // Token für möglichen Reconnect hinterlegen (nur im Flutter-Prozess)
       try {
@@ -356,8 +363,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         }
       }
 
-      if (idleVideoUrl == null || idleVideoUrl.isEmpty) {
-        debugPrint('❌ No idle video URL for MuseTalk');
+      // Erlaube Start auch nur mit Frames, ohne idleVideoUrl
+      if ((idleVideoUrl == null || idleVideoUrl.isEmpty) &&
+          (framesZipUrl == null || framesZipUrl.isEmpty)) {
+        debugPrint('❌ No idle video or frames_zip for MuseTalk');
         return;
       }
 
@@ -390,6 +399,30 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('✅ MuseTalk publisher started');
       } else {
         debugPrint('⚠️ Publisher start failed: ${res.statusCode}');
+      }
+
+      // Direkt MuseTalk Session im gleichen Room starten (Service-API)
+      try {
+        final mtUrl = AppConfig.museTalkHttpUrl.endsWith('/')
+            ? '${AppConfig.museTalkHttpUrl}session/start'
+            : '${AppConfig.museTalkHttpUrl}/session/start';
+        final payload = <String, dynamic>{
+          'room': room,
+          'connect_livekit': true,
+        };
+        if (framesZipUrl != null && framesZipUrl.isNotEmpty) {
+          payload['frames_zip_url'] = framesZipUrl;
+        } else if (idleVideoUrl != null && idleVideoUrl.isNotEmpty) {
+          payload['idle_video_url'] = idleVideoUrl;
+        }
+        await http.post(
+          Uri.parse(mtUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(payload),
+        );
+        debugPrint('✅ MuseTalk session started (room=$room)');
+      } catch (e) {
+        debugPrint('⚠️ MuseTalk session start failed: $e');
       }
     } catch (e) {
       debugPrint('❌ Publisher start error: $e');
@@ -468,14 +501,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         setState(() => _isStreamingSpeaking = isPlaying);
 
         // LiveKit Publisher starten/stoppen basierend auf Playback-Status
-        final room = LiveKitService().roomName ?? 'sunriza26';
+        final roomName = LiveKitService().roomName;
+        if (roomName == null || roomName.isEmpty) return;
         if (isPlaying && _avatarData?.id != null && _cachedVoiceId != null) {
-          await _startLiveKitPublisher(room, _avatarData!.id, _cachedVoiceId!);
+          await _startLiveKitPublisher(
+            roomName,
+            _avatarData!.id,
+            _cachedVoiceId!,
+          );
         } else if (!isPlaying) {
           // Debounce: warte kurz, ob noch weitere Audio‑Chunks kommen
           await Future.delayed(const Duration(milliseconds: 350));
           if (!_isStreamingSpeaking) {
-            await _stopLiveKitPublisher(room);
+            await _stopLiveKitPublisher(roomName);
           }
         }
       }
@@ -736,17 +774,41 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               }
               if (s == 'disconnected') bg = Colors.red.withValues(alpha: 0.7);
               if (s == 'ended') bg = Colors.grey.withValues(alpha: 0.7);
-              return Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: bg,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  'LK: $s',
-                  style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
+              final room = LiveKitService().roomName ?? '-';
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: bg,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'LK: $s',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ),
+                  Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.blueGrey.withValues(alpha: 0.7),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      'MT room: $room',
+                      style: const TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ),
+                ],
               );
             },
           ),
@@ -2610,8 +2672,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     // Lipsync Strategy aufräumen (schließt WebSocket!)
     _lipsync.dispose();
     // LiveKit Publisher stoppen (beim Verlassen des Chats)
-    final room = LiveKitService().roomName ?? 'sunriza26';
-    unawaited(_stopLiveKitPublisher(room));
+    final room = LiveKitService().roomName;
+    if (room != null && room.isNotEmpty) {
+      unawaited(_stopLiveKitPublisher(room));
+    }
     // LiveKit sauber trennen (no-op wenn Feature deaktiviert)
     unawaited(LiveKitService().leave());
     super.dispose();

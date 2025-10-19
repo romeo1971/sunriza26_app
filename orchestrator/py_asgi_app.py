@@ -47,7 +47,9 @@ async def mint_livekit_token(req: Request):
     if not (LIVEKIT_URL and LIVEKIT_API_KEY and LIVEKIT_API_SECRET):
         raise HTTPException(status_code=500, detail="LiveKit env missing")
     body = await req.json()
-    room = (body.get("room") or "sunriza26").strip()
+    room = (body.get("room") or "").strip()
+    if not room:
+        raise HTTPException(400, "room required")
     uid = (body.get("user_id") or "anon").strip()
     avatar_id = (body.get("avatar_id") or "avatar").strip()
     identity = f"{uid}-{avatar_id}"
@@ -75,7 +77,9 @@ musetalk_audio_streams = {}
 async def publisher_start(req: Request):
     """Start MuseTalk Real-Time Lipsync"""
     body = await req.json()
-    room = body.get("room", "sunriza26")
+    room = body.get("room")
+    if not room:
+        raise HTTPException(400, "room required")
     idle_video_url = body.get("idle_video_url")  # URL to idle.mp4
     frames_zip_url = body.get("frames_zip_url")  # optional: URL to frames.zip
     
@@ -159,7 +163,9 @@ async def publisher_start(req: Request):
 async def publisher_stop(req: Request):
     """Stop MuseTalk Real-Time Lipsync"""
     body = await req.json()
-    room = body.get("room", "sunriza26")
+    room = body.get("room")
+    if not room:
+        raise HTTPException(400, "room required")
     
     try:
         import httpx

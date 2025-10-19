@@ -4,6 +4,8 @@ import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'lipsync_strategy.dart';
+import 'package:sunriza26/config.dart';
+import 'package:sunriza26/services/livekit_service.dart';
 
 /// MP3 Stream Audio Source für just_audio
 /// Spielt ersten Chunk SOFORT, weitere Chunks werden nachgestreamt
@@ -98,6 +100,7 @@ class StreamingMp3Source extends StreamAudioSource {
 class StreamingStrategy implements LipsyncStrategy {
   final String _orchestratorUrl;
   WebSocketChannel? _channel;
+  WebSocketChannel? _museTalkChannel; // persistente WS zu MuseTalk
   StreamSubscription? _channelSubscription;
   AudioPlayer? _audioPlayer;
   bool _isConnecting = false;
@@ -107,6 +110,7 @@ class StreamingStrategy implements LipsyncStrategy {
   int _bytesAccumulated = 0;
   int _activeSeq = 0;
   bool _useHttpStream = false; // neuer Modus: Audio via HTTP setUrl()
+  bool _museTalkRoomSent = false; // Raumname nur einmal senden
 
   final StreamController<VisemeEvent> _visemeController =
       StreamController<VisemeEvent>.broadcast();
@@ -233,6 +237,32 @@ class StreamingStrategy implements LipsyncStrategy {
       // ignore: avoid_print
       print('❌ WS connection failed');
       return;
+    }
+
+    // Zusätzlich: PCM an MuseTalk-WS weiterleiten (Raumname zuerst)
+    try {
+      final museTalkWs = AppConfig.museTalkWsUrl;
+      final String? roomName = LiveKitService().roomName;
+      if (roomName == null || roomName.isEmpty) {
+        // ignore: avoid_print
+        print('⚠️ Kein LiveKit-Raum – PCM-Forwarding übersprungen');
+        return;
+      }
+      _museTalkChannel ??= WebSocketChannel.connect(Uri.parse(museTalkWs));
+      // Erste Nachricht: Room als Bytes (Server erwartet receive_bytes für das erste Frame)
+      if (!_museTalkRoomSent) {
+        _museTalkChannel!.sink.add(utf8.encode(roomName));
+        _museTalkRoomSent = true;
+      }
+      // PCM kommt später aus Orchestrator via _pcmController; hier nur Hook setzen
+      _pcmController.stream.listen((evt) {
+        try {
+          _museTalkChannel!.sink.add(evt.bytes);
+        } catch (_) {}
+      });
+    } catch (e) {
+      // ignore: avoid_print
+      print('⚠️ MuseTalk WS forward failed: $e');
     }
 
     // HTTP‑Streaming nutzen (stabiler als WS->StreamAudioSource)
