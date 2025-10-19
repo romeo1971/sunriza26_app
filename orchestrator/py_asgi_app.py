@@ -576,3 +576,18 @@ async def debug_musetalk():
             return {"status": r3.status_code, "body": r3.text}
     except Exception as e:
         return {"error": str(e)}
+
+
+@app.get("/debug/audio")
+async def debug_audio():
+    try:
+        return {
+            "orch_publish_audio": ORCH_PUBLISH_AUDIO,
+            "rtc_available": rtc is not None,
+            "current_audio_room": current_audio_room,
+            "connected_room": getattr(lk_audio_pub, "_connected_room", None),
+            "has_source": bool(getattr(lk_audio_pub, "_source", None)),
+            "buf_bytes": len(_audio48k_buf),
+        }
+    except Exception as e:
+        return {"error": str(e)}

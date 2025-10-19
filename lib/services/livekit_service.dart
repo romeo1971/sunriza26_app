@@ -134,7 +134,11 @@ class LiveKitService {
     });
 
     try {
-      await roomObj.connect(serverUrl, token);
+      await roomObj.connect(
+        serverUrl,
+        token,
+        connectOptions: const lk.ConnectOptions(autoSubscribe: true),
+      );
       _room = roomObj;
       _listener = lis;
       connected.value = true;
