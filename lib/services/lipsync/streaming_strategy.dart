@@ -14,7 +14,6 @@ class StreamingMp3Source extends StreamAudioSource {
   final StreamController<List<int>> _controller =
       StreamController<List<int>>.broadcast();
   final List<List<int>> _buffer = [];
-  bool _isComplete = false;
   bool _disposed = false;
 
   void addChunk(List<int> bytes) {
@@ -27,7 +26,6 @@ class StreamingMp3Source extends StreamAudioSource {
 
   void complete() {
     if (_disposed) return;
-    _isComplete = true;
     if (!_controller.isClosed) {
       _controller.close();
     }
@@ -79,15 +77,9 @@ class StreamingMp3Source extends StreamAudioSource {
 
     controller.onCancel = () => sub.cancel();
 
-    // Geschätzte Länge basierend auf aktuellem Buffer
-    final bufferSize = _buffer.fold<int>(0, (sum, chunk) => sum + chunk.length);
-    // WICHTIG: Für echtes Streaming KEINE Content-Length setzen.
-    // Wenn komplett: Länge melden, sonst null (chunked Transfer).
-    final int? lengthWhenComplete = _isComplete ? bufferSize : null;
-
     return StreamAudioResponse(
-      sourceLength: lengthWhenComplete,
-      contentLength: lengthWhenComplete,
+      sourceLength: null, // unbekannt bei Live-Streaming
+      contentLength: null, // verhindert Content-Length-Mismatch
       contentType: 'audio/mpeg',
       stream: controller.stream,
       offset: start ?? 0,
@@ -112,6 +104,8 @@ class StreamingStrategy implements LipsyncStrategy {
   int _activeSeq = 0;
   bool _useHttpStream = false; // neuer Modus: Audio via HTTP setUrl()
   bool _museTalkRoomSent = false; // Raumname nur einmal senden
+  final bool _clientPlaysAudio =
+      false; // Audio nicht lokal abspielen (LiveKit übernimmt)
 
   Future<String?> _awaitRoomName({
     Duration timeout = const Duration(seconds: 3),
@@ -224,11 +218,10 @@ class StreamingStrategy implements LipsyncStrategy {
 
   @override
   Future<void> speak(String text, String voiceId) async {
-    // Sicherstellen: vorherige Wiedergabe stoppen (Player NICHT disposen)
+    // Kein lokales Playback – nur Steuersignal und PCM-Forwarding
     try {
       await _audioPlayer?.stop();
     } catch (_) {}
-    _audioPlayer ??= AudioPlayer();
     _playbackStarted = false;
     _bytesAccumulated = 0;
     // Lazy connect on focus/input (deine Anweisung!)
@@ -269,26 +262,7 @@ class StreamingStrategy implements LipsyncStrategy {
       debugPrint('⚠️ MuseTalk WS forward failed: $e');
     }
 
-    // HTTP‑Streaming nutzen (stabiler als WS->StreamAudioSource)
-    // Alte Source ggf. später entsorgen
-    final oldSource = _currentSource;
-    _currentSource = null;
-    _useHttpStream = true;
-    if (oldSource != null) {
-      Future.delayed(const Duration(seconds: 1), () {
-        try {
-          oldSource.complete();
-        } catch (_) {}
-        try {
-          oldSource.dispose();
-        } catch (_) {}
-      });
-    }
-    _chunkCount = 0;
-
-    debugPrint('🎵 Starting streaming playback via HTTP source');
-
-    // Neue Sequenz-ID vergeben und mitsenden
+    // Nur WS-Steuerung: MP3 nicht benötigen (reduziert Overhead)
     _activeSeq += 1;
     final seq = _activeSeq;
     _channel!.sink.add(
@@ -297,36 +271,18 @@ class StreamingStrategy implements LipsyncStrategy {
         'text': text,
         'voice_id': voiceId,
         'seq': seq,
-        'mp3': false, // MP3 kommt jetzt über HTTP-Stream
+        'mp3': false, // Audio über LiveKit (Server), kein lokales MP3 nötig
       }),
     );
 
-    // HTTP‑Stream URL vom Orchestrator verwenden
-    try {
-      final httpBase = _orchestratorUrl
-          .replaceFirst('wss://', 'https://')
-          .replaceFirst('ws://', 'http://');
-      final url = Uri.parse(httpBase.replaceFirst(RegExp(r"/+$"), ''))
-          .resolve('/tts/stream')
-          .replace(queryParameters: {'voice_id': voiceId, 'text': text})
-          .toString();
-      debugPrint('🎧 HTTP stream URL: $url');
-
-      // iOS: Audio-Session vorbereiten
-      try {
-        final session = await AudioSession.instance;
-        await session.configure(const AudioSessionConfiguration.speech());
-      } catch (_) {}
-
-      await _audioPlayer!.setUrl(url);
-      onPlaybackStateChanged?.call(true);
-      await _audioPlayer!.play();
-    } catch (e) {
-      debugPrint('❌ HTTP audio set/play failed: $e');
-    }
+    onPlaybackStateChanged?.call(true);
+    return;
   }
 
   void _handleAudio(Map<String, dynamic> data) {
+    if (!_clientPlaysAudio) {
+      return; // Lokales Audio deaktiviert – LiveKit spielt ab
+    }
     if (_useHttpStream) {
       // Im HTTP‑Modus kommt kein 'audio' mehr über WS
       return;
@@ -363,10 +319,7 @@ class StreamingStrategy implements LipsyncStrategy {
   }
 
   Future<void> _startPlayback() async {
-    if (_useHttpStream) {
-      // HTTP‑Modus steuert Playback direkt über setUrl()/play()
-      return;
-    }
+    // Nur WS‑Modus wird genutzt
     if (_currentSource == null || _audioPlayer == null) {
       debugPrint(
         '❌ Cannot start playback: source=${_currentSource != null}, player=${_audioPlayer != null}',
@@ -397,7 +350,7 @@ class StreamingStrategy implements LipsyncStrategy {
       }
 
       try {
-        await _audioPlayer!.setAudioSource(_currentSource!);
+        await _audioPlayer!.setAudioSource(_currentSource!, preload: false);
       } catch (e) {
         debugPrint('❌ setAudioSource failed: $e - continuing anyway');
         // Continue - Publisher soll trotzdem starten
@@ -415,19 +368,22 @@ class StreamingStrategy implements LipsyncStrategy {
 
       // Nach Playback-Ende Callback setzen und Source schließen
       // Die Source bleibt offen, bis explizit stop()/dispose() aufgerufen wird
-      _audioPlayer!.playerStateStream
-          .firstWhere((s) => s.processingState == ProcessingState.completed)
-          .then((_) {
+      StreamSubscription? psSub;
+      psSub = _audioPlayer!.playerStateStream.listen(
+        (s) {
+          if (s.processingState == ProcessingState.completed) {
             onPlaybackStateChanged?.call(false);
-            // Jetzt Source schließen – Player ist fertig
             try {
               _currentSource?.complete();
             } catch (_) {}
-          })
-          .catchError((e) {
-            // ignore: avoid_print
-            print('⚠️ Player state stream error: $e');
-          });
+            psSub?.cancel();
+          }
+        },
+        onError: (e) {
+          // ignore: avoid_print
+          print('⚠️ Player state stream error: $e');
+        },
+      );
 
       debugPrint('✅ Playback started (streaming continues)');
     } catch (e) {

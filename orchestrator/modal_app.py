@@ -11,6 +11,7 @@ image = (
         "websockets",
         "PyJWT",
         "httpx",
+        "livekit",
     )
     .add_local_file("orchestrator/py_asgi_app.py", "/app/py_asgi_app.py")
 )
@@ -24,9 +25,9 @@ app = modal.App("lipsync-orchestrator", image=image)
         modal.Secret.from_name("liveportrait-ws"),
         modal.Secret.from_name("livekit-cloud"),
     ],
-    min_containers=1,
-    scaledown_window=300,
-    timeout=3600,
+    min_containers=0,            # scale-to-zero, keine laufenden Kosten
+    scaledown_window=60,         # schnelle Skalierung nach Inaktivität
+    timeout=1800,                # Sitzung max. 30 Min.
 )
 @modal.asgi_app()
 def asgi():
