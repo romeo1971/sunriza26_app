@@ -265,6 +265,7 @@ def asgi():
             self.running = False
             self.livekit_room = None
             self.video_source = None
+            self.ffmpeg_proc = None
             
             # Store model references
             self.vae = vae
@@ -402,6 +403,49 @@ def asgi():
                     logger.error(f"Video read failed (ffmpeg): {e}")
                     input_imgs = []
             if not input_imgs:
+                # Vierter Fallback: moviepy
+                try:
+                    from moviepy.editor import VideoFileClip
+                    import numpy as _np
+                    clip = VideoFileClip(self.video_path, audio=False)
+                    frames = []
+                    for i, frame in enumerate(clip.iter_frames(fps=25, dtype="uint8")):
+                        if i >= 25:
+                            break
+                        frames.append(frame)
+                    clip.close()
+                    input_imgs = frames
+                    logger.info(f"Fallback moviepy: {len(input_imgs)} frames")
+                except Exception as e:
+                    logger.error(f"Video read failed (moviepy): {e}")
+                    input_imgs = []
+            if not input_imgs:
+                # Fünfter Fallback: ffmpeg → pipe
+                try:
+                    import subprocess, tempfile, numpy as _np
+                    from PIL import Image as _PILImage
+                    tmpdir = tempfile.mkdtemp(prefix="mt_pipe_")
+                    outpat = f"{tmpdir}/pipe_%03d.png"
+                    cmd = [
+                        "ffmpeg", "-v", "error",
+                        "-y", "-i", self.video_path,
+                        "-vf", "fps=25,format=rgb24",
+                        "-vframes", "25",
+                        outpat,
+                    ]
+                    subprocess.run(cmd, check=True)
+                    files = sorted([f for f in os.listdir(tmpdir) if f.endswith('.png')])
+                    frames = []
+                    for f in files[:25]:
+                        p = os.path.join(tmpdir, f)
+                        with _PILImage.open(p) as im:
+                            frames.append(_np.array(im.convert('RGB')))
+                    input_imgs = frames
+                    logger.info(f"Fallback ffmpeg pipe: {len(input_imgs)} frames")
+                except Exception as e:
+                    logger.error(f"Video read failed (ffmpeg pipe): {e}")
+                    input_imgs = []
+            if not input_imgs:
                 raise RuntimeError("No frames decoded from idle video")
             # Null-Frames entfernen
             input_imgs = [f for f in input_imgs if f is not None]
@@ -463,22 +507,51 @@ def asgi():
             ))
             jwt_token = token.to_jwt()
             
-            # Connect (Standardoptionen)
-            self.livekit_room = rtc.Room()
-            await self.livekit_room.connect(livekit_url, jwt_token)
-            
-            # Create video source
-            self.video_source = rtc.VideoSource(width=256, height=256)
-            
-            # Publish track
-            video_track = rtc.LocalVideoTrack.create_video_track("musetalk-lipsync", self.video_source)
-            await self.livekit_room.local_participant.publish_track(
-                video_track,
-                rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_CAMERA)
-            )
-            
-            self.running = True
-            logger.info(f"✅ LiveKit publisher started: {self.room_name}")
+            # End-to-end: erst WebRTC (connect+publish) versuchen, sonst RTMP-Fallback
+            try:
+                # Connect: Auto-Subscribe off, falls unterstützt
+                try:
+                    self.livekit_room = rtc.Room(room_options=rtc.RoomOptions(auto_subscribe=False))
+                except Exception:
+                    try:
+                        self.livekit_room = rtc.Room(options=rtc.RoomOptions(auto_subscribe=False))
+                    except Exception:
+                        self.livekit_room = rtc.Room()
+                await self.livekit_room.connect(livekit_url, jwt_token)
+                
+                # Create video source
+                self.video_source = rtc.VideoSource(width=256, height=256)
+                # Publish track
+                video_track = rtc.LocalVideoTrack.create_video_track("musetalk-lipsync", self.video_source)
+                await self.livekit_room.local_participant.publish_track(
+                    video_track,
+                    rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_CAMERA)
+                )
+                self.running = True
+                logger.info(f"✅ LiveKit publisher started: {self.room_name}")
+            except Exception as e:
+                logger.warning(f"WebRTC failed ({e}); trying RTMP fallback")
+                rtmp_url = os.getenv("LIVEKIT_RTMP_URL", "").strip()
+                rtmp_key = os.getenv("LIVEKIT_RTMP_KEY", "").strip()
+                if rtmp_url and rtmp_key:
+                    import subprocess
+                    publish_url = rtmp_url.rstrip('/') + '/' + rtmp_key
+                    cmd = [
+                        "ffmpeg", "-loglevel", "error",
+                        "-f", "rawvideo", "-pix_fmt", "rgba",
+                        "-s", "256x256", "-r", "25", "-i", "-",
+                        "-an", "-c:v", "libx264", "-preset", "veryfast", "-tune", "zerolatency",
+                        "-f", "flv", publish_url,
+                    ]
+                    try:
+                        self.ffmpeg_proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                        self.running = True
+                        logger.info(f"✅ RTMP fallback publisher started: {publish_url}")
+                    except Exception as ee:
+                        logger.error(f"RTMP fallback failed: {ee}")
+                        raise
+                else:
+                    raise
         
         async def process_audio_chunk(self, audio_pcm: bytes):
             """Process audio chunk → generate lipsync frame"""
@@ -543,15 +616,21 @@ def asgi():
                 else:
                     frame_rgba = frame_rgb
                 
-                # Send to LiveKit
-                video_frame = rtc.VideoFrame(
-                    width=frame_rgba.shape[1],
-                    height=frame_rgba.shape[0],
-                    type=rtc.VideoBufferType.RGBA,
-                    data=frame_rgba.tobytes(),
-                )
-                
-                await self.video_source.capture_frame(video_frame)
+                # Send frame
+                if self.video_source is not None:
+                    video_frame = rtc.VideoFrame(
+                        width=frame_rgba.shape[1],
+                        height=frame_rgba.shape[0],
+                        type=rtc.VideoBufferType.RGBA,
+                        data=frame_rgba.tobytes(),
+                    )
+                    await self.video_source.capture_frame(video_frame)
+                elif self.ffmpeg_proc is not None and self.ffmpeg_proc.stdin:
+                    try:
+                        self.ffmpeg_proc.stdin.write(frame_rgba.tobytes())
+                        self.ffmpeg_proc.stdin.flush()
+                    except Exception as pe:
+                        logger.warning(f"RTMP pipe write failed: {pe}")
                 
             except Exception as e:
                 logger.error(f"❌ Frame error: {e}")
