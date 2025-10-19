@@ -198,13 +198,30 @@ def asgi():
                 raise RuntimeError(f"Missing UNet weights: {unet_path}")
             if not _os.path.exists(unet_cfg_json):
                 raise RuntimeError(f"Missing UNet config JSON: {unet_cfg_json}")
-            with open(unet_cfg_json, "r") as _f:
-                unet_cfg = json.load(_f)
-            unet = UNet(unet_config=unet_cfg, model_path=unet_path)
-            unet = unet.to(device).eval()
+            # Wichtig: UNet erwartet den Pfad (str) zur JSON, nicht das geladene Dict
+            unet = UNet(unet_config=unet_cfg_json, model_path=unet_path)
+            # Robust auf Device bringen
+            try:
+                if hasattr(unet, 'to'):
+                    unet = unet.to(device)
+                    if hasattr(unet, 'eval'):
+                        unet.eval()
+                elif hasattr(unet, 'model') and hasattr(unet.model, 'to'):
+                    unet.model = unet.model.to(device)
+                    if hasattr(unet.model, 'eval'):
+                        unet.model.eval()
+            except Exception:
+                pass
             
-            # Position encoding
-            pe = coord_placeholder(256).to(device)
+            # Position encoding (robust, falls coord_placeholder kein Callable ist)
+            try:
+                cp = coord_placeholder(256) if callable(coord_placeholder) else coord_placeholder
+            except Exception:
+                cp = coord_placeholder
+            try:
+                pe = cp.to(device)
+            except Exception:
+                pe = torch.as_tensor(cp, device=device)
             
             logger.info("✅ MuseTalk models loaded")
             
@@ -628,6 +645,32 @@ def asgi():
             },
             "models_dir_bytes": total_models_bytes,
         }
+
+    @fastapi_app.get("/debug/models")
+    async def debug_models():
+        """Force model load and report detailed status/errors."""
+        import os as _os, traceback as _tb
+        status = {
+            "device": device,
+            "loaded": {"vae": vae is not None, "unet": unet is not None},
+        }
+        # Expected paths
+        exp = {
+            "unet_pth": "/root/MuseTalk/models/musetalkV15/unet.pth",
+            "unet_json": "/root/MuseTalk/models/musetalkV15/musetalk.json",
+            "unet_pth_v10": "/root/MuseTalk/models/musetalk/pytorch_model.bin",
+            "unet_json_v10": "/root/MuseTalk/models/musetalk/musetalk.json",
+        }
+        for k, p in exp.items():
+            status[k] = {"path": p, "exists": _os.path.exists(p), "size": (_os.path.getsize(p) if _os.path.exists(p) else None)}
+        try:
+            await load_models()
+            status["after_load"] = {"vae": vae is not None, "unet": unet is not None}
+            return status
+        except Exception as e:
+            status["error"] = str(e)
+            status["traceback"] = _tb.format_exc()
+            return status
     
     @fastapi_app.post("/session/start")
     async def start_session(req: Request):
@@ -638,6 +681,7 @@ def asgi():
         room = body.get("room", "default")
         video_b64 = body.get("video_b64")  # idle.mp4 base64
         frames_zip_b64 = body.get("frames_zip_b64")  # optional zip of PNG frames
+        connect_livekit = body.get("connect_livekit", False)
         
         if not video_b64 and not frames_zip_b64:
             raise HTTPException(400, "video_b64 or frames_zip_b64 required")
@@ -674,10 +718,11 @@ def asgi():
                 session = MuseTalkSession(room, "", preprocessed_latents=pre_lat)
             else:
                 session = MuseTalkSession(room, video_b64)
-            await session.start_livekit()
+            if connect_livekit:
+                await session.start_livekit()
             active_sessions[room] = session
             
-            return {"status": "started", "room": room}
+            return {"status": "started", "room": room, "connected": bool(connect_livekit)}
         except Exception as e:
             logger.error(f"Session start failed: {e}")
             raise HTTPException(500, str(e))
@@ -718,4 +763,6 @@ def asgi():
             logger.info(f"Audio stream closed: {room}")
     
     return fastapi_app
+
+    # NOTE: Functions below won't be reached due to return above; keep endpoints defined before return.
 
