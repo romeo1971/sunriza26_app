@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_session/audio_session.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -156,18 +157,15 @@ class StreamingStrategy implements LipsyncStrategy {
       final uri = Uri.parse(_orchestratorUrl);
       _channel = WebSocketChannel.connect(uri);
 
-      // ignore: avoid_print
-      print('✅ WS connecting: $_orchestratorUrl');
+      debugPrint('✅ WS connecting: $_orchestratorUrl');
 
       // Stream-Listener SOFORT!
       _channelSubscription = _channel!.stream.listen(
         (message) {
-          // ignore: avoid_print
-          print('📩 WS msg (${message.toString().length} chars)');
+          debugPrint('📩 WS msg (${message.toString().length} chars)');
           try {
             final data = jsonDecode(message);
-            // ignore: avoid_print
-            print('📩 Type: ${data['type']}');
+            debugPrint('📩 Type: ${data['type']}');
             switch (data['type']) {
               case 'audio':
                 _handleAudio(data);
@@ -192,16 +190,14 @@ class StreamingStrategy implements LipsyncStrategy {
           }
         },
         onDone: () {
-          // ignore: avoid_print
-          print('🔌 WS closed (will reconnect on next speak)');
+          debugPrint('🔌 WS closed (will reconnect on next speak)');
           _channelSubscription?.cancel();
           _channelSubscription = null;
           _channel = null;
           _isConnecting = false;
         },
         onError: (e) {
-          // ignore: avoid_print
-          print('❌ WS stream error: $e');
+          debugPrint('❌ WS stream error: $e');
           _channelSubscription?.cancel();
           _channelSubscription = null;
           _channel = null;
@@ -211,8 +207,7 @@ class StreamingStrategy implements LipsyncStrategy {
 
       _isConnecting = false;
     } catch (e) {
-      // ignore: avoid_print
-      print('❌ WS connect failed: $e');
+      debugPrint('❌ WS connect failed: $e');
       _channel = null;
       _isConnecting = false;
       rethrow;
@@ -246,8 +241,7 @@ class StreamingStrategy implements LipsyncStrategy {
     }
 
     if (_channel == null) {
-      // ignore: avoid_print
-      print('❌ WS connection failed');
+      debugPrint('❌ WS connection failed');
       return;
     }
 
@@ -256,8 +250,7 @@ class StreamingStrategy implements LipsyncStrategy {
       final museTalkWs = AppConfig.museTalkWsUrl;
       final String? roomName = await _awaitRoomName();
       if (roomName == null || roomName.isEmpty) {
-        // ignore: avoid_print
-        print('⚠️ Kein LiveKit-Raum – PCM-Forwarding übersprungen');
+        debugPrint('⚠️ Kein LiveKit-Raum – PCM-Forwarding übersprungen');
         return;
       }
       _museTalkChannel ??= WebSocketChannel.connect(Uri.parse(museTalkWs));
@@ -273,8 +266,7 @@ class StreamingStrategy implements LipsyncStrategy {
         } catch (_) {}
       });
     } catch (e) {
-      // ignore: avoid_print
-      print('⚠️ MuseTalk WS forward failed: $e');
+      debugPrint('⚠️ MuseTalk WS forward failed: $e');
     }
 
     // HTTP‑Streaming nutzen (stabiler als WS->StreamAudioSource)
@@ -294,8 +286,7 @@ class StreamingStrategy implements LipsyncStrategy {
     }
     _chunkCount = 0;
 
-    // ignore: avoid_print
-    print('🎵 Starting streaming playback via HTTP source');
+    debugPrint('🎵 Starting streaming playback via HTTP source');
 
     // Neue Sequenz-ID vergeben und mitsenden
     _activeSeq += 1;
@@ -319,8 +310,7 @@ class StreamingStrategy implements LipsyncStrategy {
           .resolve('/tts/stream')
           .replace(queryParameters: {'voice_id': voiceId, 'text': text})
           .toString();
-      // ignore: avoid_print
-      print('🎧 HTTP stream URL: $url');
+      debugPrint('🎧 HTTP stream URL: $url');
 
       // iOS: Audio-Session vorbereiten
       try {
@@ -332,8 +322,7 @@ class StreamingStrategy implements LipsyncStrategy {
       onPlaybackStateChanged?.call(true);
       await _audioPlayer!.play();
     } catch (e) {
-      // ignore: avoid_print
-      print('❌ HTTP audio set/play failed: $e');
+      debugPrint('❌ HTTP audio set/play failed: $e');
     }
   }
 
@@ -379,8 +368,7 @@ class StreamingStrategy implements LipsyncStrategy {
       return;
     }
     if (_currentSource == null || _audioPlayer == null) {
-      // ignore: avoid_print
-      print(
+      debugPrint(
         '❌ Cannot start playback: source=${_currentSource != null}, player=${_audioPlayer != null}',
       );
       return;
@@ -388,32 +376,30 @@ class StreamingStrategy implements LipsyncStrategy {
 
     // Starte nur, wenn mind. 1 Chunk vorliegt
     if (_chunkCount == 0) {
-      // ignore: avoid_print
-      print('⚠️ Skip start: no chunks yet');
+      debugPrint('⚠️ Skip start: no chunks yet');
       return;
     }
 
     try {
-      // ignore: avoid_print
-      print('▶️ Starting playback with first chunk!');
+      debugPrint('▶️ Starting playback with first chunk!');
 
       // iOS: Audio-Session für Playback aktivieren
       try {
         final session = await AudioSession.instance;
         await session.configure(const AudioSessionConfiguration.speech());
       } catch (e) {
-        print('⚠️ Audio session config failed: $e');
+        debugPrint('⚠️ Audio session config failed: $e');
       }
 
       if (_currentSource == null || _audioPlayer == null) {
-        print('❌ Source/Player null beim Start');
+        debugPrint('❌ Source/Player null beim Start');
         return;
       }
 
       try {
         await _audioPlayer!.setAudioSource(_currentSource!);
       } catch (e) {
-        print('❌ setAudioSource failed: $e - continuing anyway');
+        debugPrint('❌ setAudioSource failed: $e - continuing anyway');
         // Continue - Publisher soll trotzdem starten
       }
 
@@ -424,7 +410,7 @@ class StreamingStrategy implements LipsyncStrategy {
       try {
         await _audioPlayer!.play();
       } catch (e) {
-        print('❌ play() failed: $e');
+        debugPrint('❌ play() failed: $e');
       }
 
       // Nach Playback-Ende Callback setzen und Source schließen
@@ -443,11 +429,9 @@ class StreamingStrategy implements LipsyncStrategy {
             print('⚠️ Player state stream error: $e');
           });
 
-      // ignore: avoid_print
-      print('✅ Playback started (streaming continues)');
+      debugPrint('✅ Playback started (streaming continues)');
     } catch (e) {
-      // ignore: avoid_print
-      print('❌ Playback start error: $e');
+      debugPrint('❌ Playback start error: $e');
       // Einmaliger Recover: Player neu aufsetzen und erneut versuchen
       try {
         await _audioPlayer?.dispose();
@@ -455,9 +439,9 @@ class StreamingStrategy implements LipsyncStrategy {
         await _audioPlayer!.setAudioSource(_currentSource!);
         onPlaybackStateChanged?.call(true);
         await _audioPlayer!.play();
-        print('✅ Playback recovered and started');
+        debugPrint('✅ Playback recovered and started');
       } catch (e2) {
-        print('❌ Playback recover failed: $e2');
+        debugPrint('❌ Playback recover failed: $e2');
         _playbackStarted = false;
         onPlaybackStateChanged?.call(false);
       }
@@ -489,8 +473,7 @@ class StreamingStrategy implements LipsyncStrategy {
   void _handleDone() {
     // done ohne Seq oder falsche Seq ignorieren
     // (Listener ruft diese Methode nur über Schalter; hier keine Seq verfügbar)
-    // ignore: avoid_print
-    print('✅ Stream done ($_chunkCount chunks)');
+    debugPrint('✅ Stream done ($_chunkCount chunks)');
 
     // Falls noch nicht gestartet (sehr kurz), jetzt einmal anstoßen
     if (!_playbackStarted && _bytesAccumulated > 0) {

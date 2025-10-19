@@ -120,6 +120,7 @@ async def publisher_start(req: Request):
 
         # Start MuseTalk session (mit Retry/Warmup)
         print(f"🚀 Starting MuseTalk session for room: {room}")
+        started = False
         last_exc = None
         for attempt in range(3):
             try:
@@ -132,6 +133,7 @@ async def publisher_start(req: Request):
                     resp = await client.post(f"{MUSETALK_URL}/session/start", json=payload)
                     if resp.status_code == 200:
                         print(f"✅ MuseTalk session started")
+                        started = True
                         break
                     else:
                         error_detail = resp.text
@@ -142,7 +144,7 @@ async def publisher_start(req: Request):
                 print(f"⚠️ MuseTalk start error (try {attempt+1}/3): {e}")
             # kleiner Backoff
             await asyncio.sleep(0.6)
-        if last_exc and '✅' not in locals():
+        if not started:
             raise HTTPException(status_code=500, detail=str(last_exc))
         
         # Open WebSocket for audio streaming

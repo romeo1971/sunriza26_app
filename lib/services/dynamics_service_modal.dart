@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 /// Modal.com Dynamics Service
@@ -22,7 +23,7 @@ class DynamicsServiceModal {
     String dynamicsId = 'basic',
     Map<String, dynamic>? parameters,
   }) async {
-    print('🎭 Starte Dynamics-Generierung für Avatar: $avatarId');
+    debugPrint('🎭 Starte Dynamics-Generierung für Avatar: $avatarId');
 
     final defaultParameters = {
       'driving_multiplier': 0.41,
@@ -60,7 +61,7 @@ class DynamicsServiceModal {
 
     if (data['status'] == 'success') {
       final videoUrl = data['video_url'] as String;
-      print('✅ Dynamics-Video erstellt: $videoUrl');
+      debugPrint('✅ Dynamics-Video erstellt: $videoUrl');
       return videoUrl;
     } else {
       throw Exception('Dynamics-Generierung fehlgeschlagen: ${data['error']}');
@@ -85,7 +86,7 @@ class DynamicsServiceModal {
       }
       return false;
     } catch (e) {
-      print('⚠️ Health Check fehlgeschlagen: $e');
+      debugPrint('⚠️ Health Check fehlgeschlagen: $e');
       return false;
     }
   }

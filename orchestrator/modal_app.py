@@ -21,9 +21,7 @@ app = modal.App("lipsync-orchestrator", image=image)
 @app.function(
     secrets=[
         modal.Secret.from_name("lipsync-eleven"),
-        # Erwartet Key: LIVEPORTRAIT_WS_URL
         modal.Secret.from_name("liveportrait-ws"),
-        # Erwartet Keys: LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET
         modal.Secret.from_name("livekit-cloud"),
     ],
     min_containers=1,

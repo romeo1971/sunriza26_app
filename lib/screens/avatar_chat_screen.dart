@@ -673,6 +673,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
       if (!doc.exists) {
         debugPrint('⚠️ Dynamics-Video: Avatar nicht gefunden in Firestore');
+        if (!mounted) return;
         setState(() => _liveAvatarEnabled = false);
         return;
       }
@@ -687,6 +688,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           '⚠️ Dynamics-Video: Kein "basic" Dynamics vorhanden für $avatarId\n'
           '→ Fallback: Nur Hero-Image wird angezeigt',
         );
+        if (!mounted) return;
         setState(() => _liveAvatarEnabled = false);
         return;
       }
@@ -699,12 +701,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           '⚠️ Dynamics-Video: Keine idleVideoUrl\n'
           '→ Fallback: Nur Hero-Image wird angezeigt',
         );
+        if (!mounted) return;
         setState(() => _liveAvatarEnabled = false);
         return;
       }
 
       // Nur neu laden, wenn sich die URL geändert hat – vermeidet Black‑Flash
       if (_idleVideoUrl == idleUrl && _idleController != null) {
+        if (!mounted) return;
         setState(() => _liveAvatarEnabled = true);
         return;
       }
@@ -720,10 +724,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       _idleVideoUrl = idleUrl;
       old?.dispose();
 
+      if (!mounted) return;
       setState(() => _liveAvatarEnabled = true);
       debugPrint('✅ Idle-Video initialisiert (swap): $idleUrl');
     } catch (e) {
       debugPrint('❌ Idle-Video Init Fehler: $e');
+      if (!mounted) return;
       setState(() => _liveAvatarEnabled = false);
     }
   }
@@ -2103,6 +2109,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   }
 
   void _addMessage(String text, bool isUser, {String? audioPath}) {
+    if (!mounted) return;
     setState(() {
       _messages.add(
         ChatMessage(text: text, isUser: isUser, audioPath: audioPath),

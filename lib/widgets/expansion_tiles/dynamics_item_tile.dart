@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+// import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
 import '../../theme/app_theme.dart';
 import 'expansion_tile_base.dart';
@@ -130,7 +131,7 @@ class _DynamicsItemTileState extends State<DynamicsItemTile> {
         _thumbnailLoaded = true;
       });
     } catch (e) {
-      print('Error loading video thumbnail: $e');
+      debugPrint('Error loading video thumbnail: $e');
       setState(() {
         _thumbnailLoaded = false;
       });

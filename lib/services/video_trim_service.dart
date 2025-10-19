@@ -21,6 +21,9 @@ class VideoTrimService {
     required String avatarId,
     double? maxDuration,
   }) async {
+    // Verwende lokale Handles statt BuildContext nach async Gaps
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
     // 1. Lade Video-Dauer
     double videoDuration = 0;
     try {
@@ -29,18 +32,17 @@ class VideoTrimService {
       videoDuration = controller.value.duration.inSeconds.toDouble();
       controller.dispose();
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Fehler beim Laden des Videos: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text('❌ Fehler beim Laden des Videos: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
       return null;
     }
 
     // 2. Zeige Trim-Dialog
+    if (!context.mounted) return null;
     final result = await showDialog<Map<String, double>>(
       context: context,
       builder: (ctx) => _TrimDialog(
@@ -71,32 +73,35 @@ class VideoTrimService {
     required String avatarId,
     required double start,
     required double end,
+    NavigatorState? nav,
+    ScaffoldMessengerState? messenger,
   }) async {
     String? newVideoUrl;
+    // BuildContext nicht über async Gaps verwenden → vorab Handles sichern
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.maybeOf(context);
 
     try {
       // Loading Dialog anzeigen
-      if (context.mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const AlertDialog(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('⏳ Video wird getrimmt...'),
-                SizedBox(height: 8),
-                Text(
-                  'Dies kann 10-30 Sekunden dauern',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-              ],
-            ),
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => const AlertDialog(
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('⏳ Video wird getrimmt...'),
+              SizedBox(height: 8),
+              Text(
+                'Dies kann 10-30 Sekunden dauern',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
           ),
-        );
-      }
+        ),
+      );
 
       // Firebase Function aufrufen
       final trimResponse = await http
@@ -173,18 +178,14 @@ class VideoTrimService {
       } catch (_) {}
 
       // Close loading dialog
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
+      navigator.pop();
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Video getrimmt!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+      messenger?.showSnackBar(
+        const SnackBar(
+          content: Text('✅ Video getrimmt!'),
+          backgroundColor: Colors.green,
+        ),
+      );
 
       return newVideoUrl;
     } catch (e) {
@@ -215,19 +216,15 @@ class VideoTrimService {
       }
 
       // Close loading dialog
-      if (context.mounted) {
-        Navigator.of(context).pop();
-      }
+      navigator.maybePop();
 
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Fehler beim Trimmen: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
-      }
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text('❌ Fehler beim Trimmen: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
 
       return null;
     }
