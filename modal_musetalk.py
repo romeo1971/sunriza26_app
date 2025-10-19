@@ -62,6 +62,7 @@ image = (
             "mkdir -p /root/MuseTalk/models/sd-vae-ft-mse",
             "curl -L https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/config.json -o /root/MuseTalk/models/sd-vae-ft-mse/config.json || true",
             "curl -L https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/diffusion_pytorch_model.safetensors -o /root/MuseTalk/models/sd-vae-ft-mse/diffusion_pytorch_model.safetensors || true",
+            # (keine zusätzliche Kopie mehr nötig)
     )
 )
 
@@ -157,8 +158,8 @@ def asgi():
         logger.info("Loading MuseTalk models...")
         
         try:
-            # Load configs
-            config = OmegaConf.load("/root/MuseTalk/configs/inference/realtime.yaml")
+            # Load offizielle Inferenz-Config aus dem Repo
+            config = OmegaConf.load("/root/MuseTalk/configs/inference/test.yaml")
             
             # Load VAE (MuseTalk lädt interne Gewichte/Config selbst)
             vae = VAE()
@@ -175,9 +176,9 @@ def asgi():
             except Exception:
                 pass
             
-            # Load UNet (MuseTalk 1.5)
-            unet = UNet()
-            unet.load_state_dict(torch.load("/root/MuseTalk/models/musetalkV15/unet.pth"))
+            # Load UNet (MuseTalk 1.5) – mit gefundener Konfiguration
+            unet_cfg = config.model.unet_config
+            unet = UNet(unet_config=unet_cfg, model_path="/root/MuseTalk/models/musetalkV15/unet.pth")
             unet = unet.to(device).eval()
             
             # Position encoding
@@ -398,7 +399,7 @@ def asgi():
             ))
             jwt_token = token.to_jwt()
             
-            # Connect
+            # Connect (Standardoptionen)
             self.livekit_room = rtc.Room()
             await self.livekit_room.connect(livekit_url, jwt_token)
             
