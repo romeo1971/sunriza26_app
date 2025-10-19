@@ -315,19 +315,51 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           'avatar_image_url': _avatarData?.avatarImageUrl,
         }),
       );
-      if (res.statusCode < 200 || res.statusCode >= 300) return;
+      if (res.statusCode < 200 || res.statusCode >= 300) {
+        // Fallback: .env Test‑Join
+        final testToken = (dotenv.env['LIVEKIT_TEST_TOKEN'] ?? '').trim();
+        final url = (dotenv.env['LIVEKIT_URL'] ?? '').trim();
+        final fallbackRoom = (dotenv.env['LIVEKIT_TEST_ROOM'] ?? 'sunriza')
+            .trim();
+        if (testToken.isNotEmpty && url.isNotEmpty) {
+          debugPrint(
+            '⚠️ Token endpoint failed (${res.statusCode}) – fallback to TEST env',
+          );
+          await LiveKitService().join(
+            room: fallbackRoom,
+            token: testToken,
+            urlOverride: url,
+          );
+        }
+        return;
+      }
       final data = jsonDecode(res.body) as Map<String, dynamic>;
       final token = (data['token'] as String?)?.trim();
       String? room = (data['room'] as String?)?.trim();
       final lkUrl = (data['url'] as String?)?.trim();
-      // Dynamischer Raum auch bei bekannten statischen Defaults
-      const knownStatic = {'sunriza26', 'sunriza'};
-      if (room == null || room.isEmpty || knownStatic.contains(room)) {
+      // Dynamischer Raum, falls Backend keinen liefert ODER statischen Default liefert
+      const knownStaticRooms = {'sunriza26', 'sunriza'};
+      if (room == null || room.isEmpty || knownStaticRooms.contains(room)) {
         final uid = user.uid;
         final short = uid.length >= 8 ? uid.substring(0, 8) : uid;
         room = 'mt-$short-${DateTime.now().millisecondsSinceEpoch}';
       }
-      if (token == null || token.isEmpty) return;
+      if (token == null || token.isEmpty) {
+        // Fallback: .env Test‑Join
+        final testToken = (dotenv.env['LIVEKIT_TEST_TOKEN'] ?? '').trim();
+        final url = (dotenv.env['LIVEKIT_URL'] ?? '').trim();
+        final fallbackRoom = (dotenv.env['LIVEKIT_TEST_ROOM'] ?? 'sunriza')
+            .trim();
+        if (testToken.isNotEmpty && url.isNotEmpty) {
+          debugPrint('⚠️ Token missing – fallback to TEST env');
+          await LiveKitService().join(
+            room: fallbackRoom,
+            token: testToken,
+            urlOverride: url,
+          );
+        }
+        return;
+      }
       // Token für möglichen Reconnect hinterlegen (nur im Flutter-Prozess)
       try {
         // Achtung: .env ist nur für Boot-Config; hier nur in-memory speichern wäre sauberer.

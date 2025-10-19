@@ -112,6 +112,18 @@ class StreamingStrategy implements LipsyncStrategy {
   bool _useHttpStream = false; // neuer Modus: Audio via HTTP setUrl()
   bool _museTalkRoomSent = false; // Raumname nur einmal senden
 
+  Future<String?> _awaitRoomName({
+    Duration timeout = const Duration(seconds: 3),
+  }) async {
+    final start = DateTime.now();
+    while (true) {
+      final rn = LiveKitService().roomName;
+      if (rn != null && rn.isNotEmpty) return rn;
+      if (DateTime.now().difference(start) >= timeout) return null;
+      await Future.delayed(const Duration(milliseconds: 50));
+    }
+  }
+
   final StreamController<VisemeEvent> _visemeController =
       StreamController<VisemeEvent>.broadcast();
   final StreamController<PcmChunkEvent> _pcmController =
@@ -242,7 +254,7 @@ class StreamingStrategy implements LipsyncStrategy {
     // Zusätzlich: PCM an MuseTalk-WS weiterleiten (Raumname zuerst)
     try {
       final museTalkWs = AppConfig.museTalkWsUrl;
-      final String? roomName = LiveKitService().roomName;
+      final String? roomName = await _awaitRoomName();
       if (roomName == null || roomName.isEmpty) {
         // ignore: avoid_print
         print('⚠️ Kein LiveKit-Raum – PCM-Forwarding übersprungen');

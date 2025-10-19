@@ -47,9 +47,13 @@ async def mint_livekit_token(req: Request):
     if not (LIVEKIT_URL and LIVEKIT_API_KEY and LIVEKIT_API_SECRET):
         raise HTTPException(status_code=500, detail="LiveKit env missing")
     body = await req.json()
+    # room optional: wenn nicht gesetzt, generieren wir einen eindeutigen
     room = (body.get("room") or "").strip()
     if not room:
-        raise HTTPException(400, "room required")
+        uid = (body.get("user_id") or "anon").strip()
+        short = uid[:8] if uid else "anon"
+        import time
+        room = f"mt-{short}-{int(time.time()*1000)}"
     uid = (body.get("user_id") or "anon").strip()
     avatar_id = (body.get("avatar_id") or "avatar").strip()
     identity = f"{uid}-{avatar_id}"
