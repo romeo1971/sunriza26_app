@@ -369,7 +369,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           : '$orchUrl/publisher/start';
       debugPrint('🎬 Starting MuseTalk publisher: $url');
       debugPrint('📹 Idle video: $idleVideoUrl');
-      if (framesZipUrl != null && framesZipUrl!.isNotEmpty) {
+      if (framesZipUrl != null && framesZipUrl.isNotEmpty) {
         debugPrint('🖼️ Frames zip: $framesZipUrl');
       }
 
@@ -380,7 +380,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           'room': room,
           'avatar_id': avatarId,
           'idle_video_url': idleVideoUrl, // MuseTalk kann mp4 nutzen…
-          if (framesZipUrl != null && framesZipUrl!.isNotEmpty)
+          if (framesZipUrl != null && framesZipUrl.isNotEmpty)
             'frames_zip_url':
                 framesZipUrl, // …bevorzugt aber vorbereitete Frames
         }),

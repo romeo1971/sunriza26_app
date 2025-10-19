@@ -58,11 +58,15 @@ image = (
     .run_commands(
         "cd /root && git clone https://github.com/TMElyralab/MuseTalk.git",
         "cd /root/MuseTalk && bash download_weights.sh",
+            # Inferenz-Config mit unet_config aus dem Repo sicherstellen
+            "mkdir -p /root/MuseTalk/configs/inference",
+            "FOUND=$(grep -R -l -E 'unet_config\\s*:' /root/MuseTalk/configs || true); if [ -n \"$FOUND\" ]; then cp $FOUND /root/MuseTalk/configs/inference/test.yaml; fi",
             # Sicherstellen: sd-vae-ft-mse (Diffusers-Format) liegt lokal vor (config.json + weights)
             "mkdir -p /root/MuseTalk/models/sd-vae-ft-mse",
             "curl -L https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/config.json -o /root/MuseTalk/models/sd-vae-ft-mse/config.json || true",
             "curl -L https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/diffusion_pytorch_model.safetensors -o /root/MuseTalk/models/sd-vae-ft-mse/diffusion_pytorch_model.safetensors || true",
-            # (keine zusätzliche Kopie mehr nötig)
+            # Falls oben nichts gefunden wurde, versuche offizielle test.yaml
+            "[ -f /root/MuseTalk/configs/inference/test.yaml ] || curl -L https://raw.githubusercontent.com/TMElyralab/MuseTalk/main/configs/inference/test.yaml -o /root/MuseTalk/configs/inference/test.yaml || true",
     )
 )
 
@@ -158,8 +162,14 @@ def asgi():
         logger.info("Loading MuseTalk models...")
         
         try:
-            # Load offizielle Inferenz-Config aus dem Repo
-            config = OmegaConf.load("/root/MuseTalk/configs/inference/test.yaml")
+            # Deterministische Inferenz-Config aus dem Repo
+            import os as _os
+            from omegaconf import OmegaConf as _OC
+            used_cfg_path = "/root/MuseTalk/configs/inference/test.yaml"
+            if not _os.path.exists(used_cfg_path):
+                raise RuntimeError(f"Missing inference config: {used_cfg_path}")
+            config = _OC.load(used_cfg_path)
+            logger.info(f"Using config: {used_cfg_path}")
             
             # Load VAE (MuseTalk lädt interne Gewichte/Config selbst)
             vae = VAE()
@@ -176,9 +186,21 @@ def asgi():
             except Exception:
                 pass
             
-            # Load UNet (MuseTalk 1.5) – mit gefundener Konfiguration
-            unet_cfg = config.model.unet_config
-            unet = UNet(unet_config=unet_cfg, model_path="/root/MuseTalk/models/musetalkV15/unet.pth")
+            # Load UNet aus musetalk.json (v1.5) bzw. v1.0 Fallback
+            unet_path = "/root/MuseTalk/models/musetalkV15/unet.pth"
+            unet_cfg_json = "/root/MuseTalk/models/musetalkV15/musetalk.json"
+            if not _os.path.exists(unet_cfg_json):
+                # v1.0 Fallback
+                unet_cfg_json = "/root/MuseTalk/models/musetalk/musetalk.json"
+                if _os.path.exists("/root/MuseTalk/models/musetalk/pytorch_model.bin"):
+                    unet_path = "/root/MuseTalk/models/musetalk/pytorch_model.bin"
+            if not _os.path.exists(unet_path):
+                raise RuntimeError(f"Missing UNet weights: {unet_path}")
+            if not _os.path.exists(unet_cfg_json):
+                raise RuntimeError(f"Missing UNet config JSON: {unet_cfg_json}")
+            with open(unet_cfg_json, "r") as _f:
+                unet_cfg = json.load(_f)
+            unet = UNet(unet_config=unet_cfg, model_path=unet_path)
             unet = unet.to(device).eval()
             
             # Position encoding
@@ -506,6 +528,106 @@ def asgi():
     @fastapi_app.get("/health")
     async def health():
         return {"status": "ok", "service": "musetalk-lipsync", "gpu": device}
+    
+    @fastapi_app.get("/debug/assets")
+    async def debug_assets():
+        """Check presence and sizes of required model assets and config."""
+        import os as _os, glob as _glob
+        from omegaconf import OmegaConf as _OC
+
+        # Deterministisch: test.yaml laden und rekursiv prüfen
+        used_cfg_path = "/root/MuseTalk/configs/inference/test.yaml"
+        cfg = None
+        found_key = None
+        try:
+            c = _OC.load(used_cfg_path)
+            def _to_plain(obj):
+                try:
+                    return _OC.to_container(obj, resolve=True)
+                except Exception:
+                    return obj
+            def _find_key_rec(node, keys):
+                if node is None:
+                    return None, None
+                if isinstance(node, dict):
+                    for k in keys:
+                        if k in node and node[k] is not None:
+                            return k, node[k]
+                    for v in node.items():
+                        k2, found = _find_key_rec(v[1], keys)
+                        if found is not None:
+                            return k2, found
+                if isinstance(node, (list, tuple)):
+                    for it in node:
+                        k2, found = _find_key_rec(it, keys)
+                        if found is not None:
+                            return k2, found
+                return None, None
+            plain = _to_plain(c)
+            value = None
+            if isinstance(plain, dict) and 'model' in plain:
+                found_key, value = _find_key_rec(plain['model'], ['unet_config', 'unet', 'unet15', 'unet_v15'])
+            if value is None:
+                found_key, value = _find_key_rec(plain, ['unet_config', 'unet', 'unet15', 'unet_v15'])
+            cfg = c
+        except Exception:
+            cfg = None
+            found_key = None
+        
+        # Required files
+        unet_path = "/root/MuseTalk/models/musetalkV15/unet.pth"
+        unet_cfg_json = "/root/MuseTalk/models/musetalkV15/musetalk.json"
+        if not _os.path.exists(unet_cfg_json):
+            # v1.0 Fallback
+            alt = "/root/MuseTalk/models/musetalk/musetalk.json"
+            if _os.path.exists(alt):
+                unet_cfg_json = alt
+                # ggf. anderes Gewichtsformat
+                if _os.path.exists("/root/MuseTalk/models/musetalk/pytorch_model.bin"):
+                    unet_path = "/root/MuseTalk/models/musetalk/pytorch_model.bin"
+        vae_cfg = "/root/MuseTalk/models/sd-vae-ft-mse/config.json"
+        vae_w = "/root/MuseTalk/models/sd-vae-ft-mse/diffusion_pytorch_model.safetensors"
+        dwpose = "/root/MuseTalk/models/dwpose/dw-ll_ucoco_384.pth"
+        
+        def _size(p):
+            try:
+                return _os.path.getsize(p)
+            except Exception:
+                return None
+        
+        # Sum of all files under models dir
+        total_models_bytes = 0
+        for root, _, files in _os.walk("/root/MuseTalk/models"):
+            for f in files:
+                fp = _os.path.join(root, f)
+                try:
+                    total_models_bytes += _os.path.getsize(fp)
+                except Exception:
+                    pass
+        
+        # Zusätzlich: welche Keys gibt es unter model?
+        model_keys = []
+        try:
+            if cfg is not None and hasattr(cfg, 'model'):
+                plain = _OC.to_container(cfg.model, resolve=True)
+                if isinstance(plain, dict):
+                    model_keys = sorted(list(plain.keys()))
+        except Exception:
+            model_keys = []
+        return {
+            "config_path": used_cfg_path,
+            "config_has_unet_config": found_key is not None,
+            "config_unet_key": found_key,
+            "model_keys": model_keys,
+            "files": {
+                "unet.pth": {"path": unet_path, "exists": _os.path.exists(unet_path), "size": _size(unet_path)},
+                "musetalk.json": {"path": unet_cfg_json, "exists": _os.path.exists(unet_cfg_json), "size": _size(unet_cfg_json)},
+                "sd-vae-ft-mse/config.json": {"path": vae_cfg, "exists": _os.path.exists(vae_cfg), "size": _size(vae_cfg)},
+                "sd-vae-ft-mse/diffusion_pytorch_model.safetensors": {"path": vae_w, "exists": _os.path.exists(vae_w), "size": _size(vae_w)},
+                "dwpose/dw-ll_ucoco_384.pth": {"path": dwpose, "exists": _os.path.exists(dwpose), "size": _size(dwpose)},
+            },
+            "models_dir_bytes": total_models_bytes,
+        }
     
     @fastapi_app.post("/session/start")
     async def start_session(req: Request):
