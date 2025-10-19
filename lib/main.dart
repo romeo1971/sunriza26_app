@@ -36,12 +36,11 @@ import 'screens/language_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'theme/app_theme.dart';
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform;
+    show defaultTargetPlatform, TargetPlatform, kDebugMode;
 import 'l10n/app_localizations.dart';
 import 'package:flutter_localized_locales/flutter_localized_locales.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'boot/engineering_notes.dart';
 
 /// Deaktiviert jegliche Page-Transitions (kein Slide/Fade) für Navigator-Routen - das ist gut!
 class NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
@@ -135,8 +134,8 @@ void main() async {
   // Debug: Base-URL ausgeben immer
   // debugPrint('BASE=${EnvService.memoryApiBaseUrl()}');
 
-  // Engineering-Anker: Log nur bei Fehlern, optional beim Boot in Debug
-  registerEngineeringAnchors(alwaysLogOnBoot: false);
+  // Engineering-Anker nur im Debug registrieren (kein Boot-Log)
+  // Engineering-Logs vollständig entfernt
 
   runApp(SunrizaApp(initialLanguageCode: initialLang));
 }
@@ -494,7 +493,7 @@ class SunrizaApp extends StatelessWidget {
             '/language': (context) => const LanguageScreen(),
             // Avatar Editor wird jetzt über Avatar Details aufgerufen
           },
-          navigatorObservers: <NavigatorObserver>[engineeringNavigatorObserver],
+          // Engineering-Observer entfernt
         );
       },
     );

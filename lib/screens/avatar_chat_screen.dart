@@ -4,8 +4,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart'
-    show consolidateHttpClientResponseBytes;
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -64,7 +62,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   VideoPlayerController? _idleController;
   bool _liveAvatarEnabled = false;
   String? _idleVideoUrl;
-  bool _lpHasFirstFrame = false; // Canvas erst anzeigen, wenn 1. Frame da ist
 
   // Rate-Limiting für TTS-Requests
   DateTime? _lastTtsRequestTime;
@@ -195,18 +192,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       }
     } catch (e) {
       debugPrint('❌ Fehler beim Laden der Image Timeline: $e');
-    }
-  }
-
-  Future<Uint8List> _loadHeroBytes(String url) async {
-    final client = HttpClient();
-    try {
-      final req = await client.getUrl(Uri.parse(url));
-      final res = await req.close();
-      final bytes = await consolidateHttpClientResponseBytes(res);
-      return bytes;
-    } finally {
-      client.close();
     }
   }
 
@@ -353,13 +338,35 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     String voiceId,
   ) async {
     try {
+      // Get idle video URL from Firestore
+      String? idleVideoUrl;
+      if (_avatarData != null) {
+        final doc = await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(_avatarData!.id)
+            .get();
+
+        if (doc.exists) {
+          final data = doc.data();
+          final dynamics = data?['dynamics'] as Map<String, dynamic>?;
+          final basicDynamics = dynamics?['basic'] as Map<String, dynamic>?;
+          idleVideoUrl = basicDynamics?['idleVideoUrl'] as String?;
+        }
+      }
+
+      if (idleVideoUrl == null || idleVideoUrl.isEmpty) {
+        debugPrint('❌ No idle video URL for MuseTalk');
+        return;
+      }
+
       final orchUrl = AppConfig.orchestratorUrl
           .replaceFirst('wss://', 'https://')
           .replaceFirst('ws://', 'http://');
       final url = orchUrl.endsWith('/')
           ? '${orchUrl}publisher/start'
           : '$orchUrl/publisher/start';
-      debugPrint('🎬 Starting LiveKit publisher: $url');
+      debugPrint('🎬 Starting MuseTalk publisher: $url');
+      debugPrint('📹 Idle video: $idleVideoUrl');
 
       final res = await http.post(
         Uri.parse(url),
@@ -367,12 +374,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         body: jsonEncode({
           'room': room,
           'avatar_id': avatarId,
-          'voice_id': voiceId,
+          'idle_video_url': idleVideoUrl, // MuseTalk braucht idle.mp4!
         }),
       );
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        debugPrint('✅ LiveKit publisher started');
+        debugPrint('✅ MuseTalk publisher started');
       } else {
         debugPrint('⚠️ Publisher start failed: ${res.statusCode}');
       }
@@ -451,13 +458,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (_isStreamingSpeaking != isPlaying) {
         debugPrint('🎙️ _isStreamingSpeaking: $isPlaying');
         setState(() => _isStreamingSpeaking = isPlaying);
-        
+
         // LiveKit Publisher starten/stoppen basierend auf Playback-Status
         final room = LiveKitService().roomName ?? 'sunriza26';
         if (isPlaying && _avatarData?.id != null && _cachedVoiceId != null) {
           await _startLiveKitPublisher(room, _avatarData!.id, _cachedVoiceId!);
         } else if (!isPlaying) {
-          await _stopLiveKitPublisher(room);
+          // Debounce: warte kurz, ob noch weitere Audio‑Chunks kommen
+          await Future.delayed(const Duration(milliseconds: 350));
+          if (!_isStreamingSpeaking) {
+            await _stopLiveKitPublisher(room);
+          }
         }
       }
     };
@@ -484,11 +495,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         }
         debugPrint('👄 Viseme: ${ev.viseme} @ ${ev.ptsMs}ms');
         // Viseme an LivePortrait-Canvas weiterleiten (falls vorhanden)
-        _lpKey.currentState?.sendViseme(
-          ev.viseme,
-          ev.ptsMs,
-          ev.durationMs,
-        );
+        _lpKey.currentState?.sendViseme(ev.viseme, ev.ptsMs, ev.durationMs);
       });
     }
 
@@ -746,67 +753,52 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             Positioned.fill(
               child: Hero(
                 tag: 'avatar-${_avatarData?.id}',
-                child:
-                    (_liveAvatarEnabled &&
+                child: ValueListenableBuilder<lk.VideoTrack?>(
+                  valueListenable: LiveKitService().remoteVideo,
+                  builder: (context, remoteVideoTrack, _) {
+                    // PRIORITÄT 1: LiveKit Video-Track (MuseTalk Lipsync)
+                    if (remoteVideoTrack != null) {
+                      return lk.VideoTrackRenderer(
+                        remoteVideoTrack,
+                        fit: lk.VideoViewFit.cover,
+                      );
+                    }
+
+                    // PRIORITÄT 2: Idle-Video (LivePortrait)
+                    if (_liveAvatarEnabled &&
                         _idleController != null &&
-                        _idleController!.value.isInitialized)
-                    ? FittedBox(
+                        _idleController!.value.isInitialized) {
+                      return FittedBox(
                         fit: BoxFit.cover,
                         child: SizedBox(
                           width: _idleController!.value.size.width,
                           height: _idleController!.value.size.height,
                           child: VideoPlayer(_idleController!),
                         ),
-                      )
-                    : (backgroundImage != null && backgroundImage.isNotEmpty)
-                    ? Image.network(
+                      );
+                    }
+
+                    // PRIORITÄT 3: Statisches Hero-Image
+                    if (backgroundImage != null && backgroundImage.isNotEmpty) {
+                      return Image.network(
                         backgroundImage,
                         fit: BoxFit.cover,
                         frameBuilder:
                             (context, child, frame, wasSynchronouslyLoaded) {
-                              // Zeige sofort wenn bereits gecached
                               if (wasSynchronouslyLoaded || frame != null) {
                                 return child;
                               }
-                              // Während Laden: Container schwarz
                               return Container(color: Colors.black);
                             },
-                      )
-                    : Container(color: Colors.black),
-              ),
-            ),
+                      );
+                    }
 
-            // LivePortrait Canvas (nur bei echtem Streaming UND erst ab 1. Frame)
-            if (_isStreamingSpeaking &&
-                _lpHasFirstFrame &&
-                _avatarData?.avatarImageUrl != null)
-              Positioned.fill(
-                child: FutureBuilder<Uint8List>(
-                  future: _loadHeroBytes(_avatarData!.avatarImageUrl!),
-                  builder: (context, snap) {
-                    if (!snap.hasData) return const SizedBox.shrink();
-                    return LivePortraitCanvas(
-                      key: _lpKey,
-                      wsUrl: AppConfig.livePortraitWsUrl,
-                      heroImageBytes: snap.data!,
-                      onReady: () {
-                        // Canvas bereit → nichts zu tun
-                      },
-                      onFirstFrame: () {
-                        // Erst ab erstem Frame Canvas einblenden
-                        if (mounted && !_lpHasFirstFrame) {
-                          setState(() => _lpHasFirstFrame = true);
-                        }
-                      },
-                      onDone: () {
-                        if (mounted && _lpHasFirstFrame) {
-                          setState(() => _lpHasFirstFrame = false);
-                        }
-                      },
-                    );
+                    // FALLBACK: Schwarz
+                    return Container(color: Colors.black);
                   },
                 ),
               ),
+            ),
 
             // AppBar ist nun direkt im Scaffold eingebunden (siehe oben)
 

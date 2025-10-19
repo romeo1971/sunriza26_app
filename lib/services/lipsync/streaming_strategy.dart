@@ -78,10 +78,13 @@ class StreamingMp3Source extends StreamAudioSource {
 
     // Geschätzte Länge basierend auf aktuellem Buffer
     final bufferSize = _buffer.fold<int>(0, (sum, chunk) => sum + chunk.length);
+    // WICHTIG: Für echtes Streaming KEINE Content-Length setzen.
+    // Wenn komplett: Länge melden, sonst null (chunked Transfer).
+    final int? lengthWhenComplete = _isComplete ? bufferSize : null;
 
     return StreamAudioResponse(
-      sourceLength: _isComplete ? bufferSize : null,
-      contentLength: _isComplete ? bufferSize : null,
+      sourceLength: lengthWhenComplete,
+      contentLength: lengthWhenComplete,
       contentType: 'audio/mpeg',
       stream: controller.stream,
       offset: start ?? 0,
@@ -103,6 +106,7 @@ class StreamingStrategy implements LipsyncStrategy {
   bool _playbackStarted = false;
   int _bytesAccumulated = 0;
   int _activeSeq = 0;
+  bool _useHttpStream = false; // neuer Modus: Audio via HTTP setUrl()
 
   final StreamController<VisemeEvent> _visemeController =
       StreamController<VisemeEvent>.broadcast();
@@ -209,14 +213,11 @@ class StreamingStrategy implements LipsyncStrategy {
 
   @override
   Future<void> speak(String text, String voiceId) async {
-    // Sicherstellen: vorherige Wiedergabe stoppen und Player neu aufsetzen
+    // Sicherstellen: vorherige Wiedergabe stoppen (Player NICHT disposen)
     try {
       await _audioPlayer?.stop();
     } catch (_) {}
-    try {
-      await _audioPlayer?.dispose();
-    } catch (_) {}
-    _audioPlayer = AudioPlayer();
+    _audioPlayer ??= AudioPlayer();
     _playbackStarted = false;
     _bytesAccumulated = 0;
     // Lazy connect on focus/input (deine Anweisung!)
@@ -234,14 +235,25 @@ class StreamingStrategy implements LipsyncStrategy {
       return;
     }
 
-    // IMMER neuen Source erstellen (kein reset!)
-    // Alten Source ERST disposen, dann neuen erstellen
-    _currentSource?.dispose();
-    _currentSource = StreamingMp3Source();
+    // HTTP‑Streaming nutzen (stabiler als WS->StreamAudioSource)
+    // Alte Source ggf. später entsorgen
+    final oldSource = _currentSource;
+    _currentSource = null;
+    _useHttpStream = true;
+    if (oldSource != null) {
+      Future.delayed(const Duration(seconds: 1), () {
+        try {
+          oldSource.complete();
+        } catch (_) {}
+        try {
+          oldSource.dispose();
+        } catch (_) {}
+      });
+    }
     _chunkCount = 0;
 
     // ignore: avoid_print
-    print('🎵 Starting streaming playback (reset: ${_currentSource != null})');
+    print('🎵 Starting streaming playback via HTTP source');
 
     // Neue Sequenz-ID vergeben und mitsenden
     _activeSeq += 1;
@@ -252,11 +264,42 @@ class StreamingStrategy implements LipsyncStrategy {
         'text': text,
         'voice_id': voiceId,
         'seq': seq,
+        'mp3': false, // MP3 kommt jetzt über HTTP-Stream
       }),
     );
+
+    // HTTP‑Stream URL vom Orchestrator verwenden
+    try {
+      final httpBase = _orchestratorUrl
+          .replaceFirst('wss://', 'https://')
+          .replaceFirst('ws://', 'http://');
+      final url = Uri.parse(httpBase.replaceFirst(RegExp(r"/+$"), ''))
+          .resolve('/tts/stream')
+          .replace(queryParameters: {'voice_id': voiceId, 'text': text})
+          .toString();
+      // ignore: avoid_print
+      print('🎧 HTTP stream URL: $url');
+
+      // iOS: Audio-Session vorbereiten
+      try {
+        final session = await AudioSession.instance;
+        await session.configure(const AudioSessionConfiguration.speech());
+      } catch (_) {}
+
+      await _audioPlayer!.setUrl(url);
+      onPlaybackStateChanged?.call(true);
+      await _audioPlayer!.play();
+    } catch (e) {
+      // ignore: avoid_print
+      print('❌ HTTP audio set/play failed: $e');
+    }
   }
 
   void _handleAudio(Map<String, dynamic> data) {
+    if (_useHttpStream) {
+      // Im HTTP‑Modus kommt kein 'audio' mehr über WS
+      return;
+    }
     // Nur aktuelle Sequenz verarbeiten (späte Chunks werden ignoriert)
     final int? seq = data['seq'] is int ? data['seq'] as int : null;
     if (seq != null && seq != _activeSeq) {
@@ -269,6 +312,11 @@ class StreamingStrategy implements LipsyncStrategy {
     // ignore: avoid_print
     print('🔊 Chunk $_chunkCount: ${audioBytes.length} bytes');
 
+    // WICHTIG: Signal an UI dass Audio kommt (für MuseTalk Publisher Start)
+    if (_chunkCount == 1) {
+      onPlaybackStateChanged?.call(true);
+    }
+
     if (_currentSource == null) return;
 
     // Chunk zum Stream hinzufügen
@@ -276,7 +324,7 @@ class StreamingStrategy implements LipsyncStrategy {
 
     // Start erst, wenn genügend Daten gepuffert sind (verhindert -11800)
     const int minStartBytes =
-        8 * 1024; // ~8 KB – kurze Grüße starten zuverlässig
+        64 * 1024; // ~64 KB – verhindert frühes Ausgehen bei 2. Audio
     if (!_playbackStarted && _bytesAccumulated >= minStartBytes) {
       _playbackStarted = true;
       _startPlayback();
@@ -284,6 +332,10 @@ class StreamingStrategy implements LipsyncStrategy {
   }
 
   Future<void> _startPlayback() async {
+    if (_useHttpStream) {
+      // HTTP‑Modus steuert Playback direkt über setUrl()/play()
+      return;
+    }
     if (_currentSource == null || _audioPlayer == null) {
       // ignore: avoid_print
       print(
@@ -310,21 +362,39 @@ class StreamingStrategy implements LipsyncStrategy {
       } catch (e) {
         print('⚠️ Audio session config failed: $e');
       }
-      
-      await _audioPlayer!.setAudioSource(_currentSource!);
 
-      // Callback: Playback starts!
+      if (_currentSource == null || _audioPlayer == null) {
+        print('❌ Source/Player null beim Start');
+        return;
+      }
+
+      try {
+        await _audioPlayer!.setAudioSource(_currentSource!);
+      } catch (e) {
+        print('❌ setAudioSource failed: $e - continuing anyway');
+        // Continue - Publisher soll trotzdem starten
+      }
+
+      // Callback: Playback starts! (auch wenn setAudioSource crashed)
+      // WICHTIG: Für MuseTalk Publisher
       onPlaybackStateChanged?.call(true);
 
-      await _audioPlayer!.play();
+      try {
+        await _audioPlayer!.play();
+      } catch (e) {
+        print('❌ play() failed: $e');
+      }
 
-      // Nach Playback-Ende Callback setzen (OHNE Source zu completen!)
+      // Nach Playback-Ende Callback setzen und Source schließen
       // Die Source bleibt offen, bis explizit stop()/dispose() aufgerufen wird
       _audioPlayer!.playerStateStream
           .firstWhere((s) => s.processingState == ProcessingState.completed)
           .then((_) {
             onPlaybackStateChanged?.call(false);
-            // KEIN complete() hier! Player könnte noch auf Source zugreifen
+            // Jetzt Source schließen – Player ist fertig
+            try {
+              _currentSource?.complete();
+            } catch (_) {}
           })
           .catchError((e) {
             // ignore: avoid_print
@@ -386,10 +456,7 @@ class StreamingStrategy implements LipsyncStrategy {
       _startPlayback();
     }
 
-    // JETZT Source schließen (alle Chunks sind angekommen)
-    // WICHTIG: complete() schließt den Stream, aber disposed NICHT die Source!
-    // Player kann danach noch auf gepufferte Daten zugreifen
-    _currentSource?.complete();
+    // Source NICHT hier schließen – warten bis der Player completed meldet
 
     // Nicht sofort complete/callback – warte auf tatsächliches Player-Ende
     _playbackStarted = false;
@@ -404,6 +471,7 @@ class StreamingStrategy implements LipsyncStrategy {
     try {
       await _audioPlayer?.stop();
     } catch (_) {}
+    _useHttpStream = false;
     // Source sauber schließen und disposen
     try {
       _currentSource?.complete();
@@ -418,9 +486,11 @@ class StreamingStrategy implements LipsyncStrategy {
     _channelSubscription?.cancel();
     _channel?.sink.close();
     // Source explizit disposen
+    try {
+      _currentSource?.complete();
+    } catch (_) {}
     _currentSource?.dispose();
     _audioPlayer?.dispose();
-    _currentSource?.complete();
     _visemeController.close();
   }
 }

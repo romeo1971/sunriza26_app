@@ -5,9 +5,13 @@ import modal
 image = (
     modal.Image.debian_slim()
     .apt_install("bash")
-    .pip_install("fastapi", "uvicorn", "websockets", "PyJWT")
-    # Nur die benötigte Datei bundlen (vermeidet Mount‑Limit)
-    # Wichtig: absoluter Pfad relativ zum Repo-Root, damit Modal ihn findet
+    .pip_install(
+        "fastapi",
+        "uvicorn",
+        "websockets",
+        "PyJWT",
+        "httpx",
+    )
     .add_local_file("orchestrator/py_asgi_app.py", "/app/py_asgi_app.py")
 )
 
