@@ -857,12 +857,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   Widget build(BuildContext context) {
     super.build(context); // wichtig für AutomaticKeepAliveClientMixin
     
-    // Hero Image NUR laden wenn idle.mp4 NICHT existiert!
-    // Wenn idle.mp4 existiert → KEIN Hero Image (idle.mp4 lädt schnell, gecached)
-    // → Spart Bandbreite & verhindert doppeltes Laden
-    final backgroundImage = _hasIdleDynamics 
-        ? null  // idle.mp4 existiert → KEIN Hero Image!
-        : (_currentBackgroundImage ?? _avatarData?.avatarImageUrl); // Kein idle.mp4 → Hero Image zeigen
+    // Hero Image als Placeholder bis idle.mp4 READY ist!
+    // Sobald idle.mp4 ready (_liveAvatarEnabled = true) → wird automatisch im Stack überlagert
+    final backgroundImage = _liveAvatarEnabled
+        ? null  // idle.mp4 READY → kein Hero Image mehr (Bandbreite sparen)
+        : (_currentBackgroundImage ?? _avatarData?.avatarImageUrl); // idle.mp4 lädt → Hero Image als Placeholder
 
     return Scaffold(
       backgroundColor: Colors.black,
