@@ -89,6 +89,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Amplitude>? _ampSub;
   DateTime? _segmentStartAt;
+  String? _activeMuseTalkRoom; // Track aktiven MuseTalk Room (verhindert doppelte /session/start Calls!)
   int _silenceMs = 0;
   bool _sttBusy = false;
   bool _segmentClosing = false;
@@ -385,6 +386,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     String avatarId,
     String voiceId,
   ) async {
+    // GUARD: Verhindere doppelte /session/start Calls für denselben Room!
+    if (_activeMuseTalkRoom == room) {
+      debugPrint('⏭️ MuseTalk session bereits aktiv für room=$room (skip)');
+      return;
+    }
+    
     try {
       // Get idle video URL + frames.zip URL from Firestore
       String? idleVideoUrl;
@@ -461,6 +468,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(payload),
         );
+        _activeMuseTalkRoom = room; // Merke aktiven Room!
         debugPrint('✅ MuseTalk session started (room=$room)');
       } catch (e) {
         debugPrint('⚠️ MuseTalk session start failed: $e');
@@ -488,6 +496,22 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
         debugPrint('✅ LiveKit publisher stopped');
+      }
+      
+      // Auch MuseTalk Session stoppen
+      try {
+        final mtUrl = AppConfig.museTalkHttpUrl.endsWith('/')
+            ? '${AppConfig.museTalkHttpUrl}session/stop'
+            : '${AppConfig.museTalkHttpUrl}/session/stop';
+        await http.post(
+          Uri.parse(mtUrl),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'room': room}),
+        );
+        _activeMuseTalkRoom = null; // Reset Guard!
+        debugPrint('✅ MuseTalk session stopped (room=$room)');
+      } catch (e) {
+        debugPrint('⚠️ MuseTalk session stop failed: $e');
       }
     } catch (e) {
       debugPrint('❌ Publisher stop error: $e');
@@ -736,6 +760,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (!mounted) return;
       setState(() => _liveAvatarEnabled = true);
       debugPrint('✅ Idle-Video initialisiert (swap): $idleUrl');
+      
+      // MuseTalk Session EINMAL vorbereiten (wenn LiveKit aktiv + idle.mp4 vorhanden)
+      final roomName = LiveKitService().roomName;
+      if (roomName != null && 
+          roomName.isNotEmpty && 
+          _avatarData?.id != null && 
+          _cachedVoiceId != null &&
+          _activeMuseTalkRoom == null) { // Nur wenn noch nicht aktiv!
+        debugPrint('🎬 Preparing MuseTalk session (once) for room=$roomName');
+        unawaited(_startLiveKitPublisher(
+          roomName,
+          _avatarData!.id,
+          _cachedVoiceId!,
+        ));
+      }
     } catch (e) {
       debugPrint('❌ Idle-Video Init Fehler: $e');
       if (!mounted) return;
