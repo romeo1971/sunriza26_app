@@ -874,13 +874,23 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         unawaited(_preloadChunks(chunk2Url, chunk3Url, idleUrl));
 
         // 3. Sequential Playback: Chunk1 → Chunk2 → Chunk3 → idle.mp4
-        chunk1Ctrl.addListener(() {
-          if (!chunk1Ctrl.value.isPlaying &&
-              chunk1Ctrl.value.position >= chunk1Ctrl.value.duration &&
-              _currentChunk == 1) {
+        // WICHTIG: Listener muss sich nach erstem Trigger selbst entfernen!
+        void Function()? chunk1Listener;
+        chunk1Listener = () {
+          if (!mounted) return;
+          final pos = chunk1Ctrl.value.position;
+          final dur = chunk1Ctrl.value.duration;
+          
+          // Trigger kurz VOR Ende (100ms Buffer)
+          if (_currentChunk == 1 && 
+              pos.inMilliseconds >= (dur.inMilliseconds - 100) &&
+              pos.inMilliseconds > 0) {
+            debugPrint('🔄 Chunk1 fast fertig → Switch zu Chunk2');
+            chunk1Ctrl.removeListener(chunk1Listener!);
             _playChunk2();
           }
-        });
+        };
+        chunk1Ctrl.addListener(chunk1Listener);
       } else {
         // FALLBACK: Keine Chunks → Direkt idle.mp4 laden (alte Logik)
         debugPrint('⚠️ Keine Chunks vorhanden → Lade idle.mp4 direkt');
@@ -2970,14 +2980,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _chunk2Controller!.play();
     setState(() {}); // UI refresh
 
-    _chunk2Controller!.addListener(() {
-      if (!_chunk2Controller!.value.isPlaying &&
-          _chunk2Controller!.value.position >=
-              _chunk2Controller!.value.duration &&
-          _currentChunk == 2) {
+    void Function()? chunk2Listener;
+    chunk2Listener = () {
+      if (!mounted) return;
+      final pos = _chunk2Controller!.value.position;
+      final dur = _chunk2Controller!.value.duration;
+      
+      if (_currentChunk == 2 && 
+          pos.inMilliseconds >= (dur.inMilliseconds - 100) &&
+          pos.inMilliseconds > 0) {
+        debugPrint('🔄 Chunk2 fast fertig → Switch zu Chunk3');
+        _chunk2Controller!.removeListener(chunk2Listener!);
         _playChunk3();
       }
-    });
+    };
+    _chunk2Controller!.addListener(chunk2Listener);
   }
 
   void _playChunk3() {
@@ -2994,14 +3011,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _chunk3Controller!.play();
     setState(() {}); // UI refresh
 
-    _chunk3Controller!.addListener(() {
-      if (!_chunk3Controller!.value.isPlaying &&
-          _chunk3Controller!.value.position >=
-              _chunk3Controller!.value.duration &&
-          _currentChunk == 3) {
+    void Function()? chunk3Listener;
+    chunk3Listener = () {
+      if (!mounted) return;
+      final pos = _chunk3Controller!.value.position;
+      final dur = _chunk3Controller!.value.duration;
+      
+      if (_currentChunk == 3 && 
+          pos.inMilliseconds >= (dur.inMilliseconds - 100) &&
+          pos.inMilliseconds > 0) {
+        debugPrint('🔄 Chunk3 fast fertig → Switch zu idle.mp4 Loop');
+        _chunk3Controller!.removeListener(chunk3Listener!);
         _playIdleLoop();
       }
-    });
+    };
+    _chunk3Controller!.addListener(chunk3Listener);
   }
 
   void _playIdleLoop() {
