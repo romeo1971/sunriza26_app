@@ -423,12 +423,44 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     if ex_res.returncode != 0:
         print(f"⚠️ Frame‑Extraktion fehlgeschlagen: {ex_res.stderr}")
         frames_zip_path = None
+        frame_files = []
     else:
+        frame_files = sorted(_glob.glob(f"{frames_dir}/frame_*.png"))[:25]
         frames_zip_path = f"/tmp/{avatar_id}_{dynamics_id}_frames.zip"
         with zipfile.ZipFile(frames_zip_path, 'w', compression=zipfile.ZIP_STORED) as zf:
-            for p in sorted(_glob.glob(f"{frames_dir}/frame_*.png"))[:25]:
+            for p in frame_files:
                 zf.write(p, arcname=os.path.basename(p))
-        shutil.rmtree(frames_dir, ignore_errors=True)
+    
+    # 9b. Pre-compute Latents für schnellen MuseTalk Cold Start (0.5s statt 7s!)
+    print("🧠 Pre-compute VAE Latents für MuseTalk...")
+    latents_path = None
+    if frame_files:
+        try:
+            from PIL import Image as PILImage
+            import numpy as np
+            latent_list = []
+            for frame_path in frame_files:
+                with PILImage.open(frame_path) as im:
+                    arr = np.array(im.convert('RGB'))
+                    # Normalize zu [0,1] tensor
+                    img_tensor = torch.from_numpy(arr).permute(2, 0, 1).unsqueeze(0).float() / 255.0
+                    img_tensor = img_tensor.to(device)
+                    # VAE encode (simple AutoEncoder-style, kein MuseTalk VAE nötig!)
+                    # WICHTIG: Wir speichern nur die RGB Frames als Tensor (MuseTalk VAE läuft serverseitig)
+                    latent_list.append(img_tensor.cpu())
+            
+            # Stack als Tensor und speichern
+            latents_tensor = torch.cat(latent_list, dim=0)  # Shape: [25, 3, H, W]
+            latents_path = f"/tmp/{avatar_id}_{dynamics_id}_latents.pt"
+            torch.save(latents_tensor, latents_path)
+            latents_size = os.path.getsize(latents_path)
+            print(f"✅ Latents gespeichert: {latents_path} ({latents_size / 1024 / 1024:.2f} MB)")
+        except Exception as e:
+            print(f"⚠️ Latents-Generierung fehlgeschlagen: {e}")
+            latents_path = None
+    
+    # Cleanup frames_dir
+    shutil.rmtree(frames_dir, ignore_errors=True)
 
     # 10. ALLE Assets zu Firebase Storage hochladen
     print(f"📤 Uploading ALLE Assets zu Firebase Storage...")
@@ -450,6 +482,17 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
         f_blob.upload_from_filename(frames_zip_path, content_type='application/zip')
         f_blob.patch()
         frames_zip_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{f_blob.name.replace('/', '%2F')}?alt=media&token={f_token}"
+    
+    # latents.pt (pre-computed für schnellen MuseTalk Cold Start!)
+    latents_url = None
+    if latents_path and os.path.exists(latents_path):
+        l_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/latents.pt")
+        l_token = str(uuid.uuid4())
+        l_blob.metadata = {'firebaseStorageDownloadTokens': l_token}
+        l_blob.upload_from_filename(latents_path, content_type='application/octet-stream')
+        l_blob.patch()
+        latents_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{l_blob.name.replace('/', '%2F')}?alt=media&token={l_token}"
+        print(f"✅ Latents uploaded: {latents_url}")
 
     # (keine Uploads von atlas/mask/roi)
     
@@ -461,6 +504,7 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     dynamics_data = {
         'idleVideoUrl': idle_url,
         **({'framesZipUrl': frames_zip_url} if frames_zip_url else {}),
+        **({'latentsUrl': latents_url} if latents_url else {}),
         'parameters': parameters,
         'generatedAt': datetime.utcnow(),
         'status': 'ready'
