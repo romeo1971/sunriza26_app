@@ -479,8 +479,14 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
                         # Robust: akzeptiere Float32 und wandle zu int16 LE
                         audio_bytes = _ensure_int16_le(audio_bytes)
                         # Optional: in LiveKit als Audio-Track publizieren (48k mono)
-                        if ORCH_PUBLISH_AUDIO and current_audio_room:
+                        # Auto-connect beim ersten PCM, falls noch nicht verbunden
+                        global current_audio_room
+                        room_for_audio = current_audio_room or last_client_room
+                        if ORCH_PUBLISH_AUDIO and room_for_audio:
                             try:
+                                if not lk_audio_pub._connected_room:
+                                    current_audio_room = room_for_audio
+                                    await lk_audio_pub.ensure_connected(room_for_audio)
                                 up = _upsample_16k_to_48k_int16le(audio_bytes)
                                 # 20ms @ 48kHz mono int16 => 960 samples => 1920 bytes
                                 _audio48k_buf.extend(up)

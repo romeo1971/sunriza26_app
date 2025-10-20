@@ -70,7 +70,7 @@ image = (
     )
 )
 
-app = modal.App("musetalk-lipsync-v2", image=image)
+app = modal.App("musetalk-lipsync", image=image)
 
 
 @app.function(

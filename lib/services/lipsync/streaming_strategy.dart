@@ -265,6 +265,7 @@ class StreamingStrategy implements LipsyncStrategy {
     // Nur WS-Steuerung: MP3 nicht benötigen (reduziert Overhead)
     _activeSeq += 1;
     final seq = _activeSeq;
+    final String? lkRoom = await _awaitRoomName();
     _channel!.sink.add(
       jsonEncode({
         'type': 'speak',
@@ -272,6 +273,7 @@ class StreamingStrategy implements LipsyncStrategy {
         'voice_id': voiceId,
         'seq': seq,
         'mp3': false, // Audio über LiveKit (Server), kein lokales MP3 nötig
+        if (lkRoom != null && lkRoom.isNotEmpty) 'room': lkRoom,
       }),
     );
 

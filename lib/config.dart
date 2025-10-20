@@ -15,7 +15,7 @@ class AppConfig {
 
   // MuseTalk ASGI
   static const museTalkHttpUrl =
-      'https://romeo1971--musetalk-lipsync-v2-asgi.modal.run';
+      'https://romeo1971--musetalk-lipsync-asgi.modal.run';
   static const museTalkWsUrl =
-      'wss://romeo1971--musetalk-lipsync-v2-asgi.modal.run/audio';
+      'wss://romeo1971--musetalk-lipsync-asgi.modal.run/audio';
 }
