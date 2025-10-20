@@ -74,6 +74,7 @@ def _upsample_16k_to_48k_int16le(data: bytes) -> bytes:
 # Default: aktiv (kein Secret/Flag nötig)
 ORCH_PUBLISH_AUDIO = os.getenv("ORCH_PUBLISH_AUDIO", "1").strip() not in ("0", "false", "False")
 current_audio_room: Optional[str] = None
+last_client_room: Optional[str] = None  # Fallback: letzter room aus speak-Request
 _audio48k_buf = bytearray()  # Frames für LiveKit in 20ms Stücken puffern
 
 class _LkAudioPub:
@@ -164,6 +165,11 @@ async def ws_root(ws: WebSocket):
                 voice_id = data.get("voice_id")
                 text = data.get("text", "")
                 mp3_needed = data.get("mp3", True)
+                # Room speichern für Audio-Publishing
+                global last_client_room
+                room_from_client = data.get("room")
+                if room_from_client and isinstance(room_from_client, str) and room_from_client.strip():
+                    last_client_room = room_from_client.strip()
                 await stream_eleven(ws, voice_id, text, mp3_needed=mp3_needed)
             elif data.get("type") == "stop":
                 await _safe_send(ws, {"type": "done"})
@@ -591,6 +597,7 @@ async def debug_audio():
             "orch_publish_audio": ORCH_PUBLISH_AUDIO,
             "rtc_available": rtc is not None,
             "current_audio_room": current_audio_room,
+            "last_client_room": last_client_room,
             "connected_room": getattr(lk_audio_pub, "_connected_room", None),
             "has_source": bool(getattr(lk_audio_pub, "_source", None)),
             "buf_bytes": len(_audio48k_buf),
