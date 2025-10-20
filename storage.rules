@@ -14,7 +14,9 @@ service firebase.storage {
                'text/plain',
                'text/rtf',
                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-               'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+               'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+               'application/octet-stream',  // Für latents.pt, frames.zip etc.
+               'application/zip'
              ];
     }
     function isValidFileSize() {
