@@ -90,6 +90,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   StreamSubscription<Amplitude>? _ampSub;
   DateTime? _segmentStartAt;
   String? _activeMuseTalkRoom; // Track aktiven MuseTalk Room (verhindert doppelte /session/start Calls!)
+  DateTime? _museTalkSessionStartedAt; // Timestamp wann Session gestartet wurde
   String? _persistentRoomName; // Room-Name bleibt während gesamter Chat-Session gleich!
   int _silenceMs = 0;
   bool _sttBusy = false;
@@ -399,7 +400,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     String voiceId,
   ) async {
     // GUARD: Verhindere doppelte /session/start Calls für denselben Room!
-    if (_activeMuseTalkRoom == room) {
+    // ABER: Reset Guard wenn Session >4 Min alt (Container ist dann tot: 3 Min scaledown + 1 Min Buffer)
+    final now = DateTime.now();
+    if (_activeMuseTalkRoom == room && _museTalkSessionStartedAt != null) {
+      final age = now.difference(_museTalkSessionStartedAt!);
+      if (age.inSeconds > 240) { // 4 Min = 240s
+        debugPrint('🔄 MuseTalk session timeout (${age.inSeconds}s) - reset guard');
+        _activeMuseTalkRoom = null;
+        _museTalkSessionStartedAt = null;
+      } else {
+        debugPrint('⏭️ MuseTalk session bereits aktiv für room=$room (skip, age: ${age.inSeconds}s)');
+        return;
+      }
+    } else if (_activeMuseTalkRoom == room) {
       debugPrint('⏭️ MuseTalk session bereits aktiv für room=$room (skip)');
       return;
     }
@@ -488,6 +501,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           body: jsonEncode(payload),
         );
         _activeMuseTalkRoom = room; // Merke aktiven Room!
+        _museTalkSessionStartedAt = DateTime.now(); // Timestamp speichern!
         debugPrint('✅ MuseTalk session started (room=$room)');
       } catch (e) {
         debugPrint('⚠️ MuseTalk session start failed: $e');
@@ -528,6 +542,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           body: jsonEncode({'room': room}),
         );
         _activeMuseTalkRoom = null; // Reset Guard!
+        _museTalkSessionStartedAt = null; // Reset Timestamp!
         debugPrint('✅ MuseTalk session stopped (room=$room)');
       } catch (e) {
         debugPrint('⚠️ MuseTalk session stop failed: $e');
