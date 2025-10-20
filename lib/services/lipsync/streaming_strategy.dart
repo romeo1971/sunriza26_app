@@ -108,7 +108,7 @@ class StreamingStrategy implements LipsyncStrategy {
       true; // Sofortiges Client‑Audio aktiv (parallel zu LiveKit)
 
   Future<String?> _awaitRoomName({
-    Duration timeout = const Duration(milliseconds: 800),
+    Duration timeout = const Duration(milliseconds: 400),
   }) async {
     final start = DateTime.now();
     while (true) {
@@ -215,9 +215,12 @@ class StreamingStrategy implements LipsyncStrategy {
 
   @override
   Future<void> warmUp() async {
-    // WS wird bei speak() geöffnet, nicht hier (vermeidet permanente Verbindung)
-    // Nur MuseTalk WS initialisieren falls benötigt
-    return;
+    // WS vorwärmen, damit speak() sofort senden kann
+    if (_channel == null && !_isConnecting) {
+      try {
+        await _connect();
+      } catch (_) {}
+    }
   }
 
   @override
@@ -322,8 +325,7 @@ class StreamingStrategy implements LipsyncStrategy {
     _currentSource!.addChunk(audioBytes);
 
     // Start erst, wenn genügend Daten gepuffert sind (verhindert -11800)
-    const int minStartBytes =
-        64 * 1024; // ~64 KB – verhindert frühes Ausgehen bei 2. Audio
+    const int minStartBytes = 8 * 1024; // ~8 KB – schnellere Startzeit
     if (!_playbackStarted && _bytesAccumulated >= minStartBytes) {
       _playbackStarted = true;
       _startPlayback();
