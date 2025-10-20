@@ -61,6 +61,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   // Live Avatar Animation
   VideoPlayerController? _idleController;
   bool _liveAvatarEnabled = false;
+  bool _hasIdleDynamics = false; // Wissen SOFORT (aus Firestore) ob idle.mp4 existiert
   String? _idleVideoUrl;
 
   // Rate-Limiting für TTS-Requests
@@ -776,9 +777,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           '→ Fallback: Nur Hero-Image wird angezeigt',
         );
         if (!mounted) return;
-        setState(() => _liveAvatarEnabled = false);
+        setState(() {
+          _liveAvatarEnabled = false;
+          _hasIdleDynamics = false; // Kein idle.mp4 → Hero Image zeigen!
+        });
         return;
       }
+      
+      // idle.mp4 existiert in Firestore!
+      if (!mounted) return;
+      setState(() => _hasIdleDynamics = true);
 
       // URLs aus Firebase Storage (+ Cache-Buster)
       final idleUrl = _addCacheBuster(basicDynamics['idleVideoUrl'] as String?);
@@ -789,7 +797,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           '→ Fallback: Nur Hero-Image wird angezeigt',
         );
         if (!mounted) return;
-        setState(() => _liveAvatarEnabled = false);
+        setState(() {
+          _liveAvatarEnabled = false;
+          _hasIdleDynamics = false;
+        });
         return;
       }
 
@@ -832,7 +843,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     } catch (e) {
       debugPrint('❌ Idle-Video Init Fehler: $e');
       if (!mounted) return;
-      setState(() => _liveAvatarEnabled = false);
+      setState(() {
+        _liveAvatarEnabled = false;
+        _hasIdleDynamics = false;
+      });
     }
   }
 
@@ -842,10 +856,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context); // wichtig für AutomaticKeepAliveClientMixin
-    final backgroundImage =
-        _currentBackgroundImage ?? _avatarData?.avatarImageUrl;
-    // Hintergrund wird stets mit Avatar-Bild gefüllt; LiveKit/Video-Overlay liegt darüber
-    // _currentBackgroundImage wechselt automatisch basierend auf Timeline-Einstellungen
+    
+    // Hero Image NUR zeigen wenn idle.mp4 NICHT existiert!
+    // Wenn idle.mp4 lädt: schwarzer Screen (placeholder)
+    final backgroundImage = _hasIdleDynamics 
+        ? null  // idle.mp4 existiert → KEIN Hero Image (schwarzer Placeholder bis Video geladen)
+        : (_currentBackgroundImage ?? _avatarData?.avatarImageUrl); // Kein idle.mp4 → Hero Image zeigen
 
     return Scaffold(
       backgroundColor: Colors.black,
