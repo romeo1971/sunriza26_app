@@ -10,6 +10,7 @@ import datetime as dt
 import jwt
 import struct
 from typing import Optional, Any
+import time
 
 try:
     from livekit import rtc
@@ -77,8 +78,8 @@ current_audio_room: Optional[str] = None
 last_client_room: Optional[str] = None  # Fallback: letzter room aus speak-Request
 _audio48k_buf = bytearray()  # Frames für LiveKit in 20ms Stücken puffern
 
-# --- MuseTalk PCM Forwarder (optional) ---
-ORCH_FORWARD_TO_MUSETALK = os.getenv("ORCH_FORWARD_TO_MUSETALK", "1").strip() not in ("0", "false", "False")
+# --- MuseTalk PCM Forwarder (deaktiviert – wir nutzen pro-Room-Verbindung) ---
+ORCH_FORWARD_TO_MUSETALK = os.getenv("ORCH_FORWARD_TO_MUSETALK", "0").strip() not in ("0", "false", "False")
 MUSETALK_WS_URL = os.getenv("MUSETALK_WS_URL", "wss://romeo1971--musetalk-lipsync-asgi.modal.run/audio").strip()
 _musetalk_ws: Optional[Any] = None
 _musetalk_room_sent = False
@@ -181,9 +182,21 @@ async def ws_root(ws: WebSocket):
                 room_from_client = data.get("room")
                 if room_from_client and isinstance(room_from_client, str) and room_from_client.strip():
                     last_client_room = room_from_client.strip()
+                # Einmalige TTS-Session ausführen und danach Verbindung schließen,
+                # damit der Container skalieren kann.
                 await stream_eleven(ws, voice_id, text, mp3_needed=mp3_needed)
+                try:
+                    await ws.close(code=1000)
+                except Exception:
+                    pass
+                return
             elif data.get("type") == "stop":
                 await _safe_send(ws, {"type": "done"})
+                try:
+                    await ws.close(code=1000)
+                except Exception:
+                    pass
+                return
     except WebSocketDisconnect:
         return
 
@@ -216,12 +229,104 @@ async def mint_livekit_token(req: Request):
     token = jwt.encode(payload, LIVEKIT_API_SECRET, algorithm="HS256")
     return {"url": LIVEKIT_URL, "room": room, "token": token}
 
+@app.get("/livekit/token")
+async def mint_livekit_token_get(room: Optional[str] = None, user_id: Optional[str] = None, avatar_id: Optional[str] = None):
+    if not (LIVEKIT_URL and LIVEKIT_API_KEY and LIVEKIT_API_SECRET):
+        raise HTTPException(status_code=500, detail="LiveKit env missing")
+    room = (room or "").strip()
+    if not room:
+        uid = (user_id or "anon").strip()
+        short = uid[:8] if uid else "anon"
+        import time
+        room = f"mt-{short}-{int(time.time()*1000)}"
+    identity = f"{(user_id or 'anon').strip()}-{(avatar_id or 'avatar').strip()}"
+    now = dt.datetime.utcnow()
+    exp = now + dt.timedelta(hours=1)
+    payload = {
+        "iss": LIVEKIT_API_KEY,
+        "sub": identity,
+        "name": (avatar_id or 'avatar').strip(),
+        "nbf": int(now.timestamp()),
+        "exp": int(exp.timestamp()),
+        "video": {"room": room, "roomJoin": True}
+    }
+    token = jwt.encode(payload, LIVEKIT_API_SECRET, algorithm="HS256")
+    return {"url": LIVEKIT_URL, "room": room, "token": token}
+
 
 # --- MuseTalk Publisher Integration ---
-MUSETALK_URL = os.getenv("MUSETALK_URL", "https://romeo1971--musetalk-lipsync-v2-asgi.modal.run")
+# Default auf die produktive, konsolidierte App (ohne -v2)
+MUSETALK_URL = os.getenv("MUSETALK_URL", "https://romeo1971--musetalk-lipsync-asgi.modal.run")
 
 # Active audio streams to MuseTalk (room → websocket)
-musetalk_audio_streams = {}
+musetalk_audio_streams: dict[str, Any] = {}
+# Last time (epoch seconds) we forwarded PCM for a room
+musetalk_last_pcm_ts: dict[str, float] = {}
+active_publisher_rooms: set[str] = set()
+
+async def _stop_room_internal(room: str):
+    """Stoppe alle Streams/Verbindungen für einen Room (automatischer Cleanup)."""
+    global current_audio_room, _musetalk_ws, _musetalk_room_sent
+    # 1) MuseTalk WS pro Room schließen
+    try:
+        ws = musetalk_audio_streams.pop(room, None)
+        if ws:
+            try:
+                await ws.close()
+            except Exception:
+                pass
+    except Exception:
+        pass
+    musetalk_last_pcm_ts.pop(room, None)
+    # 2) MuseTalk Session stoppen (best-effort)
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(f"{MUSETALK_URL}/session/stop", json={"room": room})
+    except Exception:
+        pass
+    # 3) LiveKit Audio Publisher trennen
+    try:
+        await lk_audio_pub.disconnect()
+    except Exception:
+        pass
+    # 4) Globale MuseTalk WS schließen (falls verwendet)
+    try:
+        if _musetalk_ws:
+            await _musetalk_ws.close()
+    except Exception:
+        pass
+    _musetalk_ws = None
+    _musetalk_room_sent = False
+    # 5) Room-Status zurücksetzen
+    current_audio_room = None
+
+async def _mt_idle_watcher(room: str, ws: Any, idle_seconds: int = 20):
+    """Close MuseTalk WS when no PCM has been forwarded for idle_seconds."""
+    try:
+        while True:
+            await asyncio.sleep(5)
+            last = musetalk_last_pcm_ts.get(room, 0.0)
+            if last <= 0:
+                # No activity tracked yet → wait a bit more
+                continue
+            if time.time() - last > idle_seconds:
+                try:
+                    await ws.close()
+                except Exception:
+                    pass
+                musetalk_audio_streams.pop(room, None)
+                musetalk_last_pcm_ts.pop(room, None)
+                break
+            # If ws already closed externally, clean up
+            if getattr(ws, "closed", False):
+                musetalk_audio_streams.pop(room, None)
+                musetalk_last_pcm_ts.pop(room, None)
+                break
+    except Exception:
+        # Best-effort cleanup
+        musetalk_audio_streams.pop(room, None)
+        musetalk_last_pcm_ts.pop(room, None)
 
 @app.post("/publisher/start")
 async def publisher_start(req: Request):
@@ -236,6 +341,11 @@ async def publisher_start(req: Request):
     if not idle_video_url:
         raise HTTPException(status_code=400, detail="idle_video_url required")
     
+    # Idempotenz: Room bereits gestartet → keine Doppelstarts
+    if room in active_publisher_rooms:
+        return {"status": "already_running", "room": room}
+
+    active_publisher_rooms.add(room)
     try:
         import httpx
         
@@ -344,9 +454,19 @@ async def publisher_start(req: Request):
         print(f"🔌 Opening audio WebSocket...")
         import websockets
         ws_url = f"{MUSETALK_URL.replace('https://', 'wss://')}/audio"
+        # Close previous if any for the same room (avoid duplicates)
+        try:
+            old = musetalk_audio_streams.get(room)
+            if old:
+                await old.close()
+        except Exception:
+            pass
         ws = await websockets.connect(ws_url)
         await ws.send(room.encode())  # Send room name first
         musetalk_audio_streams[room] = ws
+        musetalk_last_pcm_ts[room] = time.time()
+        # Start idle watcher (auto close when no PCM)
+        asyncio.create_task(_mt_idle_watcher(room, ws))
         print(f"✅ Audio stream connected")
         
         # LiveKit-Audio vorbereiten (optional)
@@ -364,6 +484,10 @@ async def publisher_start(req: Request):
         error_msg = f"{str(e)}\n{traceback.format_exc()}"
         print(f"❌ Publisher start error: {error_msg}")
         raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Falls kein aktiver WS eingetragen wurde, Cleanup aus Idempotenz-Set
+        if room not in musetalk_audio_streams:
+            active_publisher_rooms.discard(room)
 
 
 @app.post("/publisher/stop")
@@ -377,24 +501,8 @@ async def publisher_stop(req: Request):
     try:
         import httpx
         
-        # Close audio stream (best effort)
-        try:
-            if room in musetalk_audio_streams:
-                await musetalk_audio_streams[room].close()
-                del musetalk_audio_streams[room]
-        except Exception:
-            pass
-        
-        # Stop session (best effort, nicht blockierend)
-        try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                await client.post(
-                    f"{MUSETALK_URL}/session/stop",
-                    json={"room": room},
-                )
-        except Exception:
-            pass
-        
+        await _stop_room_internal(room)
+        active_publisher_rooms.discard(room)
         return {"status": "stopped", "room": room}
         
     except Exception:
@@ -496,20 +604,7 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
                         # Robust: akzeptiere Float32 und wandle zu int16 LE
                         audio_bytes = _ensure_int16_le(audio_bytes)
                         
-                        # Optional: Forward PCM zu MuseTalk WS (16k int16 LE)
-                        global _musetalk_ws, _musetalk_room_sent, current_audio_room
-                        if ORCH_FORWARD_TO_MUSETALK and (current_audio_room or last_client_room):
-                            try:
-                                room_for_mt = current_audio_room or last_client_room
-                                if _musetalk_ws is None:
-                                    _musetalk_ws = await websockets.connect(MUSETALK_WS_URL)
-                                    # Erste Nachricht: Room als Bytes
-                                    await _musetalk_ws.send(room_for_mt.encode('utf-8'))
-                                    _musetalk_room_sent = True
-                                # PCM (16k int16 LE) an MuseTalk senden
-                                await _musetalk_ws.send(audio_bytes)
-                            except Exception:
-                                pass
+                        # Kein globaler MuseTalk-Forwarder mehr – nur pro-Room WS wird genutzt
                         
                         # Optional: in LiveKit als Audio-Track publizieren (48k mono)
                         # Auto-connect beim ersten PCM, falls noch nicht verbunden
@@ -534,6 +629,7 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
                         for room, musetalk_ws in list(musetalk_audio_streams.items()):
                             try:
                                 await musetalk_ws.send(audio_bytes)
+                                musetalk_last_pcm_ts[room] = time.time()
                             except Exception as e:
                                 print(f"⚠️ MuseTalk stream error: {e}")
                                 # Remove broken connection

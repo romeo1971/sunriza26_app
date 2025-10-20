@@ -26,7 +26,7 @@ app = modal.App("lipsync-orchestrator", image=image)
         modal.Secret.from_name("livekit-cloud"),
     ],
     min_containers=0,            # scale-to-zero
-    scaledown_window=60,         # schnelle Skalierung nach Inaktivität
+    scaledown_window=15,         # schnellere Skalierung nach Inaktivität
     timeout=1800,                # Sitzung max. 30 Min.
 )
 @modal.asgi_app()

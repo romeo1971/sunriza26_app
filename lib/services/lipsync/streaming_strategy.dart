@@ -77,8 +77,10 @@ class StreamingMp3Source extends StreamAudioSource {
 
     controller.onCancel = () => sub.cancel();
 
+    // just_audio crasht bei sourceLength == null auf einigen Plattformen
+    // → 0 verwenden (unbekannt), Content-Length weiterhin null (chunked)
     return StreamAudioResponse(
-      sourceLength: null, // unbekannt bei Live-Streaming
+      sourceLength: 0,
       contentLength: null, // verhindert Content-Length-Mismatch
       contentType: 'audio/mpeg',
       stream: controller.stream,
@@ -103,10 +105,10 @@ class StreamingStrategy implements LipsyncStrategy {
   int _activeSeq = 0;
   bool _useHttpStream = false; // neuer Modus: Audio via HTTP setUrl()
   final bool _clientPlaysAudio =
-      false; // Audio nicht lokal abspielen (LiveKit übernimmt)
+      true; // Sofortiges Client‑Audio aktiv (parallel zu LiveKit)
 
   Future<String?> _awaitRoomName({
-    Duration timeout = const Duration(seconds: 3),
+    Duration timeout = const Duration(milliseconds: 800),
   }) async {
     final start = DateTime.now();
     while (true) {
@@ -144,6 +146,7 @@ class StreamingStrategy implements LipsyncStrategy {
     _channelSubscription = null;
 
     _audioPlayer = AudioPlayer();
+    _currentSource = StreamingMp3Source();
 
     try {
       final uri = Uri.parse(_orchestratorUrl);
@@ -152,6 +155,10 @@ class StreamingStrategy implements LipsyncStrategy {
       debugPrint('✅ WS connecting: $_orchestratorUrl');
 
       // Stream-Listener SOFORT!
+      if (_channel == null) {
+        _isConnecting = false;
+        return;
+      }
       _channelSubscription = _channel!.stream.listen(
         (message) {
           debugPrint('📩 WS msg (${message.toString().length} chars)');
@@ -235,25 +242,50 @@ class StreamingStrategy implements LipsyncStrategy {
       return;
     }
 
+    // Sicherstellen, dass eine Audioquelle vorhanden ist
+    _currentSource ??= StreamingMp3Source();
+
     // REMOVED: PCM-Forwarding vom Client zu MuseTalk
     // → Orchestrator sendet PCM direkt an MuseTalk (effizienter, vermeidet permanente Client-WS)
 
-    // Nur WS-Steuerung: MP3 nicht benötigen (reduziert Overhead)
+    // Bevorzugt: HTTP-Streaming (robust, kein WS-MP3 nötig)
+    try {
+      final httpBase = AppConfig.orchestratorUrl
+          .replaceFirst('wss://', 'https://')
+          .replaceFirst('ws://', 'http://');
+      final playUrl = httpBase.endsWith('/')
+          ? '${httpBase}tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}'
+          : '$httpBase/tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}';
+      await _audioPlayer?.stop();
+      _audioPlayer ??= AudioPlayer();
+      await _audioPlayer!.setUrl(playUrl);
+      await _audioPlayer!.play();
+      onPlaybackStateChanged?.call(true);
+    } catch (e) {
+      debugPrint('⚠️ HTTP playback failed: $e');
+    }
+
+    // WS: nur Steuersignal (kein MP3 über WS), damit PCM/viseme weiterlaufen
     _activeSeq += 1;
     final seq = _activeSeq;
-    final String? lkRoom = await _awaitRoomName();
+    final String? lkRoom = await _awaitRoomName(
+      timeout: const Duration(seconds: 6),
+    );
+    if (_channel == null) {
+      debugPrint('❌ WS not connected');
+      return;
+    }
     _channel!.sink.add(
       jsonEncode({
         'type': 'speak',
         'text': text,
         'voice_id': voiceId,
         'seq': seq,
-        'mp3': false, // Audio über LiveKit (Server), kein lokales MP3 nötig
+        'mp3': false,
         if (lkRoom != null && lkRoom.isNotEmpty) 'room': lkRoom,
       }),
     );
 
-    onPlaybackStateChanged?.call(true);
     return;
   }
 
@@ -282,7 +314,9 @@ class StreamingStrategy implements LipsyncStrategy {
       onPlaybackStateChanged?.call(true);
     }
 
-    if (_currentSource == null) return;
+    if (_currentSource == null) {
+      _currentSource = StreamingMp3Source();
+    }
 
     // Chunk zum Stream hinzufügen
     _currentSource!.addChunk(audioBytes);
@@ -421,6 +455,10 @@ class StreamingStrategy implements LipsyncStrategy {
     _playbackStarted = false;
     _bytesAccumulated = 0;
 
+    // Dem Orchestrator explizit signalisieren, dass die Session beendet ist
+    try {
+      _channel?.sink.add(jsonEncode({'type': 'stop'}));
+    } catch (_) {}
     // WebSocket schließen nach done → Container kann scale-down
     _closeWebSocket();
   }
