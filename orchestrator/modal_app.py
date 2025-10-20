@@ -13,6 +13,7 @@ image = (
         "httpx",
         "livekit",
     )
+    .env({"REBUILD_TIMESTAMP": "2025-10-20-15:40"})
     .add_local_file("orchestrator/py_asgi_app.py", "/app/py_asgi_app.py")
 )
 
@@ -36,3 +37,5 @@ def asgi():
     sys.path.insert(0, "/app")
     from py_asgi_app import app as fastapi_app
     return fastapi_app
+
+# Force rebuild: 2025-10-20 14:05 - Updated ELEVENLABS_API_KEY

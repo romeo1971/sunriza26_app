@@ -251,45 +251,56 @@ class StreamingStrategy implements LipsyncStrategy {
     // REMOVED: PCM-Forwarding vom Client zu MuseTalk
     // → Orchestrator sendet PCM direkt an MuseTalk (effizienter, vermeidet permanente Client-WS)
 
-    // Bevorzugt: HTTP-Streaming (robust, kein WS-MP3 nötig)
-    try {
-      final httpBase = AppConfig.orchestratorUrl
-          .replaceFirst('wss://', 'https://')
-          .replaceFirst('ws://', 'http://');
-      final playUrl = httpBase.endsWith('/')
-          ? '${httpBase}tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}'
-          : '$httpBase/tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}';
-      await _audioPlayer?.stop();
-      _audioPlayer ??= AudioPlayer();
-      await _audioPlayer!.setUrl(playUrl);
-      await _audioPlayer!.play();
-      onPlaybackStateChanged?.call(true);
-    } catch (e) {
-      debugPrint('⚠️ HTTP playback failed: $e');
-    }
-
-    // WS: nur Steuersignal (kein MP3 über WS), damit PCM/viseme weiterlaufen
+    // WS: Steuersignal SOFORT senden (nicht blockieren!)
     _activeSeq += 1;
     final seq = _activeSeq;
+
+    // Parallel: HTTP Audio starten (nicht warten!)
+    _startHttpAudio(text, voiceId);
+
+    // WS für LiveKit/MuseTalk
     final String? lkRoom = await _awaitRoomName(
-      timeout: const Duration(seconds: 6),
+      timeout: const Duration(milliseconds: 400),
     );
     if (_channel == null) {
       debugPrint('❌ WS not connected');
       return;
     }
-    _channel!.sink.add(
-      jsonEncode({
-        'type': 'speak',
-        'text': text,
-        'voice_id': voiceId,
-        'seq': seq,
-        'mp3': false,
-        if (lkRoom != null && lkRoom.isNotEmpty) 'room': lkRoom,
-      }),
-    );
+    final msg = {
+      'type': 'speak',
+      'text': text,
+      'voice_id': voiceId,
+      'seq': seq,
+      'mp3': false,
+      if (lkRoom != null && lkRoom.isNotEmpty) 'room': lkRoom,
+    };
+    debugPrint('📤 Sending WS speak: ${jsonEncode(msg)}');
+    _channel!.sink.add(jsonEncode(msg));
 
     return;
+  }
+
+  void _startHttpAudio(String text, String voiceId) {
+    // Async - blockiert speak() NICHT!
+    () async {
+      try {
+        final httpBase = AppConfig.orchestratorUrl
+            .replaceFirst('wss://', 'https://')
+            .replaceFirst('ws://', 'http://');
+        final playUrl = httpBase.endsWith('/')
+            ? '${httpBase}tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}'
+            : '$httpBase/tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}';
+        debugPrint('🎵 HTTP Audio starting: ${playUrl.substring(0, 80)}...');
+        await _audioPlayer?.stop();
+        _audioPlayer ??= AudioPlayer();
+        await _audioPlayer!.setUrl(playUrl);
+        await _audioPlayer!.play();
+        debugPrint('✅ HTTP Audio PLAYING (300-700ms)');
+        onPlaybackStateChanged?.call(true);
+      } catch (e) {
+        debugPrint('❌ HTTP Audio failed: $e');
+      }
+    }();
   }
 
   void _handleAudio(Map<String, dynamic> data) {

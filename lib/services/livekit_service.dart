@@ -134,6 +134,7 @@ class LiveKitService {
     });
 
     try {
+      debugPrint('🔌 LiveKit connecting to: $serverUrl (room: $room)');
       await roomObj.connect(
         serverUrl,
         token,
@@ -144,8 +145,10 @@ class LiveKitService {
       connected.value = true;
       connectionStatus.value = 'connected';
       _reconnectAttempts = 0;
+      debugPrint('✅ LiveKit CONNECTED to room: $room');
       return true;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('❌ LiveKit connection FAILED: $e');
       try {
         await roomObj.dispose();
       } catch (_) {}

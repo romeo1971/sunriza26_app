@@ -264,9 +264,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   Future<void> _maybeJoinLiveKit() async {
     try {
-      if ((dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() != '1') return;
+      if ((dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() != '1') {
+        debugPrint('⚠️ LiveKit DISABLED (LIVEKIT_ENABLED != 1)');
+        return;
+      }
       final base = EnvService.memoryApiBaseUrl();
       final tokenUrlEnv = (dotenv.env['LIVEKIT_TOKEN_URL'] ?? '').trim();
+      debugPrint('🔑 LiveKit Token URL: $tokenUrlEnv');
       Uri? tokenUri;
 
       if (tokenUrlEnv.isNotEmpty) {
@@ -305,6 +309,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         }
       } catch (_) {}
       final uri = tokenUri;
+      debugPrint('🌐 Requesting LiveKit token from: $uri');
       final res = await http.post(
         uri,
         headers: {'Content-Type': 'application/json'},
@@ -315,6 +320,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           'avatar_image_url': _avatarData?.avatarImageUrl,
         }),
       );
+      debugPrint('📥 Token response: ${res.statusCode}');
       if (res.statusCode < 200 || res.statusCode >= 300) {
         // Fallback: .env Test‑Join
         final testToken = (dotenv.env['LIVEKIT_TEST_TOKEN'] ?? '').trim();
@@ -367,8 +373,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         // Falls gewünscht, könnte man einen kleinen TokenCache-Service ergänzen.
       } catch (_) {}
       // Mapping wie im PDF: NEXT_PUBLIC_LIVEKIT_URL == LIVEKIT_URL → vom Backend geliefert
+      debugPrint('✅ Joining LiveKit: room=$room, url=$lkUrl');
       await LiveKitService().join(room: room, token: token, urlOverride: lkUrl);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('❌ LiveKit join failed: $e');
+    }
   }
 
   Future<void> _startLiveKitPublisher(

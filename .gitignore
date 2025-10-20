@@ -54,3 +54,4 @@ comfyui_env/
 avatars/*.imx
 models/**/*.imx
 avatars/
+node_modules

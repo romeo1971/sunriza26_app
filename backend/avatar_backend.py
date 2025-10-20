@@ -59,7 +59,9 @@ async def initialize_bithuman():
         print(f"🎭 BitHuman: Verwende Avatar-Modell: {imx_files[0]}")
         
         # API Secret aus Umgebungsvariable
-        api_secret = os.getenv('BITHUMAN_API_KEY', 'DxGRMKb9fuMDiNHMO648VgU3MA81zP4hSZvdLFFV43nKYeMelG6x5QfrSH8UyvIRZ')
+        api_secret = os.getenv('BITHUMAN_API_KEY')
+        if not api_secret:
+            raise ValueError('BITHUMAN_API_KEY fehlt in Umgebungsvariablen')
         
         # Offizielle SDK-Initialisierung
         runtime = await AsyncBithuman.create(
@@ -90,7 +92,9 @@ async def switch_avatar(imx_filename: str):
             await runtime.stop()
         
         # API Secret aus Umgebungsvariable
-        api_secret = os.getenv('BITHUMAN_API_KEY', 'DxGRMKb9fuMDiNHMO648VgU3MA81zP4hSZvdLFFV43nKYeMelG6x5QfrSH8UyvIRZ')
+        api_secret = os.getenv('BITHUMAN_API_KEY')
+        if not api_secret:
+            raise ValueError('BITHUMAN_API_KEY fehlt in Umgebungsvariablen')
         
         # Neuen Runtime starten
         runtime = await AsyncBithuman.create(

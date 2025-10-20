@@ -40,8 +40,8 @@ services:
     environment:
       # LiveKit connection settings
       - LIVEKIT_URL=ws://livekit:17880  # Internal Docker network URL
-      - LIVEKIT_API_KEY=devkey  # Default dev key (change in production)
-      - LIVEKIT_API_SECRET=UPivas8PQvWiYhubkqxqfkY8kfB9TgGj
+      - LIVEKIT_API_KEY=${LIVEKIT_DEV_API_KEY:-devkey}
+      - LIVEKIT_API_SECRET=${LIVEKIT_DEV_API_SECRET:-devkey_secret}
       - IMX_MODEL_ROOT=/imx-models  # Path to mounted models
     env_file:
       - ./.env  # API keys (BITHUMAN_API_SECRET, OPENAI_API_KEY)
@@ -65,8 +65,8 @@ services:
       - "4202:4202"  # Map container port 4202 to host port 4202
     environment:
       - LIVEKIT_URL=ws://localhost:17880  # Public URL for browser access
-      - LIVEKIT_API_KEY=devkey  # API key for LiveKit connection
-      - LIVEKIT_API_SECRET=UPivas8PQvWiYhubkqxqfkY8kfB9TgGj
+      - LIVEKIT_API_KEY=${LIVEKIT_DEV_API_KEY:-devkey}
+      - LIVEKIT_API_SECRET=${LIVEKIT_DEV_API_SECRET:-devkey_secret}
     networks:
       - livekit-network
     depends_on:
