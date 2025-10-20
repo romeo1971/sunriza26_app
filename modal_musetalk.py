@@ -789,6 +789,7 @@ def asgi():
         frames_zip_b64 = body.get("frames_zip_b64")  # optional zip of PNG frames
         frames_zip_url = body.get("frames_zip_url")  # optional: URL zu frames.zip
         idle_video_url = body.get("idle_video_url")  # optional: MP4-URL (serverseitig laden)
+        latents_url = body.get("latents_url")  # FASTEST: Pre-computed latents.pt (0.5s statt 7s!)
         connect_livekit = body.get("connect_livekit", False)
         
         # Falls URL übergeben wurde, lade Datei serverseitig und ersetze video_b64
@@ -805,11 +806,35 @@ def asgi():
             except Exception as e:
                 raise HTTPException(400, f"idle_video_url error: {e}")
 
-        if not video_b64 and not frames_zip_b64 and not frames_zip_url:
-            raise HTTPException(400, "video_b64 or frames_zip_b64 or frames_zip_url or idle_video_url required")
+        if not video_b64 and not frames_zip_b64 and not frames_zip_url and not latents_url:
+            raise HTTPException(400, "video_b64 or frames_zip_b64 or frames_zip_url or idle_video_url or latents_url required")
         
         try:
-            if frames_zip_b64 or frames_zip_url:
+            if latents_url:
+                # FASTEST PATH: Load pre-computed latents (RGB Tensors) und encode mit VAE
+                import requests as _rq
+                import torch as _t
+                from io import BytesIO
+                logger.info(f"⚡ Loading pre-computed latents: {latents_url}")
+                resp = _rq.get(latents_url, timeout=10)
+                if resp.status_code >= 400 or not resp.content:
+                    raise HTTPException(400, f"latents_url fetch failed: {resp.status_code}")
+                
+                # Load Tensor [25, 3, H, W] (RGB Frames als Tensors)
+                rgb_tensors = _t.load(BytesIO(resp.content))
+                logger.info(f"✅ Loaded RGB tensors: {rgb_tensors.shape}")
+                
+                # VAE Encode zu Latents
+                latents = []
+                for i in range(rgb_tensors.shape[0]):
+                    tens = rgb_tensors[i].unsqueeze(0).to(device)
+                    with _t.no_grad():
+                        lat = vae_encode_to_latent(vae, tens)
+                        latents.append(lat)
+                pre_lat = _t.cat(latents, dim=0)
+                logger.info(f"✅ VAE Encoded to latents: {pre_lat.shape}")
+                session = MuseTalkSession(room, "", preprocessed_latents=pre_lat)
+            elif frames_zip_b64 or frames_zip_url:
                 # Unpack frames.zip to temp dir and synthesize input_latents directly
                 import tempfile, zipfile, numpy as _np
                 import os as _os
