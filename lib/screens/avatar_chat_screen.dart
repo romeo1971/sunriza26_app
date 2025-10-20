@@ -58,11 +58,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       GlobalKey<LivePortraitCanvasState>();
   StreamSubscription<PcmChunkEvent>? _pcmSub;
 
-  // Live Avatar Animation
-  VideoPlayerController? _idleController;
+  // Live Avatar Animation (Sequential Chunked Loading für schnellen Start!)
+  VideoPlayerController? _idleController; // Full 10s Loop (lädt im Hintergrund)
+  VideoPlayerController? _chunk1Controller; // 2s (lädt zuerst, sofortiger Start!)
+  VideoPlayerController? _chunk2Controller; // 4s (preload während Chunk1)
+  VideoPlayerController? _chunk3Controller; // 4s (preload während Chunk2)
+  int _currentChunk = 0; // 0=none, 1=chunk1, 2=chunk2, 3=chunk3, 4=idle.mp4
   bool _liveAvatarEnabled = false;
-  bool _hasIdleDynamics = false; // Wissen SOFORT (aus Firestore) ob idle.mp4 existiert
+  bool _hasIdleDynamics = false;
   String? _idleVideoUrl;
+  String? _chunk1Url;
+  String? _chunk2Url;
+  String? _chunk3Url;
 
   // Rate-Limiting für TTS-Requests
   DateTime? _lastTtsRequestTime;
@@ -790,6 +797,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
       // URLs aus Firebase Storage (+ Cache-Buster)
       final idleUrl = _addCacheBuster(basicDynamics['idleVideoUrl'] as String?);
+      final chunk1Url = _addCacheBuster(basicDynamics['idleChunk1Url'] as String?);
+      final chunk2Url = _addCacheBuster(basicDynamics['idleChunk2Url'] as String?);
+      final chunk3Url = _addCacheBuster(basicDynamics['idleChunk3Url'] as String?);
 
       if (idleUrl.isEmpty) {
         debugPrint(
@@ -811,20 +821,55 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         return;
       }
 
-      final newCtrl = VideoPlayerController.networkUrl(Uri.parse(idleUrl));
-      await newCtrl.initialize();
-      await newCtrl.seekTo(Duration.zero);
-      newCtrl.setLooping(true);
-      newCtrl.play();
+      // CHUNKED LOADING: Sofortiger Start mit Chunk1 (2s), dann Chunk2, Chunk3, dann idle.mp4 Loop!
+      final hasChunks = chunk1Url.isNotEmpty && chunk2Url.isNotEmpty && chunk3Url.isNotEmpty;
+      
+      if (hasChunks) {
+        debugPrint('⚡ Sequential Chunked Loading: Chunk1 → Chunk2 → Chunk3 → idle.mp4');
+        
+        // 1. Chunk1 laden (2s, ~1-2 MB, lädt in 0.5s!)
+        final chunk1Ctrl = VideoPlayerController.networkUrl(Uri.parse(chunk1Url));
+        await chunk1Ctrl.initialize();
+        chunk1Ctrl.play();
+        
+        _chunk1Controller?.dispose();
+        _chunk1Controller = chunk1Ctrl;
+        _chunk1Url = chunk1Url;
+        _currentChunk = 1;
+        
+        if (!mounted) return;
+        setState(() => _liveAvatarEnabled = true);
+        debugPrint('✅ Chunk1 (2s) läuft! Preload Chunk2+3+idle.mp4 im Hintergrund...');
+        
+        // 2. PARALLEL im Hintergrund: Chunk2, Chunk3, idle.mp4 laden (non-blocking!)
+        unawaited(_preloadChunks(chunk2Url, chunk3Url, idleUrl));
+        
+        // 3. Sequential Playback: Chunk1 → Chunk2 → Chunk3 → idle.mp4
+        chunk1Ctrl.addListener(() {
+          if (!chunk1Ctrl.value.isPlaying && 
+              chunk1Ctrl.value.position >= chunk1Ctrl.value.duration && 
+              _currentChunk == 1) {
+            _playChunk2();
+          }
+        });
+      } else {
+        // FALLBACK: Keine Chunks → Direkt idle.mp4 laden (alte Logik)
+        debugPrint('⚠️ Keine Chunks vorhanden → Lade idle.mp4 direkt');
+        final newCtrl = VideoPlayerController.networkUrl(Uri.parse(idleUrl));
+        await newCtrl.initialize();
+        await newCtrl.seekTo(Duration.zero);
+        newCtrl.setLooping(true);
+        newCtrl.play();
 
-      final old = _idleController;
-      _idleController = newCtrl;
-      _idleVideoUrl = idleUrl;
-      old?.dispose();
+        final old = _idleController;
+        _idleController = newCtrl;
+        _idleVideoUrl = idleUrl;
+        old?.dispose();
 
-      if (!mounted) return;
-      setState(() => _liveAvatarEnabled = true);
-      debugPrint('✅ Idle-Video initialisiert (swap): $idleUrl');
+        if (!mounted) return;
+        setState(() => _liveAvatarEnabled = true);
+        debugPrint('✅ Idle-Video initialisiert (swap): $idleUrl');
+      }
       
       // MuseTalk Session EINMAL vorbereiten (wenn LiveKit aktiv + idle.mp4 vorhanden)
       final roomName = LiveKitService().roomName;
@@ -990,18 +1035,38 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                       );
                     }
 
-                    // PRIORITÄT 2: Idle-Video (LivePortrait)
-                    if (_liveAvatarEnabled &&
-                        _idleController != null &&
-                        _idleController!.value.isInitialized) {
-                      return FittedBox(
-                        fit: BoxFit.cover,
-                        child: SizedBox(
-                          width: _idleController!.value.size.width,
-                          height: _idleController!.value.size.height,
-                          child: VideoPlayer(_idleController!),
-                        ),
-                      );
+                    // PRIORITÄT 2: Sequential Chunked Video (Chunk1 → Chunk2 → Chunk3 → idle.mp4 Loop)
+                    if (_liveAvatarEnabled) {
+                      VideoPlayerController? activeCtrl;
+                      
+                      // Wähle den richtigen Controller basierend auf _currentChunk
+                      switch (_currentChunk) {
+                        case 1:
+                          activeCtrl = _chunk1Controller;
+                          break;
+                        case 2:
+                          activeCtrl = _chunk2Controller;
+                          break;
+                        case 3:
+                          activeCtrl = _chunk3Controller;
+                          break;
+                        case 4:
+                          activeCtrl = _idleController;
+                          break;
+                        default:
+                          activeCtrl = null;
+                      }
+                      
+                      if (activeCtrl != null && activeCtrl.value.isInitialized) {
+                        return FittedBox(
+                          fit: BoxFit.cover,
+                          child: SizedBox(
+                            width: activeCtrl.value.size.width,
+                            height: activeCtrl.value.size.height,
+                            child: VideoPlayer(activeCtrl),
+                          ),
+                        );
+                      }
                     }
 
                     // PRIORITÄT 3: Statisches Hero-Image
@@ -2802,6 +2867,117 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   // _showSettings entfernt – derzeit nicht genutzt
 
+  // ===== SEQUENTIAL CHUNKED VIDEO PLAYBACK =====
+  
+  Future<void> _preloadChunks(String chunk2Url, String chunk3Url, String idleUrl) async {
+    try {
+      debugPrint('📦 Preloading Chunk2, Chunk3, idle.mp4 parallel...');
+      
+      // Parallel laden (non-blocking!)
+      final results = await Future.wait([
+        _loadChunk(chunk2Url, 2),
+        _loadChunk(chunk3Url, 3),
+        _loadIdleLoop(idleUrl),
+      ]);
+      
+      _chunk2Controller = results[0];
+      _chunk2Url = chunk2Url;
+      _chunk3Controller = results[1];
+      _chunk3Url = chunk3Url;
+      _idleController = results[2];
+      _idleVideoUrl = idleUrl;
+      
+      debugPrint('✅ Preload fertig: Chunk2=${_chunk2Controller != null}, Chunk3=${_chunk3Controller != null}, idle=${_idleController != null}');
+    } catch (e) {
+      debugPrint('⚠️ Preload Error: $e');
+    }
+  }
+  
+  Future<VideoPlayerController?> _loadChunk(String url, int chunkNum) async {
+    try {
+      final ctrl = VideoPlayerController.networkUrl(Uri.parse(url));
+      await ctrl.initialize();
+      debugPrint('✅ Chunk$chunkNum preloaded');
+      return ctrl;
+    } catch (e) {
+      debugPrint('⚠️ Chunk$chunkNum load failed: $e');
+      return null;
+    }
+  }
+  
+  Future<VideoPlayerController?> _loadIdleLoop(String url) async {
+    try {
+      final ctrl = VideoPlayerController.networkUrl(Uri.parse(url));
+      await ctrl.initialize();
+      ctrl.setLooping(true);
+      debugPrint('✅ idle.mp4 (10s Loop) preloaded');
+      return ctrl;
+    } catch (e) {
+      debugPrint('⚠️ idle.mp4 load failed: $e');
+      return null;
+    }
+  }
+  
+  void _playChunk2() {
+    if (_currentChunk != 1) return;
+    if (_chunk2Controller == null || !_chunk2Controller!.value.isInitialized) {
+      debugPrint('⚠️ Chunk2 noch nicht ready → Skip zu idle.mp4');
+      _playIdleLoop();
+      return;
+    }
+    
+    debugPrint('▶️ Playing Chunk2 (4s)...');
+    _currentChunk = 2;
+    _chunk2Controller!.seekTo(Duration.zero);
+    _chunk2Controller!.play();
+    setState(() {}); // UI refresh
+    
+    _chunk2Controller!.addListener(() {
+      if (!_chunk2Controller!.value.isPlaying && 
+          _chunk2Controller!.value.position >= _chunk2Controller!.value.duration && 
+          _currentChunk == 2) {
+        _playChunk3();
+      }
+    });
+  }
+  
+  void _playChunk3() {
+    if (_currentChunk != 2) return;
+    if (_chunk3Controller == null || !_chunk3Controller!.value.isInitialized) {
+      debugPrint('⚠️ Chunk3 noch nicht ready → Skip zu idle.mp4');
+      _playIdleLoop();
+      return;
+    }
+    
+    debugPrint('▶️ Playing Chunk3 (4s)...');
+    _currentChunk = 3;
+    _chunk3Controller!.seekTo(Duration.zero);
+    _chunk3Controller!.play();
+    setState(() {}); // UI refresh
+    
+    _chunk3Controller!.addListener(() {
+      if (!_chunk3Controller!.value.isPlaying && 
+          _chunk3Controller!.value.position >= _chunk3Controller!.value.duration && 
+          _currentChunk == 3) {
+        _playIdleLoop();
+      }
+    });
+  }
+  
+  void _playIdleLoop() {
+    if (_idleController == null || !_idleController!.value.isInitialized) {
+      debugPrint('⚠️ idle.mp4 noch nicht ready → Warte...');
+      Future.delayed(const Duration(milliseconds: 500), _playIdleLoop);
+      return;
+    }
+    
+    debugPrint('▶️ Playing idle.mp4 (10s Loop)...');
+    _currentChunk = 4;
+    _idleController!.seekTo(Duration.zero);
+    _idleController!.play();
+    setState(() {}); // UI refresh
+  }
+
   @override
   void dispose() {
     // _videoService.dispose(); // entfernt – kein lokales Lipsync mehr
@@ -2824,8 +3000,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _scrollController.dispose();
     _ampSub?.cancel();
     _recorder.dispose();
-    // Live Avatar aufräumen
+    // Live Avatar aufräumen (inkl. Chunks!)
     _idleController?.dispose();
+    _chunk1Controller?.dispose();
+    _chunk2Controller?.dispose();
+    _chunk3Controller?.dispose();
     // Lipsync Strategy aufräumen (schließt WebSocket!)
     _lipsync.dispose();
     

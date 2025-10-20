@@ -473,6 +473,69 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     idle_blob.patch()
     idle_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{idle_blob.name.replace('/', '%2F')}?alt=media&token={idle_token}"
     
+    # 10b. Schneide idle.mp4 in 3 Chunks für schnelleren Initial Load (Chunk1 lädt in 0.5s!)
+    print("✂️ Schneide idle.mp4 in 3 Chunks...")
+    chunk1_path = f"/tmp/{avatar_id}_{dynamics_id}_idle_chunk1.mp4"
+    chunk2_path = f"/tmp/{avatar_id}_{dynamics_id}_idle_chunk2.mp4"
+    chunk3_path = f"/tmp/{avatar_id}_{dynamics_id}_idle_chunk3.mp4"
+    
+    chunk_urls = {}
+    try:
+        # Chunk1: 0-2s (schneller Initial Load!)
+        subprocess.run([
+            'ffmpeg', '-y', '-i', final_output,
+            '-t', '2', '-c', 'copy',
+            chunk1_path
+        ], check=True, capture_output=True)
+        
+        # Chunk2: 2-6s (4 Sekunden)
+        subprocess.run([
+            'ffmpeg', '-y', '-i', final_output,
+            '-ss', '2', '-t', '4', '-c', 'copy',
+            chunk2_path
+        ], check=True, capture_output=True)
+        
+        # Chunk3: 6-10s (4 Sekunden)
+        subprocess.run([
+            'ffmpeg', '-y', '-i', final_output,
+            '-ss', '6', '-t', '4', '-c', 'copy',
+            chunk3_path
+        ], check=True, capture_output=True)
+        
+        # Upload Chunk1
+        c1_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/idle_chunk1.mp4")
+        c1_token = str(uuid.uuid4())
+        c1_blob.metadata = {'firebaseStorageDownloadTokens': c1_token}
+        c1_blob.upload_from_filename(chunk1_path, content_type='video/mp4')
+        c1_blob.patch()
+        chunk_urls['idleChunk1Url'] = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{c1_blob.name.replace('/', '%2F')}?alt=media&token={c1_token}"
+        
+        # Upload Chunk2
+        c2_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/idle_chunk2.mp4")
+        c2_token = str(uuid.uuid4())
+        c2_blob.metadata = {'firebaseStorageDownloadTokens': c2_token}
+        c2_blob.upload_from_filename(chunk2_path, content_type='video/mp4')
+        c2_blob.patch()
+        chunk_urls['idleChunk2Url'] = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{c2_blob.name.replace('/', '%2F')}?alt=media&token={c2_token}"
+        
+        # Upload Chunk3
+        c3_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/idle_chunk3.mp4")
+        c3_token = str(uuid.uuid4())
+        c3_blob.metadata = {'firebaseStorageDownloadTokens': c3_token}
+        c3_blob.upload_from_filename(chunk3_path, content_type='video/mp4')
+        c3_blob.patch()
+        chunk_urls['idleChunk3Url'] = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{c3_blob.name.replace('/', '%2F')}?alt=media&token={c3_token}"
+        
+        print(f"✅ 3 Chunks uploaded: {len(chunk_urls)} URLs")
+        
+        # Cleanup
+        for chunk_path in [chunk1_path, chunk2_path, chunk3_path]:
+            if os.path.exists(chunk_path):
+                os.remove(chunk_path)
+    except Exception as e:
+        print(f"⚠️ Chunk-Generierung fehlgeschlagen: {e}")
+        chunk_urls = {}
+    
     # frames.zip (optional)
     frames_zip_url = None
     if frames_zip_path and os.path.exists(frames_zip_path):
@@ -505,6 +568,7 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
         'idleVideoUrl': idle_url,
         **({'framesZipUrl': frames_zip_url} if frames_zip_url else {}),
         **({'latentsUrl': latents_url} if latents_url else {}),
+        **chunk_urls,  # idleChunk1Url, idleChunk2Url, idleChunk3Url (für schnellen Initial Load)
         'parameters': parameters,
         'generatedAt': datetime.utcnow(),
         'status': 'ready'
