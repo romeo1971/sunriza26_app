@@ -465,8 +465,6 @@ async def publisher_start(req: Request):
         await ws.send(room.encode())  # Send room name first
         musetalk_audio_streams[room] = ws
         musetalk_last_pcm_ts[room] = time.time()
-        # Start idle watcher (auto close when no PCM)
-        asyncio.create_task(_mt_idle_watcher(room, ws))
         print(f"✅ Audio stream connected")
         
         # LiveKit-Audio vorbereiten (optional)
@@ -477,6 +475,12 @@ async def publisher_start(req: Request):
         except Exception:
             pass
 
+        # WICHTIG: HTTP Call SOFORT zurückgeben (verhindert hängende Container!)
+        # Idle Watcher startet NACH dem Return (im Event Loop, nicht im Request-Context)
+        def start_bg_watcher():
+            asyncio.create_task(_mt_idle_watcher(room, ws))
+        asyncio.get_event_loop().call_soon(start_bg_watcher)
+        
         return {"status": "started", "room": room}
         
     except Exception as e:

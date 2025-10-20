@@ -473,7 +473,21 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     idle_blob.patch()
     idle_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{idle_blob.name.replace('/', '%2F')}?alt=media&token={idle_token}"
     
-    # 10b. Schneide idle.mp4 in 3 Chunks für schnelleren Initial Load (Chunk1 lädt in 0.5s!)
+    # 10b. Extrahiere ersten Frame als Hero Image (für nahtlosen Übergang!)
+    print("🖼️ Extrahiere ersten Frame als Hero Image...")
+    hero_frame_path = f"/tmp/{avatar_id}_{dynamics_id}_hero_chunk.jpg"
+    try:
+        subprocess.run([
+            'ffmpeg', '-y', '-i', final_output,
+            '-vframes', '1', '-q:v', '2',  # Hohe Qualität JPEG
+            hero_frame_path
+        ], check=True, capture_output=True)
+        print(f"✅ Hero Frame extrahiert: {os.path.getsize(hero_frame_path) / 1024:.1f} KB")
+    except Exception as e:
+        print(f"⚠️ Hero Frame Extraktion fehlgeschlagen: {e}")
+        hero_frame_path = None
+    
+    # 10c. Schneide idle.mp4 in 3 Chunks für schnelleren Initial Load (Chunk1 lädt in 0.5s!)
     print("✂️ Schneide idle.mp4 in 3 Chunks...")
     chunk1_path = f"/tmp/{avatar_id}_{dynamics_id}_idle_chunk1.mp4"
     chunk2_path = f"/tmp/{avatar_id}_{dynamics_id}_idle_chunk2.mp4"
@@ -481,26 +495,45 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     
     chunk_urls = {}
     try:
-        # Chunk1: 0-2s (schneller Initial Load!)
+        # Chunk1: 0-2s (EXAKT geschnitten, re-encode für seamless transitions!)
         subprocess.run([
             'ffmpeg', '-y', '-i', final_output,
-            '-t', '2', '-c', 'copy',
+            '-ss', '0', '-t', '2', 
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
+            '-g', '50', '-keyint_min', '50',  # Keyframe alle 2s bei 25fps
+            '-an',  # Kein Audio (spart Zeit/Größe)
             chunk1_path
         ], check=True, capture_output=True)
         
-        # Chunk2: 2-6s (4 Sekunden)
+        # Chunk2: 2-6s (EXAKT geschnitten)
         subprocess.run([
             'ffmpeg', '-y', '-i', final_output,
-            '-ss', '2', '-t', '4', '-c', 'copy',
+            '-ss', '2', '-t', '4',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
+            '-g', '100', '-keyint_min', '100',  # Keyframe alle 4s bei 25fps
+            '-an',
             chunk2_path
         ], check=True, capture_output=True)
         
-        # Chunk3: 6-10s (4 Sekunden)
+        # Chunk3: 6-10s (EXAKT geschnitten)
         subprocess.run([
             'ffmpeg', '-y', '-i', final_output,
-            '-ss', '6', '-t', '4', '-c', 'copy',
+            '-ss', '6', '-t', '4',
+            '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '18',
+            '-g', '100', '-keyint_min', '100',
+            '-an',
             chunk3_path
         ], check=True, capture_output=True)
+        
+        # Upload Hero Frame → avatars/{id}/dynamics/basic/idle_chunks/heroImage_chunk.jpg
+        if hero_frame_path and os.path.exists(hero_frame_path):
+            h_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/basic/idle_chunks/heroImage_chunk.jpg")
+            h_token = str(uuid.uuid4())
+            h_blob.metadata = {'firebaseStorageDownloadTokens': h_token}
+            h_blob.upload_from_filename(hero_frame_path, content_type='image/jpeg')
+            h_blob.patch()
+            chunk_urls['heroImageChunkUrl'] = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{h_blob.name.replace('/', '%2F')}?alt=media&token={h_token}"
+            print(f"✅ Hero Frame uploaded")
         
         # Upload Chunk1 → avatars/{id}/dynamics/basic/idle_chunks/
         c1_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/basic/idle_chunks/idle_chunk1.mp4")

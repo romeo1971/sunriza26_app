@@ -28,6 +28,9 @@ import '../services/shared_moments_service.dart';
 import '../models/media_models.dart';
 import '../widgets/liveportrait_canvas.dart';
 
+// GLOBAL Guard: verhindert mehrfache /publisher/start Calls über Widget-Lifecycle hinweg!
+final Map<String, DateTime> _globalActiveMuseTalkRooms = {};
+
 class AvatarChatScreen extends StatefulWidget {
   final String? avatarId; // Optional: Für Overlay-Chat
   final VoidCallback? onClose; // Optional: Für Overlay-Chat
@@ -71,6 +74,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   String? _chunk1Url;
   String? _chunk2Url;
   String? _chunk3Url;
+  String? _cachedHeroChunkUrl; // Cache für sync Zugriff in build()
 
   // Rate-Limiting für TTS-Requests
   DateTime? _lastTtsRequestTime;
@@ -98,9 +102,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   final AudioRecorder _recorder = AudioRecorder();
   StreamSubscription<Amplitude>? _ampSub;
   DateTime? _segmentStartAt;
-  String?
-  _activeMuseTalkRoom; // Track aktiven MuseTalk Room (verhindert doppelte /session/start Calls!)
-  DateTime? _museTalkSessionStartedAt; // Timestamp wann Session gestartet wurde
+  // ENTFERNT: Widget-lokale Guards (ersetzt durch globale Map!)
+  // String? _activeMuseTalkRoom;
+  // DateTime? _museTalkSessionStartedAt;
   String?
   _persistentRoomName; // Room-Name bleibt während gesamter Chat-Session gleich!
   int _silenceMs = 0;
@@ -428,34 +432,30 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     String avatarId,
     String voiceId,
   ) async {
-    // GUARD: Verhindere doppelte /session/start Calls für denselben Room!
-    // SYNCHRON setzen BEVOR await kommt - sonst starten parallele Calls alle durch!
+    // GLOBAL GUARD: Verhindere doppelte /session/start Calls über Widget-Lifecycle hinweg!
     final now = DateTime.now();
-    if (_activeMuseTalkRoom == room && _museTalkSessionStartedAt != null) {
-      final age = now.difference(_museTalkSessionStartedAt!);
-      if (age.inSeconds > 240) {
-        // 4 Min = 240s
+    final lastStarted = _globalActiveMuseTalkRooms[room];
+
+    if (lastStarted != null) {
+      final age = now.difference(lastStarted);
+      if (age.inSeconds < 240) {
+        // Session noch aktiv (< 4 Min) → SKIP!
+        debugPrint(
+          '⏭️ MuseTalk session bereits aktiv für room=$room (age: ${age.inSeconds}s) - SKIP!',
+        );
+        return;
+      } else {
+        // Session abgelaufen → Guard resetten
         debugPrint(
           '🔄 MuseTalk session timeout (${age.inSeconds}s) - reset guard',
         );
-        _activeMuseTalkRoom = null;
-        _museTalkSessionStartedAt = null;
-      } else {
-        debugPrint(
-          '⏭️ MuseTalk session bereits aktiv für room=$room (skip, age: ${age.inSeconds}s)',
-        );
-        return;
+        _globalActiveMuseTalkRooms.remove(room);
       }
-    } else if (_activeMuseTalkRoom == room) {
-      debugPrint('⏭️ MuseTalk session bereits aktiv für room=$room (skip)');
-      return;
     }
 
     // WICHTIG: Guard SOFORT setzen (synchron), BEVOR await kommt!
-    // Sonst können parallele Calls alle durchkommen!
-    _activeMuseTalkRoom = room;
-    _museTalkSessionStartedAt = now;
-    debugPrint('🔒 MuseTalk Guard gesetzt für room=$room');
+    _globalActiveMuseTalkRooms[room] = now;
+    debugPrint('🔒 GLOBAL MuseTalk Guard gesetzt für room=$room');
 
     try {
       // Get idle video URL + frames.zip URL + latents URL from Firestore
@@ -544,14 +544,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       } catch (e) {
         debugPrint('⚠️ MuseTalk session start failed: $e');
         // Bei Fehler: Guard zurücksetzen, damit Retry möglich ist
-        _activeMuseTalkRoom = null;
-        _museTalkSessionStartedAt = null;
+        _globalActiveMuseTalkRooms.remove(room);
       }
     } catch (e) {
       debugPrint('❌ Publisher start error: $e');
       // Bei Fehler: Guard zurücksetzen, damit Retry möglich ist
-      _activeMuseTalkRoom = null;
-      _museTalkSessionStartedAt = null;
+      _globalActiveMuseTalkRooms.remove(room);
     }
   }
 
@@ -585,8 +583,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'room': room}),
         );
-        _activeMuseTalkRoom = null; // Reset Guard!
-        _museTalkSessionStartedAt = null; // Reset Timestamp!
+        _globalActiveMuseTalkRooms.remove(room); // Reset GLOBAL Guard!
         debugPrint('✅ MuseTalk session stopped (room=$room)');
       } catch (e) {
         debugPrint('⚠️ MuseTalk session stop failed: $e');
@@ -758,40 +755,34 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         if (!manual) {
           await _maybeJoinLiveKit();
         }
-        // History & Assets parallel laden (nicht blockierend!)
+        // History parallel laden (nicht blockierend!)
         unawaited(_loadHistory());
-        unawaited(_initLiveAvatar(_avatarData!.id));
 
-        // Begrüßung: für Tests JEDES Mal beim Öffnen abspielen
+        // WICHTIG: Video ERST laden, DANN Greeting abspielen (sonst Audio startet vor Video!)
         final greet = (_avatarData?.greetingText?.trim().isNotEmpty == true)
             ? _avatarData!.greetingText!
             : ((_partnerName ?? '').isNotEmpty
                   ? _friendlyGreet(_partnerName ?? '')
                   : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
-        debugPrint('🎙️ Greeting (immer): voiceId=$_cachedVoiceId');
-        unawaited(_botSay(greet));
+
+        // Video laden UND auf Chunk1 warten, DANN Greeting!
+        _initLiveAvatar(_avatarData!.id).then((_) {
+          debugPrint('🎙️ Greeting NACH Video-Start: voiceId=$_cachedVoiceId');
+          unawaited(_botSay(greet));
+        });
       }
     });
   }
 
   Future<void> _initLiveAvatar(String avatarId) async {
     try {
-      // Lade Avatar-Assets-URLs aus Firestore
-      final doc = await FirebaseFirestore.instance
-          .collection('avatars')
-          .doc(avatarId)
-          .get();
-
-      if (!doc.exists) {
-        debugPrint('⚠️ Dynamics-Video: Avatar nicht gefunden in Firestore');
-        if (!mounted) return;
-        setState(() => _liveAvatarEnabled = false);
+      if (_avatarData == null) {
+        debugPrint('⚠️ _avatarData noch nicht geladen');
         return;
       }
 
-      final data = doc.data();
-      // Checke nach dynamics.basic (statt liveAvatar)
-      final dynamics = data?['dynamics'] as Map<String, dynamic>?;
+      // DIREKT aus _avatarData.dynamics lesen - KEINE Firestore Query! 🚀
+      final dynamics = _avatarData!.dynamics;
       final basicDynamics = dynamics?['basic'] as Map<String, dynamic>?;
 
       if (basicDynamics == null || basicDynamics['status'] != 'ready') {
@@ -802,16 +793,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         if (!mounted) return;
         setState(() {
           _liveAvatarEnabled = false;
-          _hasIdleDynamics = false; // Kein idle.mp4 → Hero Image zeigen!
+          _hasIdleDynamics = false;
         });
         return;
       }
 
-      // idle.mp4 existiert in Firestore!
-      if (!mounted) return;
-      setState(() => _hasIdleDynamics = true);
+      // Video läuft bereits? → SKIP Reload!
+      if (_liveAvatarEnabled && _idleController != null) {
+        debugPrint('✅ Video bereits aktiv - skip reload!');
+        return;
+      }
 
-      // URLs aus Firebase Storage (+ Cache-Buster)
+      // URLs DIREKT aus _avatarData (INSTANT - 0ms!)
+      debugPrint('⚡ Lade Videos INSTANT aus _avatarData.dynamics (0ms)!');
       final idleUrl = _addCacheBuster(basicDynamics['idleVideoUrl'] as String?);
       final chunk1Url = _addCacheBuster(
         basicDynamics['idleChunk1Url'] as String?,
@@ -822,6 +816,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       final chunk3Url = _addCacheBuster(
         basicDynamics['idleChunk3Url'] as String?,
       );
+
+      // Cache für sync Zugriff in build()
+      _cachedHeroChunkUrl = _addCacheBuster(
+        basicDynamics['heroImageChunkUrl'] as String?,
+      );
+
+      // idle.mp4 existiert!
+      if (!mounted) return;
+      setState(() => _hasIdleDynamics = true);
 
       if (idleUrl.isEmpty) {
         debugPrint(
@@ -852,22 +855,28 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           '⚡ Sequential Chunked Loading: Chunk1 → Chunk2 → Chunk3 → idle.mp4',
         );
 
-        // 1. Chunk1 laden (2s, ~1-2 MB, lädt in 0.5s!)
+        // 1. Chunk1 SOFORT starten (ohne await - lädt während Playback!)
         final chunk1Ctrl = VideoPlayerController.networkUrl(
           Uri.parse(chunk1Url),
         );
-        await chunk1Ctrl.initialize();
-        chunk1Ctrl.play();
+
+        // Initialize + Play ASYNC (non-blocking!)
+        chunk1Ctrl.initialize().then((_) {
+          if (!mounted) return;
+          chunk1Ctrl.play();
+          debugPrint('✅ Chunk1 initialized + playing!');
+        });
 
         _chunk1Controller?.dispose();
         _chunk1Controller = chunk1Ctrl;
         _chunk1Url = chunk1Url;
         _currentChunk = 1;
 
+        // SOFORT sichtbar machen (Video lädt im Hintergrund)
         if (!mounted) return;
         setState(() => _liveAvatarEnabled = true);
         debugPrint(
-          '✅ Chunk1 (2s) läuft! Preload Chunk2+3+idle.mp4 im Hintergrund...',
+          '⚡ Chunk1 startet (lädt parallel)! Preload Chunk2+3+idle.mp4...',
         );
 
         // 2. PARALLEL im Hintergrund: Chunk2, Chunk3, idle.mp4 laden (non-blocking!)
@@ -880,9 +889,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           if (!mounted) return;
           final pos = chunk1Ctrl.value.position;
           final dur = chunk1Ctrl.value.duration;
-          
+
           // Trigger kurz VOR Ende (100ms Buffer)
-          if (_currentChunk == 1 && 
+          if (_currentChunk == 1 &&
               pos.inMilliseconds >= (dur.inMilliseconds - 100) &&
               pos.inMilliseconds > 0) {
             debugPrint('🔄 Chunk1 fast fertig → Switch zu Chunk2');
@@ -917,8 +926,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           roomName.isNotEmpty &&
           _avatarData?.id != null &&
           _cachedVoiceId != null &&
-          _activeMuseTalkRoom == null) {
-        // Nur wenn noch nicht aktiv!
+          !_globalActiveMuseTalkRooms.containsKey(roomName)) {
+        // Nur wenn noch nicht aktiv (global check)!
         debugPrint('🎬 Preparing MuseTalk session (once) for room=$roomName');
         unawaited(
           _startLiveKitPublisher(roomName, _avatarData!.id, _cachedVoiceId!),
@@ -941,13 +950,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   Widget build(BuildContext context) {
     super.build(context); // wichtig für AutomaticKeepAliveClientMixin
 
-    // Hero Image als Placeholder bis idle.mp4 READY ist!
-    // Sobald idle.mp4 ready (_liveAvatarEnabled = true) → wird automatisch im Stack überlagert
-    final backgroundImage = _liveAvatarEnabled
-        ? null // idle.mp4 READY → kein Hero Image mehr (Bandbreite sparen)
-        : (_currentBackgroundImage ??
-              _avatarData
-                  ?.avatarImageUrl); // idle.mp4 lädt → Hero Image als Placeholder
+    // Hero Image = IMMER Background Layer
+    // WENN idle.mp4 existiert → nutze heroImageChunkUrl (erster Frame, nahtloser Übergang!)
+    // SONST → nutze avatarImageUrl (echtes Hero Image)
+    String? backgroundImage =
+        _currentBackgroundImage ?? _avatarData?.avatarImageUrl;
+
+    // Wenn Chunks existieren: Nutze heroImageChunkUrl als Background
+    if (_hasIdleDynamics &&
+        _cachedHeroChunkUrl != null &&
+        _cachedHeroChunkUrl!.isNotEmpty) {
+      backgroundImage = _cachedHeroChunkUrl;
+    }
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -2985,8 +2999,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (!mounted) return;
       final pos = _chunk2Controller!.value.position;
       final dur = _chunk2Controller!.value.duration;
-      
-      if (_currentChunk == 2 && 
+
+      if (_currentChunk == 2 &&
           pos.inMilliseconds >= (dur.inMilliseconds - 100) &&
           pos.inMilliseconds > 0) {
         debugPrint('🔄 Chunk2 fast fertig → Switch zu Chunk3');
@@ -3016,8 +3030,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (!mounted) return;
       final pos = _chunk3Controller!.value.position;
       final dur = _chunk3Controller!.value.duration;
-      
-      if (_currentChunk == 3 && 
+
+      if (_currentChunk == 3 &&
           pos.inMilliseconds >= (dur.inMilliseconds - 100) &&
           pos.inMilliseconds > 0) {
         debugPrint('🔄 Chunk3 fast fertig → Switch zu idle.mp4 Loop');

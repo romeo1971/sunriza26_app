@@ -258,9 +258,9 @@ class StreamingStrategy implements LipsyncStrategy {
     // Parallel: HTTP Audio starten (nicht warten!)
     _startHttpAudio(text, voiceId);
 
-    // WS für LiveKit/MuseTalk
+    // WS für LiveKit/MuseTalk (erhöhtes Timeout für Cold Start!)
     final String? lkRoom = await _awaitRoomName(
-      timeout: const Duration(milliseconds: 400),
+      timeout: const Duration(milliseconds: 2000),
     );
     if (_channel == null) {
       debugPrint('❌ WS not connected');

@@ -77,7 +77,7 @@ app = modal.App("musetalk-lipsync", image=image)
     gpu="T4",  # Tesla T4 für 30 FPS
     timeout=3600,
     min_containers=0,  # scale-to-zero!
-    scaledown_window=180,  # 3 Min warmhalten für schnelle Chat-Antworten (kein Cold Start zwischen Fragen!)
+    scaledown_window=30,  # 30s statt 180s → schneller shutdown = weniger idle costs!
     secrets=[
         modal.Secret.from_name("livekit-cloud"),
     ],
