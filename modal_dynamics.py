@@ -502,24 +502,24 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
             chunk3_path
         ], check=True, capture_output=True)
         
-        # Upload Chunk1
-        c1_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/idle_chunk1.mp4")
+        # Upload Chunk1 → dynamics/basic/idle_chunks/
+        c1_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/idle_chunks/idle_chunk1.mp4")
         c1_token = str(uuid.uuid4())
         c1_blob.metadata = {'firebaseStorageDownloadTokens': c1_token}
         c1_blob.upload_from_filename(chunk1_path, content_type='video/mp4')
         c1_blob.patch()
         chunk_urls['idleChunk1Url'] = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{c1_blob.name.replace('/', '%2F')}?alt=media&token={c1_token}"
         
-        # Upload Chunk2
-        c2_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/idle_chunk2.mp4")
+        # Upload Chunk2 → dynamics/basic/idle_chunks/
+        c2_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/idle_chunks/idle_chunk2.mp4")
         c2_token = str(uuid.uuid4())
         c2_blob.metadata = {'firebaseStorageDownloadTokens': c2_token}
         c2_blob.upload_from_filename(chunk2_path, content_type='video/mp4')
         c2_blob.patch()
         chunk_urls['idleChunk2Url'] = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{c2_blob.name.replace('/', '%2F')}?alt=media&token={c2_token}"
         
-        # Upload Chunk3
-        c3_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/idle_chunk3.mp4")
+        # Upload Chunk3 → dynamics/basic/idle_chunks/
+        c3_blob = bucket.blob(f"avatars/{avatar_id}/dynamics/{dynamics_id}/idle_chunks/idle_chunk3.mp4")
         c3_token = str(uuid.uuid4())
         c3_blob.metadata = {'firebaseStorageDownloadTokens': c3_token}
         c3_blob.upload_from_filename(chunk3_path, content_type='video/mp4')
