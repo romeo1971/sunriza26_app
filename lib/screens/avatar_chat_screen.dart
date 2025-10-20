@@ -410,7 +410,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     String voiceId,
   ) async {
     // GUARD: Verhindere doppelte /session/start Calls für denselben Room!
-    // ABER: Reset Guard wenn Session >4 Min alt (Container ist dann tot: 3 Min scaledown + 1 Min Buffer)
+    // SYNCHRON setzen BEVOR await kommt - sonst starten parallele Calls alle durch!
     final now = DateTime.now();
     if (_activeMuseTalkRoom == room && _museTalkSessionStartedAt != null) {
       final age = now.difference(_museTalkSessionStartedAt!);
@@ -426,6 +426,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       debugPrint('⏭️ MuseTalk session bereits aktiv für room=$room (skip)');
       return;
     }
+    
+    // WICHTIG: Guard SOFORT setzen (synchron), BEVOR await kommt!
+    // Sonst können parallele Calls alle durchkommen!
+    _activeMuseTalkRoom = room;
+    _museTalkSessionStartedAt = now;
+    debugPrint('🔒 MuseTalk Guard gesetzt für room=$room');
     
     try {
       // Get idle video URL + frames.zip URL + latents URL from Firestore
@@ -510,14 +516,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(payload),
         );
-        _activeMuseTalkRoom = room; // Merke aktiven Room!
-        _museTalkSessionStartedAt = DateTime.now(); // Timestamp speichern!
         debugPrint('✅ MuseTalk session started (room=$room)');
       } catch (e) {
         debugPrint('⚠️ MuseTalk session start failed: $e');
+        // Bei Fehler: Guard zurücksetzen, damit Retry möglich ist
+        _activeMuseTalkRoom = null;
+        _museTalkSessionStartedAt = null;
       }
     } catch (e) {
       debugPrint('❌ Publisher start error: $e');
+      // Bei Fehler: Guard zurücksetzen, damit Retry möglich ist
+      _activeMuseTalkRoom = null;
+      _museTalkSessionStartedAt = null;
     }
   }
 
@@ -609,22 +619,22 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('🎙️ _isStreamingSpeaking: $isPlaying');
         setState(() => _isStreamingSpeaking = isPlaying);
 
-        // LiveKit Publisher starten/stoppen basierend auf Playback-Status
+        // WICHTIG: MuseTalk Session wird NUR EINMAL beim Chat-Eintritt gestartet (_initLiveAvatar)!
+        // NICHT bei jedem Audio-Playback starten - das würde zu vielen Container-Starts führen!
+        // Der Guard verhindert bereits doppelte Starts, aber wir vermeiden hier unnötige Calls.
+        
+        // Optional: Session stoppen wenn Playback endet (normalerweise bleibt Session warm für Re-Use)
+        // DEAKTIVIERT: Lassen Session warm für nächstes Audio (spart Container-Startzeit!)
+        /*
         final roomName = LiveKitService().roomName;
-        if (roomName == null || roomName.isEmpty) return;
-        if (isPlaying && _avatarData?.id != null && _cachedVoiceId != null) {
-          await _startLiveKitPublisher(
-            roomName,
-            _avatarData!.id,
-            _cachedVoiceId!,
-          );
-        } else if (!isPlaying) {
+        if (!isPlaying && roomName != null && roomName.isNotEmpty) {
           // Debounce: warte kurz, ob noch weitere Audio‑Chunks kommen
           await Future.delayed(const Duration(milliseconds: 350));
           if (!_isStreamingSpeaking) {
             await _stopLiveKitPublisher(roomName);
           }
         }
+        */
       }
     };
 
