@@ -9,7 +9,7 @@ import websockets
 import datetime as dt
 import jwt
 import struct
-from typing import Optional
+from typing import Optional, Any
 
 try:
     from livekit import rtc
@@ -76,6 +76,12 @@ ORCH_PUBLISH_AUDIO = os.getenv("ORCH_PUBLISH_AUDIO", "1").strip() not in ("0", "
 current_audio_room: Optional[str] = None
 last_client_room: Optional[str] = None  # Fallback: letzter room aus speak-Request
 _audio48k_buf = bytearray()  # Frames für LiveKit in 20ms Stücken puffern
+
+# --- MuseTalk PCM Forwarder (optional) ---
+ORCH_FORWARD_TO_MUSETALK = os.getenv("ORCH_FORWARD_TO_MUSETALK", "1").strip() not in ("0", "false", "False")
+MUSETALK_WS_URL = os.getenv("MUSETALK_WS_URL", "wss://romeo1971--musetalk-lipsync-asgi.modal.run/audio").strip()
+_musetalk_ws: Optional[Any] = None
+_musetalk_room_sent = False
 
 class _LkAudioPub:
     def __init__(self):
@@ -158,8 +164,13 @@ LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "").strip()
 async def ws_root(ws: WebSocket):
     await ws.accept()
     try:
+        # Timeout: WS schließen nach 5 Min Inaktivität
         while True:
-            msg = await ws.receive_text()
+            try:
+                msg = await asyncio.wait_for(ws.receive_text(), timeout=300.0)
+            except asyncio.TimeoutError:
+                await ws.close(code=1000, reason="Idle timeout")
+                return
             data = json.loads(msg)
             if data.get("type") == "speak":
                 voice_id = data.get("voice_id")
@@ -484,9 +495,24 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
                         audio_bytes = base64.b64decode(audio_b64)
                         # Robust: akzeptiere Float32 und wandle zu int16 LE
                         audio_bytes = _ensure_int16_le(audio_bytes)
+                        
+                        # Optional: Forward PCM zu MuseTalk WS (16k int16 LE)
+                        global _musetalk_ws, _musetalk_room_sent, current_audio_room
+                        if ORCH_FORWARD_TO_MUSETALK and (current_audio_room or last_client_room):
+                            try:
+                                room_for_mt = current_audio_room or last_client_room
+                                if _musetalk_ws is None:
+                                    _musetalk_ws = await websockets.connect(MUSETALK_WS_URL)
+                                    # Erste Nachricht: Room als Bytes
+                                    await _musetalk_ws.send(room_for_mt.encode('utf-8'))
+                                    _musetalk_room_sent = True
+                                # PCM (16k int16 LE) an MuseTalk senden
+                                await _musetalk_ws.send(audio_bytes)
+                            except Exception:
+                                pass
+                        
                         # Optional: in LiveKit als Audio-Track publizieren (48k mono)
                         # Auto-connect beim ersten PCM, falls noch nicht verbunden
-                        global current_audio_room
                         room_for_audio = current_audio_room or last_client_room
                         if ORCH_PUBLISH_AUDIO and room_for_audio:
                             try:
@@ -520,6 +546,28 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
 
         # Starte beide Loops parallel
         await asyncio.gather(loop_mp3(), loop_pcm())
+        
+        # ElevenLabs WS schließen (wichtig für Container scale-down!)
+        if ew_mp3:
+            try:
+                await ew_mp3.close()
+            except Exception:
+                pass
+        if ew_pcm:
+            try:
+                await ew_pcm.close()
+            except Exception:
+                pass
+        
+        # MuseTalk WS schließen nach Stream-Ende
+        global _musetalk_ws, _musetalk_room_sent
+        if _musetalk_ws:
+            try:
+                await _musetalk_ws.close()
+                _musetalk_ws = None
+                _musetalk_room_sent = False
+            except Exception:
+                pass
 
 
 @app.get("/tts/stream")

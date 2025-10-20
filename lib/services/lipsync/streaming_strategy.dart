@@ -93,7 +93,6 @@ class StreamingMp3Source extends StreamAudioSource {
 class StreamingStrategy implements LipsyncStrategy {
   final String _orchestratorUrl;
   WebSocketChannel? _channel;
-  WebSocketChannel? _museTalkChannel; // persistente WS zu MuseTalk
   StreamSubscription? _channelSubscription;
   AudioPlayer? _audioPlayer;
   bool _isConnecting = false;
@@ -103,7 +102,6 @@ class StreamingStrategy implements LipsyncStrategy {
   int _bytesAccumulated = 0;
   int _activeSeq = 0;
   bool _useHttpStream = false; // neuer Modus: Audio via HTTP setUrl()
-  bool _museTalkRoomSent = false; // Raumname nur einmal senden
   final bool _clientPlaysAudio =
       false; // Audio nicht lokal abspielen (LiveKit übernimmt)
 
@@ -237,29 +235,8 @@ class StreamingStrategy implements LipsyncStrategy {
       return;
     }
 
-    // Zusätzlich: PCM an MuseTalk-WS weiterleiten (Raumname zuerst)
-    try {
-      final museTalkWs = AppConfig.museTalkWsUrl;
-      final String? roomName = await _awaitRoomName();
-      if (roomName == null || roomName.isEmpty) {
-        debugPrint('⚠️ Kein LiveKit-Raum – PCM-Forwarding übersprungen');
-        return;
-      }
-      _museTalkChannel ??= WebSocketChannel.connect(Uri.parse(museTalkWs));
-      // Erste Nachricht: Room als Bytes (Server erwartet receive_bytes für das erste Frame)
-      if (!_museTalkRoomSent) {
-        _museTalkChannel!.sink.add(utf8.encode(roomName));
-        _museTalkRoomSent = true;
-      }
-      // PCM kommt später aus Orchestrator via _pcmController; hier nur Hook setzen
-      _pcmController.stream.listen((evt) {
-        try {
-          _museTalkChannel!.sink.add(evt.bytes);
-        } catch (_) {}
-      });
-    } catch (e) {
-      debugPrint('⚠️ MuseTalk WS forward failed: $e');
-    }
+    // REMOVED: PCM-Forwarding vom Client zu MuseTalk
+    // → Orchestrator sendet PCM direkt an MuseTalk (effizienter, vermeidet permanente Client-WS)
 
     // Nur WS-Steuerung: MP3 nicht benötigen (reduziert Overhead)
     _activeSeq += 1;
@@ -443,7 +420,7 @@ class StreamingStrategy implements LipsyncStrategy {
     // Nicht sofort complete/callback – warte auf tatsächliches Player-Ende
     _playbackStarted = false;
     _bytesAccumulated = 0;
-    
+
     // WebSocket schließen nach done → Container kann scale-down
     _closeWebSocket();
   }
@@ -485,11 +462,6 @@ class StreamingStrategy implements LipsyncStrategy {
   void dispose() {
     _channelSubscription?.cancel();
     _channel?.sink.close();
-    // MuseTalk WS schließen
-    try {
-      _museTalkChannel?.sink.close();
-      _museTalkChannel = null;
-    } catch (_) {}
     // Source explizit disposen
     try {
       _currentSource?.complete();
