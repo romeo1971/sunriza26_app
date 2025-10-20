@@ -63,6 +63,8 @@ image = (
     image=image,
     gpu="T4",
     timeout=600,
+    min_containers=0,  # scale-to-zero!
+    scaledown_window=20,  # 20s statt 60s → schneller shutdown = weniger idle costs!
     secrets=[modal.Secret.from_name("firebase-credentials")],
     volumes={"/tensorrt_cache": tensorrt_cache},  # TensorRT Cache persistent mounten
 )
@@ -482,7 +484,7 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     }
 
 
-@app.function(image=image)
+@app.function(image=image, min_containers=0, scaledown_window=20)
 @modal.asgi_app()
 def api_generate_dynamics():
     """REST API Endpoint für Flutter App"""
@@ -505,7 +507,7 @@ def api_generate_dynamics():
     return web_app
 
 
-@app.function(image=image)
+@app.function(image=image, min_containers=0, scaledown_window=20)
 @modal.asgi_app()
 def health():
     from fastapi import FastAPI

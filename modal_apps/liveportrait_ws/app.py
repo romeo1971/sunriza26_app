@@ -24,7 +24,7 @@ image = (
 app = modal.App("liveportrait-ws", image=image)
 
 
-@app.function(timeout=3600, min_containers=1, scaledown_window=300)
+@app.function(timeout=3600, min_containers=0, scaledown_window=20)
 @modal.asgi_app()
 def asgi():
     from fastapi import FastAPI, WebSocket, WebSocketDisconnect
