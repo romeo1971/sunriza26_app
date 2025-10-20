@@ -210,10 +210,9 @@ class StreamingStrategy implements LipsyncStrategy {
 
   @override
   Future<void> warmUp() async {
-    // Stelle sicher, dass die WS einmal aufgebaut ist (kaltstart vermeiden)
-    if (_channel == null && !_isConnecting) {
-      await _connect();
-    }
+    // WS wird bei speak() geöffnet, nicht hier (vermeidet permanente Verbindung)
+    // Nur MuseTalk WS initialisieren falls benötigt
+    return;
   }
 
   @override
@@ -444,6 +443,22 @@ class StreamingStrategy implements LipsyncStrategy {
     // Nicht sofort complete/callback – warte auf tatsächliches Player-Ende
     _playbackStarted = false;
     _bytesAccumulated = 0;
+    
+    // WebSocket schließen nach done → Container kann scale-down
+    _closeWebSocket();
+  }
+
+  void _closeWebSocket() {
+    try {
+      _channelSubscription?.cancel();
+      _channelSubscription = null;
+      _channel?.sink.close();
+      _channel = null;
+      _isConnecting = false;
+      debugPrint('🔌 WS closed (scale-down enabled)');
+    } catch (e) {
+      debugPrint('⚠️ WS close error: $e');
+    }
   }
 
   @override
@@ -455,6 +470,8 @@ class StreamingStrategy implements LipsyncStrategy {
       await _audioPlayer?.stop();
     } catch (_) {}
     _useHttpStream = false;
+    // WebSocket schließen
+    _closeWebSocket();
     // Source sauber schließen und disposen
     try {
       _currentSource?.complete();
@@ -468,6 +485,11 @@ class StreamingStrategy implements LipsyncStrategy {
   void dispose() {
     _channelSubscription?.cancel();
     _channel?.sink.close();
+    // MuseTalk WS schließen
+    try {
+      _museTalkChannel?.sink.close();
+      _museTalkChannel = null;
+    } catch (_) {}
     // Source explizit disposen
     try {
       _currentSource?.complete();
@@ -475,5 +497,6 @@ class StreamingStrategy implements LipsyncStrategy {
     _currentSource?.dispose();
     _audioPlayer?.dispose();
     _visemeController.close();
+    _pcmController.close();
   }
 }
