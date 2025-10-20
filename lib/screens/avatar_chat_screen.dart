@@ -355,14 +355,24 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       // Dynamischer Raum, falls Backend keinen liefert ODER statischen Default liefert
       const knownStaticRooms = {'sunriza26', 'sunriza'};
       if (room == null || room.isEmpty || knownStaticRooms.contains(room)) {
-        // WICHTIG: Room nur 1× generieren (persistent während Chat-Session!)
-        if (_persistentRoomName == null || _persistentRoomName!.isEmpty) {
+        // WICHTIG: Room nur 1× generieren (persistent über Chat-Sessions hinweg!)
+        // 1. Prüfe ob LiveKit schon einen Room hat (vom vorherigen Chat)
+        final existingRoom = LiveKitService().roomName;
+        if (existingRoom != null && existingRoom.isNotEmpty && existingRoom.startsWith('mt-')) {
+          room = existingRoom;
+          _persistentRoomName = existingRoom;
+          debugPrint('♻️ Wiederverwendeter Room: $room (LiveKit noch connected!)');
+        } else if (_persistentRoomName == null || _persistentRoomName!.isEmpty) {
+          // 2. Ansonsten: Neuen Room generieren
           final uid = user.uid;
           final short = uid.length >= 8 ? uid.substring(0, 8) : uid;
           _persistentRoomName = 'mt-$short-${DateTime.now().millisecondsSinceEpoch}';
+          room = _persistentRoomName!;
           debugPrint('🆕 Generated persistent room: $_persistentRoomName');
+        } else {
+          // 3. Fallback: persistentRoomName aus dieser Widget-Instanz
+          room = _persistentRoomName!;
         }
-        room = _persistentRoomName!;
       }
       if (token == null || token.isEmpty) {
         // Fallback: .env Test‑Join
@@ -2792,13 +2802,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _idleController?.dispose();
     // Lipsync Strategy aufräumen (schließt WebSocket!)
     _lipsync.dispose();
-    // LiveKit Publisher stoppen (beim Verlassen des Chats)
-    final room = LiveKitService().roomName;
-    if (room != null && room.isNotEmpty) {
-      unawaited(_stopLiveKitPublisher(room));
-    }
-    // LiveKit sauber trennen (no-op wenn Feature deaktiviert)
-    unawaited(LiveKitService().leave());
+    
+    // WICHTIG: LiveKit/MuseTalk NICHT stoppen beim Chat-Verlassen!
+    // → Wenn User raus/rein geht, sollte Session WARM bleiben (schneller 2. Start!)
+    // → MuseTalk Container stirbt automatisch nach 3 Min (scaledown_window)
+    // → LiveKit bleibt connected (kostet fast nix)
+    debugPrint('🔄 Chat dispose - LiveKit/MuseTalk bleiben WARM (für schnellen Re-Entry)');
+    
     super.dispose();
   }
 
