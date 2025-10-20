@@ -5,6 +5,7 @@ import '../models/avatar_data.dart';
 import '../theme/app_theme.dart';
 import '../widgets/app_drawer.dart';
 import 'home_navigation_screen.dart';
+import '../widgets/safe_network_image.dart';
 
 /// Favoriten Screen - Gespeicherte Lieblings-Avatare
 class FavoritesScreen extends StatefulWidget {
@@ -160,8 +161,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: avatar.avatarImageUrl != null
-                      ? Image.network(
-                          avatar.avatarImageUrl!,
+                      ? SafeNetworkImage(
+                          url: avatar.avatarImageUrl!,
                           width: 54,
                           height: 96,
                           fit: BoxFit.cover,

@@ -1,5 +1,6 @@
 import 'file_based_strategy.dart';
-import 'streaming_strategy.dart';
+// import 'streaming_strategy.dart'; // Direkter Import nicht mehr nötig
+import 'auto_strategy.dart';
 import 'lipsync_strategy.dart';
 
 enum LipsyncMode { fileBased, streaming }
@@ -18,8 +19,8 @@ class LipsyncFactory {
         if (orchestratorUrl == null) {
           throw ArgumentError('orchestratorUrl required for streaming mode');
         }
-        return StreamingStrategy(orchestratorUrl: orchestratorUrl);
+        // Automatische Umschaltung: Streaming wenn verfügbar, sonst FileBased
+        return AutoLipsyncStrategy(orchestratorUrl: orchestratorUrl);
     }
   }
 }
-

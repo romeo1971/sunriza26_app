@@ -9,6 +9,7 @@ import '../services/localization_service.dart';
 import 'avatar_review_facts_screen.dart';
 import 'package:provider/provider.dart';
 import '../widgets/custom_text_field.dart';
+import '../widgets/safe_network_image.dart';
 
 class AvatarListScreen extends StatefulWidget {
   const AvatarListScreen({super.key});
@@ -404,14 +405,12 @@ class _AvatarListScreenState extends State<AvatarListScreen>
                             child: ClipRRect(
                               borderRadius: BorderRadius.circular(11),
                               child: avatar.avatarImageUrl != null
-                                  ? Image.network(
-                                      avatar.avatarImageUrl!,
+                                  ? SafeNetworkImage(
+                                      url: avatar.avatarImageUrl!,
                                       width: w,
                                       height: h,
                                       fit: BoxFit.cover,
-                                      errorBuilder:
-                                          (context, error, stackTrace) =>
-                                              _buildDefaultAvatar(),
+                                      error: _buildDefaultAvatar(),
                                     )
                                   : Container(
                                       color: const Color(0x1400DFA8),

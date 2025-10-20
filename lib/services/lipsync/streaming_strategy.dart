@@ -106,9 +106,10 @@ class StreamingStrategy implements LipsyncStrategy {
   bool _useHttpStream = false; // neuer Modus: Audio via HTTP setUrl()
   final bool _clientPlaysAudio =
       true; // Sofortiges Client‑Audio aktiv (parallel zu LiveKit)
+  Timer? _httpFallbackTimer;
 
   Future<String?> _awaitRoomName({
-    Duration timeout = const Duration(milliseconds: 400),
+    Duration timeout = const Duration(seconds: 5),
   }) async {
     final start = DateTime.now();
     while (true) {
@@ -251,29 +252,53 @@ class StreamingStrategy implements LipsyncStrategy {
     // REMOVED: PCM-Forwarding vom Client zu MuseTalk
     // → Orchestrator sendet PCM direkt an MuseTalk (effizienter, vermeidet permanente Client-WS)
 
-    // Bevorzugt: HTTP-Streaming (robust, kein WS-MP3 nötig)
-    try {
-      final httpBase = AppConfig.orchestratorUrl
-          .replaceFirst('wss://', 'https://')
-          .replaceFirst('ws://', 'http://');
-      final playUrl = httpBase.endsWith('/')
-          ? '${httpBase}tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}'
-          : '$httpBase/tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}';
-      await _audioPlayer?.stop();
-      _audioPlayer ??= AudioPlayer();
-      await _audioPlayer!.setUrl(playUrl);
-      await _audioPlayer!.play();
-      onPlaybackStateChanged?.call(true);
-    } catch (e) {
-      debugPrint('⚠️ HTTP playback failed: $e');
+    // Optionaler HTTP-Streaming Pfad (hier sofort aktivieren für Sofort‑Ton)
+    _useHttpStream = true;
+    if (_useHttpStream) {
+      try {
+        final httpBase = AppConfig.orchestratorUrl
+            .replaceFirst('wss://', 'https://')
+            .replaceFirst('ws://', 'http://');
+        final playUrl = httpBase.endsWith('/')
+            ? '${httpBase}tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}'
+            : '$httpBase/tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}';
+        await _audioPlayer?.stop();
+        _audioPlayer ??= AudioPlayer();
+        await _audioPlayer!.setUrl(playUrl);
+        await _audioPlayer!.play();
+        onPlaybackStateChanged?.call(true);
+      } catch (e) {
+        debugPrint('⚠️ HTTP playback failed: $e');
+      }
+    } else {
+      // Low-latency Fallback: Starte HTTP nach 700ms, wenn keine WS‑Chunks ankamen
+      _httpFallbackTimer?.cancel();
+      _httpFallbackTimer = Timer(const Duration(milliseconds: 700), () async {
+        if (_chunkCount == 0) {
+          try {
+            final httpBase = AppConfig.orchestratorUrl
+                .replaceFirst('wss://', 'https://')
+                .replaceFirst('ws://', 'http://');
+            final playUrl = httpBase.endsWith('/')
+                ? '${httpBase}tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}'
+                : '$httpBase/tts/stream?voice_id=$voiceId&text=${Uri.encodeComponent(text)}';
+            _useHttpStream = true;
+            await _audioPlayer?.stop();
+            _audioPlayer ??= AudioPlayer();
+            await _audioPlayer!.setUrl(playUrl);
+            await _audioPlayer!.play();
+            onPlaybackStateChanged?.call(true);
+          } catch (e) {
+            debugPrint('⚠️ HTTP fallback failed: $e');
+          }
+        }
+      });
     }
 
     // WS: nur Steuersignal (kein MP3 über WS), damit PCM/viseme weiterlaufen
     _activeSeq += 1;
     final seq = _activeSeq;
-    final String? lkRoom = await _awaitRoomName(
-      timeout: const Duration(seconds: 6),
-    );
+    final String? lkRoom = await _awaitRoomName();
     if (_channel == null) {
       debugPrint('❌ WS not connected');
       return;
@@ -284,7 +309,7 @@ class StreamingStrategy implements LipsyncStrategy {
         'text': text,
         'voice_id': voiceId,
         'seq': seq,
-        'mp3': false,
+        'mp3': true,
         if (lkRoom != null && lkRoom.isNotEmpty) 'room': lkRoom,
       }),
     );
@@ -296,9 +321,12 @@ class StreamingStrategy implements LipsyncStrategy {
     if (!_clientPlaysAudio) {
       return; // Lokales Audio deaktiviert – LiveKit spielt ab
     }
-    if (_useHttpStream) {
-      // Im HTTP‑Modus kommt kein 'audio' mehr über WS
-      return;
+    // Wenn HTTP‑Fallback bereits spielt, beim ersten Chunk auf WS‑Stream wechseln
+    if (_useHttpStream && _chunkCount == 0) {
+      try {
+        _audioPlayer?.stop();
+      } catch (_) {}
+      _useHttpStream = false;
     }
     // Nur aktuelle Sequenz verarbeiten (späte Chunks werden ignoriert)
     final int? seq = data['seq'] is int ? data['seq'] as int : null;
@@ -317,9 +345,7 @@ class StreamingStrategy implements LipsyncStrategy {
       onPlaybackStateChanged?.call(true);
     }
 
-    if (_currentSource == null) {
-      _currentSource = StreamingMp3Source();
-    }
+    _currentSource ??= StreamingMp3Source();
 
     // Chunk zum Stream hinzufügen
     _currentSource!.addChunk(audioBytes);

@@ -20,6 +20,26 @@ class SafeNetworkImage extends StatelessWidget {
 
   bool get _isEmpty => url == null || url!.trim().isEmpty;
 
+  String _proxied(String raw) {
+    final u = raw.trim();
+    // Optionaler Proxy nur wenn PROXY_BASE_URL gesetzt ist (z. B. http://localhost:8001)
+    const proxyBase = String.fromEnvironment(
+      'PROXY_BASE_URL',
+      defaultValue: '',
+    );
+    if (proxyBase.isEmpty) {
+      // Standard: Direkt laden (CORS ist am Bucket konfiguriert)
+      return u;
+    }
+    // Nur Storage-Hosts über Proxy leiten
+    final isGcs1 = u.contains('firebasestorage.googleapis.com');
+    final isGcs2 = u.contains('storage.googleapis.com');
+    final isGcs3 = u.contains('.firebasestorage.app');
+    if (!(isGcs1 || isGcs2 || isGcs3)) return u;
+    final encoded = Uri.encodeComponent(u);
+    return '${proxyBase.replaceAll(RegExp(r"/+$"), '')}/proxy/image?url=$encoded';
+  }
+
   @override
   Widget build(BuildContext context) {
     final Widget fallback = Container(
@@ -36,8 +56,10 @@ class SafeNetworkImage extends StatelessWidget {
       );
     }
 
+    final displayUrl = _proxied(url!);
+
     return Image.network(
-      url!,
+      displayUrl,
       width: width,
       height: height,
       fit: fit,

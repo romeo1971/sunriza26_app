@@ -5,9 +5,12 @@ import 'package:http/http.dart' as http;
 /// Modal.com Dynamics Service
 /// GPU-basierte LivePortrait Avatar-Animation
 class DynamicsServiceModal {
-  // Modal.com Backend URL (deployed)
-  static const String BACKEND_URL =
-      'https://romeo1971--sunriza-dynamics-api-generate-dynamics.modal.run';
+  // Modal.com Backend URL (deployed) – bei Störung lokal fallbacken
+  static const String BACKEND_URL = String.fromEnvironment(
+    'DYNAMICS_URL',
+    defaultValue:
+        'https://romeo1971--sunriza-dynamics-api-generate-dynamics.modal.run',
+  );
 
   /// Generiert Dynamics-Video für einen Avatar
   ///
@@ -34,9 +37,13 @@ class DynamicsServiceModal {
 
     final finalParameters = parameters ?? defaultParameters;
 
-    final response = await http
+    // Fallback: Wenn Modal down ist, versuche lokales Backend (8002)
+    final primaryUri = Uri.parse(BACKEND_URL);
+    final localUri = Uri.parse('http://localhost:8002/generate-dynamics');
+
+    Future<http.Response> _tryCall(Uri uri) => http
         .post(
-          Uri.parse(BACKEND_URL),
+          uri,
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({
             'avatar_id': avatarId,
@@ -50,6 +57,14 @@ class DynamicsServiceModal {
             throw Exception('Dynamics-Generierung Timeout (10 Min)');
           },
         );
+
+    http.Response response;
+    try {
+      response = await _tryCall(primaryUri);
+    } catch (_) {
+      // Network/Connect Fehler → lokal probieren
+      response = await _tryCall(localUri);
+    }
 
     if (response.statusCode != 200) {
       throw Exception(

@@ -8,10 +8,11 @@ from typing import Optional
 from datetime import datetime
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 import bithuman
 from bithuman import AsyncBithuman
+import aiohttp
 
 # FastAPI App
 app = FastAPI(title="Avatar Backend", version="1.0.0")
@@ -291,6 +292,20 @@ async def download_file(filename: str):
         return FileResponse(file_path, filename=filename)
     else:
         raise HTTPException(status_code=404, detail="Datei nicht gefunden")
+
+# Einfacher Proxy für Bilder (CORS‑freundlich für Flutter Web)
+@app.get("/proxy/image")
+async def proxy_image(url: str):
+    try:
+        timeout = aiohttp.ClientTimeout(total=20)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    raise HTTPException(status_code=resp.status, detail="Upstream error")
+                content_type = resp.headers.get('Content-Type', 'image/jpeg')
+                return StreamingResponse(resp.content, media_type=content_type)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Proxy failed: {e}")
 
 if __name__ == "__main__":
     import uvicorn

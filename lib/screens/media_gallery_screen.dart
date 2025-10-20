@@ -37,6 +37,7 @@ import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/gmbc_buttons.dart';
+import '../widgets/safe_network_image.dart';
 
 // Custom SnackBar Helper
 SnackBar buildSuccessSnackBar(String message) {
@@ -1497,7 +1498,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       );
     }
   } */
-
   Future<void> _openCrop(
     Uint8List imageBytes,
     String ext,
@@ -3336,50 +3336,33 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: (it.type == AvatarMediaType.image)
-                    ? Image.network(
-                        it.url,
+                    ? SafeNetworkImage(
+                        url: it.url,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stack) {
-                          return Container(
-                            color: Colors.black26,
-                            alignment: Alignment.center,
-                            child: const Icon(
-                              Icons.image_not_supported,
-                              color: Colors.white54,
-                            ),
-                          );
-                        },
+                        error: Container(
+                          color: Colors.black26,
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            Icons.image_not_supported,
+                            color: Colors.white54,
+                          ),
+                        ),
                       )
                     : (it.type == AvatarMediaType.document)
                     ? _buildDocumentPreviewBackground(it)
                     : it.type == AvatarMediaType.video
                     ? (it.thumbUrl != null
-                          ? Image.network(
-                              it.thumbUrl!,
+                          ? SafeNetworkImage(
+                              url: it.thumbUrl!,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stack) {
-                                // Fallback zu VideoPlayer wenn Thumb nicht lädt
-                                return FutureBuilder<VideoPlayerController?>(
-                                  future: _videoControllerForThumb(it.url),
-                                  builder: (context, snapshot) {
-                                    if (snapshot.connectionState ==
-                                            ConnectionState.done &&
-                                        snapshot.hasData &&
-                                        snapshot.data != null) {
-                                      final controller = snapshot.data!;
-                                      if (controller.value.isInitialized) {
-                                        final videoAR =
-                                            controller.value.aspectRatio;
-                                        return AspectRatio(
-                                          aspectRatio: videoAR,
-                                          child: VideoPlayer(controller),
-                                        );
-                                      }
-                                    }
-                                    return Container(color: Colors.black26);
-                                  },
-                                );
-                              },
+                              error: Container(
+                                color: Colors.black26,
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  Icons.image_not_supported,
+                                  color: Colors.white54,
+                                ),
+                              ),
                             )
                           : FutureBuilder<VideoPlayerController?>(
                               future: _videoControllerForThumb(it.url),
@@ -3873,7 +3856,18 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               height: h,
                               child: AspectRatio(
                                 aspectRatio: ar,
-                                child: Image.network(m.url, fit: BoxFit.cover),
+                                child: SafeNetworkImage(
+                                  url: m.url,
+                                  fit: BoxFit.cover,
+                                  error: Container(
+                                    color: Colors.black26,
+                                    alignment: Alignment.center,
+                                    child: const Icon(
+                                      Icons.image_not_supported,
+                                      color: Colors.white54,
+                                    ),
+                                  ),
+                                ),
                               ),
                             );
                           } else if (m.type == AvatarMediaType.video) {
@@ -3883,17 +3877,17 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               child: AspectRatio(
                                 aspectRatio: ar,
                                 child: (m.thumbUrl != null)
-                                    ? Image.network(
-                                        m.thumbUrl!,
+                                    ? SafeNetworkImage(
+                                        url: m.thumbUrl!,
                                         fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stack) =>
-                                            Container(
-                                              color: Colors.black26,
-                                              child: const Icon(
-                                                Icons.play_circle,
-                                                color: Colors.white54,
-                                              ),
-                                            ),
+                                        error: Container(
+                                          color: Colors.black26,
+                                          alignment: Alignment.center,
+                                          child: const Icon(
+                                            Icons.image_not_supported,
+                                            color: Colors.white54,
+                                          ),
+                                        ),
                                       )
                                     : Container(
                                         color: Colors.black26,
@@ -3930,19 +3924,17 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                     child: ClipRRect(
                                       borderRadius: BorderRadius.circular(4),
                                       child: (m.thumbUrl != null)
-                                          ? Image.network(
-                                              m.thumbUrl!,
+                                          ? SafeNetworkImage(
+                                              url: m.thumbUrl!,
                                               fit: BoxFit.cover,
-                                              width: double.infinity,
-                                              errorBuilder:
-                                                  (context, error, s) =>
-                                                      Container(
-                                                        color: Colors.black26,
-                                                        child: const Icon(
-                                                          Icons.audiotrack,
-                                                          color: Colors.white54,
-                                                        ),
-                                                      ),
+                                              error: Container(
+                                                color: Colors.black26,
+                                                alignment: Alignment.center,
+                                                child: const Icon(
+                                                  Icons.image_not_supported,
+                                                  color: Colors.white54,
+                                                ),
+                                              ),
                                             )
                                           : Container(
                                               color: Colors.black26,
@@ -4278,16 +4270,18 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 ...images.map(
                   (media) => ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      media.thumbUrl ?? media.url,
+                    child: SafeNetworkImage(
+                      url: media.thumbUrl ?? media.url,
                       width: 54,
                       height: 96,
                       fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        width: 54,
-                        height: 96,
-                        color: Colors.grey.shade800,
-                        child: const Icon(Icons.image, color: Colors.white54),
+                      error: Container(
+                        color: Colors.black26,
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.image_not_supported,
+                          color: Colors.white54,
+                        ),
                       ),
                     ),
                   ),
@@ -4300,21 +4294,19 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       width: 54,
                       height: 96,
                       child: media.thumbUrl != null
-                          ? Image.network(
-                              media.thumbUrl!,
+                          ? SafeNetworkImage(
+                              url: media.thumbUrl!,
                               width: 54,
                               height: 96,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                    width: 54,
-                                    height: 96,
-                                    color: Colors.grey.shade800,
-                                    child: const Icon(
-                                      Icons.videocam,
-                                      color: Colors.white54,
-                                    ),
-                                  ),
+                              error: Container(
+                                color: Colors.black26,
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  Icons.image_not_supported,
+                                  color: Colors.white54,
+                                ),
+                              ),
                             )
                           : Container(
                               width: 54,
@@ -4336,21 +4328,19 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       width: 54,
                       height: 96,
                       child: media.thumbUrl != null
-                          ? Image.network(
-                              media.thumbUrl!,
+                          ? SafeNetworkImage(
+                              url: media.thumbUrl!,
                               width: 54,
                               height: 96,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                    width: 54,
-                                    height: 96,
-                                    color: Colors.grey.shade800,
-                                    child: const Icon(
-                                      Icons.description,
-                                      color: Colors.white54,
-                                    ),
-                                  ),
+                              error: Container(
+                                color: Colors.black26,
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  Icons.image_not_supported,
+                                  color: Colors.white54,
+                                ),
+                              ),
                             )
                           : Container(
                               width: 54,
@@ -6141,9 +6131,17 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
                       Widget imageWidget;
                       if (currentMedia.type == AvatarMediaType.image) {
-                        imageWidget = Image.network(
-                          currentMedia.url,
+                        imageWidget = SafeNetworkImage(
+                          url: currentMedia.url,
                           fit: BoxFit.cover,
+                          error: Container(
+                            color: Colors.black26,
+                            alignment: Alignment.center,
+                            child: const Icon(
+                              Icons.image_not_supported,
+                              color: Colors.white54,
+                            ),
+                          ),
                         );
                       } else {
                         imageWidget = FutureBuilder<VideoPlayerController?>(
@@ -6570,10 +6568,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   borderRadius: BorderRadius.circular(4),
                   child: Opacity(
                     opacity: 0.5,
-                    child: Image.network(
-                      media.thumbUrl!,
+                    child: SafeNetworkImage(
+                      url: media.thumbUrl!,
                       fit: BoxFit.contain,
-                      errorBuilder: (context, error, stackTrace) => Container(
+                      error: Container(
                         color: Colors.black26,
                         child: const Icon(
                           Icons.audiotrack,
@@ -6983,48 +6981,17 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                             ? ClipRRect(
                                                 borderRadius:
                                                     BorderRadius.circular(8),
-                                                child: Image.network(
-                                                  media.thumbUrl!,
+                                                child: SafeNetworkImage(
+                                                  url: media.thumbUrl!,
                                                   fit: BoxFit.cover,
-                                                  errorBuilder: (context, error, stack) {
-                                                    // Fallback zu VideoPlayer
-                                                    return FutureBuilder<
-                                                      VideoPlayerController?
-                                                    >(
-                                                      future:
-                                                          _videoControllerForThumb(
-                                                            media.url,
-                                                          ),
-                                                      builder: (context, snapshot) {
-                                                        if (snapshot.connectionState ==
-                                                                ConnectionState
-                                                                    .done &&
-                                                            snapshot.hasData &&
-                                                            snapshot.data !=
-                                                                null) {
-                                                          final controller =
-                                                              snapshot.data!;
-                                                          if (controller
-                                                              .value
-                                                              .isInitialized) {
-                                                            return AspectRatio(
-                                                              aspectRatio:
-                                                                  controller
-                                                                      .value
-                                                                      .aspectRatio,
-                                                              child:
-                                                                  VideoPlayer(
-                                                                    controller,
-                                                                  ),
-                                                            );
-                                                          }
-                                                        }
-                                                        return Container(
-                                                          color: Colors.black26,
-                                                        );
-                                                      },
-                                                    );
-                                                  },
+                                                  error: Container(
+                                                    color: Colors.black26,
+                                                    alignment: Alignment.center,
+                                                    child: const Icon(
+                                                      Icons.image_not_supported,
+                                                      color: Colors.white54,
+                                                    ),
+                                                  ),
                                                 ),
                                               )
                                             : FutureBuilder<
@@ -7079,9 +7046,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                                     ? _buildDocumentPreviewBackground(
                                                         media,
                                                       )
-                                                    : Image.network(
-                                                        media.url,
+                                                    : SafeNetworkImage(
+                                                        url: media.url,
                                                         fit: BoxFit.cover,
+                                                        error: Container(
+                                                          color: Colors.black26,
+                                                          alignment:
+                                                              Alignment.center,
+                                                          child: const Icon(
+                                                            Icons
+                                                                .image_not_supported,
+                                                            color:
+                                                                Colors.white54,
+                                                          ),
+                                                        ),
                                                       ),
                                               ),
                                             );
@@ -7254,17 +7232,17 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             borderRadius: BorderRadius.circular(4),
                             child: Opacity(
                               opacity: 0.5,
-                              child: Image.network(
-                                it.thumbUrl!,
+                              child: SafeNetworkImage(
+                                url: it.thumbUrl!,
                                 fit: BoxFit.contain,
-                                errorBuilder: (context, error, stackTrace) =>
-                                    Container(
-                                      color: Colors.black26,
-                                      child: const Icon(
-                                        Icons.audiotrack,
-                                        color: Colors.white54,
-                                      ),
-                                    ),
+                                error: Container(
+                                  color: Colors.black26,
+                                  alignment: Alignment.center,
+                                  child: const Icon(
+                                    Icons.image_not_supported,
+                                    color: Colors.white54,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
@@ -7946,10 +7924,18 @@ class _MediaViewerDialogState extends State<_MediaViewerDialog> {
             GestureDetector(
               onLongPress: () => widget.onCropRequest(_currentMedia),
               child: InteractiveViewer(
-                child: Image.network(
-                  _currentMedia.url,
+                child: SafeNetworkImage(
+                  url: _currentMedia.url,
                   key: ValueKey(_currentMedia.id), // Key für Rebuild
                   fit: BoxFit.contain,
+                  error: Container(
+                    color: Colors.black26,
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.image_not_supported,
+                      color: Colors.white54,
+                    ),
+                  ),
                 ),
               ),
             )
@@ -7958,7 +7944,18 @@ class _MediaViewerDialogState extends State<_MediaViewerDialog> {
               aspectRatio: _currentMedia.aspectRatio ?? (9 / 16),
               child: (widget.buildDocBackground != null)
                   ? widget.buildDocBackground!(_currentMedia)
-                  : Image.network(_currentMedia.url, fit: BoxFit.contain),
+                  : SafeNetworkImage(
+                      url: _currentMedia.url,
+                      fit: BoxFit.contain,
+                      error: Container(
+                        color: Colors.black26,
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.image_not_supported,
+                          color: Colors.white54,
+                        ),
+                      ),
+                    ),
             )
           else
             _VideoDialog(

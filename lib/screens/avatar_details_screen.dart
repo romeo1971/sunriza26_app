@@ -47,6 +47,7 @@ import '../widgets/expansion_tiles/person_data_expansion_tile.dart';
 import '../widgets/media/details/details_media_navigation_bar.dart';
 import '../widgets/media/details/details_image_media_section.dart';
 import '../widgets/media/details/details_video_media_section.dart';
+import '../widgets/safe_network_image.dart';
 
 // Custom Gradient Thumb für Slider
 class GradientSliderThumbShape extends SliderComponentShape {
@@ -3347,21 +3348,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: Image.network(
-              url,
+            child: SafeNetworkImage(
+              url: url,
               fit: BoxFit.cover,
-              key: ValueKey(url),
-              errorBuilder: (context, error, stack) {
-                _handleImageError(url);
-                return Container(
-                  color: Colors.black26,
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.image_not_supported,
-                    color: Colors.white54,
-                  ),
-                );
-              },
+              // key bleibt erhalten
             ),
           ),
           if (isHero)
@@ -3439,21 +3429,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       children: [
         ClipRRect(
           borderRadius: BorderRadius.circular(isHero ? 10 : 12),
-          child: Image.network(
-            url,
+          child: SafeNetworkImage(
+            url: url,
             fit: BoxFit.cover,
-            key: ValueKey(url),
-            errorBuilder: (context, error, stack) {
-              _handleImageError(url);
-              return Container(
-                color: Colors.black26,
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.image_not_supported,
-                  color: Colors.white54,
-                ),
-              );
-            },
+            // key bleibt erhalten
           ),
         ),
         if (isHero)
@@ -3803,13 +3782,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await _clearInlinePlayer();
     }
   }
-
-  // _deleteRemoteVideo ungenutzt entfernt
-
-  // ============================================================================
-  // ============================================================================
-
-  // _videoThumbLocal ungenutzt entfernt
 
   // Cache für Thumbnail-Controller
   final Map<String, VideoPlayerController> _thumbControllers = {};
@@ -4168,10 +4140,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       return null;
     }
   }
-
-  // _thumbnailForLocal ungenutzt entfernt
-
-  // _bigMediaButton entfällt im neuen Layout
 
   Future<File?> _cropToPortrait916(File input) async {
     try {
@@ -6043,8 +6011,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 ..._selectedRemoteImages.map(
                   (u) => ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      u,
+                    child: SafeNetworkImage(
+                      url: u,
                       width: 54,
                       height: 96,
                       fit: BoxFit.cover,
@@ -6719,7 +6687,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               if (wasHeroImage) {
                 _setHeroImage(newUrl);
                 // _profileLocalPath BEHALTEN bis Bild geladen ist (kein Flicker!)
-                // ExtendedImage.network lädt im Hintergrund, dann ersetzt es cached
               }
               // Recropping-Status entfernen → UI zeigt wieder Namen
               _isRecropping.remove(url);
@@ -8060,5 +8027,3 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 }
-
-// _CropFramePainter ungenutzt entfernt

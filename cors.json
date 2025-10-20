@@ -1,0 +1,18 @@
+[
+  {
+    "origin": [
+      "*",
+      "https://www.hauau.com",
+      "https://hauau.com"
+    ],
+    "method": ["GET", "HEAD", "OPTIONS"],
+    "responseHeader": [
+      "Content-Type",
+      "Authorization",
+      "x-goog-*"
+    ],
+    "maxAgeSeconds": 3600
+  }
+]
+
+
