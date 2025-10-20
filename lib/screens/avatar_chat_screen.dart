@@ -393,9 +393,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     }
     
     try {
-      // Get idle video URL + frames.zip URL from Firestore
+      // Get idle video URL + frames.zip URL + latents URL from Firestore
       String? idleVideoUrl;
       String? framesZipUrl;
+      String? latentsUrl;
       if (_avatarData != null) {
         final doc = await FirebaseFirestore.instance
             .collection('avatars')
@@ -408,13 +409,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           final basicDynamics = dynamics?['basic'] as Map<String, dynamic>?;
           idleVideoUrl = basicDynamics?['idleVideoUrl'] as String?;
           framesZipUrl = basicDynamics?['framesZipUrl'] as String?;
+          latentsUrl = basicDynamics?['latentsUrl'] as String?;
         }
       }
 
       // Erlaube Start auch nur mit Frames, ohne idleVideoUrl
       if ((idleVideoUrl == null || idleVideoUrl.isEmpty) &&
-          (framesZipUrl == null || framesZipUrl.isEmpty)) {
-        debugPrint('❌ No idle video or frames_zip for MuseTalk');
+          (framesZipUrl == null || framesZipUrl.isEmpty) &&
+          (latentsUrl == null || latentsUrl.isEmpty)) {
+        debugPrint('❌ No idle video, frames_zip or latents for MuseTalk');
         return;
       }
 
@@ -458,7 +461,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           'room': room,
           'connect_livekit': true,
         };
-        if (framesZipUrl != null && framesZipUrl.isNotEmpty) {
+        // FASTEST: Pre-computed latents (0.5s Cold Start!)
+        if (latentsUrl != null && latentsUrl.isNotEmpty) {
+          payload['latents_url'] = latentsUrl;
+          debugPrint('⚡ Using pre-computed latents (fast path!)');
+        } else if (framesZipUrl != null && framesZipUrl.isNotEmpty) {
           payload['frames_zip_url'] = framesZipUrl;
         } else if (idleVideoUrl != null && idleVideoUrl.isNotEmpty) {
           payload['idle_video_url'] = idleVideoUrl;
