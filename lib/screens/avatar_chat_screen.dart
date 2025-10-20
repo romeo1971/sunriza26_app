@@ -90,6 +90,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   StreamSubscription<Amplitude>? _ampSub;
   DateTime? _segmentStartAt;
   String? _activeMuseTalkRoom; // Track aktiven MuseTalk Room (verhindert doppelte /session/start Calls!)
+  String? _persistentRoomName; // Room-Name bleibt während gesamter Chat-Session gleich!
   int _silenceMs = 0;
   bool _sttBusy = false;
   bool _segmentClosing = false;
@@ -265,6 +266,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   Future<void> _maybeJoinLiveKit() async {
     try {
+      // GUARD: Wenn bereits connected, skip!
+      if (LiveKitService().isConnected && LiveKitService().roomName != null) {
+        debugPrint('⏭️ LiveKit bereits connected (room: ${LiveKitService().roomName})');
+        return;
+      }
+      
       if ((dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() != '1') {
         debugPrint('⚠️ LiveKit DISABLED (LIVEKIT_ENABLED != 1)');
         return;
@@ -347,9 +354,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       // Dynamischer Raum, falls Backend keinen liefert ODER statischen Default liefert
       const knownStaticRooms = {'sunriza26', 'sunriza'};
       if (room == null || room.isEmpty || knownStaticRooms.contains(room)) {
-        final uid = user.uid;
-        final short = uid.length >= 8 ? uid.substring(0, 8) : uid;
-        room = 'mt-$short-${DateTime.now().millisecondsSinceEpoch}';
+        // WICHTIG: Room nur 1× generieren (persistent während Chat-Session!)
+        if (_persistentRoomName == null || _persistentRoomName!.isEmpty) {
+          final uid = user.uid;
+          final short = uid.length >= 8 ? uid.substring(0, 8) : uid;
+          _persistentRoomName = 'mt-$short-${DateTime.now().millisecondsSinceEpoch}';
+          debugPrint('🆕 Generated persistent room: $_persistentRoomName');
+        }
+        room = _persistentRoomName!;
       }
       if (token == null || token.isEmpty) {
         // Fallback: .env Test‑Join
