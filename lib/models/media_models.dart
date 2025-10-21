@@ -43,6 +43,47 @@ class AvatarMedia {
   bool get isFreeMedia => isFree == true || price == null || price == 0.0;
 
   factory AvatarMedia.fromMap(Map<String, dynamic> map) {
+    int toMillis(dynamic v) {
+      if (v == null) return 0;
+      if (v is num) return v.toInt();
+      // Firestore Timestamp (lazy import avoidance): use toString fallback patterns
+      final s = v.toString();
+      // Try parsing ISO8601 or numeric string
+      final parsedInt = int.tryParse(s);
+      if (parsedInt != null) return parsedInt;
+      final parsedDate = DateTime.tryParse(s);
+      if (parsedDate != null) return parsedDate.millisecondsSinceEpoch;
+      try {
+        // Try common firestore Timestamp shape: has millisecondsSinceEpoch getter
+        final msEpoch = (v as dynamic).millisecondsSinceEpoch as int?;
+        if (msEpoch != null) return msEpoch;
+      } catch (_) {}
+      try {
+        final dt = (v as dynamic).toDate() as DateTime?;
+        if (dt != null) return dt.millisecondsSinceEpoch;
+      } catch (_) {}
+      return 0;
+    }
+
+    int? toMillisNullable(dynamic v) {
+      if (v == null) return null;
+      if (v is num) return v.toInt();
+      final s = v.toString();
+      final parsedInt = int.tryParse(s);
+      if (parsedInt != null) return parsedInt;
+      final parsedDate = DateTime.tryParse(s);
+      if (parsedDate != null) return parsedDate.millisecondsSinceEpoch;
+      try {
+        final msEpoch = (v as dynamic).millisecondsSinceEpoch as int?;
+        if (msEpoch != null) return msEpoch;
+      } catch (_) {}
+      try {
+        final dt = (v as dynamic).toDate() as DateTime?;
+        if (dt != null) return dt.millisecondsSinceEpoch;
+      } catch (_) {}
+      return null;
+    }
+
     final typeStr = (map['type'] as String?) ?? 'image';
     final AvatarMediaType mediaType;
     switch (typeStr) {
@@ -65,8 +106,8 @@ class AvatarMedia {
       type: mediaType,
       url: (map['url'] as String?) ?? '',
       thumbUrl: map['thumbUrl'] as String?,
-      createdAt: (map['createdAt'] as num?)?.toInt() ?? 0,
-      durationMs: (map['durationMs'] as num?)?.toInt(),
+      createdAt: toMillis(map['createdAt']),
+      durationMs: toMillisNullable(map['durationMs']),
       aspectRatio: (map['aspectRatio'] as num?)?.toDouble(),
       tags: (map['tags'] as List<dynamic>?)?.cast<String>(),
       originalFileName: map['originalFileName'] as String?,

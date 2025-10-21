@@ -6,6 +6,8 @@ import 'package:audio_session/audio_session.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'lipsync_strategy.dart';
 import 'package:sunriza26/config.dart';
+import 'package:sunriza26/services/env_service.dart';
+import 'package:http/http.dart' as http;
 import 'package:sunriza26/services/livekit_service.dart';
 
 /// MP3 Stream Audio Source für just_audio
@@ -215,11 +217,19 @@ class StreamingStrategy implements LipsyncStrategy {
 
   @override
   Future<void> warmUp() async {
-    // WS vorwärmen, damit speak() sofort senden kann
-    if (_channel == null && !_isConnecting) {
-      try {
-        await _connect();
-      } catch (_) {}
+    // Einmaliger Warmup-Ping gegen /health (kein permanentes Warmhalten)
+    try {
+      if (!EnvService.orchestratorWarmupEnabled()) return;
+      final httpBase = AppConfig.orchestratorUrl
+          .replaceFirst('wss://', 'https://')
+          .replaceFirst('ws://', 'http://');
+      final url = httpBase.endsWith('/')
+          ? '${httpBase}health'
+          : '$httpBase/health';
+      // 1 Ping, kurze Timeout → verhindert Hängenbleiben
+      await http.get(Uri.parse(url)).timeout(const Duration(seconds: 3));
+    } catch (_) {
+      // Ignorieren – Warmup ist Best-Effort
     }
   }
 
@@ -273,6 +283,7 @@ class StreamingStrategy implements LipsyncStrategy {
       'seq': seq,
       'mp3': false,
       if (lkRoom != null && lkRoom.isNotEmpty) 'room': lkRoom,
+      if (lkRoom != null && lkRoom.isNotEmpty) 'pcm': true,
     };
     debugPrint('📤 Sending WS speak: ${jsonEncode(msg)}');
     _channel!.sink.add(jsonEncode(msg));
@@ -328,9 +339,7 @@ class StreamingStrategy implements LipsyncStrategy {
       onPlaybackStateChanged?.call(true);
     }
 
-    if (_currentSource == null) {
-      _currentSource = StreamingMp3Source();
-    }
+    _currentSource ??= StreamingMp3Source();
 
     // Chunk zum Stream hinzufügen
     _currentSource!.addChunk(audioBytes);

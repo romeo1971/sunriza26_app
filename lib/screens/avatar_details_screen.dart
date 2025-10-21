@@ -1464,6 +1464,32 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       onDeleteDynamics: (id) => _deleteDynamicsVideo(id),
       onShowCreateDynamicsDialog: _showCreateDynamicsDialog,
       buildSlider: _buildSlider,
+      dynamicsEnabled:
+          (_avatarData?.training?['dynamicsEnabled'] as bool?) ?? true,
+      lipsyncEnabled:
+          (_avatarData?.training?['lipsyncEnabled'] as bool?) ?? true,
+      onToggleDynamics: (v) async {
+        if (_avatarData == null) return;
+        final training = Map<String, dynamic>.from(_avatarData!.training ?? {});
+        training['dynamicsEnabled'] = v;
+        final updated = _avatarData!.copyWith(
+          training: training,
+          updatedAt: DateTime.now(),
+        );
+        final ok = await _avatarService.updateAvatar(updated);
+        if (ok && mounted) await _applyAvatar(updated);
+      },
+      onToggleLipsync: (v) async {
+        if (_avatarData == null) return;
+        final training = Map<String, dynamic>.from(_avatarData!.training ?? {});
+        training['lipsyncEnabled'] = v;
+        final updated = _avatarData!.copyWith(
+          training: training,
+          updatedAt: DateTime.now(),
+        );
+        final ok = await _avatarService.updateAvatar(updated);
+        if (ok && mounted) await _applyAvatar(updated);
+      },
     );
   }
 
@@ -1507,14 +1533,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             thumbShape: const GradientSliderThumbShape(thumbRadius: 8),
             overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
           ),
-          child: Slider(
-            value: value,
-            min: min,
-            max: max,
-            divisions: divisions,
-            activeColor: AppColors.lightBlue,
-            inactiveColor: Colors.white.withValues(alpha: 0.2),
-            onChanged: onChanged,
+          child: MouseRegion(
+            cursor: SystemMouseCursors.click,
+            child: Slider(
+              value: value,
+              min: min,
+              max: max,
+              divisions: divisions,
+              activeColor: AppColors.lightBlue,
+              inactiveColor: Colors.white.withValues(alpha: 0.2),
+              onChanged: onChanged,
+            ),
           ),
         ),
         if (recommendation != null)

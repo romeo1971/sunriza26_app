@@ -62,4 +62,17 @@ class EnvService {
     }
     return '';
   }
+
+  // Feature-Flags für Orchestrator
+  static bool orchestratorEnabled() {
+    final v = _safeEnv('ORCHESTRATOR_ENABLED');
+    if (v.isEmpty) return true; // Default: an
+    return !(v == '0' || v.toLowerCase() == 'false');
+  }
+
+  static bool orchestratorWarmupEnabled() {
+    final v = _safeEnv('ORCHESTRATOR_WARMUP');
+    if (v.isEmpty) return true; // Default: an
+    return !(v == '0' || v.toLowerCase() == 'false');
+  }
 }

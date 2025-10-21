@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../theme/app_theme.dart';
 import 'expansion_tile_base.dart';
 import 'dynamics_item_tile.dart';
 
@@ -49,6 +50,10 @@ class DynamicsExpansionTile extends StatelessWidget {
     String? recommendation,
   })
   buildSlider;
+  final bool dynamicsEnabled;
+  final bool lipsyncEnabled;
+  final ValueChanged<bool> onToggleDynamics;
+  final ValueChanged<bool> onToggleLipsync;
 
   const DynamicsExpansionTile({
     super.key,
@@ -78,17 +83,187 @@ class DynamicsExpansionTile extends StatelessWidget {
     this.onDeleteDynamics,
     required this.onShowCreateDynamicsDialog,
     required this.buildSlider,
+    required this.dynamicsEnabled,
+    required this.lipsyncEnabled,
+    required this.onToggleDynamics,
+    required this.onToggleLipsync,
   });
 
   @override
   Widget build(BuildContext context) {
     final hasHeroVideo = heroVideoUrl != null && heroVideoUrl!.isNotEmpty;
 
+    // Wenn Video global deaktiviert ist: nur Header mit Toggle anzeigen
+    if (!dynamicsEnabled) {
+      return BaseExpansionTile(
+        title: 'Dynamics   ',
+        emoji: '',
+        initiallyExpanded: false,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Basic',
+                  style: TextStyle(color: Colors.white),
+                ),
+              ),
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => onToggleDynamics(!dynamicsEnabled),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      children: [
+                        const Text(
+                          'Video inaktiv',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 48,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              margin: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.5),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+        ],
+      );
+    }
+
     return BaseExpansionTile(
-      title: 'Dynamics',
+      title: 'Dynamics   ',
       emoji: '', // Kein Icon
       initiallyExpanded: false,
       children: [
+        // Header-Leiste: Tabs + Video On/Off rechts
+        AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInOut,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Text(
+                      'Basic',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  // const SizedBox(width: 8),
+                ],
+              ),
+              MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  onTap: () => onToggleDynamics(!dynamicsEnabled),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          'Video ${dynamicsEnabled ? 'aktiv' : 'inaktiv'}',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          width: 48,
+                          height: 28,
+                          decoration: BoxDecoration(
+                            color: dynamicsEnabled
+                                ? Colors.white.withValues(alpha: 0.2)
+                                : Colors.white.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: AnimatedAlign(
+                            duration: const Duration(milliseconds: 200),
+                            alignment: dynamicsEnabled
+                                ? Alignment.centerRight
+                                : Alignment.centerLeft,
+                            child: Container(
+                              width: 24,
+                              height: 24,
+                              margin: const EdgeInsets.all(2),
+                              decoration: BoxDecoration(
+                                gradient: dynamicsEnabled
+                                    ? const LinearGradient(
+                                        colors: [
+                                          AppColors.magenta,
+                                          AppColors.lightBlue,
+                                        ],
+                                      )
+                                    : null,
+                                color: dynamicsEnabled
+                                    ? null
+                                    : Colors.white.withValues(alpha: 0.5),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        // const SizedBox(height: 4),
         // Info Text: Kein Hero-Video
         if (!hasHeroVideo)
           Container(
@@ -183,7 +358,7 @@ class DynamicsExpansionTile extends StatelessWidget {
         if (hasHeroVideo) ...[
           const SizedBox(height: 16),
 
-          // Render jede Dynamics als eigene Tile
+          // Render jede Dynamics als eigene Tile (Basic ohne Header)
           ...dynamicsData.entries.map((entry) {
             final id = entry.key;
             final data = entry.value;
@@ -230,6 +405,11 @@ class DynamicsExpansionTile extends StatelessWidget {
                     ? () => onDeleteDynamics!(id)
                     : null,
                 buildSlider: buildSlider,
+                dynamicsEnabled: dynamicsEnabled,
+                lipsyncEnabled: lipsyncEnabled,
+                onToggleDynamics: onToggleDynamics,
+                onToggleLipsync: onToggleLipsync,
+                showHeader: id != 'basic',
               ),
             );
           }),
@@ -268,6 +448,7 @@ class DynamicsExpansionTile extends StatelessWidget {
           //     ),
           //   ),
         ],
+        // Footer entfernt – globale Toggles werden in DynamicsItemTile angezeigt
       ],
     );
   }

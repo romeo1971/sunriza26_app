@@ -20,6 +20,7 @@ import '../services/livekit_service.dart';
 import '../services/lipsync/lipsync_strategy.dart';
 import '../services/lipsync/lipsync_factory.dart';
 import '../config.dart';
+import '../theme/app_theme.dart';
 import 'package:livekit_client/livekit_client.dart' as lk;
 import 'package:video_player/video_player.dart';
 import '../services/playlist_service.dart';
@@ -44,6 +45,8 @@ class AvatarChatScreen extends StatefulWidget {
 class _AvatarChatScreenState extends State<AvatarChatScreen>
     with AutomaticKeepAliveClientMixin {
   final TextEditingController _messageController = TextEditingController();
+  bool _inputFocused = false;
+  bool _firstValidSend = false; // vermeidet Kosten vor erstem echten Senden
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   Timer? _publisherIdleTimer; // Stoppt MuseTalk bei Inaktivität (Kostenbremse)
@@ -111,6 +114,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   int _silenceMs = 0;
   bool _sttBusy = false;
   bool _segmentClosing = false;
+  // Kosten: MuseTalk nicht mehr vorab starten – erst beim ersten Sprechen
+  static const bool _kPrestartMuseTalk = false;
+
+  // Hinweis-Banner (GMBC) oberhalb der Input-Leiste
+  String? _bannerText; // z.B. "Bitte Text prüfen und Senden tippen."
+  Timer? _bannerTimer;
 
   // Image Timeline für automatischen Bildwechsel
   String? _currentBackgroundImage;
@@ -566,11 +575,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         }
       }
 
-      // Erlaube Start auch nur mit Frames, ohne idleVideoUrl
-      if ((idleVideoUrl == null || idleVideoUrl.isEmpty) &&
-          (framesZipUrl == null || framesZipUrl.isEmpty) &&
-          (latentsUrl == null || latentsUrl.isEmpty)) {
-        debugPrint('❌ No idle video, frames_zip or latents for MuseTalk');
+      // Ohne idle.mp4 KEIN Lipsync/MuseTalk
+      if (idleVideoUrl == null || idleVideoUrl.isEmpty) {
+        debugPrint('🛑 Kein idle.mp4 – Lipsync/MuseTalk deaktiviert');
         return;
       }
 
@@ -592,10 +599,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         body: jsonEncode({
           'room': room,
           'avatar_id': avatarId,
-          'idle_video_url': idleVideoUrl, // MuseTalk kann mp4 nutzen…
-          if (framesZipUrl != null && framesZipUrl.isNotEmpty)
-            'frames_zip_url':
-                framesZipUrl, // …bevorzugt aber vorbereitete Frames
+          'idle_video_url': idleVideoUrl,
         }),
       );
 
@@ -614,15 +618,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           'room': room,
           'connect_livekit': true,
         };
-        // FASTEST: Pre-computed latents (0.5s Cold Start!)
-        if (latentsUrl != null && latentsUrl.isNotEmpty) {
-          payload['latents_url'] = latentsUrl;
-          debugPrint('⚡ Using pre-computed latents (fast path!)');
-        } else if (framesZipUrl != null && framesZipUrl.isNotEmpty) {
-          payload['frames_zip_url'] = framesZipUrl;
-        } else if (idleVideoUrl != null && idleVideoUrl.isNotEmpty) {
-          payload['idle_video_url'] = idleVideoUrl;
-        }
+        // Nur idle.mp4 erlauben
+        payload['idle_video_url'] = idleVideoUrl;
         await http.post(
           Uri.parse(mtUrl),
           headers: {'Content-Type': 'application/json'},
@@ -639,6 +636,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       // Bei Fehler: Guard zurücksetzen, damit Retry möglich ist
       _globalActiveMuseTalkRooms.remove(room);
     }
+  }
+
+  Future<void> _ensureMuseTalkStarted() async {
+    final roomName = LiveKitService().roomName;
+    if (roomName == null || roomName.isEmpty) return;
+    if (_avatarData?.id == null || _cachedVoiceId == null) return;
+    // Lipsync global deaktiviert? → sofort abbrechen (Audio‑only Modus)
+    final lipsyncEnabled =
+        (_avatarData?.training?['lipsyncEnabled'] as bool?) ?? true;
+    if (!lipsyncEnabled) return;
+    if (_globalActiveMuseTalkRooms.containsKey(roomName)) return;
+    debugPrint('🎬 Lazy-start MuseTalk publisher for room=$roomName');
+    unawaited(
+      _startLiveKitPublisher(roomName, _avatarData!.id, _cachedVoiceId!),
+    );
   }
 
   Future<void> _stopLiveKitPublisher(
@@ -721,12 +733,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   void initState() {
     super.initState();
 
-    // Initialize Lipsync Strategy
+    // Initialize Lipsync Strategy (Streaming bevorzugt; fallback per Flag)
+    final useOrch = EnvService.orchestratorEnabled();
+    final mode = useOrch ? AppConfig.lipsyncMode : LipsyncMode.fileBased;
     _lipsync = LipsyncFactory.create(
-      mode: AppConfig.lipsyncMode,
+      mode: mode,
       backendUrl: AppConfig.backendUrl,
       orchestratorUrl: AppConfig.orchestratorUrl,
     );
+
+    // Einmaliger Warmup-Ping vor erster Eingabe (kein permanentes Warmhalten)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _lipsync.warmUp();
+    });
 
     // Callback für Streaming Playback Status
     _lipsync.onPlaybackStateChanged = (isPlaying) async {
@@ -863,22 +882,24 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           await _lipsync.warmUp();
         } catch (_) {}
         final manual = (dotenv.env['LIVEKIT_MANUAL_START'] ?? '').trim() == '1';
-        if (!manual) {
-          await _maybeJoinLiveKit();
-        }
         // History parallel laden (nicht blockierend!)
         unawaited(_loadHistory());
 
-        // WICHTIG: Video ERST laden, DANN Greeting abspielen (sonst Audio startet vor Video!)
+        // Auto‑Greeting aktiv (kostengünstig)
         final greet = (_avatarData?.greetingText?.trim().isNotEmpty == true)
             ? _avatarData!.greetingText!
             : ((_partnerName ?? '').isNotEmpty
                   ? _friendlyGreet(_partnerName ?? '')
                   : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
 
-        // Video laden UND auf Chunk1 warten, DANN Greeting!
-        _initLiveAvatar(_avatarData!.id).then((_) {
-          debugPrint('🎙️ Greeting NACH Video-Start: voiceId=$_cachedVoiceId');
+        // Video laden; danach Greeting abspielen
+        _initLiveAvatar(_avatarData!.id).then((_) async {
+          final lipsyncEnabled =
+              (_avatarData?.training?['lipsyncEnabled'] as bool?) ?? true;
+          if (!manual && _hasIdleDynamics && lipsyncEnabled) {
+            await _maybeJoinLiveKit();
+          }
+          debugPrint('🎙️ Auto‑Greeting');
           unawaited(_botSay(greet));
         });
       }
@@ -891,14 +912,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('⚠️ _avatarData noch nicht geladen');
         return;
       }
+      // respektiere Toggles
+      final dynamicsEnabled =
+          (_avatarData?.training?['dynamicsEnabled'] as bool?) ?? true;
 
       // DIREKT aus _avatarData.dynamics lesen - KEINE Firestore Query! 🚀
       final dynamics = _avatarData!.dynamics;
       final basicDynamics = dynamics?['basic'] as Map<String, dynamic>?;
 
-      if (basicDynamics == null || basicDynamics['status'] != 'ready') {
+      if (!dynamicsEnabled ||
+          basicDynamics == null ||
+          basicDynamics['status'] != 'ready') {
         debugPrint(
-          '⚠️ Dynamics-Video: Kein "basic" Dynamics vorhanden für $avatarId\n'
+          '⚠️ Dynamics-Video: deaktiviert oder kein "basic" Dynamics für $avatarId\n'
           '→ Fallback: Nur Hero-Image wird angezeigt',
         );
         if (!mounted) return;
@@ -1051,18 +1077,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('✅ Idle-Video initialisiert (swap): $idleUrl');
       }
 
-      // MuseTalk Session EINMAL vorbereiten (wenn LiveKit aktiv + idle.mp4 vorhanden)
-      final roomName = LiveKitService().roomName;
-      if (roomName != null &&
-          roomName.isNotEmpty &&
-          _avatarData?.id != null &&
-          _cachedVoiceId != null &&
-          !_globalActiveMuseTalkRooms.containsKey(roomName)) {
-        // Nur wenn noch nicht aktiv (global check)!
-        debugPrint('🎬 Preparing MuseTalk session (once) for room=$roomName');
-        unawaited(
-          _startLiveKitPublisher(roomName, _avatarData!.id, _cachedVoiceId!),
-        );
+      // Optionales Prestarten deaktiviert (Kostenbremse)
+      if (_kPrestartMuseTalk) {
+        final roomName = LiveKitService().roomName;
+        if (roomName != null &&
+            roomName.isNotEmpty &&
+            _avatarData?.id != null &&
+            _cachedVoiceId != null &&
+            !_globalActiveMuseTalkRooms.containsKey(roomName)) {
+          debugPrint('🎬 Preparing MuseTalk session (once) for room=$roomName');
+          unawaited(
+            _startLiveKitPublisher(roomName, _avatarData!.id, _cachedVoiceId!),
+          );
+        }
       }
     } catch (e) {
       debugPrint('❌ Idle-Video Init Fehler: $e');
@@ -1310,8 +1337,88 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
                       // Input-Bereich
                       _buildInputArea(),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 28),
                     ],
+                  ),
+                ),
+              ),
+
+              // Aufnahme-Badge (GMBC) über Input, nur bei aktiver Aufnahme
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 61 + 28,
+                child: IgnorePointer(
+                  ignoring: true,
+                  child: AnimatedOpacity(
+                    opacity: _isRecording ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 150),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [AppColors.magenta, AppColors.lightBlue],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: const [
+                            Icon(Icons.mic, size: 14, color: Colors.white),
+                            SizedBox(width: 6),
+                            Text(
+                              'Aufnahme läuft…',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              // Dynamischer Hinweis-Badge (z.B. Bitte Text prüfen...)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 61 + 28,
+                child: IgnorePointer(
+                  ignoring: true,
+                  child: AnimatedOpacity(
+                    opacity: (_bannerText != null && _bannerText!.isNotEmpty)
+                        ? 1.0
+                        : 0.0,
+                    duration: const Duration(milliseconds: 150),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            colors: [AppColors.magenta, AppColors.lightBlue],
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          _bannerText ?? '',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1853,78 +1960,134 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       top: false,
       bottom: true,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
-        decoration: const BoxDecoration(
-          color: Color(0x20000000),
-          border: Border(top: BorderSide(color: Color(0x40FFFFFF))),
+        padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
+        decoration: BoxDecoration(
+          // gesamte Leiste leicht weiß, ohne Farbstich
+          color: Colors.white.withOpacity(0.3),
         ),
-        child: Row(
-          children: [
-            // Mikrofon-Button
-            GestureDetector(
-              onTap: _toggleRecording,
-              child: Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: _isRecording ? Colors.red : Colors.black,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: (_isRecording ? Colors.red : Colors.black)
-                          .withValues(alpha: 0.3),
-                      blurRadius: 10,
-                      spreadRadius: 2,
+        child: ValueListenableBuilder<TextEditingValue>(
+          valueListenable: _messageController,
+          builder: (context, value, _) {
+            final hasText = value.text.trim().isNotEmpty;
+            return Row(
+              children: [
+                // Plus-Button (Anhänge)
+                GestureDetector(
+                  onTap: () {},
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.add,
+                        color: Colors.black54,
+                        size: 22,
+                      ),
                     ),
-                  ],
-                ),
-                child: Icon(
-                  _isRecording ? Icons.stop : Icons.mic,
-                  color: Colors.white,
-                  size: 24,
-                ),
-              ),
-            ),
-
-            const SizedBox(width: 12),
-
-            // Text-Eingabe
-            Expanded(
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.circular(25),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.5),
                   ),
                 ),
-                child: const _ChatInputField(),
-              ),
-            ),
 
-            const SizedBox(width: 12),
+                const SizedBox(width: 8),
 
-            // Senden-Button
-            GestureDetector(
-              onTap: _sendMessage,
-              child: Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  color: Colors.black,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black54,
-                      blurRadius: 10,
-                      spreadRadius: 2,
+                // Text-Eingabe (ohne Rahmenlinien)
+                Expanded(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 36),
+                    child: AnimatedContainer(
+                      decoration: BoxDecoration(
+                        // Weiß-transparenter Feld-Background (kein Grünstich)
+                        color: _inputFocused
+                            ? Colors.white.withOpacity(0.4)
+                            : Colors.white.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.white54), // light grey
+                      ),
+                      clipBehavior: Clip.hardEdge,
+                      duration: const Duration(milliseconds: 120),
+                      child: const _ChatInputField(),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 6),
+
+                // Rechts: Mic UND Send nebeneinander
+                Row(
+                  children: [
+                    GestureDetector(
+                      onTap: _toggleRecording,
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: _isRecording
+                              ? ShaderMask(
+                                  shaderCallback: (bounds) =>
+                                      const LinearGradient(
+                                        colors: [
+                                          AppColors.magenta,
+                                          AppColors.lightBlue,
+                                        ],
+                                      ).createShader(bounds),
+                                  blendMode: BlendMode.srcIn,
+                                  child: const Icon(
+                                    Icons.stop,
+                                    color: Colors.white,
+                                    size: 22,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.mic,
+                                  color: Colors.black54,
+                                  size: 22,
+                                ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    GestureDetector(
+                      onTap: () {
+                        _sendMessage();
+                        _messageController.clear();
+                        setState(() {}); // Box schrumpft
+                      },
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: SizedBox(
+                          width: 36,
+                          height: 36,
+                          child: hasText
+                              ? ShaderMask(
+                                  shaderCallback: (bounds) =>
+                                      const LinearGradient(
+                                        colors: [
+                                          AppColors.magenta,
+                                          AppColors.lightBlue,
+                                        ],
+                                      ).createShader(bounds),
+                                  blendMode: BlendMode.srcIn,
+                                  child: const Icon(
+                                    Icons.send,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.send,
+                                  color: Colors.black45,
+                                  size: 20,
+                                ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-                child: const Icon(Icons.send, color: Colors.white, size: 24),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
       ),
     );
@@ -1988,7 +2151,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       _silenceMs = 0;
       await _startNewSegment();
       if (mounted) setState(() => _isRecording = true);
-      _showSystemSnack('Aufnahme läuft…');
     } catch (e) {
       _showSystemSnack('Aufnahme-Start fehlgeschlagen: $e');
     }
@@ -2137,13 +2299,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   }
 
   Future<void> _sendMessage() async {
-    if (_messageController.text.trim().isNotEmpty) {
+    final raw = _messageController.text;
+    // Verhindere Kosten: Nur senden, wenn echter Inhalt vorhanden ist
+    final text = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (text.isNotEmpty) {
+      // Lazy-start MuseTalk beim ersten Sprechen (Kostenbremse)
+      if (!_firstValidSend) {
+        _firstValidSend = true;
+        unawaited(_ensureMuseTalkStarted());
+      }
       // Aktuellen Stream sauber beenden, nur bei explizitem Senden
       try {
         await _lipsync.stop();
       } catch (_) {}
 
-      final text = _messageController.text.trim();
+      // text ist bereits getrimmt/normalisiert
       // Direkte Beantwortung: "Weißt du, wer ich bin?"
       final whoAmI = RegExp(
         r'(wei[ßs]t\s+du\s+wer\s+ich\s+bin\??|wer\s+bin\s+ich\??|kennst\s+du\s+mich\??)',
@@ -2267,7 +2437,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         return;
       }
 
-      _chatWithBackend(_messages.last.text);
+      // Nur wenn ein echter User-Text vorhanden ist
+      if (text.isNotEmpty) {
+        _chatWithBackend(text);
+      }
     }
   }
 
@@ -3051,9 +3224,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   void _showSystemSnack(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    // Statt SnackBar: zeige GMBC-Banner über dem Inputfeld
+    setState(() => _bannerText = message);
+    _bannerTimer?.cancel();
+    _bannerTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      setState(() => _bannerText = null);
+    });
   }
 
   void _scrollToBottom() {
@@ -3472,18 +3649,59 @@ class _ChatInputField extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.findAncestorStateOfType<_AvatarChatScreenState>();
     final controller = state!._messageController;
-    return TextField(
-      controller: controller,
-      decoration: const InputDecoration(
-        hintText: 'Nachricht eingeben...',
-        hintStyle: TextStyle(color: Colors.white70),
-        border: InputBorder.none,
-        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    return Theme(
+      data: Theme.of(context).copyWith(
+        textSelectionTheme: const TextSelectionThemeData(
+          selectionColor:
+              Colors.transparent, // kein grüner Selektionshintergrund
+          selectionHandleColor: AppColors.magenta,
+          cursorColor: AppColors.magenta,
+        ),
       ),
-      style: const TextStyle(color: Colors.white),
-      maxLines: null,
-      textInputAction: TextInputAction.send,
-      onSubmitted: (_) => state._sendMessage(),
+      child: Focus(
+        onFocusChange: (hasFocus) {
+          state.setState(() => state._inputFocused = hasFocus);
+        },
+        child: TextField(
+          controller: controller,
+          cursorColor: AppColors.magenta,
+          keyboardType: TextInputType.multiline,
+          textInputAction: TextInputAction.newline,
+          textAlignVertical: TextAlignVertical.center,
+          // Saubere vertikale Zentrierung und feste Zeilenhöhe
+          strutStyle: const StrutStyle(height: 1.2, forceStrutHeight: true),
+          minLines: 1,
+          maxLines: null, // wächst bei Bedarf weiter
+          decoration: InputDecoration(
+            hintText: 'Nachricht eingeben...',
+            hintStyle: TextStyle(
+              color: AppColors.magenta.withValues(alpha: 0.7), // GMBC 0.7
+              fontSize: 14,
+              height: 1.0,
+            ),
+            filled: true,
+            fillColor: Colors.transparent, // überschreibt grünes Theme-Fill
+            isDense: true,
+            isCollapsed: true,
+            border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            errorBorder: InputBorder.none,
+            disabledBorder: InputBorder.none,
+            // Symmetrisch, damit Text nie unter die Border rutscht
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 8,
+            ),
+          ),
+          style: const TextStyle(
+            color: Color(0xFF2E2E2E),
+            fontSize: 14,
+            height: 1.0,
+          ),
+          // Return fügt Zeile ein; Senden über Icon
+        ),
+      ),
     );
   }
 }

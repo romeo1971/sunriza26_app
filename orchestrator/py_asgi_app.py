@@ -177,6 +177,7 @@ async def ws_root(ws: WebSocket):
                 voice_id = data.get("voice_id")
                 text = data.get("text", "")
                 mp3_needed = data.get("mp3", True)
+                pcm_needed = bool(data.get("pcm", False))
                 # Room speichern für Audio-Publishing
                 global last_client_room
                 room_from_client = data.get("room")
@@ -184,7 +185,7 @@ async def ws_root(ws: WebSocket):
                     last_client_room = room_from_client.strip()
                 # Einmalige TTS-Session ausführen und danach Verbindung schließen,
                 # damit der Container skalieren kann.
-                await stream_eleven(ws, voice_id, text, mp3_needed=mp3_needed)
+                await stream_eleven(ws, voice_id, text, mp3_needed=mp3_needed, pcm_needed=pcm_needed)
                 try:
                     await ws.close(code=1000)
                 except Exception:
@@ -513,7 +514,7 @@ async def publisher_stop(req: Request):
         # Niemals 500 beim Stop zurückgeben – Client-Fluss muss stabil bleiben
         return {"status": "stopped", "room": room}
 
-async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: bool = True):
+async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: bool = True, pcm_needed: bool = False):
     if not ELEVEN_KEY:
         await _safe_send(ws, {"type": "error", "message": "ELEVENLABS_API_KEY missing"})
         return
@@ -532,15 +533,16 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
     if mp3_needed:
         ew_mp3 = await websockets.connect(url_mp3, additional_headers=headers)
 
-    # PCM‑Verbindung IMMER öffnen (unabhängig vom LP‑WS); Flutter erhält 'pcm'‑Chunks
-    if True:
+    # PCM‑Verbindung nur bei Bedarf öffnen (Kosten sparen)
+    if mp3_needed or pcm_needed:
         ew_pcm = None
         try:
-            ew_pcm = await websockets.connect(url_pcm, additional_headers=headers)
-            await ew_pcm.send(json.dumps({
-                "text": " ",
-                "voice_settings": {"stability": 0.5, "similarity_boost": 0.8, "speed": 1},
-            }))
+            if pcm_needed:
+                ew_pcm = await websockets.connect(url_pcm, additional_headers=headers)
+                await ew_pcm.send(json.dumps({
+                    "text": " ",
+                    "voice_settings": {"stability": 0.5, "similarity_boost": 0.8, "speed": 1},
+                }))
         except Exception:
             ew_pcm = None
         # INIT
@@ -549,12 +551,12 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
         # TEXT
         if ew_mp3:
             await ew_mp3.send(json.dumps({"text": text}))
-        if ew_pcm:
+        if pcm_needed and ew_pcm:
             await ew_pcm.send(json.dumps({"text": text}))
         # EOS
         if ew_mp3:
             await ew_mp3.send(json.dumps({"text": ""}))
-        if ew_pcm:
+        if pcm_needed and ew_pcm:
             await ew_pcm.send(json.dumps({"text": ""}))
 
         async def loop_mp3():
@@ -644,7 +646,7 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
                 except Exception:
                     continue
 
-        # Starte beide Loops parallel
+        # Starte Loops parallel (PCM nur wenn benötigt)
         await asyncio.gather(loop_mp3(), loop_pcm())
         
         # ElevenLabs WS schließen (wichtig für Container scale-down!)
@@ -653,7 +655,7 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
                 await ew_mp3.close()
             except Exception:
                 pass
-        if ew_pcm:
+        if pcm_needed and ew_pcm:
             try:
                 await ew_pcm.close()
             except Exception:
