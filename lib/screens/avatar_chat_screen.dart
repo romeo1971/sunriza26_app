@@ -319,53 +319,92 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       }
       final user = FirebaseAuth.instance.currentUser;
       if (user == null || _avatarData == null) return;
-      // Avatar-Info vor Join abrufen und an Agent/Backend übermitteln (optional nutzbar)
-      try {
-        final infoRes = await http.post(
-          Uri.parse('$base/avatar/info'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'user_id': user.uid, 'avatar_id': _avatarData!.id}),
-        );
-        if (infoRes.statusCode >= 200 && infoRes.statusCode < 300) {
-          final info = jsonDecode(infoRes.body) as Map<String, dynamic>;
-          final imgUrl = (info['avatar_image_url'] as String?)?.trim();
-          if (imgUrl != null && imgUrl.isNotEmpty) {
-            // Für spätere Nutzungen verfügbar halten (wenn gewünscht)
+
+      // Raum vorab bestimmen (für GET-Fallback nutzbar)
+      String roomCandidate =
+          LiveKitService().roomName ?? _persistentRoomName ?? '';
+      if (roomCandidate.isEmpty) {
+        final uid = user.uid;
+        final short = uid.length >= 8 ? uid.substring(0, 8) : uid;
+        roomCandidate = 'mt-$short-${DateTime.now().millisecondsSinceEpoch}';
+        _persistentRoomName = roomCandidate;
+        debugPrint('🆕 Pre-generated room candidate: $roomCandidate');
+      }
+      // Avatar-Info optional senden (fire-and-forget, mit kurzem Timeout)
+      unawaited(() async {
+        try {
+          final infoRes = await http
+              .post(
+                Uri.parse('$base/avatar/info'),
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({
+                  'user_id': user.uid,
+                  'avatar_id': _avatarData!.id,
+                }),
+              )
+              .timeout(const Duration(seconds: 3));
+          if (infoRes.statusCode >= 200 && infoRes.statusCode < 300) {
+            final info = jsonDecode(infoRes.body) as Map<String, dynamic>;
+            final imgUrl = (info['avatar_image_url'] as String?)?.trim();
+            if (imgUrl != null && imgUrl.isNotEmpty) {
+              // optional nutzbar
+            }
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }());
       final uri = tokenUri;
       debugPrint('🌐 Requesting LiveKit token from: $uri');
-      final res = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'user_id': user.uid,
-          'avatar_id': _avatarData!.id,
-          'name': user.displayName,
-          'avatar_image_url': _avatarData?.avatarImageUrl,
-        }),
-      );
+      final res = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'user_id': user.uid,
+              'avatar_id': _avatarData!.id,
+              'name': user.displayName,
+              'avatar_image_url': _avatarData?.avatarImageUrl,
+            }),
+          )
+          .timeout(const Duration(seconds: 6));
       debugPrint('📥 Token response: ${res.statusCode}');
-      if (res.statusCode < 200 || res.statusCode >= 300) {
-        // Fallback: .env Test‑Join
-        final testToken = (dotenv.env['LIVEKIT_TEST_TOKEN'] ?? '').trim();
-        final url = (dotenv.env['LIVEKIT_URL'] ?? '').trim();
-        final fallbackRoom = (dotenv.env['LIVEKIT_TEST_ROOM'] ?? 'sunriza')
-            .trim();
-        if (testToken.isNotEmpty && url.isNotEmpty) {
-          debugPrint(
-            '⚠️ Token endpoint failed (${res.statusCode}) – fallback to TEST env',
-          );
-          await LiveKitService().join(
-            room: fallbackRoom,
-            token: testToken,
-            urlOverride: url,
-          );
+      Map<String, dynamic>? data;
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        data = jsonDecode(res.body) as Map<String, dynamic>;
+      } else {
+        debugPrint('⚠️ Token POST failed (${res.statusCode}) – trying GET...');
+        try {
+          final getUri = Uri.parse(
+            tokenUri.toString(),
+          ).replace(queryParameters: {'room': roomCandidate});
+          final getRes = await http
+              .get(getUri)
+              .timeout(const Duration(seconds: 6));
+          debugPrint('📥 Token GET response: ${getRes.statusCode}');
+          if (getRes.statusCode >= 200 && getRes.statusCode < 300) {
+            data = jsonDecode(getRes.body) as Map<String, dynamic>;
+          }
+        } catch (e) {
+          debugPrint('⚠️ Token GET exception: $e');
         }
-        return;
+
+        if (data == null) {
+          // Letzter Fallback: .env Test‑Join
+          final testToken = (dotenv.env['LIVEKIT_TEST_TOKEN'] ?? '').trim();
+          final url = (dotenv.env['LIVEKIT_URL'] ?? '').trim();
+          final fallbackRoom = (dotenv.env['LIVEKIT_TEST_ROOM'] ?? 'sunriza')
+              .trim();
+          if (testToken.isNotEmpty && url.isNotEmpty) {
+            debugPrint('⚠️ Falling back to TEST env token');
+            await LiveKitService().join(
+              room: fallbackRoom,
+              token: testToken,
+              urlOverride: url,
+            );
+          }
+          return;
+        }
       }
-      final data = jsonDecode(res.body) as Map<String, dynamic>;
+
       final token = (data['token'] as String?)?.trim();
       String? room = (data['room'] as String?)?.trim();
       final lkUrl = (data['url'] as String?)?.trim();
@@ -385,19 +424,40 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           );
         } else if (_persistentRoomName == null ||
             _persistentRoomName!.isEmpty) {
-          // 2. Ansonsten: Neuen Room generieren
-          final uid = user.uid;
-          final short = uid.length >= 8 ? uid.substring(0, 8) : uid;
-          _persistentRoomName =
-              'mt-$short-${DateTime.now().millisecondsSinceEpoch}';
+          // 2. Ansonsten: vorab generierten Room verwenden
+          _persistentRoomName = roomCandidate;
           room = _persistentRoomName!;
-          debugPrint('🆕 Generated persistent room: $_persistentRoomName');
+          debugPrint('🆕 Using pre-generated room: $_persistentRoomName');
         } else {
           // 3. Fallback: persistentRoomName aus dieser Widget-Instanz
           room = _persistentRoomName!;
         }
       }
       if (token == null || token.isEmpty) {
+        // Versuch: GET-Fallback wenn POST ok, aber ohne Token
+        try {
+          final getUri = Uri.parse(
+            tokenUri.toString(),
+          ).replace(queryParameters: {'room': room ?? roomCandidate});
+          final getRes = await http
+              .get(getUri)
+              .timeout(const Duration(seconds: 6));
+          if (getRes.statusCode >= 200 && getRes.statusCode < 300) {
+            final d2 = jsonDecode(getRes.body) as Map<String, dynamic>;
+            final t2 = (d2['token'] as String?)?.trim();
+            final u2 = (d2['url'] as String?)?.trim();
+            final r2 = (d2['room'] as String?)?.trim();
+            if (t2 != null && t2.isNotEmpty && u2 != null && u2.isNotEmpty) {
+              await LiveKitService().join(
+                room: r2 ?? room ?? roomCandidate,
+                token: t2,
+                urlOverride: u2,
+              );
+              return;
+            }
+          }
+        } catch (_) {}
+
         // Fallback: .env Test‑Join
         final testToken = (dotenv.env['LIVEKIT_TEST_TOKEN'] ?? '').trim();
         final url = (dotenv.env['LIVEKIT_URL'] ?? '').trim();
@@ -421,9 +481,36 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       } catch (_) {}
       // Mapping wie im PDF: NEXT_PUBLIC_LIVEKIT_URL == LIVEKIT_URL → vom Backend geliefert
       debugPrint('✅ Joining LiveKit: room=$room, url=$lkUrl');
-      await LiveKitService().join(room: room, token: token, urlOverride: lkUrl);
+      try {
+        await Future.any([
+          LiveKitService().join(room: room, token: token, urlOverride: lkUrl),
+          Future.delayed(
+            const Duration(seconds: 8),
+            () => throw TimeoutException('LiveKit join timeout (8s)'),
+          ),
+        ]);
+        debugPrint('✅ LiveKit connected successfully!');
+      } catch (joinError) {
+        debugPrint('❌ LiveKit join failed (attempt 1/2): $joinError');
+        // Retry nach 2s (Network glitch, etc.)
+        await Future.delayed(const Duration(seconds: 2));
+        try {
+          debugPrint('🔄 Retrying LiveKit join...');
+          await Future.any([
+            LiveKitService().join(room: room, token: token, urlOverride: lkUrl),
+            Future.delayed(
+              const Duration(seconds: 8),
+              () => throw TimeoutException('LiveKit join retry timeout (8s)'),
+            ),
+          ]);
+          debugPrint('✅ LiveKit connected on retry!');
+        } catch (retryError) {
+          debugPrint('❌ LiveKit join failed permanently: $retryError');
+          // User kann trotzdem chatten (ohne Video/Audio)
+        }
+      }
     } catch (e) {
-      debugPrint('❌ LiveKit join failed: $e');
+      debugPrint('❌ LiveKit setup failed: $e');
     }
   }
 
@@ -605,6 +692,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   void _startAvatarListener(String avatarId) {
     _avatarSub?.cancel();
+
+    // GLOBAL Collection (hat dynamics!)
     _avatarSub = FirebaseFirestore.instance
         .collection('avatars')
         .doc(avatarId)
@@ -698,9 +787,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
       // SOFORT setzen, wenn als Argument übergeben (KEIN await!)
       if (args is AvatarData && _avatarData == null) {
-        setState(() {
-          _avatarData = args;
-        });
+        // WICHTIG: Neu laden aus globaler Collection (für dynamics!)
+        final doc = await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(args.id)
+            .get();
+        if (doc.exists && mounted) {
+          setState(() {
+            _avatarData = AvatarData.fromMap(doc.data()!);
+          });
+        }
         // Starte Firestore-Listener für Live-Updates
         _startAvatarListener(args.id);
       }
@@ -879,8 +975,28 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           '⚡ Chunk1 startet (lädt parallel)! Preload Chunk2+3+idle.mp4...',
         );
 
-        // 2. PARALLEL im Hintergrund: Chunk2, Chunk3, idle.mp4 laden (non-blocking!)
-        unawaited(_preloadChunks(chunk2Url, chunk3Url, idleUrl));
+        // 2. PARALLEL im Hintergrund: Chunk2, Chunk3, idle.mp4 laden –
+        //    aber erst nach LiveKit-Join starten (oder Fallback nach 2s),
+        //    damit Netzwerk/Thread nicht den Join verzögern.
+        if (LiveKitService().connected.value) {
+          unawaited(_preloadChunks(chunk2Url, chunk3Url, idleUrl));
+        } else {
+          void Function()? _onLkJoin;
+          _onLkJoin = () {
+            if (LiveKitService().connected.value) {
+              LiveKitService().connected.removeListener(_onLkJoin!);
+              unawaited(_preloadChunks(chunk2Url, chunk3Url, idleUrl));
+            }
+          };
+          LiveKitService().connected.addListener(_onLkJoin);
+          // Fallback: spätestens nach 2s trotzdem starten
+          Future.delayed(const Duration(seconds: 2), () {
+            try {
+              LiveKitService().connected.removeListener(_onLkJoin!);
+            } catch (_) {}
+            unawaited(_preloadChunks(chunk2Url, chunk3Url, idleUrl));
+          });
+        }
 
         // 3. Sequential Playback: Chunk1 → Chunk2 → Chunk3 → idle.mp4
         // WICHTIG: Listener muss sich nach erstem Trigger selbst entfernen!
@@ -3086,13 +3202,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     // Lipsync Strategy aufräumen (schließt WebSocket!)
     _lipsync.dispose();
 
-    // WICHTIG: LiveKit/MuseTalk NICHT stoppen beim Chat-Verlassen!
-    // → Wenn User raus/rein geht, sollte Session WARM bleiben (schneller 2. Start!)
-    // → MuseTalk Container stirbt automatisch nach 3 Min (scaledown_window)
-    // → LiveKit bleibt connected (kostet fast nix)
-    debugPrint(
-      '🔄 Chat dispose - LiveKit/MuseTalk bleiben WARM (für schnellen Re-Entry)',
-    );
+    // LiveKit disconnecten (spart ~1€/Monat bei 2.500 Min idle!)
+    final roomName = LiveKitService().roomName;
+    if (roomName != null && roomName.isNotEmpty) {
+      debugPrint(
+        '🔌 Disconnecting LiveKit & stopping MuseTalk (room: $roomName)',
+      );
+      unawaited(_stopLiveKitPublisher(roomName));
+      unawaited(LiveKitService().leave());
+    }
 
     super.dispose();
   }
