@@ -1660,7 +1660,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           label: context.read<LocalizationService>().t(
             'avatars.details.voiceSelectLabel',
           ),
-          value: _selectedVoiceId,
+          value: (() {
+            final current = _selectedVoiceId;
+            final String? cloneId =
+                (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
+                    ?.trim();
+            if (current != null && cloneId != null && current == cloneId) {
+              return '__CLONE__';
+            }
+            return current;
+          })(),
           items: () {
             final String? cloneId =
                 (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
@@ -1678,12 +1687,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 ),
               ),
             );
-            // Danach Standardstimmen, ohne Duplikat zur Clone-ID
+            // Danach Standardstimmen (inkl. ggf. Clone-ID; '__CLONE__' ist separater Eintrag)
             for (final v in _elevenVoices) {
               final id = (v['voice_id'] ?? v['voiceId'] ?? '') as String;
-              if (cloneId != null && cloneId.isNotEmpty && id == cloneId) {
-                continue; // Duplikat vermeiden
-              }
               items.add(
                 DropdownMenuItem<String>(
                   value: id,
@@ -1726,10 +1732,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (voiceId == '__CLONE__') {
         final cloneId = (voice['cloneVoiceId'] as String?)?.trim();
         if (cloneId != null && cloneId.isNotEmpty) {
+          // Konsistenz: beide Felder setzen
           voice['elevenVoiceId'] = cloneId;
+          voice['cloneVoiceId'] = cloneId;
         }
       } else if ((voiceId ?? '').isNotEmpty) {
+        // Auswahl einer Standardstimme: elevenVoiceId setzen,
+        // cloneVoiceId unverändert lassen (oder leeren, wenn identisch falsch gesetzt war)
         voice['elevenVoiceId'] = voiceId;
+        final currentClone = (voice['cloneVoiceId'] as String?)?.trim() ?? '';
+        if (currentClone.isNotEmpty && currentClone == '__CLONE__') {
+          voice.remove('cloneVoiceId');
+        }
       }
       existing['voice'] = voice;
       final updated = _avatarData!.copyWith(
@@ -2891,14 +2905,28 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             final data = jsonDecode(res.body) as Map<String, dynamic>;
             final voiceId = data['voice_id'] as String?;
             if (voiceId != null && voiceId.isNotEmpty) {
-              // training.voice.elevenVoiceId speichern
+              // training.voice.* konsistent setzen, aber nur wenn nötig
               final existingVoice = (_avatarData!.training != null)
                   ? Map<String, dynamic>.from(
                       _avatarData!.training!['voice'] ?? {},
                     )
                   : <String, dynamic>{};
-              existingVoice['elevenVoiceId'] = voiceId;
-              existingVoice['cloneVoiceId'] = voiceId;
+              final currentEleven =
+                  (existingVoice['elevenVoiceId'] as String?)?.trim() ?? '';
+              final currentClone =
+                  (existingVoice['cloneVoiceId'] as String?)?.trim() ?? '';
+
+              final needsUpdate =
+                  currentEleven.isEmpty ||
+                  currentClone.isEmpty ||
+                  currentEleven != currentClone ||
+                  currentEleven != voiceId ||
+                  currentClone != voiceId;
+
+              if (needsUpdate) {
+                existingVoice['elevenVoiceId'] = voiceId;
+                existingVoice['cloneVoiceId'] = voiceId;
+              }
               existingVoice['activeUrl'] = _activeAudioUrl;
               existingVoice['candidates'] = _avatarData!.audioUrls;
 

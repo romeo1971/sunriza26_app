@@ -46,6 +46,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
+  Timer? _publisherIdleTimer; // Stoppt MuseTalk bei Inaktivität (Kostenbremse)
   bool _isRecording = false;
   bool _isTyping = false;
   bool _isStreamingSpeaking = false; // steuert LivePortrait Canvas
@@ -640,7 +641,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     }
   }
 
-  Future<void> _stopLiveKitPublisher(String room) async {
+  Future<void> _stopLiveKitPublisher(
+    String room, {
+    bool stopSession = true,
+  }) async {
     try {
       final orchUrl = AppConfig.orchestratorUrl
           .replaceFirst('wss://', 'https://')
@@ -660,20 +664,22 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('✅ LiveKit publisher stopped');
       }
 
-      // Auch MuseTalk Session stoppen
-      try {
-        final mtUrl = AppConfig.museTalkHttpUrl.endsWith('/')
-            ? '${AppConfig.museTalkHttpUrl}session/stop'
-            : '${AppConfig.museTalkHttpUrl}/session/stop';
-        await http.post(
-          Uri.parse(mtUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'room': room}),
-        );
-        _globalActiveMuseTalkRooms.remove(room); // Reset GLOBAL Guard!
-        debugPrint('✅ MuseTalk session stopped (room=$room)');
-      } catch (e) {
-        debugPrint('⚠️ MuseTalk session stop failed: $e');
+      // Optional: MuseTalk Session stoppen (teurer Kaltstart vermeiden → nur bei explizitem Verlassen)
+      if (stopSession) {
+        try {
+          final mtUrl = AppConfig.museTalkHttpUrl.endsWith('/')
+              ? '${AppConfig.museTalkHttpUrl}session/stop'
+              : '${AppConfig.museTalkHttpUrl}/session/stop';
+          await http.post(
+            Uri.parse(mtUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'room': room}),
+          );
+          _globalActiveMuseTalkRooms.remove(room); // Reset GLOBAL Guard!
+          debugPrint('✅ MuseTalk session stopped (room=$room)');
+        } catch (e) {
+          debugPrint('⚠️ MuseTalk session stop failed: $e');
+        }
       }
     } catch (e) {
       debugPrint('❌ Publisher stop error: $e');
@@ -733,18 +739,27 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         // NICHT bei jedem Audio-Playback starten - das würde zu vielen Container-Starts führen!
         // Der Guard verhindert bereits doppelte Starts, aber wir vermeiden hier unnötige Calls.
 
-        // Optional: Session stoppen wenn Playback endet (normalerweise bleibt Session warm für Re-Use)
-        // DEAKTIVIERT: Lassen Session warm für nächstes Audio (spart Container-Startzeit!)
-        /*
+        // Kostenbremse: MuseTalk-Publisher automatisch stoppen, wenn
+        // 20s keine Ausgabe mehr (WhatsApp-ähnliches Verhalten: Session endet leise).
         final roomName = LiveKitService().roomName;
-        if (!isPlaying && roomName != null && roomName.isNotEmpty) {
-          // Debounce: warte kurz, ob noch weitere Audio‑Chunks kommen
-          await Future.delayed(const Duration(milliseconds: 350));
-          if (!_isStreamingSpeaking) {
-            await _stopLiveKitPublisher(roomName);
-          }
+        if (isPlaying) {
+          // Bei Aktivität: geplanten Stop abbrechen
+          _publisherIdleTimer?.cancel();
+          _publisherIdleTimer = null;
+        } else if (roomName != null && roomName.isNotEmpty) {
+          _publisherIdleTimer?.cancel();
+          _publisherIdleTimer = Timer(const Duration(seconds: 5), () async {
+            try {
+              if (!mounted) return;
+              // Nur stoppen, wenn weiterhin inaktiv
+              if (!_isStreamingSpeaking) {
+                debugPrint('⏹️ Auto-stop publisher only (idle 5s)');
+                // Nur Publisher stoppen (Session warm lassen, kein Kaltstart beim nächsten Prompt)
+                await _stopLiveKitPublisher(roomName, stopSession: false);
+              }
+            } catch (_) {}
+          });
         }
-        */
       }
     };
 
@@ -1079,213 +1094,229 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       backgroundImage = _cachedHeroChunkUrl;
     }
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        toolbarHeight: 56,
-        titleSpacing: 0,
-        leading: (widget.onClose == null)
-            ? IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () {
-                  if (Navigator.canPop(context)) {
-                    Navigator.pop(context);
-                  } else {
-                    Navigator.pushNamedAndRemoveUntil(
-                      context,
-                      '/avatar-list',
-                      (route) => false,
-                    );
-                  }
-                },
-              )
-            : const SizedBox(width: 48),
-        title: Transform.translate(
-          offset: const Offset(0, 3),
-          child: Text(
-            (() {
-              final parts = <String>[];
-              if (_avatarData?.firstNamePublic == true) {
-                parts.add(_avatarData!.firstName);
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) {
+        // Nur über AppBar-Back zulassen
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        extendBodyBehindAppBar: true,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: true,
+          toolbarHeight: 56,
+          titleSpacing: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () {
+              if (widget.onClose != null) {
+                widget.onClose!();
+                return;
               }
-              if (_avatarData?.nicknamePublic == true &&
-                  _avatarData?.nickname != null) {
-                parts.add('"${_avatarData!.nickname}"');
+              if (Navigator.canPop(context)) {
+                Navigator.pop(context);
+              } else {
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/avatar-list',
+                  (route) => false,
+                );
               }
-              if (_avatarData?.lastNamePublic == true &&
-                  _avatarData?.lastName != null) {
-                parts.add(_avatarData!.lastName!);
-              }
-              return parts.isEmpty ? '' : parts.join(' ');
-            })(),
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w300,
-              height: 1.0,
-              shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        actions: [
-          AnimatedBuilder(
-            animation: LiveKitService().connectionStatus,
-            builder: (context, _) {
-              final s = LiveKitService().connectionStatus.value;
-              Color bg = Colors.black.withValues(alpha: 0.6);
-              if (s == 'connected') bg = Colors.green.withValues(alpha: 0.7);
-              if (s == 'reconnecting') {
-                bg = Colors.orange.withValues(alpha: 0.7);
-              }
-              if (s == 'disconnected') bg = Colors.red.withValues(alpha: 0.7);
-              if (s == 'ended') bg = Colors.grey.withValues(alpha: 0.7);
-              final room = LiveKitService().roomName ?? '-';
-              return Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: bg,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'LK: $s',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                  Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.blueGrey.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'MT room: $room',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ),
-                ],
-              );
             },
           ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: SizedBox.expand(
-        child: Stack(
-          children: [
-            // Hero-Animation für nahtlosen Übergang vom Explorer!
-            // Positioned MUSS außen sein, Hero innen!
-            Positioned.fill(
-              child: Hero(
-                tag: 'avatar-${_avatarData?.id}',
-                child: ValueListenableBuilder<lk.VideoTrack?>(
-                  valueListenable: LiveKitService().remoteVideo,
-                  builder: (context, remoteVideoTrack, _) {
-                    // PRIORITÄT 1: LiveKit Video-Track (MuseTalk Lipsync)
-                    if (remoteVideoTrack != null) {
-                      return lk.VideoTrackRenderer(
-                        remoteVideoTrack,
-                        fit: lk.VideoViewFit.cover,
-                      );
-                    }
-
-                    // PRIORITÄT 2: Sequential Chunked Video (Chunk1 → Chunk2 → Chunk3 → idle.mp4 Loop)
-                    if (_liveAvatarEnabled) {
-                      VideoPlayerController? activeCtrl;
-
-                      // Wähle den richtigen Controller basierend auf _currentChunk
-                      switch (_currentChunk) {
-                        case 1:
-                          activeCtrl = _chunk1Controller;
-                          break;
-                        case 2:
-                          activeCtrl = _chunk2Controller;
-                          break;
-                        case 3:
-                          activeCtrl = _chunk3Controller;
-                          break;
-                        case 4:
-                          activeCtrl = _idleController;
-                          break;
-                        default:
-                          activeCtrl = null;
-                      }
-
-                      if (activeCtrl != null &&
-                          activeCtrl.value.isInitialized) {
-                        return FittedBox(
-                          fit: BoxFit.cover,
-                          child: SizedBox(
-                            width: activeCtrl.value.size.width,
-                            height: activeCtrl.value.size.height,
-                            child: VideoPlayer(activeCtrl),
-                          ),
-                        );
-                      }
-                    }
-
-                    // PRIORITÄT 3: Statisches Hero-Image
-                    if (backgroundImage != null && backgroundImage.isNotEmpty) {
-                      return Image.network(
-                        backgroundImage,
-                        fit: BoxFit.cover,
-                        frameBuilder:
-                            (context, child, frame, wasSynchronouslyLoaded) {
-                              if (wasSynchronouslyLoaded || frame != null) {
-                                return child;
-                              }
-                              return Container(color: Colors.black);
-                            },
-                      );
-                    }
-
-                    // FALLBACK: Schwarz
-                    return Container(color: Colors.black);
-                  },
-                ),
+          title: Transform.translate(
+            offset: const Offset(0, 3),
+            child: Text(
+              (() {
+                final parts = <String>[];
+                if (_avatarData?.firstNamePublic == true) {
+                  parts.add(_avatarData!.firstName);
+                }
+                if (_avatarData?.nicknamePublic == true &&
+                    _avatarData?.nickname != null) {
+                  parts.add('"${_avatarData!.nickname}"');
+                }
+                if (_avatarData?.lastNamePublic == true &&
+                    _avatarData?.lastName != null) {
+                  parts.add(_avatarData!.lastName!);
+                }
+                return parts.isEmpty ? '' : parts.join(' ');
+              })(),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.w300,
+                height: 1.0,
+                shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
               ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
-
-            // AppBar ist nun direkt im Scaffold eingebunden (siehe oben)
-
-            // Content unten
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 0,
-              child: SafeArea(
-                top: false,
-                child: Column(
+          ),
+          actions: [
+            AnimatedBuilder(
+              animation: LiveKitService().connectionStatus,
+              builder: (context, _) {
+                final s = LiveKitService().connectionStatus.value;
+                Color bg = Colors.black.withValues(alpha: 0.6);
+                if (s == 'connected') bg = Colors.green.withValues(alpha: 0.7);
+                if (s == 'reconnecting') {
+                  bg = Colors.orange.withValues(alpha: 0.7);
+                }
+                if (s == 'disconnected') bg = Colors.red.withValues(alpha: 0.7);
+                if (s == 'ended') bg = Colors.grey.withValues(alpha: 0.7);
+                final room = LiveKitService().roomName ?? '-';
+                return Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Chat-Nachrichten
-                    SizedBox(height: 200, child: _buildChatMessages()),
-
-                    // Input-Bereich
-                    _buildInputArea(),
-                    const SizedBox(height: 8),
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: bg,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'LK: $s',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      margin: const EdgeInsets.only(right: 8),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.blueGrey.withValues(alpha: 0.7),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'MT room: $room',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
                   ],
+                );
+              },
+            ),
+            const SizedBox(width: 8),
+          ],
+        ),
+        resizeToAvoidBottomInset: true,
+        body: SizedBox.expand(
+          child: Stack(
+            children: [
+              // Hero-Animation für nahtlosen Übergang vom Explorer!
+              // Positioned MUSS außen sein, Hero innen!
+              Positioned.fill(
+                child: Hero(
+                  tag: 'avatar-${_avatarData?.id}',
+                  child: ValueListenableBuilder<lk.VideoTrack?>(
+                    valueListenable: LiveKitService().remoteVideo,
+                    builder: (context, remoteVideoTrack, _) {
+                      // PRIORITÄT 1: LiveKit Video-Track (MuseTalk Lipsync)
+                      if (remoteVideoTrack != null) {
+                        return lk.VideoTrackRenderer(
+                          remoteVideoTrack,
+                          fit: lk.VideoViewFit.cover,
+                        );
+                      }
+
+                      // PRIORITÄT 2: Sequential Chunked Video (Chunk1 → Chunk2 → Chunk3 → idle.mp4 Loop)
+                      if (_liveAvatarEnabled) {
+                        VideoPlayerController? activeCtrl;
+
+                        // Wähle den richtigen Controller basierend auf _currentChunk
+                        switch (_currentChunk) {
+                          case 1:
+                            activeCtrl = _chunk1Controller;
+                            break;
+                          case 2:
+                            activeCtrl = _chunk2Controller;
+                            break;
+                          case 3:
+                            activeCtrl = _chunk3Controller;
+                            break;
+                          case 4:
+                            activeCtrl = _idleController;
+                            break;
+                          default:
+                            activeCtrl = null;
+                        }
+
+                        if (activeCtrl != null &&
+                            activeCtrl.value.isInitialized) {
+                          return FittedBox(
+                            fit: BoxFit.cover,
+                            child: SizedBox(
+                              width: activeCtrl.value.size.width,
+                              height: activeCtrl.value.size.height,
+                              child: VideoPlayer(activeCtrl),
+                            ),
+                          );
+                        }
+                      }
+
+                      // PRIORITÄT 3: Statisches Hero-Image
+                      if (backgroundImage != null &&
+                          backgroundImage.isNotEmpty) {
+                        return Image.network(
+                          backgroundImage,
+                          fit: BoxFit.cover,
+                          frameBuilder:
+                              (context, child, frame, wasSynchronouslyLoaded) {
+                                if (wasSynchronouslyLoaded || frame != null) {
+                                  return child;
+                                }
+                                return Container(color: Colors.black);
+                              },
+                        );
+                      }
+
+                      // FALLBACK: Schwarz
+                      return Container(color: Colors.black);
+                    },
+                  ),
                 ),
               ),
-            ),
-          ],
+
+              // AppBar ist nun direkt im Scaffold eingebunden (siehe oben)
+
+              // Content unten
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: SafeArea(
+                  top: false,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Chat-Nachrichten
+                      SizedBox(height: 200, child: _buildChatMessages()),
+
+                      // Input-Bereich
+                      _buildInputArea(),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -2329,15 +2360,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           await file.writeAsBytes(bytes, flush: true);
           path = file.path;
         } else {
-          _showSystemSnack('TTS-Fehler: leere Antwort');
+          debugPrint('TTS-Fehler: leere Antwort');
         }
       } else {
-        _showSystemSnack(
+        debugPrint(
           'TTS-HTTP: ${res.statusCode} ${res.body.substring(0, res.body.length > 120 ? 120 : res.body.length)}',
         );
       }
     } catch (e) {
-      _showSystemSnack('TTS-Fehler: $e');
+      debugPrint('TTS-Fehler: $e');
     }
     _addMessage(text, false, audioPath: path);
     if (path != null) {
@@ -3199,6 +3230,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _chunk1Controller?.dispose();
     _chunk2Controller?.dispose();
     _chunk3Controller?.dispose();
+    _publisherIdleTimer?.cancel();
     // Lipsync Strategy aufräumen (schließt WebSocket!)
     _lipsync.dispose();
 

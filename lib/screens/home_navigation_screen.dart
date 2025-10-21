@@ -132,54 +132,56 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
             ),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Container(
-          height: 64,
-          decoration: BoxDecoration(
-            color: Colors.black,
-            border: Border(
-              top: BorderSide(
-                color: Colors.white.withValues(alpha: 0.1),
-                width: 1,
+      bottomNavigationBar: (_activeChatAvatarId != null)
+          ? null // Chat aktiv → keine Bottom-Navigation (WhatsApp-Style)
+          : SafeArea(
+              top: false,
+              child: Container(
+                height: 64,
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  border: Border(
+                    top: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.1),
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    // Home
+                    _buildNavItem(
+                      iconFilled: Icons.home,
+                      iconOutlined: Icons.home_outlined,
+                      label: 'Home',
+                      index: 0,
+                    ),
+                    // Meine Avatare
+                    _buildNavItem(
+                      iconFilled: Icons.people,
+                      iconOutlined: Icons.people_outline,
+                      label: 'Meine Avatare',
+                      index: 1,
+                    ),
+                    // Favoriten
+                    _buildNavItem(
+                      iconFilled: Icons.favorite,
+                      iconOutlined: Icons.favorite_border,
+                      label: 'Favoriten',
+                      index: 2,
+                    ),
+                    // Profil - AUSKOMMENTIERT (evtl. später anderes Icon)
+                    // _buildNavItem(
+                    //   iconFilled: Icons.person,
+                    //   iconOutlined: Icons.person_outline,
+                    //   label: 'Profil',
+                    //   index: 3,
+                    // ),
+                  ],
+                ),
               ),
             ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              // Home
-              _buildNavItem(
-                iconFilled: Icons.home,
-                iconOutlined: Icons.home_outlined,
-                label: 'Home',
-                index: 0,
-              ),
-              // Meine Avatare
-              _buildNavItem(
-                iconFilled: Icons.people,
-                iconOutlined: Icons.people_outline,
-                label: 'Meine Avatare',
-                index: 1,
-              ),
-              // Favoriten
-              _buildNavItem(
-                iconFilled: Icons.favorite,
-                iconOutlined: Icons.favorite_border,
-                label: 'Favoriten',
-                index: 2,
-              ),
-              // Profil - AUSKOMMENTIERT (evtl. später anderes Icon)
-              // _buildNavItem(
-              //   iconFilled: Icons.person,
-              //   iconOutlined: Icons.person_outline,
-              //   label: 'Profil',
-              //   index: 3,
-              // ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 
