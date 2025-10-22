@@ -1022,18 +1022,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         if (LiveKitService().connected.value) {
           unawaited(_preloadChunks(chunk2Url, chunk3Url, idleUrl));
         } else {
-          void Function()? _onLkJoin;
-          _onLkJoin = () {
+          void Function()? onLkJoin;
+          onLkJoin = () {
             if (LiveKitService().connected.value) {
-              LiveKitService().connected.removeListener(_onLkJoin!);
+              LiveKitService().connected.removeListener(onLkJoin!);
               unawaited(_preloadChunks(chunk2Url, chunk3Url, idleUrl));
             }
           };
-          LiveKitService().connected.addListener(_onLkJoin);
+          LiveKitService().connected.addListener(onLkJoin);
           // Fallback: spätestens nach 2s trotzdem starten
           Future.delayed(const Duration(seconds: 2), () {
             try {
-              LiveKitService().connected.removeListener(_onLkJoin!);
+              LiveKitService().connected.removeListener(onLkJoin!);
             } catch (_) {}
             unawaited(_preloadChunks(chunk2Url, chunk3Url, idleUrl));
           });

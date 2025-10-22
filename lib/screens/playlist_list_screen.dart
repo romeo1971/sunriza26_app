@@ -509,6 +509,129 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     }
   }
 
+  Widget _buildDeletePlaylistButton(Playlist p) {
+    const Color baseTextColor = Colors.white54; // dezentes Hellgrau
+    const Color baseBorderColor = Colors.white30; // sehr dezenter Rand
+    const Color dangerColor = Colors.redAccent;
+    return OutlinedButton(
+      onPressed: () async {
+        final first = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Playlist löschen?'),
+            content: const Text(
+              'Dieser Vorgang löscht die Playlist, alle zugehörigen Timeline-Einträge, Timeline-Assets und Scheduler-Einträge. Medien selbst werden nicht gelöscht. Fortfahren?',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                child: const Text('Abbrechen'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                child: const Text('Ja, löschen'),
+              ),
+            ],
+          ),
+        );
+        if (first != true) return;
+
+        final second = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Wirklich endgültig löschen?'),
+            content: const Text(
+              'Letzte Bestätigung: Die Playlist und alle zugehörigen Verlinkungen werden entfernt. Dieser Schritt kann nicht rückgängig gemacht werden.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                style: TextButton.styleFrom(foregroundColor: Colors.white70),
+                child: const Text('Abbrechen'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.white,
+                  shadowColor: Colors.transparent,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 12,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: ShaderMask(
+                  shaderCallback: (bounds) => Theme.of(
+                    context,
+                  ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
+                  child: const Text(
+                    'Endgültig löschen',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+        if (second != true) return;
+
+        final messenger = ScaffoldMessenger.of(context);
+        try {
+          await _svc.deleteDeep(widget.avatarId, p.id);
+          if (!mounted) return;
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Playlist gelöscht.')),
+          );
+          await _load();
+        } catch (e) {
+          if (!mounted) return;
+          messenger.showSnackBar(SnackBar(content: Text('Lösch-Fehler: $e')));
+        }
+      },
+      style: ButtonStyle(
+        side: MaterialStateProperty.resolveWith<BorderSide>((states) {
+          final isHover =
+              states.contains(MaterialState.hovered) ||
+              states.contains(MaterialState.pressed);
+          return BorderSide(
+            color: isHover ? dangerColor : baseBorderColor,
+            width: 1,
+          );
+        }),
+        foregroundColor: MaterialStateProperty.resolveWith<Color>((states) {
+          final isHover =
+              states.contains(MaterialState.hovered) ||
+              states.contains(MaterialState.pressed);
+          return isHover ? dangerColor : baseTextColor;
+        }),
+        padding: const MaterialStatePropertyAll(
+          EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+        ),
+        minimumSize: const MaterialStatePropertyAll(Size(0, 24)),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        visualDensity: const VisualDensity(horizontal: -3, vertical: -3),
+        textStyle: const MaterialStatePropertyAll(
+          TextStyle(fontSize: 9, fontWeight: FontWeight.w400),
+        ),
+        shape: MaterialStatePropertyAll(
+          RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        ),
+      ),
+      child: const Padding(
+        padding: EdgeInsets.all(2),
+        child: Text('Playlist löschen'),
+      ),
+    );
+  }
+
   Widget _buildScheduleSummary(Playlist p) {
     if (p.weeklySchedules.isEmpty && p.specialSchedules.isEmpty) {
       return const Text(
@@ -1044,6 +1167,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                 ),
                                               ),
                                             ),
+                                            // (kein Playlist-Lösch-Icon hier)
                                             // Delete-Icon (nur wenn Cover vorhanden)
                                             if (p.coverImageUrl != null &&
                                                 p.coverImageUrl!.isNotEmpty)
@@ -1094,14 +1218,28 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            // Name (Vorgabe-Stil)
-                                            Text(
-                                              p.name,
-                                              style: const TextStyle(
-                                                fontSize: 16,
-                                                fontWeight: FontWeight.w500,
-                                              ),
+                                            // Titel + dezenter "Playlist löschen" Button oben rechts
+                                            Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.center,
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    p.name,
+                                                    style: const TextStyle(
+                                                      fontSize: 16,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 8),
+                                                _buildDeletePlaylistButton(p),
+                                              ],
                                             ),
+                                            const SizedBox(height: 8),
                                             if (p.highlightTag != null) ...[
                                               const SizedBox(height: 6),
                                               Container(

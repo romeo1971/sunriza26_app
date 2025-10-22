@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
+import './firebase_storage_service.dart';
 import '../models/playlist_models.dart';
 
 class PlaylistService {
@@ -429,6 +430,58 @@ class PlaylistService {
   }
 
   Future<void> delete(String avatarId, String id) async {
+    await _col(avatarId).doc(id).delete();
+  }
+
+  // Löscht Playlist inklusive zugehöriger Subcollections (nur Verlinkungen):
+  // - timelineAssets
+  // - timelineItems
+  // - items (älterer Typ)
+  // Medien selbst werden NICHT gelöscht.
+  Future<void> deleteDeep(String avatarId, String id) async {
+    // Versuche Cover und Thumbnails aus Storage zu entfernen
+    try {
+      final snap = await _col(avatarId).doc(id).get();
+      final data = snap.data();
+      if (data != null) {
+        final String? coverUrl = (data['coverImageUrl'] as String?);
+        final String? coverThumbUrl = (data['coverThumbUrl'] as String?);
+        if (coverUrl != null && coverUrl.isNotEmpty) {
+          await FirebaseStorageService.deleteFile(coverUrl);
+        }
+        if (coverThumbUrl != null && coverThumbUrl.isNotEmpty) {
+          await FirebaseStorageService.deleteFile(coverThumbUrl);
+        }
+        // Lösche sicherheitshalber alle Thumbnails im thumbs-Ordner
+        final thumbsPrefix = 'avatars/$avatarId/playlists/$id/thumbs';
+        await FirebaseStorageService.deleteByPrefix(thumbsPrefix);
+      }
+    } catch (_) {
+      // Storage-Fehler ignorieren, Löschvorgang der Playlist soll weitergehen
+    }
+
+    // Subcollections löschen
+    final assetsSnap = await _assetsCol(avatarId, id).get();
+    final tItemsSnap = await _tItemsCol(avatarId, id).get();
+    final oldItemsSnap = await _itemsCol(avatarId, id).get();
+
+    if (assetsSnap.docs.isNotEmpty ||
+        tItemsSnap.docs.isNotEmpty ||
+        oldItemsSnap.docs.isNotEmpty) {
+      final batch = _fs.batch();
+      for (final d in assetsSnap.docs) {
+        batch.delete(d.reference);
+      }
+      for (final d in tItemsSnap.docs) {
+        batch.delete(d.reference);
+      }
+      for (final d in oldItemsSnap.docs) {
+        batch.delete(d.reference);
+      }
+      await batch.commit();
+    }
+
+    // Playlist-Dokument löschen (enthält Scheduler-Felder)
     await _col(avatarId).doc(id).delete();
   }
 
