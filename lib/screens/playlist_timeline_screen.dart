@@ -19,7 +19,8 @@ class PlaylistTimelineScreen extends StatefulWidget {
   State<PlaylistTimelineScreen> createState() => _PlaylistTimelineScreenState();
 }
 
-class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
+class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
+    with SingleTickerProviderStateMixin {
   String _tab = 'images'; // images|videos|documents|audio
   bool _portrait = true;
   final _mediaSvc = MediaService();
@@ -28,18 +29,27 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   final List<AvatarMedia> _timeline = [];
   final List<Key> _timelineKeys = [];
   final List<AvatarMedia> _assets = []; // rechte Seite: Timeline-Assets
-  double _splitRatio = 0.38; // Anteil der linken Spalte (0..1)
+  // (entfernt) alter horizontaler Split-Ratio
+  // double _splitRatio = 0.38;
   // ignore: unused_field
   final bool _showSearch = false;
   final String _searchTerm = '';
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _intervalCtl = TextEditingController();
   bool _timelineHover = false;
-  bool _resizerHover = false;
+  // (entfernt) alter Resizer-Hover
+  // bool _resizerHover = false;
   final String _assetSort = 'name'; // 'name' | 'type'
   final TextEditingController _assetsSearchCtl = TextEditingController();
   String _assetsSearchTerm = '';
   bool _isDirty = false; // Trackt ob Änderungen vorgenommen wurden
+  bool _searchOpen = false; // toggled Search in CTA-Zeile
+
+  // (entfernt) Breiten-Anker – nicht mehr nötig im vertikalen Layout
+
+  // Puls-Animation für CTA, wenn noch keine Assets vorhanden sind
+  late final AnimationController _pulseCtrl;
+  late final Animation<double> _pulse;
 
   // Audio-Player-Logik (wie in media_assets)
   final Map<String, VideoPlayerController> _audioCtrls = {};
@@ -48,10 +58,17 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   final Map<String, Duration> _audioCurrent = {};
   final Set<String> _audioHasListener = {};
   Timer? _audioTicker;
+  bool _loading = false; // Ladezustand für sanfte UI
+  bool _firstLoadDone = false; // verhindert flackernde Start-UI
+
+  // Vertikaler Split (Assets oben, Timeline unten)
+  double _verticalRatio = 0.55; // Anteil Assets-Höhe
+  bool _vResizerHover = false;
 
   String _displayName(AvatarMedia m) {
-    if ((m.originalFileName ?? '').trim().isNotEmpty) {
-      return m.originalFileName!.trim();
+    final ofn = m.originalFileName;
+    if ((ofn ?? '').trim().isNotEmpty) {
+      return ofn!.trim();
     }
     try {
       final uri = Uri.parse(m.url);
@@ -80,6 +97,16 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   @override
   void initState() {
     super.initState();
+    // Puls-Animation initialisieren
+    _pulseCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
+    // Puls über Opacity: 0.3 ↔ 1.0
+    _pulse = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).chain(CurveTween(curve: Curves.easeInOut)).animate(_pulseCtrl);
     _load();
     _intervalCtl.text = widget.playlist.showAfterSec.toString();
     _assetsSearchCtl.addListener(() {
@@ -89,6 +116,10 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
 
   @override
   void dispose() {
+    // Puls-Animation freigeben
+    try {
+      _pulseCtrl.dispose();
+    } catch (_) {}
     _searchController.dispose();
     _assetsSearchCtl.dispose();
     _intervalCtl.dispose();
@@ -241,13 +272,12 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
   }
 
   Future<void> _load() async {
+    if (mounted) setState(() => _loading = true);
     try {
       final list = await _mediaSvc.list(widget.playlist.avatarId);
       _allMedia = list;
       // gespeichertes Split-Verhältnis anwenden, falls vorhanden
-      if (widget.playlist.timelineSplitRatio != null) {
-        _splitRatio = widget.playlist.timelineSplitRatio!.clamp(0.1, 0.9);
-      }
+      // (alt) horizontale Split-Ratio wird nicht mehr genutzt
       // Inkonstistenzen bereinigen (Items ohne Assets, Assets ohne Media)
       await _playlistSvc.pruneTimelineData(
         widget.playlist.avatarId,
@@ -284,8 +314,14 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
       _timelineKeys
         ..clear()
         ..addAll(List.generate(_timeline.length, (_) => UniqueKey()));
-      setState(() {});
+      if (mounted) setState(() {});
     } catch (_) {}
+    if (mounted) {
+      setState(() {
+        _loading = false;
+        _firstLoadDone = true;
+      });
+    }
   }
 
   List<AvatarMedia> get _filtered {
@@ -318,10 +354,37 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     }).toList();
   }
 
+  Widget _gradientSpinner({double size = 40}) {
+    return ShaderMask(
+      shaderCallback: (bounds) => const LinearGradient(
+        colors: [AppColors.magenta, AppColors.lightBlue],
+      ).createShader(bounds),
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: CircularProgressIndicator(
+          strokeWidth: 4,
+          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+          backgroundColor: Colors.transparent,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final coverW = 100.0; // gleich wie in playlist_list_screen
     final coverH = 178.0; // gleich wie in playlist_list_screen
+
+    if (!_firstLoadDone) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Timeline'),
+          iconTheme: const IconThemeData(color: Colors.white),
+        ),
+        body: Center(child: _gradientSpinner(size: 44)),
+      );
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -338,240 +401,382 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         ],
         // Keine Bottom‑Tabs hier – Tabs kommen unter den Header
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      body: Stack(
         children: [
-          // Header: Cover + Name (einheitlich strukturiert)
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Container(
-              constraints: const BoxConstraints(minHeight: 178),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Cover Image
-                  SizedBox(
-                    width: coverW,
-                    height: coverH,
-                    child: Container(
-                      width: coverW,
-                      height: coverH,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade800,
-                        borderRadius: BorderRadius.circular(8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header: Cover + Name (einheitlich strukturiert)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Container(
+                  constraints: const BoxConstraints(minHeight: 178),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Cover Image
+                      SizedBox(
+                        width: coverW,
+                        height: coverH,
+                        child: Container(
+                          width: coverW,
+                          height: coverH,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade800,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          clipBehavior: Clip.hardEdge,
+                          child: widget.playlist.coverImageUrl != null
+                              ? Image.network(
+                                  widget.playlist.coverImageUrl!,
+                                  width: coverW,
+                                  height: coverH,
+                                  fit: BoxFit.cover,
+                                )
+                              : const Center(
+                                  child: Icon(
+                                    Icons.playlist_play,
+                                    size: 60,
+                                    color: Colors.white54,
+                                  ),
+                                ),
+                        ),
                       ),
-                      clipBehavior: Clip.hardEdge,
-                      child: widget.playlist.coverImageUrl != null
-                          ? Image.network(
-                              widget.playlist.coverImageUrl!,
-                              width: coverW,
-                              height: coverH,
-                              fit: BoxFit.cover,
-                            )
-                          : const Center(
-                              child: Icon(
-                                Icons.playlist_play,
-                                size: 60,
-                                color: Colors.white54,
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // Name (gleicher Stil wie playlist_list)
+                            Text(
+                              widget.playlist.name,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                            ),
+                            // Abstand entfernt – CTA direkt unter Navi
+                            Text(
+                              '${_timeline.length} Medien in der Playlist',
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
                               ),
                             ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Name (gleicher Stil wie playlist_list)
-                        Text(
-                          widget.playlist.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
+                            const SizedBox(height: 12),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 200),
+                              child: CustomTextField(
+                                label: 'Zeit-Intervall',
+                                controller: _intervalCtl,
+                                keyboardType: TextInputType.number,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                ],
+                                hintText: 'Anzeigezeit in Sekunden',
+                                onChanged: (v) {
+                                  setState(() {
+                                    _isDirty = true;
+                                  });
+                                },
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          '${_timeline.length} Medien in der Playlist',
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 12,
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 200),
-                          child: CustomTextField(
-                            label: 'Zeit-Intervall',
-                            controller: _intervalCtl,
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                            ],
-                            hintText: 'Anzeigezeit in Sekunden',
-                            onChanged: (v) {
-                              setState(() {
-                                _isDirty = true;
-                              });
-                            },
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // (entfernt) Galerie-Navi – gehört nur in den Assets-Screen
-          const SizedBox(height: 8),
-
-          // Call-to-Action: Media Assets hinzufügen (öffnet Asset-Auswahl)
-          Container(
-            height: 44,
-            color: Colors.grey.shade900,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
-              children: [
-                InkWell(
-                  onTap: _openAssetsPicker,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: const [
-                      Icon(Icons.add, color: Colors.white, size: 22),
-                      SizedBox(width: 8),
-                      Text(
-                        'Media Assets hinzufügen',
-                        style: TextStyle(color: Colors.white),
                       ),
                     ],
                   ),
                 ),
-                const Spacer(),
-                if (_assets.isNotEmpty)
-                  Flexible(
-                    child: SizedBox(
-                      height: 32,
-                      child: TextField(
-                        controller: _assetsSearchCtl,
-                        onChanged: (v) =>
-                            setState(() => _assetsSearchTerm = v.toLowerCase()),
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.white,
+              ),
+
+              // (entfernt) Galerie-Navi – gehört nur in den Assets-Screen
+
+              // Neue Struktur: Tabs/Navi (oben), darunter CTA-Zeile mit Suche-Toggle
+              // Navi oben (nur Tabs + Orientation) – direkt an das Cover anschließen
+              LayoutBuilder(
+                builder: (context, cons) {
+                  final bool roomy = cons.maxWidth >= (4 * 48 + 40 + 16);
+                  final double tabW = roomy ? 48 : 36;
+                  final double iconSize = roomy ? 18 : 16;
+                  return Container(
+                    color: const Color(0xFF1E1E1E),
+                    height: 35,
+                    padding: EdgeInsets.zero,
+                    child: Row(
+                      children: [
+                        _tabBtn(
+                          'images',
+                          Icons.image_outlined,
+                          tabW: tabW,
+                          iconSize: iconSize,
                         ),
-                        cursorColor: Colors.white,
-                        decoration: const InputDecoration(
-                          isDense: true,
-                          hintText: 'Suche nach Medien...',
-                          hintStyle: TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12,
-                          ),
-                          prefixIcon: Padding(
-                            padding: EdgeInsets.only(left: 6),
-                            child: Icon(
-                              Icons.search,
-                              color: Colors.white70,
-                              size: 18,
+                        _tabBtn(
+                          'videos',
+                          Icons.videocam_outlined,
+                          tabW: tabW,
+                          iconSize: iconSize,
+                        ),
+                        _tabBtn(
+                          'documents',
+                          Icons.description_outlined,
+                          tabW: tabW,
+                          iconSize: iconSize,
+                        ),
+                        _tabBtn(
+                          'audio',
+                          Icons.audiotrack,
+                          tabW: tabW,
+                          iconSize: iconSize,
+                        ),
+                        const Spacer(),
+                        const SizedBox(width: 12),
+                        if (_tab != 'audio')
+                          TextButton(
+                            onPressed: () =>
+                                setState(() => _portrait = !_portrait),
+                            style: ButtonStyle(
+                              padding: const WidgetStatePropertyAll(
+                                EdgeInsets.zero,
+                              ),
+                              minimumSize: const WidgetStatePropertyAll(
+                                Size(40, 35),
+                              ),
                             ),
+                            child: _portrait
+                                ? ShaderMask(
+                                    shaderCallback: (b) => const LinearGradient(
+                                      colors: [
+                                        AppColors.magenta,
+                                        AppColors.lightBlue,
+                                      ],
+                                    ).createShader(b),
+                                    child: Icon(
+                                      Icons.stay_primary_portrait,
+                                      size: iconSize,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : Icon(
+                                    Icons.stay_primary_landscape,
+                                    size: iconSize,
+                                    color: Colors.white54,
+                                  ),
                           ),
-                          prefixIconConstraints: BoxConstraints(
-                            minWidth: 24,
-                            maxWidth: 28,
-                          ),
-                          filled: true,
-                          fillColor: Color(0x1FFFFFFF),
-                          border: OutlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white24),
-                          ),
-                          enabledBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white24),
-                          ),
-                          focusedBorder: OutlineInputBorder(
-                            borderSide: BorderSide(color: Colors.white24),
-                          ),
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 8,
+                      ],
+                    ),
+                  );
+                },
+              ),
+
+              // CTA-Zeile unter Navi: +Media links, Search-Toggle rechts
+              Container(
+                height: 35,
+                color: Colors.grey.shade900,
+                padding: const EdgeInsets.only(left: 12, right: 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (!_searchOpen)
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _assets.isEmpty
+                              ? FadeTransition(
+                                  opacity: _pulse,
+                                  child: InkWell(
+                                    onTap: _openAssetsPicker,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: const [
+                                        Icon(
+                                          Icons.add,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                        SizedBox(width: 6),
+                                        Text(
+                                          'Media Assets',
+                                          style: TextStyle(color: Colors.white),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                )
+                              : InkWell(
+                                  onTap: _openAssetsPicker,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(
+                                        Icons.add,
+                                        color: Colors.white,
+                                        size: 22,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Media',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 300),
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 5),
+                              child: SizedBox(
+                                height: 32,
+                                child: TextField(
+                                  controller: _assetsSearchCtl,
+                                  onChanged: (v) => setState(
+                                    () => _assetsSearchTerm = v.toLowerCase(),
+                                  ),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white,
+                                  ),
+                                  cursorColor: Colors.white,
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    hintText: 'Suche nach Medien...',
+                                    hintStyle: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 12,
+                                    ),
+                                    prefixIcon: Padding(
+                                      padding: EdgeInsets.only(left: 6),
+                                      child: Icon(
+                                        Icons.search,
+                                        color: Colors.white70,
+                                        size: 18,
+                                      ),
+                                    ),
+                                    prefixIconConstraints: BoxConstraints(
+                                      minWidth: 24,
+                                      maxWidth: 28,
+                                    ),
+                                    filled: true,
+                                    fillColor: Color(0x1FFFFFFF),
+                                    border: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Colors.white24,
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Colors.white24,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Colors.white24,
+                                      ),
+                                    ),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 8,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                       ),
+                    const SizedBox(width: 12),
+                    // Lupe rechts: toggelt Suche, Hintergrund weiß, Icon GMBC bei aktiv
+                    InkWell(
+                      onTap: () => setState(() => _searchOpen = !_searchOpen),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        width: 48,
+                        height: 35,
+                        decoration: BoxDecoration(
+                          color: _searchOpen ? Colors.white : Colors.white10,
+                          borderRadius: BorderRadius.zero,
+                        ),
+                        child: Center(
+                          child: _searchOpen
+                              ? ShaderMask(
+                                  shaderCallback: (b) => const LinearGradient(
+                                    colors: [
+                                      AppColors.magenta,
+                                      AppColors.lightBlue,
+                                    ],
+                                  ).createShader(b),
+                                  child: const Icon(
+                                    Icons.search,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.search,
+                                  color: Colors.white70,
+                                  size: 18,
+                                ),
+                        ),
+                      ),
                     ),
-                  ),
-              ],
-            ),
-          ),
+                  ],
+                ),
+              ),
 
-          // Kombinierter Container: FullWidth-Header, darunter links Timeline, rechts Assets mit Resizer
-          Expanded(
-            child: Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                // keine Border unten um den Split-Container
-              ),
-              child: Column(
-                children: [
-                  // Kein innerer Header/Label mehr – direkt die Split-Ansicht
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, cons) {
-                        final totalW = cons.maxWidth;
-                        const double resizerW = 14.0;
-                        // verfügbare Breite (ohne Resizer)
-                        final available = (totalW - resizerW).clamp(
-                          0.0,
-                          double.infinity,
-                        );
-                        // Mindestbreiten: Links kleiner, Rechts größer (für Navi-Icons)
-                        const double minLeftPane = 100.0;
-                        const double minRightPane =
-                            200.0; // für Timeline-Assets Navi
-                        if (available <= (minLeftPane + minRightPane)) {
-                          // zu schmal: mittig teilen
-                          final leftW = available / 2;
-                          return Row(
-                            children: [
-                              SizedBox(
-                                width: leftW,
-                                child: _buildTimelinePane(),
-                              ),
-                              _buildResizer(totalW, leftW, resizerW),
-                              Expanded(child: _buildAssetsPane()),
-                            ],
-                          );
-                        }
-                        final double minLeft = minLeftPane;
-                        final double maxLeft = (available - minRightPane).clamp(
-                          minLeft,
-                          available,
-                        );
-                        // leftW aus Ratio, aber relativ zu available rechnen
-                        double leftW = (_splitRatio * available).clamp(
-                          minLeft,
-                          maxLeft,
-                        );
-                        return Row(
-                          children: [
-                            // Timeline links
-                            SizedBox(width: leftW, child: _buildTimelinePane()),
-                            // Resizer
-                            _buildResizer(totalW, leftW, resizerW),
-                            // Assets rechts
-                            Expanded(child: _buildAssetsPane()),
-                          ],
-                        );
-                      },
-                    ),
+              // Vertikaler Split: Oben Assets, unten Timeline, 100% Breite
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    // keine Border unten um den Split-Container
                   ),
-                ],
+                  child: LayoutBuilder(
+                    builder: (context, cons) {
+                      final totalH = cons.maxHeight;
+                      const double resizerH = 12.0;
+                      final double available = (totalH - resizerH).clamp(
+                        0.0,
+                        double.infinity,
+                      );
+                      double topH = (_verticalRatio * available).clamp(
+                        120.0,
+                        available - 120.0,
+                      );
+                      final double bottomH = available - topH;
+                      return Column(
+                        children: [
+                          SizedBox(height: topH, child: _buildAssetsPane()),
+                          _buildVerticalResizer(available, topH, resizerH),
+                          SizedBox(
+                            height: bottomH,
+                            child: _buildTimelinePane(),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ),
+              // Entfernt: Fußzeile mit "Speichern"-Button – Speichern jetzt oben rechts in der AppBar
+            ],
+          ),
+          if (_loading && _firstLoadDone)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.5),
+                child: Center(child: _gradientSpinner(size: 44)),
               ),
             ),
-          ),
-          // Entfernt: Fußzeile mit "Speichern"-Button – Speichern jetzt oben rechts in der AppBar
         ],
       ),
     );
@@ -636,7 +841,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     if (m.type == AvatarMediaType.image) {
       content = Image.network(m.url, fit: BoxFit.cover);
     } else if (m.type == AvatarMediaType.video) {
-      if (m.thumbUrl != null && m.thumbUrl!.isNotEmpty) {
+      if ((m.thumbUrl ?? '').isNotEmpty) {
         content = Image.network(
           m.thumbUrl!,
           fit: BoxFit.cover,
@@ -649,7 +854,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
         );
       }
     } else if (m.type == AvatarMediaType.document) {
-      if (m.thumbUrl != null && m.thumbUrl!.isNotEmpty) {
+      if ((m.thumbUrl ?? '').isNotEmpty) {
         content = Image.network(
           m.thumbUrl!,
           fit: BoxFit.cover,
@@ -805,10 +1010,21 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
 
   Widget _buildAssetsGrid() {
     if (_assets.isEmpty) {
-      return const Center(
-        child: Text(
-          'Keine Media Assets ausgewählt',
-          style: TextStyle(color: Colors.white60),
+      // Im leeren Zustand unten im Assets-Bereich: GMBC-Text als Hinweis
+      return Center(
+        child: ShaderMask(
+          shaderCallback: (bounds) => const LinearGradient(
+            colors: [AppColors.magenta, AppColors.lightBlue],
+          ).createShader(bounds),
+          child: const Text(
+            'Klicke Media Assets hinzufügen, um zu starten.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ),
       );
     }
@@ -873,10 +1089,8 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
             crossAxisSpacing: 12,
             // Für Audio fixe Höhe statt AspectRatio
             mainAxisExtent: _tab == 'audio' ? 148 : null,
-            // Für Nicht-Audio: 9/16 (Portrait) oder 16/9 (Landscape)
-            childAspectRatio: _tab == 'audio'
-                ? 1.0
-                : (_portrait ? (9 / 16) : (16 / 9)),
+            // Für Nicht-Audio: ca. 30% kleinere Höhe
+            childAspectRatio: _tab == 'audio' ? 1.0 : (_portrait ? 0.8 : 2.3),
           ),
           itemCount: view.length,
           itemBuilder: (context, i) {
@@ -1384,10 +1598,8 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
                     },
                     children: [
                       // Hard-Sync vor dem Rendern – vermeidet Null/Index-Probleme bei schnellem D&D
-                      ...() {
-                        _syncKeysLength();
-                        return <Widget>[];
-                      }(),
+                      // (Spread entfernt, um Parser-Fehler zu vermeiden)
+                      // _syncKeysLength();
                       for (
                         int i = 0;
                         i <
@@ -1489,50 +1701,22 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
       ),
       child: Column(
         children: [
-          // Navigation Header wie in playlist_media_assets_screen (full width)
-          SizedBox(
-            width: double.infinity,
-            child: Container(
-              color: const Color(0xFF1E1E1E),
-              height: 35,
-              child: Row(
-                children: [
-                  _tabBtn('images', Icons.image_outlined),
-                  _tabBtn('videos', Icons.videocam_outlined),
-                  _tabBtn('documents', Icons.description_outlined),
-                  _tabBtn('audio', Icons.audiotrack),
-                  const Spacer(),
-                  if (_tab != 'audio')
-                    TextButton(
-                      onPressed: () => setState(() => _portrait = !_portrait),
-                      style: ButtonStyle(
-                        padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-                        minimumSize: const WidgetStatePropertyAll(Size(40, 35)),
-                      ),
-                      child: _portrait
-                          ? ShaderMask(
-                              shaderCallback: (bounds) => const LinearGradient(
-                                colors: [
-                                  AppColors.magenta,
-                                  AppColors.lightBlue,
-                                ],
-                              ).createShader(bounds),
-                              child: const Icon(
-                                Icons.stay_primary_portrait,
-                                size: 18,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.stay_primary_landscape,
-                              size: 18,
-                              color: Colors.white54,
-                            ),
-                    ),
-                ],
+          // (Entfernt) Doppelte Navi im Assets-Pane – oben existiert die globale Navi
+          // Fixer Mini-Hinweis direkt unter der Icon-Navi (scrollt nicht mit dem Grid)
+          if (_assets.isNotEmpty)
+            const SizedBox(
+              height: 18,
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'Klicke auf "Media Assets hinzufügen", um zu starten.',
+                    style: TextStyle(color: Colors.white70, fontSize: 10),
+                  ),
+                ),
               ),
             ),
-          ),
           Expanded(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -1544,7 +1728,12 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     );
   }
 
-  Widget _tabBtn(String t, IconData icon) {
+  Widget _tabBtn(
+    String t,
+    IconData icon, {
+    double tabW = 36,
+    double iconSize = 16,
+  }) {
     final sel = _tab == t;
     final grad = Theme.of(context).extension<AppGradients>()?.magentaBlue;
     return SizedBox(
@@ -1552,28 +1741,26 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
       child: TextButton(
         onPressed: () => setState(() {
           _tab = t;
-          // Bei Dokumente/Audio automatisch auf Portrait setzen
           if (t == 'documents' || t == 'audio') _portrait = true;
         }),
         style: ButtonStyle(
           padding: const WidgetStatePropertyAll(EdgeInsets.zero),
-          minimumSize: const WidgetStatePropertyAll(Size(48, 35)),
+          minimumSize: WidgetStatePropertyAll(Size(tabW, 35)),
         ),
         child: Container(
-          width: 48,
+          width: tabW,
           height: 35,
           decoration: sel && grad != null
               ? BoxDecoration(gradient: grad, borderRadius: BorderRadius.zero)
               : null,
           child: Icon(
             icon,
-            size: 18,
+            size: iconSize,
             color: sel ? Colors.white : Colors.white54,
           ),
         ),
       ),
     );
-    // ignore: unused_element
   }
 
   // ignore: unused_element
@@ -1593,59 +1780,43 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen> {
     );
   }
 
-  Widget _buildResizer(double totalW, double leftW, double resizerW) {
+  // (ehem.) horizontaler Resizer vollständig entfernt
+
+  Widget _buildVerticalResizer(double totalH, double topH, double resizerH) {
     return MouseRegion(
-      cursor: SystemMouseCursors.resizeColumn,
-      onEnter: (_) => setState(() => _resizerHover = true),
-      onExit: (_) => setState(() => _resizerHover = false),
+      cursor: SystemMouseCursors.resizeRow,
+      onEnter: (_) => setState(() => _vResizerHover = true),
+      onExit: (_) => setState(() => _vResizerHover = false),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onHorizontalDragUpdate: (d) {
+        onVerticalDragUpdate: (d) {
           setState(() {
-            final available2 = (totalW - resizerW).clamp(0.0, double.infinity);
-            const double minLeftPane2 = 100.0;
-            const double minRightPane2 = 200.0;
-            if (available2 <= (minLeftPane2 + minRightPane2)) return;
-            final double newLeft = (leftW + d.delta.dx).clamp(
-              minLeftPane2,
-              available2 - minRightPane2,
+            final available2 = totalH.clamp(0.0, double.infinity);
+            const double minTop = 120.0;
+            const double minBottom = 120.0;
+            if (available2 <= (minTop + minBottom)) return;
+            final double newTop = (topH + d.delta.dy).clamp(
+              minTop,
+              available2 - minBottom,
             );
-            _splitRatio = available2 > 0 ? (newLeft / available2) : 0.5;
+            _verticalRatio = available2 > 0 ? (newTop / available2) : 0.5;
           });
         },
-        onHorizontalDragEnd: (_) async {
-          await _playlistSvc.setTimelineSplitRatio(
-            widget.playlist.avatarId,
-            widget.playlist.id,
-            _splitRatio,
-          );
-          // neuen Wert aus DB laden und setzen
-          final p = await _playlistSvc.getOne(
-            widget.playlist.avatarId,
-            widget.playlist.id,
-          );
-          if (p?.timelineSplitRatio != null) {
-            setState(
-              () => _splitRatio = p!.timelineSplitRatio!.clamp(0.1, 0.9),
-            );
-          }
-        },
         child: Container(
-          width: resizerW,
-          decoration: _resizerHover
+          height: resizerH,
+          decoration: _vResizerHover
               ? BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [AppColors.magenta, AppColors.lightBlue],
                   ),
-                  backgroundBlendMode: BlendMode.overlay,
                   color: const Color(0xFF1E1E1E).withValues(alpha: 0.8),
                 )
               : const BoxDecoration(color: Color(0xFF1E1E1E)),
           child: Center(
             child: Container(
-              width: _resizerHover ? 3 : 2,
-              height: 28,
-              decoration: _resizerHover
+              width: 28,
+              height: _vResizerHover ? 3 : 2,
+              decoration: _vResizerHover
                   ? BoxDecoration(
                       gradient: const LinearGradient(
                         colors: [AppColors.magenta, AppColors.lightBlue],

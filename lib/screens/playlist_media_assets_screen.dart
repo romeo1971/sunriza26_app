@@ -141,7 +141,8 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
                 height: 35,
                 child: Row(
                   children: [
-                    _tabBtn('images', Icons.image_outlined),
+                    // erstes Icon ganz links (kein Außenabstand)
+                    _tabBtn('images', Icons.image_outlined, isFirst: true),
                     _tabBtn('videos', Icons.videocam_outlined),
                     _tabBtn('documents', Icons.description_outlined),
                     _tabBtn('audio', Icons.audiotrack),
@@ -238,7 +239,7 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
     );
   }
 
-  Widget _tabBtn(String t, IconData icon) {
+  Widget _tabBtn(String t, IconData icon, {bool isFirst = false}) {
     final sel = _tab == t;
     final grad = Theme.of(context).extension<AppGradients>()?.magentaBlue;
     return SizedBox(
@@ -252,19 +253,21 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
           }
         }),
         style: ButtonStyle(
-          padding: const WidgetStatePropertyAll(EdgeInsets.zero),
+          padding: WidgetStatePropertyAll(
+            EdgeInsets.only(left: isFirst ? 0 : 4, right: 4),
+          ),
         ),
         child: sel
             ? Ink(
                 decoration: BoxDecoration(gradient: grad),
                 child: SizedBox(
-                  width: 60,
+                  width: 48,
                   height: double.infinity,
                   child: Icon(icon, color: Colors.white),
                 ),
               )
             : SizedBox(
-                width: 60,
+                width: 48,
                 height: double.infinity,
                 child: Icon(icon, color: Colors.white54),
               ),
@@ -329,10 +332,8 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
             crossAxisSpacing: 12,
             // Für Audio fixe Höhe statt AspectRatio
             mainAxisExtent: _tab == 'audio' ? 148 : null,
-            // Für Nicht-Audio das bekannte Verhältnis
-            childAspectRatio: _tab == 'audio'
-                ? 1.0
-                : (_portrait ? (9 / 16) : (16 / 9)),
+            // Für Nicht-Audio: ca. 30% kleinere Höhe
+            childAspectRatio: _tab == 'audio' ? 1.0 : (_portrait ? 0.8 : 2.3),
           ),
           itemCount: items.length,
           itemBuilder: (ctx, i) {
@@ -352,18 +353,35 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
               child: Column(
                 children: [
                   // Kachel oben
-                  Container(
-                    height: _tab == 'audio' ? 96 : null,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: sel ? Colors.lightGreenAccent : Colors.white24,
-                        width: sel ? 2 : 1,
+                  if (_tab == 'audio')
+                    Container(
+                      height: 96,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: sel ? Colors.lightGreenAccent : Colors.white24,
+                          width: sel ? 2 : 1,
+                        ),
+                      ),
+                      clipBehavior: Clip.hardEdge,
+                      child: _buildMediaCard(m),
+                    )
+                  else
+                    Expanded(
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(
+                            color: sel
+                                ? Colors.lightGreenAccent
+                                : Colors.white24,
+                            width: sel ? 2 : 1,
+                          ),
+                        ),
+                        clipBehavior: Clip.hardEdge,
+                        child: _buildMediaCard(m),
                       ),
                     ),
-                    clipBehavior: Clip.hardEdge,
-                    child: _buildMediaCard(m),
-                  ),
                   // Steuerleiste unter der Kachel (nur Audio)
                   if (_tab == 'audio')
                     Padding(

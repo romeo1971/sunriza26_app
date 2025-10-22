@@ -591,12 +591,40 @@ class PlaylistService {
     String avatarId,
     String playlistId,
   ) async {
-    final mediaCol = _fs
-        .collection('avatars')
-        .doc(avatarId)
-        .collection('media');
-    final mediaQs = await mediaCol.get();
-    final Set<String> mediaIds = mediaQs.docs.map((d) => d.id).toSet();
+    // Neue Media-Struktur: getrennte Collections je Typ
+    final Set<String> mediaIds = <String>{};
+    try {
+      final images = await _fs
+          .collection('avatars')
+          .doc(avatarId)
+          .collection('images')
+          .get();
+      mediaIds.addAll(images.docs.map((d) => d.id));
+    } catch (_) {}
+    try {
+      final videos = await _fs
+          .collection('avatars')
+          .doc(avatarId)
+          .collection('videos')
+          .get();
+      mediaIds.addAll(videos.docs.map((d) => d.id));
+    } catch (_) {}
+    try {
+      final documents = await _fs
+          .collection('avatars')
+          .doc(avatarId)
+          .collection('documents')
+          .get();
+      mediaIds.addAll(documents.docs.map((d) => d.id));
+    } catch (_) {}
+    try {
+      final audios = await _fs
+          .collection('avatars')
+          .doc(avatarId)
+          .collection('audios')
+          .get();
+      mediaIds.addAll(audios.docs.map((d) => d.id));
+    } catch (_) {}
 
     final assetsRef = _assetsCol(avatarId, playlistId);
     final itemsRef = _tItemsCol(avatarId, playlistId);
