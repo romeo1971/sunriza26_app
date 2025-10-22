@@ -30,10 +30,8 @@ class MediaService {
     final List<AvatarMedia> all = [];
     // Alle Typen durchlaufen
     for (final type in AvatarMediaType.values) {
-      final qs = await _col(
-        avatarId,
-        type,
-      ).orderBy('createdAt', descending: true).get();
+      // Robust: ohne orderBy abfragen (einige ältere Docs könnten createdAt fehlen)
+      final qs = await _col(avatarId, type).get();
       all.addAll(
         qs.docs.map((d) => AvatarMedia.fromMap({'id': d.id, ...d.data()})),
       );

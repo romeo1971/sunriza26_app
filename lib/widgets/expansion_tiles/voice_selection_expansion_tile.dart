@@ -6,7 +6,7 @@ import '../../services/localization_service.dart';
 /// Stimmwahl ExpansionTile
 class VoiceSelectionExpansionTile extends StatelessWidget {
   final Widget voiceSelectWidget;
-  final VoidCallback onAddAudio;
+  final VoidCallback? onAddAudio;
   final Widget? audioFilesList;
   final Widget? voiceParamsWidget;
   final bool hasVoiceId;
@@ -14,7 +14,7 @@ class VoiceSelectionExpansionTile extends StatelessWidget {
   const VoiceSelectionExpansionTile({
     super.key,
     required this.voiceSelectWidget,
-    required this.onAddAudio,
+    this.onAddAudio,
     this.audioFilesList,
     this.voiceParamsWidget,
     required this.hasVoiceId,
@@ -48,58 +48,59 @@ class VoiceSelectionExpansionTile extends StatelessWidget {
                 // ElevenLabs Voice Auswahl
                 voiceSelectWidget,
                 const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: onAddAudio,
-                    style: ElevatedButton.styleFrom(
-                      alignment: Alignment.centerLeft,
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.white,
-                      shadowColor: Colors.transparent,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 18,
+                if (onAddAudio != null)
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: onAddAudio,
+                      style: ElevatedButton.styleFrom(
+                        alignment: Alignment.centerLeft,
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.white,
+                        shadowColor: Colors.transparent,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 18,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
                       ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    child: ShaderMask(
-                      shaderCallback: (bounds) => const LinearGradient(
-                        colors: [AppColors.magenta, AppColors.lightBlue],
-                      ).createShader(bounds),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            context.read<LocalizationService>().t(
-                              'avatars.details.audioUploadTitle',
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [AppColors.magenta, AppColors.lightBlue],
+                        ).createShader(bounds),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              context.read<LocalizationService>().t(
+                                'avatars.details.audioUploadTitle',
+                              ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 16,
+                                color: Colors.white,
+                              ),
                             ),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 16,
-                              color: Colors.white,
+                            const SizedBox(height: 2),
+                            Text(
+                              context.read<LocalizationService>().t(
+                                'avatars.details.audioUploadSubtitle',
+                              ),
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w300,
+                                fontSize: 13,
+                                color: Colors.white,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            context.read<LocalizationService>().t(
-                              'avatars.details.audioUploadSubtitle',
-                            ),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w300,
-                              fontSize: 13,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                if (onAddAudio != null) const SizedBox(height: 12),
                 if (audioFilesList != null) audioFilesList!,
                 const SizedBox(height: 12),
                 // Stimmeinstellungen (nur anzeigen, wenn ein Klon/Voice-ID vorhanden ist)

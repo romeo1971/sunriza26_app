@@ -401,6 +401,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   List<Map<String, dynamic>> _elevenVoices = [];
   String? _selectedVoiceId;
   bool _voicesLoading = false;
+  bool _useOwnVoice =
+      false; // true = eigene Stimme (cloneVoiceId), false = externe (ElevenLabs)
 
   // Dynamics Parameter ✨ - PRO DYNAMICS-ID!
   final Map<String, double> _drivingMultipliers = {
@@ -1089,20 +1091,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (dl is String && dl.trim().isNotEmpty) {
           _voiceDialect = dl.trim();
         }
-        // Vorauswahl im Dropdown aus gespeicherten Daten herstellen
+        // Slider-State + Dropdown-Auswahl initialisieren
         try {
-          final chosen = (voice['elevenVoiceId'] as String?)?.trim();
           final cloneId = (voice['cloneVoiceId'] as String?)?.trim();
-          if ((chosen ?? '').isNotEmpty) {
-            if (cloneId != null && cloneId.isNotEmpty && chosen == cloneId) {
-              _selectedVoiceId = '__CLONE__';
-            } else {
-              _selectedVoiceId = chosen;
-            }
+          final elevenId = (voice['elevenVoiceId'] as String?)?.trim();
+
+          // Prüfe: Ist elevenVoiceId == cloneVoiceId? → Eigene Stimme aktiv
+          if (cloneId != null && cloneId.isNotEmpty && elevenId == cloneId) {
+            _useOwnVoice = true;
+            _selectedVoiceId = null; // Dropdown nicht relevant
           } else {
-            _selectedVoiceId = null;
+            // Externe Stimme aktiv (oder keine Stimme)
+            _useOwnVoice = false;
+            _selectedVoiceId = elevenId; // kann auch null sein
           }
         } catch (_) {
+          _useOwnVoice = false;
           _selectedVoiceId = null;
         }
       }
@@ -1373,8 +1377,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               // Audio (Stimmauswahl) inkl. Stimmeinstellungen
               VoiceSelectionExpansionTile(
                 voiceSelectWidget: _buildVoiceSelect(),
-                onAddAudio: _onAddAudio,
-                audioFilesList: _avatarData?.audioUrls.isNotEmpty == true
+                onAddAudio: _useOwnVoice ? _onAddAudio : null,
+                audioFilesList:
+                    _useOwnVoice && _avatarData?.audioUrls.isNotEmpty == true
                     ? _buildAudioFilesList()
                     : null,
                 voiceParamsWidget: _buildVoiceParams(),
@@ -1684,68 +1689,129 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         //   ),
         //   style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
         // ),
-        const SizedBox(height: 6),
-        CustomDropdown<String>(
-          label: context.read<LocalizationService>().t(
-            'avatars.details.voiceSelectLabel',
-          ),
-          value: (() {
-            final current = _selectedVoiceId;
-            final String? cloneId =
-                (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
-                    ?.trim();
-            if (current != null && cloneId != null && current == cloneId) {
-              return '__CLONE__';
-            }
-            return current;
-          })(),
-          items: () {
-            final String? cloneId =
-                (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
-                    ?.trim();
-            final List<DropdownMenuItem<String>> items = [];
-            // Erste Option: MEIN VOICE KLON (nur als explizite Auswahl)
-            items.add(
-              DropdownMenuItem<String>(
-                value: '__CLONE__',
-                child: Text(
-                  context.read<LocalizationService>().t(
-                    'avatars.details.myVoiceCloneLabel',
+        const SizedBox(height: 8),
+        // Slider: Stimme klonen vs. Externe Stimmen (GMBC Style)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              _useOwnVoice ? 'Eigene Stimme' : 'Externe Stimme',
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () async {
+                  setState(() => _useOwnVoice = !_useOwnVoice);
+                  await _saveVoiceMode();
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  style: const TextStyle(color: Colors.white),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _useOwnVoice ? 'Eigene' : 'Externe',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [AppColors.magenta, AppColors.lightBlue],
+                        ).createShader(bounds),
+                        child: Icon(
+                          _useOwnVoice
+                              ? Icons.check_circle
+                              : Icons.circle_outlined,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            );
-            // Danach Standardstimmen (inkl. ggf. Clone-ID; '__CLONE__' ist separater Eintrag)
-            for (final v in _elevenVoices) {
-              final id = (v['voice_id'] ?? v['voiceId'] ?? '') as String;
-              items.add(
-                DropdownMenuItem<String>(
-                  value: id,
-                  child: Text(
-                    (v['name'] ??
-                            context.read<LocalizationService>().t(
-                              'avatars.details.voiceFallbackName',
-                            ))
-                        as String,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              );
-            }
-            return items;
-          }(),
-          onChanged: (val) {
-            if (val == '__CLONE__') {
-              _onSelectVoice('__CLONE__');
-            } else {
-              _onSelectVoice(val);
-            }
-          },
+            ),
+          ],
         ),
+        const SizedBox(height: 12),
+        // Dropdown nur wenn "Externe Stimme" aktiv
+        if (!_useOwnVoice)
+          CustomDropdown<String>(
+            label: 'ElevenLabs Stimme',
+            value: _selectedVoiceId,
+            hint: 'Stimme wählen',
+            items: _elevenVoices.map((v) {
+              final id = (v['voice_id'] ?? v['voiceId'] ?? '') as String;
+              final name = (v['name'] ?? 'Stimme') as String;
+              return DropdownMenuItem<String>(
+                value: id,
+                child: Text(name, style: const TextStyle(color: Colors.white)),
+              );
+            }).toList(),
+            onChanged: (val) {
+              if (val != null) _onSelectVoice(val);
+            },
+          ),
         const SizedBox.shrink(),
       ],
     );
+  }
+
+  Future<void> _saveVoiceMode() async {
+    // Speichert die Slider-Auswahl (useOwnVoice) und setzt entsprechend elevenVoiceId
+    if (_avatarData == null) return;
+    try {
+      final existing = Map<String, dynamic>.from(_avatarData!.training ?? {});
+      final voice = Map<String, dynamic>.from(existing['voice'] ?? {});
+
+      if (_useOwnVoice) {
+        // Eigene Stimme: cloneVoiceId → elevenVoiceId kopieren
+        final cloneId = (voice['cloneVoiceId'] as String?)?.trim() ?? '';
+        if (cloneId.isNotEmpty) {
+          voice['elevenVoiceId'] = cloneId;
+        }
+      } else {
+        // Externe Stimme: erste Stimme vorauswählen, falls nichts gewählt
+        if (_selectedVoiceId == null || _selectedVoiceId!.isEmpty) {
+          if (_elevenVoices.isNotEmpty) {
+            final firstId =
+                (_elevenVoices.first['voice_id'] ??
+                        _elevenVoices.first['voiceId'] ??
+                        '')
+                    as String;
+            if (firstId.isNotEmpty) {
+              _selectedVoiceId = firstId;
+              voice['elevenVoiceId'] = firstId;
+            }
+          }
+        } else {
+          voice['elevenVoiceId'] = _selectedVoiceId;
+        }
+      }
+
+      existing['voice'] = voice;
+      final updated = _avatarData!.copyWith(
+        training: existing,
+        updatedAt: DateTime.now(),
+      );
+      final ok = await _avatarService.updateAvatar(updated);
+      if (!mounted) return;
+      if (ok) {
+        // Lokale Kopie aktualisieren OHNE _applyAvatar (vermeidet Slider-Reset)
+        _avatarData = updated;
+      }
+    } catch (_) {}
   }
 
   Future<void> _onSelectVoice(String? voiceId) async {
@@ -1758,22 +1824,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     try {
       final existing = Map<String, dynamic>.from(_avatarData!.training ?? {});
       final voice = Map<String, dynamic>.from(existing['voice'] ?? {});
-      if (voiceId == '__CLONE__') {
-        final cloneId = (voice['cloneVoiceId'] as String?)?.trim();
-        if (cloneId != null && cloneId.isNotEmpty) {
-          // Konsistenz: beide Felder setzen
-          voice['elevenVoiceId'] = cloneId;
-          voice['cloneVoiceId'] = cloneId;
-        }
-      } else if ((voiceId ?? '').isNotEmpty) {
-        // Auswahl einer Standardstimme: elevenVoiceId setzen,
-        // cloneVoiceId unverändert lassen (oder leeren, wenn identisch falsch gesetzt war)
+
+      if ((voiceId ?? '').isNotEmpty) {
         voice['elevenVoiceId'] = voiceId;
-        final currentClone = (voice['cloneVoiceId'] as String?)?.trim() ?? '';
-        if (currentClone.isNotEmpty && currentClone == '__CLONE__') {
-          voice.remove('cloneVoiceId');
-        }
       }
+
       existing['voice'] = voice;
       final updated = _avatarData!.copyWith(
         training: existing,
@@ -2682,10 +2737,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         return;
       }
       String? voiceId;
-      try {
-        voiceId = (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
+      // Slider-Auswahl berücksichtigen
+      if (_useOwnVoice) {
+        voiceId = (_avatarData?.training?['voice']?['cloneVoiceId'] as String?)
             ?.trim();
-      } catch (_) {}
+      } else if ((_selectedVoiceId ?? '').isNotEmpty) {
+        voiceId = _selectedVoiceId?.trim();
+      } else {
+        try {
+          voiceId =
+              (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
+                  ?.trim();
+        } catch (_) {}
+      }
       if (voiceId == null || voiceId.isEmpty) {
         _showSystemSnack(
           context.read<LocalizationService>().t(
@@ -2934,30 +2998,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             final data = jsonDecode(res.body) as Map<String, dynamic>;
             final voiceId = data['voice_id'] as String?;
             if (voiceId != null && voiceId.isNotEmpty) {
-              // training.voice.* konsistent setzen, aber nur wenn nötig
+              // training.voice.* konsistent setzen: IMMER beide Felder auf neue Klon-ID
               final existingVoice = (_avatarData!.training != null)
                   ? Map<String, dynamic>.from(
                       _avatarData!.training!['voice'] ?? {},
                     )
                   : <String, dynamic>{};
-              final currentEleven =
-                  (existingVoice['elevenVoiceId'] as String?)?.trim() ?? '';
-              final currentClone =
-                  (existingVoice['cloneVoiceId'] as String?)?.trim() ?? '';
 
-              final needsUpdate =
-                  currentEleven.isEmpty ||
-                  currentClone.isEmpty ||
-                  currentEleven != currentClone ||
-                  currentEleven != voiceId ||
-                  currentClone != voiceId;
-
-              if (needsUpdate) {
-                existingVoice['elevenVoiceId'] = voiceId;
-                existingVoice['cloneVoiceId'] = voiceId;
-              }
+              // Nach Klonen: IMMER beide IDs auf die neue voiceId setzen
+              existingVoice['elevenVoiceId'] = voiceId;
+              existingVoice['cloneVoiceId'] = voiceId;
               existingVoice['activeUrl'] = _activeAudioUrl;
               existingVoice['candidates'] = _avatarData!.audioUrls;
+
+              debugPrint(
+                '🔥 Klonen erfolgreich: elevenVoiceId=$voiceId, cloneVoiceId=$voiceId',
+              );
+              debugPrint('🔥 existingVoice nach Setzen: $existingVoice');
 
               final updated = _avatarData!.copyWith(
                 training: {
@@ -2969,13 +3026,17 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               final ok = await _avatarService.updateAvatar(updated);
               if (!mounted) return;
               if (ok) {
+                // Nach Klonen: Slider auf "Eigene Stimme" setzen (VOR _applyAvatar)
+                setState(() {
+                  _useOwnVoice = true;
+                  _isDirty = false;
+                });
                 _applyAvatar(updated);
                 _showSystemSnack(
                   context.read<LocalizationService>().t(
                     'avatars.details.voiceClonedSaved',
                   ),
                 );
-                setState(() => _isDirty = false);
               } else {
                 _showSystemSnack(
                   context.read<LocalizationService>().t(
