@@ -41,7 +41,6 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
   final bool _showSearch = false;
   final String _searchTerm = '';
   final TextEditingController _searchController = TextEditingController();
-  final TextEditingController _intervalCtl = TextEditingController();
   bool _timelineHover = false;
   // (entfernt) alter Resizer-Hover
   // bool _resizerHover = false;
@@ -358,7 +357,6 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
       end: 1.0,
     ).chain(CurveTween(curve: Curves.easeInOut)).animate(_pulseCtrl);
     _load();
-    _intervalCtl.text = widget.playlist.showAfterSec.toString();
     _assetsSearchCtl.addListener(() {
       setState(() => _assetsSearchTerm = _assetsSearchCtl.text.toLowerCase());
     });
@@ -372,7 +370,6 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
     } catch (_) {}
     _searchController.dispose();
     _assetsSearchCtl.dispose();
-    _intervalCtl.dispose();
     for (final c in _audioCtrls.values) {
       c.dispose();
     }
@@ -565,6 +562,18 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
       _timelineEntryIds
         ..clear()
         ..addAll(items2.map((it) => (it['id'] as String?) ?? ''));
+      
+      // DelaySec und Activity aus Firestore in Maps laden
+      _itemDelaySec.clear();
+      _itemEnabled.clear();
+      for (final it in items2) {
+        final entryId = it['id'] as String?;
+        if (entryId != null && entryId.isNotEmpty) {
+          _itemDelaySec[entryId] = it['delaySec'] as int? ?? 60;
+          _itemEnabled[entryId] = it['activity'] as bool? ?? true;
+        }
+      }
+      
       _timelineKeys
         ..clear()
         ..addAll(List.generate(_timeline.length, (_) => UniqueKey()));
@@ -660,11 +669,23 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
         title: const Text('Timeline'),
         iconTheme: const IconThemeData(color: Colors.white),
         actions: [
-          if (_isDirty)
             IconButton(
-              tooltip: 'Speichern',
-              onPressed: _saveTimeline,
-              icon: const Icon(Icons.save),
+            tooltip: _showAssets ? 'Media aus' : 'Media an',
+            onPressed: () => setState(() => _showAssets = !_showAssets),
+            icon: _showAssets
+                ? ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [Color(0xFFE91E63), Color(0xFF64B5F6)],
+                    ).createShader(bounds),
+                    child: const Icon(
+                      Icons.layers,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(
+                    Icons.layers_outlined,
+                    color: Colors.grey,
+                  ),
             ),
           const SizedBox(width: 4),
         ],
@@ -737,39 +758,8 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                 fontSize: 12,
                               ),
                             ),
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 200),
-                              child: CustomTextField(
-                                label: 'Zeit-Intervall',
-                                controller: _intervalCtl,
-                                keyboardType: TextInputType.number,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter.digitsOnly,
-                                ],
-                                hintText: 'Anzeigezeit in Sekunden',
-                                onChanged: (v) {
-                                  setState(() {
-                                    _isDirty = true;
-                                  });
-                                },
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            // Mini-Buttons unter dem Intervall (CI-konform, keine Icons)
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 200),
-                              child: Wrap(
-                                spacing: 6,
-                                runSpacing: 6,
-                                children: [
-                                  _MiniToggleButton(
-                                    label: 'Media Assets',
-                                    active: _showAssets,
-                                    onTap: () => setState(
-                                      () => _showAssets = !_showAssets,
-                                    ),
-                                  ),
-                                  Container(
+                            // Loop/Ende ON/OFF Toggle
+                            Container(
                                     decoration: BoxDecoration(
                                       color: Colors.white.withValues(alpha: 0.1),
                                       borderRadius: BorderRadius.circular(4),
@@ -870,9 +860,6 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                           ),
                                         ),
                                       ],
-                                    ),
-                                  ),
-                                ],
                               ),
                             ),
                           ],
@@ -1170,16 +1157,19 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                     color: Colors.grey.shade900,
                                     padding: const EdgeInsets.only(
                                       left: 12,
-                                      right: 0,
+                                      right: 12,
                                     ),
-                                    alignment: Alignment.centerLeft,
-                                    child: const Text(
-                                      'Timeline',
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                      ),
+                                    child: Row(
+                                      children: [
+                                        const Text(
+                                          'Timeline',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 Expanded(child: _buildTimelinePane()),
@@ -1611,7 +1601,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                               '',
                             ); // wird beim Persistieren gesetzt
                             _syncKeysLength();
-                            _isDirty = true;
+                            // NICHT _isDirty setzen, da bereits persistiert
                           });
                           await _persistTimelineItems();
                         },
@@ -1726,7 +1716,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                     _assets.removeWhere((a) => a.id == m.id);
                                     _timeline.removeWhere((t) => t.id == m.id);
                                     _syncKeysLength();
-                                    _isDirty = true;
+                                    // NICHT _isDirty setzen, da bereits persistiert
                                   });
                                   await _playlistSvc.deleteTimelineItemsByAsset(
                                     widget.playlist.avatarId,
@@ -1839,7 +1829,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                     _timelineKeys.add(UniqueKey());
                     _timelineEntryIds.add('');
                     _syncKeysLength();
-                    _isDirty = true;
+                    // NICHT _isDirty setzen, da bereits persistiert
                   });
                   await _persistTimelineItems();
                 },
@@ -1902,7 +1892,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                             _assets.removeWhere((a) => a.id == m.id);
                             _timeline.removeWhere((t) => t.id == m.id);
                             _syncKeysLength();
-                            _isDirty = true;
+                            // NICHT _isDirty setzen, da bereits persistiert
                           });
                           await _playlistSvc.deleteTimelineItemsByAsset(
                             widget.playlist.avatarId,
@@ -1970,7 +1960,6 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
         _assets
           ..clear()
           ..addAll(result);
-        _isDirty = true;
       });
       // Nach Auswahl speichern wir die Assets sofort (Pool)
       final docs = _assets
@@ -2087,7 +2076,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
 
                         // Final Sync
                         _syncKeysLength();
-                        _isDirty = true;
+                        // NICHT _isDirty setzen, da bereits persistiert
                       });
 
                       await _persistTimelineItems();
@@ -2445,7 +2434,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                                                 .removeAt(i);
                                                           }
                                           _syncKeysLength();
-                                          _isDirty = true;
+                                          // NICHT _isDirty setzen, da bereits persistiert
                                         }
                                       });
                                       await _persistTimelineItems();
@@ -2483,7 +2472,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
             _timeline.add(m.data);
             _timelineKeys.add(UniqueKey());
             _syncKeysLength();
-            _isDirty = true;
+            // NICHT _isDirty setzen, da bereits persistiert
           });
           // Persist nach dem Hinzufügen
           _persistTimelineItems();
