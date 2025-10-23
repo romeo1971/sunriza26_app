@@ -257,11 +257,14 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
 
   // NEUE Methode für Timeline mit entryId - zeigt kumulativen Anzeigezeitpunkt
   List<int> _computeTimelineDisplayTimeWithEntryId(int index) {
-    // Berechne kumulative Summe aller Vorgänger + aktueller Wert
+    // Berechne kumulative Summe NUR für AKTIVE Entries
     int displayTime = 0;
     for (int k = 0; k <= index; k++) {
       final entryId = _getTimelineEntryId(k);
-      displayTime += (_itemDelaySec[entryId] ?? 60);
+      final isActive = _itemEnabled[entryId] ?? true;
+      if (isActive) {
+        displayTime += (_itemDelaySec[entryId] ?? 60);
+      }
     }
     return [displayTime, displayTime];
   }
