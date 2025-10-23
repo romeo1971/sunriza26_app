@@ -565,6 +565,21 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
       _timelineKeys
         ..clear()
         ..addAll(List.generate(_timeline.length, (_) => UniqueKey()));
+      
+      // Loop/Enabled Status aus Firestore laden
+      final doc = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(widget.playlist.avatarId)
+          .collection('playlists')
+          .doc(widget.playlist.id)
+          .get();
+      
+      if (doc.exists) {
+        final data = doc.data();
+        _timelineLoop = data?['timelineLoop'] as bool? ?? true;
+        _timelineEnabled = data?['timelineEnabled'] as bool? ?? true;
+      }
+      
       if (mounted) setState(() {});
     } catch (_) {}
     if (mounted) {
@@ -751,17 +766,107 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                       () => _showAssets = !_showAssets,
                                     ),
                                   ),
-                                  _GradientToggleGroup(
-                                    leftLabel: 'Loop',
-                                    rightLabel: _timelineEnabled ? 'ON' : 'OFF',
-                                    leftActive: _timelineLoop,
-                                    rightActive: _timelineEnabled,
-                                    onLeftTap: () => setState(
-                                      () => _timelineLoop = !_timelineLoop,
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(alpha: 0.1),
+                                      borderRadius: BorderRadius.circular(4),
                                     ),
-                                    onRightTap: () => setState(
-                                      () =>
-                                          _timelineEnabled = !_timelineEnabled,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // Loop/Ende Teil
+                                        InkWell(
+                                          onTap: () async {
+                                            setState(() => _timelineLoop = !_timelineLoop);
+                                            await FirebaseFirestore.instance
+                                                .collection('avatars')
+                                                .doc(widget.playlist.avatarId)
+                                                .collection('playlists')
+                                                .doc(widget.playlist.id)
+                                                .set({'timelineLoop': _timelineLoop}, SetOptions(merge: true));
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              gradient: _timelineLoop
+                                                  ? Theme.of(context).extension<AppGradients>()!.magentaBlue
+                                                  : null,
+                                              borderRadius: const BorderRadius.only(
+                                                topLeft: Radius.circular(4),
+                                                bottomLeft: Radius.circular(4),
+                                              ),
+                                            ),
+                                            child: SizedBox(
+                                              width: 30,
+                                              child: Center(
+                                                child: Text(
+                                                  _timelineLoop ? 'Loop' : 'Ende',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        // Pipe
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6),
+                                          child: Text(
+                                            '|',
+                                            style: TextStyle(
+                                              color: Colors.white.withValues(alpha: 0.5),
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w300,
+                                            ),
+                                          ),
+                                        ),
+                                        // ON/OFF Teil
+                                        InkWell(
+                                          onTap: () async {
+                                            setState(() => _timelineEnabled = !_timelineEnabled);
+                                            await FirebaseFirestore.instance
+                                                .collection('avatars')
+                                                .doc(widget.playlist.avatarId)
+                                                .collection('playlists')
+                                                .doc(widget.playlist.id)
+                                                .set({'timelineEnabled': _timelineEnabled}, SetOptions(merge: true));
+                                          },
+                                          child: Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 4,
+                                            ),
+                                            decoration: BoxDecoration(
+                                              gradient: _timelineEnabled
+                                                  ? Theme.of(context).extension<AppGradients>()!.magentaBlue
+                                                  : null,
+                                              borderRadius: const BorderRadius.only(
+                                                topRight: Radius.circular(4),
+                                                bottomRight: Radius.circular(4),
+                                              ),
+                                            ),
+                                            child: SizedBox(
+                                              width: 24,
+                                              child: Center(
+                                                child: Text(
+                                                  _timelineEnabled ? 'ON' : 'OFF',
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -780,120 +885,99 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
               // Neue Struktur: Tabs/Navi (oben), darunter CTA-Zeile mit Suche-Toggle
               // Navi oben (nur Tabs + Orientation) – direkt an das Cover anschließen
               if (_showAssets)
-                LayoutBuilder(
-                  builder: (context, cons) {
-                    final bool roomy = cons.maxWidth >= (4 * 48 + 40 + 16);
-                    final double tabW = roomy ? 48 : 36;
-                    final double iconSize = roomy ? 18 : 16;
-                    return Container(
-                      color: const Color(0xFF1E1E1E),
-                      height: 35,
-                      padding: EdgeInsets.zero,
-                      child: Row(
-                        children: [
-                          _tabBtn(
-                            'images',
-                            Icons.image_outlined,
-                            tabW: tabW,
-                            iconSize: iconSize,
-                          ),
-                          _tabBtn(
-                            'videos',
-                            Icons.videocam_outlined,
-                            tabW: tabW,
-                            iconSize: iconSize,
-                          ),
-                          _tabBtn(
-                            'documents',
-                            Icons.description_outlined,
-                            tabW: tabW,
-                            iconSize: iconSize,
-                          ),
-                          _tabBtn(
-                            'audio',
-                            Icons.audiotrack,
-                            tabW: tabW,
-                            iconSize: iconSize,
-                          ),
-                          const Spacer(),
-                          const SizedBox(width: 12),
-                          if (_tab != 'audio')
-                            TextButton(
-                              onPressed: () =>
-                                  setState(() => _portrait = !_portrait),
-                              style: ButtonStyle(
-                                padding: const WidgetStatePropertyAll(
-                                  EdgeInsets.zero,
-                                ),
-                                minimumSize: const WidgetStatePropertyAll(
-                                  Size(40, 35),
-                                ),
+              LayoutBuilder(
+                builder: (context, cons) {
+                  final bool roomy = cons.maxWidth >= (4 * 48 + 40 + 16);
+                  final double tabW = roomy ? 48 : 36;
+                  final double iconSize = roomy ? 18 : 16;
+                  return Container(
+                    color: const Color(0xFF1E1E1E),
+                    height: 35,
+                    padding: EdgeInsets.zero,
+                    child: Row(
+                      children: [
+                        _tabBtn(
+                          'images',
+                          Icons.image_outlined,
+                          tabW: tabW,
+                          iconSize: iconSize,
+                        ),
+                        _tabBtn(
+                          'videos',
+                          Icons.videocam_outlined,
+                          tabW: tabW,
+                          iconSize: iconSize,
+                        ),
+                        _tabBtn(
+                          'documents',
+                          Icons.description_outlined,
+                          tabW: tabW,
+                          iconSize: iconSize,
+                        ),
+                        _tabBtn(
+                          'audio',
+                          Icons.audiotrack,
+                          tabW: tabW,
+                          iconSize: iconSize,
+                        ),
+                        const Spacer(),
+                        const SizedBox(width: 12),
+                        if (_tab != 'audio')
+                          TextButton(
+                            onPressed: () =>
+                                setState(() => _portrait = !_portrait),
+                            style: ButtonStyle(
+                              padding: const WidgetStatePropertyAll(
+                                EdgeInsets.zero,
                               ),
-                              child: _portrait
-                                  ? ShaderMask(
+                              minimumSize: const WidgetStatePropertyAll(
+                                Size(40, 35),
+                              ),
+                            ),
+                            child: _portrait
+                                ? ShaderMask(
                                       shaderCallback: (b) =>
                                           const LinearGradient(
-                                            colors: [
-                                              AppColors.magenta,
-                                              AppColors.lightBlue,
-                                            ],
-                                          ).createShader(b),
-                                      child: Icon(
-                                        Icons.stay_primary_portrait,
-                                        size: iconSize,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : Icon(
-                                      Icons.stay_primary_landscape,
+                                      colors: [
+                                        AppColors.magenta,
+                                        AppColors.lightBlue,
+                                      ],
+                                    ).createShader(b),
+                                    child: Icon(
+                                      Icons.stay_primary_portrait,
                                       size: iconSize,
-                                      color: Colors.white54,
+                                      color: Colors.white,
                                     ),
-                            ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+                                  )
+                                : Icon(
+                                    Icons.stay_primary_landscape,
+                                    size: iconSize,
+                                    color: Colors.white54,
+                                  ),
+                          ),
+                      ],
+                    ),
+                  );
+                },
+              ),
 
               // CTA-Zeile unter Navi: +Media links, Search-Toggle rechts
               if (_showAssets)
-                Container(
-                  height: 35,
-                  color: Colors.grey.shade900,
-                  padding: const EdgeInsets.only(left: 12, right: 0),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      if (!_searchOpen)
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: _assets.isEmpty
-                                ? FadeTransition(
-                                    opacity: _pulse,
-                                    child: InkWell(
-                                      onTap: _openAssetsPicker,
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: const [
-                                          Icon(
-                                            Icons.add,
-                                            color: Colors.white,
-                                            size: 20,
-                                          ),
-                                          SizedBox(width: 6),
-                                          Text(
-                                            'Media Assets',
-                                            style: TextStyle(
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  )
-                                : InkWell(
+              Container(
+                height: 35,
+                color: Colors.grey.shade900,
+                padding: const EdgeInsets.only(left: 12, right: 0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    if (!_searchOpen)
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _assets.isEmpty
+                              ? FadeTransition(
+                                  opacity: _pulse,
+                                  child: InkWell(
                                     onTap: _openAssetsPicker,
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -901,78 +985,98 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                         Icon(
                                           Icons.add,
                                           color: Colors.white,
-                                          size: 22,
+                                          size: 20,
                                         ),
-                                        SizedBox(width: 8),
+                                        SizedBox(width: 6),
                                         Text(
-                                          'Media',
-                                          style: TextStyle(color: Colors.white),
+                                          'Media Assets',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                            ),
                                         ),
                                       ],
                                     ),
                                   ),
-                          ),
-                        )
-                      else
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 300),
-                              child: Padding(
-                                padding: const EdgeInsets.only(top: 5),
-                                child: SizedBox(
-                                  height: 32,
-                                  child: TextField(
-                                    controller: _assetsSearchCtl,
-                                    onChanged: (v) => setState(
-                                      () => _assetsSearchTerm = v.toLowerCase(),
-                                    ),
-                                    style: const TextStyle(
+                                )
+                              : InkWell(
+                                  onTap: _openAssetsPicker,
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: const [
+                                      Icon(
+                                        Icons.add,
+                                        color: Colors.white,
+                                        size: 22,
+                                      ),
+                                      SizedBox(width: 8),
+                                      Text(
+                                        'Media',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 300),
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 5),
+                              child: SizedBox(
+                                height: 32,
+                                child: TextField(
+                                  controller: _assetsSearchCtl,
+                                  onChanged: (v) => setState(
+                                    () => _assetsSearchTerm = v.toLowerCase(),
+                                  ),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.white,
+                                  ),
+                                  cursorColor: Colors.white,
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    hintText: 'Suche nach Medien...',
+                                    hintStyle: TextStyle(
+                                      color: Colors.white54,
                                       fontSize: 12,
-                                      color: Colors.white,
                                     ),
-                                    cursorColor: Colors.white,
-                                    decoration: const InputDecoration(
-                                      isDense: true,
-                                      hintText: 'Suche nach Medien...',
-                                      hintStyle: TextStyle(
-                                        color: Colors.white54,
-                                        fontSize: 12,
+                                    prefixIcon: Padding(
+                                      padding: EdgeInsets.only(left: 6),
+                                      child: Icon(
+                                        Icons.search,
+                                        color: Colors.white70,
+                                        size: 18,
                                       ),
-                                      prefixIcon: Padding(
-                                        padding: EdgeInsets.only(left: 6),
-                                        child: Icon(
-                                          Icons.search,
-                                          color: Colors.white70,
-                                          size: 18,
-                                        ),
+                                    ),
+                                    prefixIconConstraints: BoxConstraints(
+                                      minWidth: 24,
+                                      maxWidth: 28,
+                                    ),
+                                    filled: true,
+                                    fillColor: Color(0x1FFFFFFF),
+                                    border: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Colors.white24,
                                       ),
-                                      prefixIconConstraints: BoxConstraints(
-                                        minWidth: 24,
-                                        maxWidth: 28,
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Colors.white24,
                                       ),
-                                      filled: true,
-                                      fillColor: Color(0x1FFFFFFF),
-                                      border: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: Colors.white24,
-                                        ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderSide: BorderSide(
+                                        color: Colors.white24,
                                       ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: Colors.white24,
-                                        ),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: Colors.white24,
-                                        ),
-                                      ),
-                                      contentPadding: EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 8,
-                                      ),
+                                    ),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 8,
                                     ),
                                   ),
                                 ),
@@ -980,44 +1084,45 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                             ),
                           ),
                         ),
-                      const SizedBox(width: 12),
-                      // Lupe rechts: toggelt Suche, Hintergrund weiß, Icon GMBC bei aktiv
-                      InkWell(
-                        onTap: () => setState(() => _searchOpen = !_searchOpen),
-                        borderRadius: BorderRadius.circular(6),
-                        child: Container(
-                          width: 48,
-                          height: 35,
-                          decoration: BoxDecoration(
-                            color: _searchOpen ? Colors.white : Colors.white10,
-                            borderRadius: BorderRadius.zero,
-                          ),
-                          child: Center(
-                            child: _searchOpen
-                                ? ShaderMask(
-                                    shaderCallback: (b) => const LinearGradient(
-                                      colors: [
-                                        AppColors.magenta,
-                                        AppColors.lightBlue,
-                                      ],
-                                    ).createShader(b),
-                                    child: const Icon(
-                                      Icons.search,
-                                      color: Colors.white,
-                                      size: 18,
-                                    ),
-                                  )
-                                : const Icon(
+                      ),
+                    const SizedBox(width: 12),
+                    // Lupe rechts: toggelt Suche, Hintergrund weiß, Icon GMBC bei aktiv
+                    InkWell(
+                      onTap: () => setState(() => _searchOpen = !_searchOpen),
+                      borderRadius: BorderRadius.circular(6),
+                      child: Container(
+                        width: 48,
+                        height: 35,
+                        decoration: BoxDecoration(
+                          color: _searchOpen ? Colors.white : Colors.white10,
+                          borderRadius: BorderRadius.zero,
+                        ),
+                        child: Center(
+                          child: _searchOpen
+                              ? ShaderMask(
+                                  shaderCallback: (b) => const LinearGradient(
+                                    colors: [
+                                      AppColors.magenta,
+                                      AppColors.lightBlue,
+                                    ],
+                                  ).createShader(b),
+                                  child: const Icon(
                                     Icons.search,
-                                    color: Colors.white70,
+                                    color: Colors.white,
                                     size: 18,
                                   ),
-                          ),
+                                )
+                              : const Icon(
+                                  Icons.search,
+                                  color: Colors.white70,
+                                  size: 18,
+                                ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
+              ),
 
               // Vertikaler Split: Oben Assets, unten Timeline, 100% Breite
               Expanded(
@@ -1036,8 +1141,8 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                       );
                       double topH = _showAssets
                           ? (_verticalRatio * available).clamp(
-                              120.0,
-                              available - 120.0,
+                        120.0,
+                        available - 120.0,
                             )
                           : 0.0;
                       final double bottomH = _showAssets
@@ -1050,7 +1155,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                           else
                             const SizedBox.shrink(),
                           if (_showAssets)
-                            _buildVerticalResizer(available, topH, resizerH),
+                          _buildVerticalResizer(available, topH, resizerH),
                           SizedBox(
                             height: bottomH,
                             child: Column(
@@ -2006,7 +2111,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                               child: ReorderableDragStartListener(
                                 index: i,
                                 child: Container(
-                                  margin: const EdgeInsets.only(bottom: 12),
+                                  margin: const EdgeInsets.only(
+                                    top: 12,
+                                    left: 16,
+                                    right: 16,
+                                  ),
                                   height: 72,
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(12),
@@ -2018,14 +2127,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                           ).withValues(alpha: 0.10)
                                         : Colors.white.withValues(alpha: 0.06),
                                   ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(
-                                      left: 12,
-                                      right: 12,
-                                    ),
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
                                     child: Row(
                                       children: [
-                                        // Image links - volle Höhe
+                                        // Image links - volle Höhe, kein Abstand
                                         SizedBox(
                                           width: 50,
                                           height: 72,
@@ -2097,13 +2203,14 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                             ],
                                           ),
                                         ),
-                                        const SizedBox(width: 12),
-                                        // Content Mitte
+                                        // Content Mitte mit 16px padding links
                                         Expanded(
-                                          child: Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.start,
-                                            children: [
+                                          child: Padding(
+                                            padding: const EdgeInsets.only(left: 16),
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
                                               // Nur Startzeit anzeigen
                                               Padding(
                                                 padding: const EdgeInsets.only(
@@ -2155,11 +2262,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                                       fontWeight:
                                                           FontWeight.w500,
                                                     ),
-                                                    icon: const Icon(
+                                  icon: const Icon(
                                                       Icons.arrow_drop_down,
                                                       size: 14,
-                                                      color: Colors.white70,
-                                                    ),
+                                    color: Colors.white70,
+                                  ),
                                                     items: List.generate(
                                                       30,
                                                       (
@@ -2197,16 +2304,19 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                                   fontSize: 12,
                                                 ),
                                               ),
-                                            ],
-                                          ),
-                                        ),
-                                        // Rechte Navi Column am oberen Rand
-                                        Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.start,
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.end,
-                                          children: [
+                                               ],
+                                             ),
+                                           ),
+                                         ),
+                                        // Rechte Navi Column am oberen Rand mit 16px rechts padding
+                                        Padding(
+                                          padding: const EdgeInsets.only(right: 16),
+                                          child: Column(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.start,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.end,
+                                            children: [
                                             Padding(
                                               padding: const EdgeInsets.only(
                                                 top: 4,
@@ -2315,14 +2425,14 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                                       );
                                                       if (confirm != true)
                                                         return;
-                                                      setState(() {
+                                      setState(() {
                                                         if (i <
                                                                 _timeline
                                                                     .length &&
                                                             i <
                                                                 _timelineKeys
                                                                     .length) {
-                                                          _timeline.removeAt(i);
+                                          _timeline.removeAt(i);
                                                           _timelineKeys
                                                               .removeAt(i);
                                                           if (i <
@@ -2331,26 +2441,27 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                                             _timelineEntryIds
                                                                 .removeAt(i);
                                                           }
-                                                          _syncKeysLength();
-                                                          _isDirty = true;
-                                                        }
-                                                      });
-                                                      await _persistTimelineItems();
+                                          _syncKeysLength();
+                                          _isDirty = true;
+                                        }
+                                      });
+                                      await _persistTimelineItems();
                                                     },
                                                     child: Icon(
                                                       Icons.close,
                                                       size: 20,
                                                       color: Colors.white70,
                                                     ),
-                                                  ),
-                                                ],
+                                                    ),
+                                                  ],
+                                                ),
                                               ),
-                                            ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
                                 ),
                               ),
                             ),
