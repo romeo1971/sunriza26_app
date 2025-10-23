@@ -2295,11 +2295,11 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                                 ),
                                               ),
                                               const SizedBox(height: 4),
-                                              // Name
+                                              // Name mit Ellipsis
                                               Text(
                                                 _displayName(_timeline[i]),
                                                 overflow: TextOverflow.ellipsis,
-                                                maxLines: 2,
+                                                maxLines: 1,
                                                 style: const TextStyle(
                                                   fontSize: 12,
                                                 ),
