@@ -7,6 +7,7 @@ import 'firebase_options.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'auth_gate.dart';
 import 'services/ai_service.dart';
+import 'services/bithuman_service.dart';
 import 'services/video_stream_service.dart';
 import 'services/auth_service.dart';
 import 'services/language_service.dart';
@@ -79,6 +80,9 @@ void main() async {
   } catch (_) {
     // still starten – falls Settings bereits gesetzt wurden
   }
+
+  // BitHuman Service initialisieren
+  await BitHumanService.initialize();
 
   // Google Sign-In initialisieren (7.x)
   await GoogleSignIn.instance.initialize();

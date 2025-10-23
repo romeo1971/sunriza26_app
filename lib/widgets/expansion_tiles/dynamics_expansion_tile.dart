@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import 'expansion_tile_base.dart';
 import 'dynamics_item_tile.dart';
+import 'live_avatar_tile.dart';
 
 /// Dynamics Container ExpansionTile - zeigt alle Dynamics als separate Tiles
 class DynamicsExpansionTile extends StatelessWidget {
@@ -9,6 +10,13 @@ class DynamicsExpansionTile extends StatelessWidget {
   final String? heroVideoUrl;
   final bool heroVideoTooLong;
   final double heroVideoDuration;
+
+  // Live Avatar State
+  final String? heroImageUrl;
+  final String? heroAudioUrl;
+  final VoidCallback? onGenerateLiveAvatar;
+  final bool isGeneratingLiveAvatar;
+  final String? liveAvatarAgentId;
 
   // Dynamics State
   final Map<String, Map<String, dynamic>> dynamicsData;
@@ -60,6 +68,11 @@ class DynamicsExpansionTile extends StatelessWidget {
     required this.heroVideoUrl,
     required this.heroVideoTooLong,
     required this.heroVideoDuration,
+    this.heroImageUrl,
+    this.heroAudioUrl,
+    this.onGenerateLiveAvatar,
+    this.isGeneratingLiveAvatar = false,
+    this.liveAvatarAgentId,
     required this.dynamicsData,
     required this.drivingMultipliers,
     required this.animationScales,
@@ -413,6 +426,18 @@ class DynamicsExpansionTile extends StatelessWidget {
               ),
             );
           }),
+
+          // Live Avatar Tile (unter Basic)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: LiveAvatarTile(
+              heroImageUrl: heroImageUrl,
+              heroAudioUrl: heroAudioUrl,
+              onGenerate: onGenerateLiveAvatar,
+              isGenerating: isGeneratingLiveAvatar,
+              agentId: liveAvatarAgentId,
+            ),
+          ),
 
           // const SizedBox(height: 16),
 

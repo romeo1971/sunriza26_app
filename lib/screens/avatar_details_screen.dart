@@ -25,6 +25,7 @@ import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 import '../data/countries.dart';
 import '../models/avatar_data.dart';
 import '../services/avatar_service.dart';
+import '../services/bithuman_service.dart';
 import '../services/elevenlabs_service.dart';
 import '../services/env_service.dart';
 import '../services/firebase_storage_service.dart';
@@ -168,6 +169,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final Map<String, bool> _videoAudioEnabled =
       {}; // URL -> Audio ON (true) oder OFF (false) ✅
   final TextEditingController _textAreaController = TextEditingController();
+
+  // Live Avatar State
+  bool _isGeneratingLiveAvatar = false;
+  String? _liveAvatarAgentId;
 
   // Timeline-Daten in Firebase speichern
   Future<void> _saveTimelineData() async {
@@ -1118,6 +1123,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     await _loadTimelineData(data.id);
     // 🎭 Dynamics-Daten laden ✨
     await _loadDynamicsData(data.id);
+    // 🚀 Live Avatar Agent ID laden
+    await _loadLiveAvatarData(data.id);
     // 🎬 Hero-Video Dauer prüfen (Max 10 Sek für Dynamics)
     await _checkHeroVideoDuration();
     if (!mounted) return;
@@ -1444,6 +1451,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       heroVideoUrl: _getHeroVideoUrl(),
       heroVideoTooLong: _heroVideoTooLong,
       heroVideoDuration: _heroVideoDuration,
+      heroImageUrl: _getHeroImageUrl(),
+      heroAudioUrl: _getHeroAudioUrl(),
+      onGenerateLiveAvatar: _generateLiveAvatar,
+      isGeneratingLiveAvatar: _isGeneratingLiveAvatar,
+      liveAvatarAgentId: _liveAvatarAgentId,
       dynamicsData: _dynamicsData,
       drivingMultipliers: _drivingMultipliers,
       animationScales: _animationScales,
@@ -3711,6 +3723,45 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
     if (_imageUrls.isNotEmpty) return _imageUrls.first;
     return null;
+  }
+
+  String? _getHeroAudioUrl() {
+    // Aktive Audio URL als Hero-Audio verwenden
+    if (_activeAudioUrl != null && _activeAudioUrl!.isNotEmpty) {
+      return _activeAudioUrl;
+    }
+    // Fallback: Erstes Audio aus avatarData
+    final audioUrls = _avatarData?.audioUrls ?? [];
+    if (audioUrls.isNotEmpty) return audioUrls.first;
+    return null;
+  }
+
+  // 🚀 Live Avatar Daten aus Firestore laden
+  Future<void> _loadLiveAvatarData(String avatarId) async {
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(avatarId)
+          .get();
+
+      if (!doc.exists) return;
+
+      final data = doc.data();
+      if (data == null) return;
+
+      final liveAvatar = data['liveAvatar'];
+      if (liveAvatar is Map) {
+        final agentId = (liveAvatar['agentId'] as String?)?.trim();
+        if (agentId != null && agentId.isNotEmpty) {
+          setState(() {
+            _liveAvatarAgentId = agentId;
+          });
+          debugPrint('✅ Live Avatar Agent ID geladen: $agentId');
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Fehler beim Laden der Live Avatar Daten: $e');
+    }
   }
 
   /// Berechnet optimalen source-max-dim Wert basierend auf Hero-Image-Dimensionen
@@ -7524,6 +7575,133 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         duration: const Duration(seconds: 3),
       ),
     );
+  }
+
+  // 🚀 Live Avatar mit bitHuman generieren
+  Future<void> _generateLiveAvatar() async {
+    if (_avatarData == null) return;
+
+    // Verhindere mehrfaches Starten
+    if (_isGeneratingLiveAvatar) {
+      debugPrint('⚠️ Live Avatar wird bereits generiert');
+      return;
+    }
+
+    final heroImageUrl = _getHeroImageUrl();
+    final heroAudioUrl = _getHeroAudioUrl();
+
+    if (heroImageUrl == null || heroImageUrl.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bitte zuerst ein Hero-Image hochladen.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    if (heroAudioUrl == null || heroAudioUrl.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Bitte zuerst eine Hero-Audio hochladen.'),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+      return;
+    }
+
+    setState(() => _isGeneratingLiveAvatar = true);
+
+    try {
+      debugPrint('🚀 Starte bitHuman Agent Generierung...');
+      debugPrint('   Hero-Image: $heroImageUrl');
+      debugPrint('   Hero-Audio: $heroAudioUrl');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🚀 Live Avatar wird generiert... (1-3 Minuten)'),
+            backgroundColor: Colors.blue,
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+
+      // BitHuman Agent erstellen
+      final agentId = await BitHumanService.createAgentFromUrls(
+        imageUrl: heroImageUrl,
+        audioUrl: heroAudioUrl,
+        model: 'essence', // TODO: Von LiveAvatarTile Toggle übergeben
+        name: '${_avatarData!.firstName} ${_avatarData!.lastName}',
+      );
+
+      if (agentId != null && agentId.isNotEmpty) {
+        debugPrint('✅ Live Avatar Agent erfolgreich erstellt: $agentId');
+
+        // Agent ID speichern
+        setState(() => _liveAvatarAgentId = agentId);
+
+        // In Firebase speichern
+        try {
+          await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(_avatarData!.id)
+              .update({
+                'liveAvatar': {
+                  'agentId': agentId,
+                  'model': 'essence',
+                  'createdAt': FieldValue.serverTimestamp(),
+                },
+              });
+          debugPrint('✅ Agent ID in Firebase gespeichert');
+        } catch (e) {
+          debugPrint('❌ Fehler beim Speichern der Agent ID: $e');
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ Live Avatar erfolgreich erstellt!\nAgent ID: $agentId'),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+      } else {
+        debugPrint('❌ Agent-Generierung fehlgeschlagen');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('❌ Live Avatar Generierung fehlgeschlagen. Bitte erneut versuchen.'),
+              backgroundColor: Colors.red,
+              duration: Duration(seconds: 5),
+            ),
+          );
+        }
+      }
+    } catch (e, stackTrace) {
+      debugPrint('❌ Fehler bei Live Avatar Generierung: $e');
+      debugPrint('   StackTrace: $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Fehler: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGeneratingLiveAvatar = false);
+      }
+    }
   }
 
   Future<void> _generateDynamics(String dynamicsId) async {

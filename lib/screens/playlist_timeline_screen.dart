@@ -750,7 +750,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 12),
                             // Abstand entfernt – CTA direkt unter Navi
                             Text(                              
                               '${_timeline.length} Medien in der Playlist',
@@ -759,7 +759,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                 fontSize: 12,
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 12),
                             // Loop/Ende ON/OFF Toggle
                             Container(
                                     decoration: BoxDecoration(
