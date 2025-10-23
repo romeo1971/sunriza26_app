@@ -32,6 +32,8 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
   List<AvatarMedia> _allMedia = [];
   final List<AvatarMedia> _timeline = [];
   final List<Key> _timelineKeys = [];
+  // Persistente Entry-IDs (Firestore doc.id) je Timeline-Item
+  final List<String> _timelineEntryIds = [];
   final List<AvatarMedia> _assets = []; // rechte Seite: Timeline-Assets
   // (entfernt) alter horizontaler Split-Ratio
   // double _splitRatio = 0.38;
@@ -66,6 +68,32 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
     // Verwende Timeline-Index als eindeutige ID für jeden Entry
     final timelineId = 'timeline_$index';
     final sec = _itemDelaySec[timelineId] ?? 60; // Default 1 Min
+    return (sec / 60).round().clamp(1, 30);
+  }
+
+  // NEUE Methode für Timeline mit entryId = playlistId + timestamp
+  String _getTimelineEntryId(int index) {
+    // Stabile ID: aus Firestore oder lokal erzeugt und gemerkt
+    if (index < _timelineEntryIds.length &&
+        _timelineEntryIds[index].isNotEmpty) {
+      return _timelineEntryIds[index];
+    }
+    // Fallback: generiere neue ID und speichere sie lokal, bis persistiert
+    final media = (index < _timeline.length) ? _timeline[index] : null;
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    // Gewünscht: timelineAssetsId (== media.id) + timestamp
+    final generated = '${media?.id ?? 'asset'}_$stamp';
+    if (index >= _timelineEntryIds.length) {
+      _timelineEntryIds.add(generated);
+    } else {
+      _timelineEntryIds[index] = generated;
+    }
+    return generated;
+  }
+
+  int _getTimelineItemMinutes(int index) {
+    final entryId = _getTimelineEntryId(index);
+    final sec = _itemDelaySec[entryId] ?? 60; // Default 1 Min
     return (sec / 60).round().clamp(1, 30);
   }
 
@@ -105,6 +133,46 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
               .collection('timelineItems')
               .doc(itemId)
               .set({'delaySec': sec}, SetOptions(merge: true));
+        }
+      }
+    } catch (_) {}
+  }
+
+  // NEUE Methode für Timeline mit entryId - speichert alle Felder
+  Future<void> _setTimelineItemMinutes(int index, int minutes) async {
+    final entryId = _getTimelineEntryId(index);
+    final sec = (minutes.clamp(1, 30)) * 60;
+    setState(() => _itemDelaySec[entryId] = sec);
+
+    try {
+      final items = await _playlistSvc.listTimelineItems(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+      );
+      if (index < items.length) {
+        final itemId = items[index]['id'] as String?;
+        if (itemId != null) {
+          // Berechne Startzeit (kumulative Summe aller Vorgänger)
+          int startTime = 0;
+          for (int k = 0; k < index; k++) {
+            final prevEntryId = _getTimelineEntryId(k);
+            startTime += (_itemDelaySec[prevEntryId] ?? 60);
+          }
+
+          await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(widget.playlist.avatarId)
+              .collection('playlists')
+              .doc(widget.playlist.id)
+              .collection('timelineItems')
+              .doc(itemId)
+              .set({
+                'eindeutigeId': entryId,
+                'minDropdown': minutes,
+                'timeStartzeit': startTime,
+                'delaySec': sec,
+                'activity': true, // initial=true
+              }, SetOptions(merge: true));
         }
       }
     } catch (_) {}
@@ -185,6 +253,43 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
       displayTime += (_itemDelaySec[timelineId] ?? 60);
     }
     return [displayTime, displayTime];
+  }
+
+  // NEUE Methode für Timeline mit entryId - zeigt kumulativen Anzeigezeitpunkt
+  List<int> _computeTimelineDisplayTimeWithEntryId(int index) {
+    // Berechne kumulative Summe aller Vorgänger + aktueller Wert
+    int displayTime = 0;
+    for (int k = 0; k <= index; k++) {
+      final entryId = _getTimelineEntryId(k);
+      displayTime += (_itemDelaySec[entryId] ?? 60);
+    }
+    return [displayTime, displayTime];
+  }
+
+  // Toggle activity for a single timeline entry and persist
+  Future<void> _toggleEntryActivity(int index) async {
+    final entryId = _getTimelineEntryId(index);
+    final newVal = !(_itemEnabled[entryId] ?? true);
+    setState(() => _itemEnabled[entryId] = newVal);
+    try {
+      final items = await _playlistSvc.listTimelineItems(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+      );
+      if (index < items.length) {
+        final itemId = items[index]['id'] as String?;
+        if (itemId != null) {
+          await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(widget.playlist.avatarId)
+              .collection('playlists')
+              .doc(widget.playlist.id)
+              .collection('timelineItems')
+              .doc(itemId)
+              .set({'activity': newVal}, SetOptions(merge: true));
+        }
+      }
+    } catch (_) {}
   }
 
   // (entfernt) Breiten-Anker – nicht mehr nötig im vertikalen Layout
@@ -453,6 +558,10 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
             return (aid != null) ? mediaById[aid] : null;
           }).whereType<AvatarMedia>(),
         );
+      // EntryIds aus Firestore übernehmen (Doc-IDs)
+      _timelineEntryIds
+        ..clear()
+        ..addAll(items2.map((it) => (it['id'] as String?) ?? ''));
       _timelineKeys
         ..clear()
         ..addAll(List.generate(_timeline.length, (_) => UniqueKey()));
@@ -1149,8 +1258,35 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
 
     // 2) Timeline-Items (assetId-Referenzen) in Reihenfolge schreiben
     final itemDocs = <Map<String, dynamic>>[];
-    for (final m in _timeline) {
-      itemDocs.add({'assetId': m.id});
+    for (int i = 0; i < _timeline.length; i++) {
+      final m = _timeline[i];
+      final entryId =
+          (i < _timelineEntryIds.length && _timelineEntryIds[i].isNotEmpty)
+          ? _timelineEntryIds[i]
+          : _getTimelineEntryId(i);
+      _timelineEntryIds.length <= i
+          ? _timelineEntryIds.add(entryId)
+          : _timelineEntryIds[i] = entryId;
+      final delaySec = _itemDelaySec[entryId] ?? 60;
+      int startSec = 0;
+      for (int k = 0; k < i; k++) {
+        final prevId =
+            (k < _timelineEntryIds.length && _timelineEntryIds[k].isNotEmpty)
+            ? _timelineEntryIds[k]
+            : _getTimelineEntryId(k);
+        startSec += (_itemDelaySec[prevId] ?? 60);
+      }
+      itemDocs.add({
+        'id': entryId,
+        'assetId': m.id,
+        'delaySec': delaySec,
+        'minutes': (delaySec / 60).round(),
+        'startSec': startSec,
+        'activity': _itemEnabled[entryId] ?? true,
+        'nameSnapshot': _displayName(m),
+        'type': m.type.name,
+        'thumbUrl': m.thumbUrl ?? m.url,
+      });
     }
     try {
       await _playlistSvc.writeTimelineItems(
@@ -1204,8 +1340,38 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
 
   Future<void> _persistTimelineItems() async {
     final itemDocs = <Map<String, dynamic>>[];
-    for (final m in _timeline) {
-      itemDocs.add({'assetId': m.id});
+    for (int i = 0; i < _timeline.length; i++) {
+      final m = _timeline[i];
+      final entryId =
+          (i < _timelineEntryIds.length && _timelineEntryIds[i].isNotEmpty)
+          ? _timelineEntryIds[i]
+          : _getTimelineEntryId(i);
+      _timelineEntryIds.length <= i
+          ? _timelineEntryIds.add(entryId)
+          : _timelineEntryIds[i] = entryId;
+
+      final delaySec = _itemDelaySec[entryId] ?? 60;
+      // kumulativer Start (Anzeigezeitpunkt)
+      int startSec = 0;
+      for (int k = 0; k < i; k++) {
+        final prevId =
+            (k < _timelineEntryIds.length && _timelineEntryIds[k].isNotEmpty)
+            ? _timelineEntryIds[k]
+            : _getTimelineEntryId(k);
+        startSec += (_itemDelaySec[prevId] ?? 60);
+      }
+
+      itemDocs.add({
+        'id': entryId,
+        'assetId': m.id,
+        'delaySec': delaySec,
+        'minutes': (delaySec / 60).round(),
+        'startSec': startSec,
+        'activity': _itemEnabled[entryId] ?? true,
+        'nameSnapshot': _displayName(m),
+        'type': m.type.name,
+        'thumbUrl': m.thumbUrl ?? m.url,
+      });
     }
     try {
       await _playlistSvc.writeTimelineItems(
@@ -1333,6 +1499,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                           setState(() {
                             _timeline.add(m);
                             _timelineKeys.add(UniqueKey());
+                            _timelineEntryIds.add(
+                              '',
+                            ); // wird beim Persistieren gesetzt
                             _syncKeysLength();
                             _isDirty = true;
                           });
@@ -1560,6 +1729,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                   setState(() {
                     _timeline.add(m);
                     _timelineKeys.add(UniqueKey());
+                    _timelineEntryIds.add('');
                     _syncKeysLength();
                     _isDirty = true;
                   });
@@ -1794,8 +1964,18 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
 
                         final it = _timeline.removeAt(oldIndex);
                         final k = _timelineKeys.removeAt(oldIndex);
+                        final id = (oldIndex < _timelineEntryIds.length)
+                            ? _timelineEntryIds.removeAt(oldIndex)
+                            : '';
                         _timeline.insert(newIndex, it);
                         _timelineKeys.insert(newIndex, k);
+                        if (id.isNotEmpty) {
+                          if (newIndex > _timelineEntryIds.length) {
+                            _timelineEntryIds.add(id);
+                          } else {
+                            _timelineEntryIds.insert(newIndex, id);
+                          }
+                        }
 
                         // Final Sync
                         _syncKeysLength();
@@ -1827,181 +2007,349 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                 index: i,
                                 child: Container(
                                   margin: const EdgeInsets.only(bottom: 12),
-                                  padding: const EdgeInsets.all(12),
-                                  child: Row(
-                                    children: [
-                                      // Image links - volle Höhe
-                                      SizedBox(
-                                        width: 50,
-                                        height: 72,
-                                        child: ClipRRect(
-                                          borderRadius: const BorderRadius.only(
-                                            topLeft: Radius.circular(8),
-                                            bottomLeft: Radius.circular(8),
-                                          ),
-                                          child:
-                                              _timeline[i].type ==
-                                                  AvatarMediaType.image
-                                              ? Image.network(
-                                                  _timeline[i].url,
-                                                  width: 50,
-                                                  height: 72,
-                                                  fit: BoxFit.cover,
-                                                )
-                                              : _buildThumb(
-                                                  _timeline[i],
-                                                  size: 65,
-                                                ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      // Content Mitte
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            // Nur Startzeit anzeigen
-                                            Builder(
-                                              builder: (_) {
-                                                final se =
-                                                    _computeTimelineDisplayTimeCorrect(
-                                                      i,
-                                                    );
-                                                return Text(
-                                                  _formatMmSs(se[0]),
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                    color: Colors.white70,
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                            const SizedBox(height: 4),
-                                            // Dropdown - exakt wie details_screen
-                                            Container(
-                                              height: 24,
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                    horizontal: 8,
-                                                    vertical: 2,
-                                                  ),
-                                              decoration: BoxDecoration(
-                                                color: Colors.black.withValues(
-                                                  alpha: 0.3,
-                                                ),
+                                  height: 72,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(12),
+                                    color:
+                                        (_itemEnabled[_getTimelineEntryId(i)] ??
+                                            true)
+                                        ? const Color(
+                                            0xFF00C853,
+                                          ).withValues(alpha: 0.10)
+                                        : Colors.white.withValues(alpha: 0.06),
+                                  ),
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(
+                                      left: 12,
+                                      right: 12,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        // Image links - volle Höhe
+                                        SizedBox(
+                                          width: 50,
+                                          height: 72,
+                                          child: Stack(
+                                            children: [
+                                              ClipRRect(
                                                 borderRadius:
-                                                    BorderRadius.circular(4),
+                                                    const BorderRadius.only(
+                                                      topLeft: Radius.circular(
+                                                        8,
+                                                      ),
+                                                      bottomLeft:
+                                                          Radius.circular(8),
+                                                    ),
+                                                child: Builder(
+                                                  builder: (_) {
+                                                    final entryId =
+                                                        _getTimelineEntryId(i);
+                                                    final active =
+                                                        _itemEnabled[entryId] ??
+                                                        true;
+                                                    final Widget img =
+                                                        (_timeline[i].type ==
+                                                            AvatarMediaType
+                                                                .image)
+                                                        ? Image.network(
+                                                            _timeline[i].url,
+                                                            width: 50,
+                                                            height: 72,
+                                                            fit: BoxFit.cover,
+                                                          )
+                                                        : _buildThumb(
+                                                            _timeline[i],
+                                                            size: 65,
+                                                          );
+                                                    if (active) return img;
+                                                    return ColorFiltered(
+                                                      colorFilter:
+                                                          const ColorFilter.matrix(
+                                                            [
+                                                              0.2126,
+                                                              0.7152,
+                                                              0.0722,
+                                                              0,
+                                                              0,
+                                                              0.2126,
+                                                              0.7152,
+                                                              0.0722,
+                                                              0,
+                                                              0,
+                                                              0.2126,
+                                                              0.7152,
+                                                              0.0722,
+                                                              0,
+                                                              0,
+                                                              0,
+                                                              0,
+                                                              0,
+                                                              1,
+                                                              0,
+                                                            ],
+                                                          ),
+                                                      child: img,
+                                                    );
+                                                  },
+                                                ),
                                               ),
-                                              child: DropdownButtonHideUnderline(
-                                                child: DropdownButton<int>(
-                                                  value: _getItemMinutes(i),
-                                                  isExpanded: false,
-                                                  dropdownColor: Colors.black87,
-                                                  style: const TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.w500,
+                                              // Auge nicht mehr im Bild – wird rechts außen gerendert
+                                            ],
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        // Content Mitte
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              // Nur Startzeit anzeigen
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                  top: 4,
+                                                ),
+                                                child: Builder(
+                                                  builder: (_) {
+                                                    final se =
+                                                        _computeTimelineDisplayTimeWithEntryId(
+                                                          i,
+                                                        );
+                                                    return Text(
+                                                      _formatMmSs(se[0]),
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                        color: Colors.white70,
+                                                      ),
+                                                    );
+                                                  },
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              // Dropdown - exakt wie details_screen
+                                              Container(
+                                                height: 24,
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 2,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.3),
+                                                  borderRadius:
+                                                      BorderRadius.circular(4),
+                                                ),
+                                                child: DropdownButtonHideUnderline(
+                                                  child: DropdownButton<int>(
+                                                    value:
+                                                        _getTimelineItemMinutes(
+                                                          i,
+                                                        ),
+                                                    isExpanded: false,
+                                                    dropdownColor:
+                                                        Colors.black87,
+                                                    style: const TextStyle(
+                                                      color: Colors.white,
+                                                      fontSize: 11,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                    icon: const Icon(
+                                                      Icons.arrow_drop_down,
+                                                      size: 14,
+                                                      color: Colors.white70,
+                                                    ),
+                                                    items: List.generate(
+                                                      30,
+                                                      (
+                                                        index,
+                                                      ) => DropdownMenuItem<int>(
+                                                        value: index + 1,
+                                                        child: Text(
+                                                          '${index + 1} Min.',
+                                                          style:
+                                                              const TextStyle(
+                                                                color: Colors
+                                                                    .white,
+                                                              ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    onChanged: (value) {
+                                                      if (value != null) {
+                                                        _setTimelineItemMinutes(
+                                                          i,
+                                                          value,
+                                                        );
+                                                      }
+                                                    },
                                                   ),
-                                                  icon: const Icon(
-                                                    Icons.arrow_drop_down,
-                                                    size: 14,
-                                                    color: Colors.white70,
-                                                  ),
-                                                  items: List.generate(
-                                                    30,
-                                                    (
-                                                      index,
-                                                    ) => DropdownMenuItem<int>(
-                                                      value: index + 1,
-                                                      child: Text(
-                                                        '${index + 1} Min.',
-                                                        style: const TextStyle(
+                                                ),
+                                              ),
+                                              const SizedBox(height: 4),
+                                              // Name
+                                              Text(
+                                                _displayName(_timeline[i]),
+                                                overflow: TextOverflow.ellipsis,
+                                                maxLines: 2,
+                                                style: const TextStyle(
+                                                  fontSize: 12,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        // Rechte Navi Column am oberen Rand
+                                        Column(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.start,
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.end,
+                                          children: [
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                top: 4,
+                                              ),
+                                              child: Row(
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  // Auge
+                                                  MouseRegion(
+                                                    cursor: SystemMouseCursors
+                                                        .click,
+                                                    child: GestureDetector(
+                                                      onTap: () =>
+                                                          _toggleEntryActivity(
+                                                            i,
+                                                          ),
+                                                      child: Container(
+                                                        width: 24,
+                                                        height: 24,
+                                                        decoration: BoxDecoration(
+                                                          shape:
+                                                              BoxShape.circle,
+                                                          gradient:
+                                                              (_itemEnabled[_getTimelineEntryId(
+                                                                    i,
+                                                                  )] ??
+                                                                  true)
+                                                              ? const LinearGradient(
+                                                                  colors: [
+                                                                    AppColors
+                                                                        .magenta,
+                                                                    AppColors
+                                                                        .lightBlue,
+                                                                  ],
+                                                                )
+                                                              : null,
+                                                          color:
+                                                              (_itemEnabled[_getTimelineEntryId(
+                                                                    i,
+                                                                  )] ??
+                                                                  true)
+                                                              ? null
+                                                              : Colors.white24,
+                                                        ),
+                                                        child: Icon(
+                                                          (_itemEnabled[_getTimelineEntryId(
+                                                                    i,
+                                                                  )] ??
+                                                                  true)
+                                                              ? Icons.visibility
+                                                              : Icons
+                                                                    .visibility_off,
+                                                          size: 16,
                                                           color: Colors.white,
                                                         ),
                                                       ),
                                                     ),
                                                   ),
-                                                  onChanged: (value) {
-                                                    if (value != null) {
-                                                      _setItemMinutes(i, value);
-                                                    }
-                                                  },
-                                                ),
-                                              ),
-                                            ),
-                                            const SizedBox(height: 4),
-                                            // Name
-                                            Text(
-                                              _displayName(_timeline[i]),
-                                              overflow: TextOverflow.ellipsis,
-                                              maxLines: 2,
-                                              style: const TextStyle(
-                                                fontSize: 12,
+                                                  const SizedBox(width: 8),
+                                                  // 6-Punkte Drag Icon
+                                                  MouseRegion(
+                                                    cursor: SystemMouseCursors
+                                                        .click,
+                                                    child: Icon(
+                                                      Icons.drag_indicator,
+                                                      color: Colors.white70,
+                                                      size: 20,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 8),
+                                                  // Delete Button
+                                                  GestureDetector(
+                                                    onTap: () async {
+                                                      final confirm = await showDialog<bool>(
+                                                        context: context,
+                                                        builder: (ctx) => AlertDialog(
+                                                          title: const Text(
+                                                            'Asset entfernen?',
+                                                          ),
+                                                          content: const Text(
+                                                            'Dieses Asset aus der Timeline entfernen?',
+                                                          ),
+                                                          actions: [
+                                                            TextButton(
+                                                              onPressed: () =>
+                                                                  Navigator.pop(
+                                                                    ctx,
+                                                                    false,
+                                                                  ),
+                                                              child: const Text(
+                                                                'Abbrechen',
+                                                              ),
+                                                            ),
+                                                            TextButton(
+                                                              onPressed: () =>
+                                                                  Navigator.pop(
+                                                                    ctx,
+                                                                    true,
+                                                                  ),
+                                                              child: const Text(
+                                                                'Entfernen',
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                      );
+                                                      if (confirm != true)
+                                                        return;
+                                                      setState(() {
+                                                        if (i <
+                                                                _timeline
+                                                                    .length &&
+                                                            i <
+                                                                _timelineKeys
+                                                                    .length) {
+                                                          _timeline.removeAt(i);
+                                                          _timelineKeys
+                                                              .removeAt(i);
+                                                          if (i <
+                                                              _timelineEntryIds
+                                                                  .length) {
+                                                            _timelineEntryIds
+                                                                .removeAt(i);
+                                                          }
+                                                          _syncKeysLength();
+                                                          _isDirty = true;
+                                                        }
+                                                      });
+                                                      await _persistTimelineItems();
+                                                    },
+                                                    child: Icon(
+                                                      Icons.close,
+                                                      size: 20,
+                                                      color: Colors.white70,
+                                                    ),
+                                                  ),
+                                                ],
                                               ),
                                             ),
                                           ],
                                         ),
-                                      ),
-                                      // 6-Punkte Drag Icon rechts außen
-                                      MouseRegion(
-                                        cursor: SystemMouseCursors.click,
-                                        child: Icon(
-                                          Icons.drag_indicator,
-                                          color: Colors.white70,
-                                          size: 20,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      // Delete Button rechts
-                                      IconButton(
-                                        tooltip: 'Entfernen',
-                                        icon: const Icon(
-                                          Icons.close,
-                                          color: Colors.white70,
-                                        ),
-                                        onPressed: () async {
-                                          final confirm = await showDialog<bool>(
-                                            context: context,
-                                            builder: (ctx) => AlertDialog(
-                                              title: const Text(
-                                                'Asset entfernen?',
-                                              ),
-                                              content: const Text(
-                                                'Dieses Asset aus der Timeline entfernen?',
-                                              ),
-                                              actions: [
-                                                TextButton(
-                                                  onPressed: () =>
-                                                      Navigator.pop(ctx, false),
-                                                  child: const Text(
-                                                    'Abbrechen',
-                                                  ),
-                                                ),
-                                                TextButton(
-                                                  onPressed: () =>
-                                                      Navigator.pop(ctx, true),
-                                                  child: const Text(
-                                                    'Entfernen',
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          );
-                                          if (confirm != true) return;
-                                          setState(() {
-                                            if (i < _timeline.length &&
-                                                i < _timelineKeys.length) {
-                                              _timeline.removeAt(i);
-                                              _timelineKeys.removeAt(i);
-                                              _syncKeysLength();
-                                              _isDirty = true;
-                                            }
-                                          });
-                                          await _persistTimelineItems();
-                                        },
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
