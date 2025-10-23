@@ -63,15 +63,74 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
   }
 
   int _getItemMinutes(int index) {
-    final id = _timeline[index].id;
-    final sec = _itemDelaySec[id] ?? 60; // Default 1 Min
+    // Verwende Timeline-Index als eindeutige ID für jeden Entry
+    final timelineId = 'timeline_$index';
+    final sec = _itemDelaySec[timelineId] ?? 60; // Default 1 Min
     return (sec / 60).round().clamp(1, 30);
   }
 
+  // NEUE Methode für Timeline-Dropdown-Anzeige
+  int _getTimelineDisplayMinutes(int index) {
+    // Berechne den Anzeigezeitpunkt basierend auf dem Vorgänger
+    if (index == 0) return 1; // Erster Entry startet bei 1 Min
+
+    int startMinutes = 0;
+    for (int k = 0; k < index; k++) {
+      final timelineId = 'timeline_$k';
+      final sec = _itemDelaySec[timelineId] ?? 60;
+      startMinutes += (sec / 60).round();
+    }
+    // Begrenze auf 1-30 für Dropdown
+    return (startMinutes + 1).clamp(1, 30);
+  }
+
   Future<void> _setItemMinutes(int index, int minutes) async {
-    final id = _timeline[index].id;
+    // Verwende Timeline-Index als eindeutige ID für jeden Entry
+    final timelineId = 'timeline_$index';
     final sec = (minutes.clamp(1, 30)) * 60;
-    setState(() => _itemDelaySec[id] = sec);
+    setState(() => _itemDelaySec[timelineId] = sec);
+    try {
+      final items = await _playlistSvc.listTimelineItems(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+      );
+      if (index < items.length) {
+        final itemId = items[index]['id'] as String?;
+        if (itemId != null) {
+          await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(widget.playlist.avatarId)
+              .collection('playlists')
+              .doc(widget.playlist.id)
+              .collection('timelineItems')
+              .doc(itemId)
+              .set({'delaySec': sec}, SetOptions(merge: true));
+        }
+      }
+    } catch (_) {}
+  }
+
+  // NEUE Methode für Timeline-Dropdown-Setzen
+  Future<void> _setTimelineDisplayMinutes(int index, int minutes) async {
+    // Berechne die Dauer basierend auf dem gewählten Anzeigezeitpunkt
+    int durationMinutes;
+    if (index == 0) {
+      durationMinutes = minutes; // Erster Entry: Dauer = Anzeigezeitpunkt
+    } else {
+      // Berechne Dauer = Anzeigezeitpunkt - Summe der Vorgänger
+      int previousSum = 0;
+      for (int k = 0; k < index; k++) {
+        final timelineId = 'timeline_$k';
+        final sec = _itemDelaySec[timelineId] ?? 60;
+        previousSum += (sec / 60).round();
+      }
+      durationMinutes = minutes - previousSum;
+    }
+
+    final sec = (durationMinutes.clamp(1, 30)) * 60;
+    final timelineId = 'timeline_$index';
+    setState(() => _itemDelaySec[timelineId] = sec);
+
     try {
       final items = await _playlistSvc.listTimelineItems(
         widget.playlist.avatarId,
@@ -94,13 +153,38 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
   }
 
   List<int> _computeStartEndSeconds(int index) {
+    // Verwende die Dropdown-Logik für die Zeitanzeige
     int start = 0;
     for (int k = 0; k < index; k++) {
-      final id = _timeline[k].id;
-      start += (_itemDelaySec[id] ?? 60);
+      final timelineId = 'timeline_$k';
+      start += (_itemDelaySec[timelineId] ?? 60);
     }
-    final cur = (_itemDelaySec[_timeline[index].id] ?? 60);
+    final timelineId = 'timeline_$index';
+    final cur = (_itemDelaySec[timelineId] ?? 60);
     return [start, start + cur];
+  }
+
+  // NEUE Methode für Timeline-Zeitanzeige - zeigt Anzeigezeitpunkt
+  // List<int> _computeTimelineDisplayTime(int index) {
+  //   // Berechne Anzeigezeitpunkt basierend auf Dropdown-Werten
+  //   int displayTime = 0;
+  //   for (int k = 0; k < index; k++) {
+  //     final timelineId = 'timeline_$k';
+  //     displayTime += (_itemDelaySec[timelineId] ?? 60);
+  //   }
+  //   // Anzeigezeitpunkt = Summe aller Vorgänger
+  //   return [displayTime, displayTime];
+  // }
+
+  // KORREKTE Methode für Timeline-Zeitanzeige - zeigt kumulativen Anzeigezeitpunkt
+  List<int> _computeTimelineDisplayTimeCorrect(int index) {
+    // Berechne kumulative Summe aller Vorgänger + aktueller Wert
+    int displayTime = 0;
+    for (int k = 0; k <= index; k++) {
+      final timelineId = 'timeline_$k';
+      displayTime += (_itemDelaySec[timelineId] ?? 60);
+    }
+    return [displayTime, displayTime];
   }
 
   // (entfernt) Breiten-Anker – nicht mehr nötig im vertikalen Layout
@@ -1781,7 +1865,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                             Builder(
                                               builder: (_) {
                                                 final se =
-                                                    _computeStartEndSeconds(i);
+                                                    _computeTimelineDisplayTimeCorrect(
+                                                      i,
+                                                    );
                                                 return Text(
                                                   _formatMmSs(se[0]),
                                                   style: const TextStyle(
@@ -1858,10 +1944,13 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                         ),
                                       ),
                                       // 6-Punkte Drag Icon rechts außen
-                                      Icon(
-                                        Icons.drag_indicator,
-                                        color: Colors.white70,
-                                        size: 20,
+                                      MouseRegion(
+                                        cursor: SystemMouseCursors.click,
+                                        child: Icon(
+                                          Icons.drag_indicator,
+                                          color: Colors.white70,
+                                          size: 20,
+                                        ),
                                       ),
                                       const SizedBox(width: 8),
                                       // Delete Button rechts
