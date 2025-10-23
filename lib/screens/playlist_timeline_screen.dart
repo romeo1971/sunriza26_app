@@ -9,6 +9,8 @@ import '../services/playlist_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import 'playlist_media_assets_screen.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/cupertino.dart';
 import '../services/doc_thumb_service.dart';
 
 class PlaylistTimelineScreen extends StatefulWidget {
@@ -23,6 +25,8 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
     with SingleTickerProviderStateMixin {
   String _tab = 'images'; // images|videos|documents|audio
   bool _portrait = true;
+  bool _showAssets = true; // Toggle: Media Assets sichtbar
+  bool _showTimeline = true; // Toggle: Timeline sichtbar
   final _mediaSvc = MediaService();
   final _playlistSvc = PlaylistService();
   List<AvatarMedia> _allMedia = [];
@@ -44,6 +48,60 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
   String _assetsSearchTerm = '';
   bool _isDirty = false; // Trackt ob Änderungen vorgenommen wurden
   bool _searchOpen = false; // toggled Search in CTA-Zeile
+  // Verzögerung pro Timeline-Asset (Sekunden bis Einblendung im Chat)
+  final Map<String, int> _itemDelaySec = {};
+  // Sichtbarkeit pro Timeline-Asset (on/off wie HeroImages)
+  final Map<String, bool> _itemEnabled = {};
+  // Timeline Playback/Enable Toggles
+  bool _timelineLoop = true;
+  bool _timelineEnabled = true;
+
+  String _formatMmSs(int seconds) {
+    final m = (seconds ~/ 60).toString().padLeft(2, '0');
+    final s = (seconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  int _getItemMinutes(int index) {
+    final id = _timeline[index].id;
+    final sec = _itemDelaySec[id] ?? 60; // Default 1 Min
+    return (sec / 60).round().clamp(1, 30);
+  }
+
+  Future<void> _setItemMinutes(int index, int minutes) async {
+    final id = _timeline[index].id;
+    final sec = (minutes.clamp(1, 30)) * 60;
+    setState(() => _itemDelaySec[id] = sec);
+    try {
+      final items = await _playlistSvc.listTimelineItems(
+        widget.playlist.avatarId,
+        widget.playlist.id,
+      );
+      if (index < items.length) {
+        final itemId = items[index]['id'] as String?;
+        if (itemId != null) {
+          await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(widget.playlist.avatarId)
+              .collection('playlists')
+              .doc(widget.playlist.id)
+              .collection('timelineItems')
+              .doc(itemId)
+              .set({'delaySec': sec}, SetOptions(merge: true));
+        }
+      }
+    } catch (_) {}
+  }
+
+  List<int> _computeStartEndSeconds(int index) {
+    int start = 0;
+    for (int k = 0; k < index; k++) {
+      final id = _timeline[k].id;
+      start += (_itemDelaySec[id] ?? 60);
+    }
+    final cur = (_itemDelaySec[_timeline[index].id] ?? 60);
+    return [start, start + cur];
+  }
 
   // (entfernt) Breiten-Anker – nicht mehr nötig im vertikalen Layout
 
@@ -457,8 +515,8 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                 fontSize: 16,
                                 fontWeight: FontWeight.w500,
                               ),
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              maxLines: 1,
                             ),
                             // Abstand entfernt – CTA direkt unter Navi
                             Text(
@@ -468,7 +526,6 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                 fontSize: 12,
                               ),
                             ),
-                            const SizedBox(height: 12),
                             ConstrainedBox(
                               constraints: const BoxConstraints(maxWidth: 200),
                               child: CustomTextField(
@@ -486,6 +543,37 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                 },
                               ),
                             ),
+                            const SizedBox(height: 8),
+                            // Mini-Buttons unter dem Intervall (CI-konform, keine Icons)
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 200),
+                              child: Wrap(
+                                spacing: 6,
+                                runSpacing: 6,
+                                children: [
+                                  _MiniToggleButton(
+                                    label: 'Media Assets',
+                                    active: _showAssets,
+                                    onTap: () => setState(
+                                      () => _showAssets = !_showAssets,
+                                    ),
+                                  ),
+                                  _GradientToggleGroup(
+                                    leftLabel: 'Loop',
+                                    rightLabel: _timelineEnabled ? 'ON' : 'OFF',
+                                    leftActive: _timelineLoop,
+                                    rightActive: _timelineEnabled,
+                                    onLeftTap: () => setState(
+                                      () => _timelineLoop = !_timelineLoop,
+                                    ),
+                                    onRightTap: () => setState(
+                                      () =>
+                                          _timelineEnabled = !_timelineEnabled,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -498,97 +586,121 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
 
               // Neue Struktur: Tabs/Navi (oben), darunter CTA-Zeile mit Suche-Toggle
               // Navi oben (nur Tabs + Orientation) – direkt an das Cover anschließen
-              LayoutBuilder(
-                builder: (context, cons) {
-                  final bool roomy = cons.maxWidth >= (4 * 48 + 40 + 16);
-                  final double tabW = roomy ? 48 : 36;
-                  final double iconSize = roomy ? 18 : 16;
-                  return Container(
-                    color: const Color(0xFF1E1E1E),
-                    height: 35,
-                    padding: EdgeInsets.zero,
-                    child: Row(
-                      children: [
-                        _tabBtn(
-                          'images',
-                          Icons.image_outlined,
-                          tabW: tabW,
-                          iconSize: iconSize,
-                        ),
-                        _tabBtn(
-                          'videos',
-                          Icons.videocam_outlined,
-                          tabW: tabW,
-                          iconSize: iconSize,
-                        ),
-                        _tabBtn(
-                          'documents',
-                          Icons.description_outlined,
-                          tabW: tabW,
-                          iconSize: iconSize,
-                        ),
-                        _tabBtn(
-                          'audio',
-                          Icons.audiotrack,
-                          tabW: tabW,
-                          iconSize: iconSize,
-                        ),
-                        const Spacer(),
-                        const SizedBox(width: 12),
-                        if (_tab != 'audio')
-                          TextButton(
-                            onPressed: () =>
-                                setState(() => _portrait = !_portrait),
-                            style: ButtonStyle(
-                              padding: const WidgetStatePropertyAll(
-                                EdgeInsets.zero,
-                              ),
-                              minimumSize: const WidgetStatePropertyAll(
-                                Size(40, 35),
-                              ),
-                            ),
-                            child: _portrait
-                                ? ShaderMask(
-                                    shaderCallback: (b) => const LinearGradient(
-                                      colors: [
-                                        AppColors.magenta,
-                                        AppColors.lightBlue,
-                                      ],
-                                    ).createShader(b),
-                                    child: Icon(
-                                      Icons.stay_primary_portrait,
-                                      size: iconSize,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : Icon(
-                                    Icons.stay_primary_landscape,
-                                    size: iconSize,
-                                    color: Colors.white54,
-                                  ),
+              if (_showAssets)
+                LayoutBuilder(
+                  builder: (context, cons) {
+                    final bool roomy = cons.maxWidth >= (4 * 48 + 40 + 16);
+                    final double tabW = roomy ? 48 : 36;
+                    final double iconSize = roomy ? 18 : 16;
+                    return Container(
+                      color: const Color(0xFF1E1E1E),
+                      height: 35,
+                      padding: EdgeInsets.zero,
+                      child: Row(
+                        children: [
+                          _tabBtn(
+                            'images',
+                            Icons.image_outlined,
+                            tabW: tabW,
+                            iconSize: iconSize,
                           ),
-                      ],
-                    ),
-                  );
-                },
-              ),
+                          _tabBtn(
+                            'videos',
+                            Icons.videocam_outlined,
+                            tabW: tabW,
+                            iconSize: iconSize,
+                          ),
+                          _tabBtn(
+                            'documents',
+                            Icons.description_outlined,
+                            tabW: tabW,
+                            iconSize: iconSize,
+                          ),
+                          _tabBtn(
+                            'audio',
+                            Icons.audiotrack,
+                            tabW: tabW,
+                            iconSize: iconSize,
+                          ),
+                          const Spacer(),
+                          const SizedBox(width: 12),
+                          if (_tab != 'audio')
+                            TextButton(
+                              onPressed: () =>
+                                  setState(() => _portrait = !_portrait),
+                              style: ButtonStyle(
+                                padding: const WidgetStatePropertyAll(
+                                  EdgeInsets.zero,
+                                ),
+                                minimumSize: const WidgetStatePropertyAll(
+                                  Size(40, 35),
+                                ),
+                              ),
+                              child: _portrait
+                                  ? ShaderMask(
+                                      shaderCallback: (b) =>
+                                          const LinearGradient(
+                                            colors: [
+                                              AppColors.magenta,
+                                              AppColors.lightBlue,
+                                            ],
+                                          ).createShader(b),
+                                      child: Icon(
+                                        Icons.stay_primary_portrait,
+                                        size: iconSize,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.stay_primary_landscape,
+                                      size: iconSize,
+                                      color: Colors.white54,
+                                    ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
 
               // CTA-Zeile unter Navi: +Media links, Search-Toggle rechts
-              Container(
-                height: 35,
-                color: Colors.grey.shade900,
-                padding: const EdgeInsets.only(left: 12, right: 0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    if (!_searchOpen)
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: _assets.isEmpty
-                              ? FadeTransition(
-                                  opacity: _pulse,
-                                  child: InkWell(
+              if (_showAssets)
+                Container(
+                  height: 35,
+                  color: Colors.grey.shade900,
+                  padding: const EdgeInsets.only(left: 12, right: 0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      if (!_searchOpen)
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: _assets.isEmpty
+                                ? FadeTransition(
+                                    opacity: _pulse,
+                                    child: InkWell(
+                                      onTap: _openAssetsPicker,
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: const [
+                                          Icon(
+                                            Icons.add,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                          SizedBox(width: 6),
+                                          Text(
+                                            'Media Assets',
+                                            style: TextStyle(
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  )
+                                : InkWell(
                                     onTap: _openAssetsPicker,
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
@@ -596,96 +708,78 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                         Icon(
                                           Icons.add,
                                           color: Colors.white,
-                                          size: 20,
+                                          size: 22,
                                         ),
-                                        SizedBox(width: 6),
+                                        SizedBox(width: 8),
                                         Text(
-                                          'Media Assets',
+                                          'Media',
                                           style: TextStyle(color: Colors.white),
                                         ),
                                       ],
                                     ),
                                   ),
-                                )
-                              : InkWell(
-                                  onTap: _openAssetsPicker,
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: const [
-                                      Icon(
-                                        Icons.add,
-                                        color: Colors.white,
-                                        size: 22,
-                                      ),
-                                      SizedBox(width: 8),
-                                      Text(
-                                        'Media',
-                                        style: TextStyle(color: Colors.white),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                        ),
-                      )
-                    else
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(maxWidth: 300),
-                            child: Padding(
-                              padding: const EdgeInsets.only(top: 5),
-                              child: SizedBox(
-                                height: 32,
-                                child: TextField(
-                                  controller: _assetsSearchCtl,
-                                  onChanged: (v) => setState(
-                                    () => _assetsSearchTerm = v.toLowerCase(),
-                                  ),
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.white,
-                                  ),
-                                  cursorColor: Colors.white,
-                                  decoration: const InputDecoration(
-                                    isDense: true,
-                                    hintText: 'Suche nach Medien...',
-                                    hintStyle: TextStyle(
-                                      color: Colors.white54,
+                          ),
+                        )
+                      else
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 300),
+                              child: Padding(
+                                padding: const EdgeInsets.only(top: 5),
+                                child: SizedBox(
+                                  height: 32,
+                                  child: TextField(
+                                    controller: _assetsSearchCtl,
+                                    onChanged: (v) => setState(
+                                      () => _assetsSearchTerm = v.toLowerCase(),
+                                    ),
+                                    style: const TextStyle(
                                       fontSize: 12,
+                                      color: Colors.white,
                                     ),
-                                    prefixIcon: Padding(
-                                      padding: EdgeInsets.only(left: 6),
-                                      child: Icon(
-                                        Icons.search,
-                                        color: Colors.white70,
-                                        size: 18,
+                                    cursorColor: Colors.white,
+                                    decoration: const InputDecoration(
+                                      isDense: true,
+                                      hintText: 'Suche nach Medien...',
+                                      hintStyle: TextStyle(
+                                        color: Colors.white54,
+                                        fontSize: 12,
                                       ),
-                                    ),
-                                    prefixIconConstraints: BoxConstraints(
-                                      minWidth: 24,
-                                      maxWidth: 28,
-                                    ),
-                                    filled: true,
-                                    fillColor: Color(0x1FFFFFFF),
-                                    border: OutlineInputBorder(
-                                      borderSide: BorderSide(
-                                        color: Colors.white24,
+                                      prefixIcon: Padding(
+                                        padding: EdgeInsets.only(left: 6),
+                                        child: Icon(
+                                          Icons.search,
+                                          color: Colors.white70,
+                                          size: 18,
+                                        ),
                                       ),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderSide: BorderSide(
-                                        color: Colors.white24,
+                                      prefixIconConstraints: BoxConstraints(
+                                        minWidth: 24,
+                                        maxWidth: 28,
                                       ),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderSide: BorderSide(
-                                        color: Colors.white24,
+                                      filled: true,
+                                      fillColor: Color(0x1FFFFFFF),
+                                      border: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                          color: Colors.white24,
+                                        ),
                                       ),
-                                    ),
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 8,
+                                      enabledBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                          color: Colors.white24,
+                                        ),
+                                      ),
+                                      focusedBorder: OutlineInputBorder(
+                                        borderSide: BorderSide(
+                                          color: Colors.white24,
+                                        ),
+                                      ),
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 8,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -693,45 +787,44 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                             ),
                           ),
                         ),
-                      ),
-                    const SizedBox(width: 12),
-                    // Lupe rechts: toggelt Suche, Hintergrund weiß, Icon GMBC bei aktiv
-                    InkWell(
-                      onTap: () => setState(() => _searchOpen = !_searchOpen),
-                      borderRadius: BorderRadius.circular(6),
-                      child: Container(
-                        width: 48,
-                        height: 35,
-                        decoration: BoxDecoration(
-                          color: _searchOpen ? Colors.white : Colors.white10,
-                          borderRadius: BorderRadius.zero,
-                        ),
-                        child: Center(
-                          child: _searchOpen
-                              ? ShaderMask(
-                                  shaderCallback: (b) => const LinearGradient(
-                                    colors: [
-                                      AppColors.magenta,
-                                      AppColors.lightBlue,
-                                    ],
-                                  ).createShader(b),
-                                  child: const Icon(
+                      const SizedBox(width: 12),
+                      // Lupe rechts: toggelt Suche, Hintergrund weiß, Icon GMBC bei aktiv
+                      InkWell(
+                        onTap: () => setState(() => _searchOpen = !_searchOpen),
+                        borderRadius: BorderRadius.circular(6),
+                        child: Container(
+                          width: 48,
+                          height: 35,
+                          decoration: BoxDecoration(
+                            color: _searchOpen ? Colors.white : Colors.white10,
+                            borderRadius: BorderRadius.zero,
+                          ),
+                          child: Center(
+                            child: _searchOpen
+                                ? ShaderMask(
+                                    shaderCallback: (b) => const LinearGradient(
+                                      colors: [
+                                        AppColors.magenta,
+                                        AppColors.lightBlue,
+                                      ],
+                                    ).createShader(b),
+                                    child: const Icon(
+                                      Icons.search,
+                                      color: Colors.white,
+                                      size: 18,
+                                    ),
+                                  )
+                                : const Icon(
                                     Icons.search,
-                                    color: Colors.white,
+                                    color: Colors.white70,
                                     size: 18,
                                   ),
-                                )
-                              : const Icon(
-                                  Icons.search,
-                                  color: Colors.white70,
-                                  size: 18,
-                                ),
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
 
               // Vertikaler Split: Oben Assets, unten Timeline, 100% Breite
               Expanded(
@@ -743,23 +836,54 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                   child: LayoutBuilder(
                     builder: (context, cons) {
                       final totalH = cons.maxHeight;
-                      const double resizerH = 12.0;
+                      final double resizerH = _showAssets ? 12.0 : 0.0;
                       final double available = (totalH - resizerH).clamp(
                         0.0,
                         double.infinity,
                       );
-                      double topH = (_verticalRatio * available).clamp(
-                        120.0,
-                        available - 120.0,
-                      );
-                      final double bottomH = available - topH;
+                      double topH = _showAssets
+                          ? (_verticalRatio * available).clamp(
+                              120.0,
+                              available - 120.0,
+                            )
+                          : 0.0;
+                      final double bottomH = _showAssets
+                          ? (available - topH)
+                          : totalH;
                       return Column(
                         children: [
-                          SizedBox(height: topH, child: _buildAssetsPane()),
-                          _buildVerticalResizer(available, topH, resizerH),
+                          if (_showAssets)
+                            SizedBox(height: topH, child: _buildAssetsPane())
+                          else
+                            const SizedBox.shrink(),
+                          if (_showAssets)
+                            _buildVerticalResizer(available, topH, resizerH),
                           SizedBox(
                             height: bottomH,
-                            child: _buildTimelinePane(),
+                            child: Column(
+                              children: [
+                                if (!_showAssets)
+                                  Container(
+                                    width: double.infinity,
+                                    height: 35,
+                                    color: Colors.grey.shade900,
+                                    padding: const EdgeInsets.only(
+                                      left: 12,
+                                      right: 0,
+                                    ),
+                                    alignment: Alignment.centerLeft,
+                                    child: const Text(
+                                      'Timeline',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                Expanded(child: _buildTimelinePane()),
+                              ],
+                            ),
                           ),
                         ],
                       );
@@ -1562,7 +1686,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                     ),
                   )
                 : ReorderableListView(
-                    buildDefaultDragHandles: true,
+                    buildDefaultDragHandles: false,
                     proxyDecorator: (child, index, animation) => child,
                     onReorder: (oldIndex, newIndex) async {
                       // Defensive checks
@@ -1615,37 +1739,79 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                             child: Tooltip(
                               message:
                                   '${_timeline[i].originalFileName ?? _timeline[i].url.split('/').last}\n${_timeline[i].type.name}  AR:${(_timeline[i].aspectRatio ?? 0).toStringAsFixed(2)}',
-                              child: ListTile(
-                                leading: _buildThumb(_timeline[i], size: 40),
-                                title: Text(
-                                  _displayName(_timeline[i]),
-                                  overflow: TextOverflow.ellipsis,
-                                  maxLines: 3,
-                                  style: const TextStyle(fontSize: 10),
-                                ),
-                                trailing: PopupMenuButton<String>(
-                                  icon: const Icon(
-                                    Icons.more_vert,
-                                    color: Colors.white70,
+                              child: ReorderableDragStartListener(
+                                index: i,
+                                child: ListTile(
+                                  leading: _buildThumb(_timeline[i], size: 40),
+                                  title: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              _displayName(_timeline[i]),
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 2,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Builder(
+                                            builder: (_) {
+                                              final se =
+                                                  _computeStartEndSeconds(i);
+                                              return Text(
+                                                '${_formatMmSs(se[0])} - ${_formatMmSs(se[1])}',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: Colors.white70,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      _GradientMinutesPicker(
+                                        minutes: _getItemMinutes(i),
+                                        onPick: (m) => _setItemMinutes(i, m),
+                                      ),
+                                    ],
                                   ),
-                                  onSelected: (v) async {
-                                    if (v == 'dup') {
+                                  trailing: IconButton(
+                                    tooltip: 'Entfernen',
+                                    icon: const Icon(
+                                      Icons.close,
+                                      color: Colors.white70,
+                                    ),
+                                    onPressed: () async {
+                                      final confirm = await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: const Text('Asset entfernen?'),
+                                          content: const Text(
+                                            'Dieses Asset aus der Timeline entfernen?',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, false),
+                                              child: const Text('Abbrechen'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, true),
+                                              child: const Text('Entfernen'),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirm != true) return;
                                       setState(() {
-                                        // Defensive check
-                                        if (i < _timeline.length) {
-                                          _timeline.insert(i + 1, _timeline[i]);
-                                          _timelineKeys.insert(
-                                            i + 1,
-                                            UniqueKey(),
-                                          );
-                                          _syncKeysLength();
-                                          _isDirty = true;
-                                        }
-                                      });
-                                      await _persistTimelineItems();
-                                    } else if (v == 'del') {
-                                      setState(() {
-                                        // Defensive check
                                         if (i < _timeline.length &&
                                             i < _timelineKeys.length) {
                                           _timeline.removeAt(i);
@@ -1655,18 +1821,8 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                         }
                                       });
                                       await _persistTimelineItems();
-                                    }
-                                  },
-                                  itemBuilder: (ctx) => [
-                                    const PopupMenuItem<String>(
-                                      value: 'dup',
-                                      child: Text('Duplizieren'),
-                                    ),
-                                    const PopupMenuItem<String>(
-                                      value: 'del',
-                                      child: Text('Aus Timeline entfernen'),
-                                    ),
-                                  ],
+                                    },
+                                  ),
                                 ),
                               ),
                             ),
@@ -1920,6 +2076,315 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
     final ss = (s % 60).toString().padLeft(2, '0');
     return '$mm:$ss';
     // ignore: unused_element
+  }
+}
+
+class _TogglePill extends StatelessWidget {
+  final String label;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _TogglePill({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: value ? Colors.white : Colors.black.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white24),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 18,
+              height: 18,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: value
+                    ? Theme.of(context).extension<AppGradients>()?.magentaBlue
+                    : null,
+                color: value ? null : Colors.white24,
+              ),
+              child: const Icon(Icons.check, size: 14, color: Colors.white),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: value ? Colors.black : Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniToggleButton extends StatelessWidget {
+  final String label;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _MiniToggleButton({
+    required this.label,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: active ? Colors.white : const Color(0x1AFFFFFF),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: active ? Colors.white : Colors.white38),
+          ),
+          child: active
+              ? ShaderMask(
+                  blendMode: BlendMode.srcIn,
+                  shaderCallback: (b) => const LinearGradient(
+                    colors: [AppColors.magenta, AppColors.lightBlue],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ).createShader(b),
+                  child: const Text(
+                    'Media Assets',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                )
+              : const Text(
+                  'Media Assets',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.white70, // light grey
+                  ),
+                ),
+        ),
+      ),
+    );
+  }
+}
+
+class _GradientToggleGroup extends StatelessWidget {
+  final String leftLabel;
+  final String rightLabel;
+  final bool leftActive;
+  final bool rightActive;
+  final VoidCallback onLeftTap;
+  final VoidCallback onRightTap;
+
+  const _GradientToggleGroup({
+    required this.leftLabel,
+    required this.rightLabel,
+    required this.leftActive,
+    required this.rightActive,
+    required this.onLeftTap,
+    required this.onRightTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final grad = Theme.of(context).extension<AppGradients>()?.magentaBlue;
+    return Container(
+      height: 28,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          InkWell(
+            onTap: onLeftTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              height: double.infinity,
+              decoration: leftActive && grad != null
+                  ? BoxDecoration(
+                      gradient: grad,
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(8),
+                        bottomLeft: Radius.circular(8),
+                      ),
+                    )
+                  : null,
+              alignment: Alignment.center,
+              child: Text(
+                leftLabel,
+                style: TextStyle(
+                  color: leftActive ? Colors.white : Colors.black87,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ),
+          Container(
+            width: 10,
+            height: double.infinity,
+            alignment: Alignment.center,
+            child: Container(width: 1, height: 16, color: Colors.white24),
+          ),
+          InkWell(
+            onTap: onRightTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              height: double.infinity,
+              decoration: rightActive && grad != null
+                  ? BoxDecoration(
+                      gradient: grad,
+                      borderRadius: const BorderRadius.only(
+                        topRight: Radius.circular(8),
+                        bottomRight: Radius.circular(8),
+                      ),
+                    )
+                  : null,
+              alignment: Alignment.center,
+              child: Row(
+                children: [
+                  Text(
+                    rightLabel,
+                    style: TextStyle(
+                      color: rightActive ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                    child: const Icon(
+                      Icons.arrow_drop_down,
+                      size: 12,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GradientMinutesPicker extends StatelessWidget {
+  final int minutes; // 1..30
+  final ValueChanged<int> onPick;
+
+  const _GradientMinutesPicker({required this.minutes, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
+    final grad = Theme.of(context).extension<AppGradients>()?.magentaBlue;
+    return InkWell(
+      onTap: () async {
+        int sel = minutes.clamp(1, 30);
+        final picked = await showCupertinoModalPopup<int>(
+          context: context,
+          builder: (ctx) => Container(
+            height: 260,
+            color: Colors.black,
+            child: Column(
+              children: [
+                Expanded(
+                  child: CupertinoPicker(
+                    itemExtent: 32,
+                    scrollController: FixedExtentScrollController(
+                      initialItem: sel - 1,
+                    ),
+                    onSelectedItemChanged: (idx) => sel = idx + 1,
+                    children: List.generate(
+                      30,
+                      (i) => Center(
+                        child: Text(
+                          '${i + 1} Min.',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, sel),
+                  child: const Text(
+                    'OK',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        if (picked != null) onPick(picked);
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (grad != null)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  gradient: grad,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Text(
+                  '1 Min.',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            const SizedBox(width: 8),
+            Text(
+              '$minutes Min.',
+              style: const TextStyle(
+                color: Colors.black87,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.arrow_drop_down, size: 16, color: Colors.black87),
+          ],
+        ),
+      ),
+    );
   }
 }
 

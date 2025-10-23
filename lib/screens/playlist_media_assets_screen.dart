@@ -114,128 +114,128 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Media Assets'),
-        iconTheme: const IconThemeData(color: Colors.white),
-        actions: [
-          IconButton(
-            tooltip: 'Abbrechen',
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.close),
-          ),
-          if (_isDirty)
-            IconButton(
-              tooltip: 'Speichern',
-              onPressed: _save,
-              icon: const Icon(Icons.save),
-            ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(84),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                color: const Color(0xFF1E1E1E),
-                height: 35,
-                child: Row(
-                  children: [
-                    // erstes Icon ganz links (kein Außenabstand)
-                    _tabBtn('images', Icons.image_outlined, isFirst: true),
-                    _tabBtn('videos', Icons.videocam_outlined),
-                    _tabBtn('documents', Icons.description_outlined),
-                    _tabBtn('audio', Icons.audiotrack),
-                    const Spacer(),
-                    if (_tab != 'audio')
-                      TextButton(
-                        onPressed: () => setState(() => _portrait = !_portrait),
-                        style: ButtonStyle(
-                          padding: const WidgetStatePropertyAll(
-                            EdgeInsets.zero,
+    return WillPopScope(
+      onWillPop: () async {
+        // Beim Zurückgehen aktuelle Auswahl als Ergebnis zurückgeben
+        final result = _all.where((m) => _selected.contains(m.id)).toList();
+        Navigator.pop(context, result);
+        return false;
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Media Assets'),
+          iconTheme: const IconThemeData(color: Colors.white),
+          actions: const [],
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(84),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  color: const Color(0xFF1E1E1E),
+                  height: 35,
+                  child: Row(
+                    children: [
+                      // erstes Icon ganz links (kein Außenabstand)
+                      _tabBtn('images', Icons.image_outlined, isFirst: true),
+                      _tabBtn('videos', Icons.videocam_outlined),
+                      _tabBtn('documents', Icons.description_outlined),
+                      _tabBtn('audio', Icons.audiotrack),
+                      const Spacer(),
+                      if (_tab != 'audio')
+                        TextButton(
+                          onPressed: () =>
+                              setState(() => _portrait = !_portrait),
+                          style: ButtonStyle(
+                            padding: const WidgetStatePropertyAll(
+                              EdgeInsets.zero,
+                            ),
+                            minimumSize: const WidgetStatePropertyAll(
+                              Size(40, 35),
+                            ),
                           ),
-                          minimumSize: const WidgetStatePropertyAll(
-                            Size(40, 35),
-                          ),
-                        ),
-                        child: _portrait
-                            ? ShaderMask(
-                                shaderCallback: (bounds) =>
-                                    const LinearGradient(
-                                      colors: [
-                                        AppColors.magenta,
-                                        AppColors.lightBlue,
-                                      ],
-                                    ).createShader(bounds),
-                                child: const Icon(
-                                  Icons.stay_primary_portrait,
+                          child: _portrait
+                              ? ShaderMask(
+                                  shaderCallback: (bounds) =>
+                                      const LinearGradient(
+                                        colors: [
+                                          AppColors.magenta,
+                                          AppColors.lightBlue,
+                                        ],
+                                      ).createShader(bounds),
+                                  child: const Icon(
+                                    Icons.stay_primary_portrait,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.stay_primary_landscape,
                                   size: 18,
-                                  color: Colors.white,
+                                  color: Colors.white54,
                                 ),
-                              )
-                            : const Icon(
-                                Icons.stay_primary_landscape,
-                                size: 18,
-                                color: Colors.white54,
-                              ),
-                      ),
-                  ],
-                ),
-              ),
-              // Suche in separatem Fullwidth-Container
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                alignment: Alignment.center,
-                child: SizedBox(
-                  height: 36,
-                  width: double.infinity,
-                  child: TextField(
-                    controller: _search,
-                    style: const TextStyle(fontSize: 12, color: Colors.white),
-                    cursorColor: Colors.white,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      hintText: 'Suche nach Medien...',
-                      hintStyle: TextStyle(color: Colors.white54, fontSize: 12),
-                      prefixIcon: Padding(
-                        padding: EdgeInsets.only(left: 6),
-                        child: Icon(
-                          Icons.search,
-                          color: Colors.white70,
-                          size: 18,
                         ),
-                      ),
-                      prefixIconConstraints: BoxConstraints(
-                        minWidth: 24,
-                        maxWidth: 28,
-                      ),
-                      filled: true,
-                      fillColor: Color(0x1FFFFFFF),
-                      border: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderSide: BorderSide(color: Colors.white24),
-                      ),
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 10,
+                    ],
+                  ),
+                ),
+                // Suche in separatem Fullwidth-Container
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  alignment: Alignment.center,
+                  child: SizedBox(
+                    height: 36,
+                    width: double.infinity,
+                    child: TextField(
+                      controller: _search,
+                      style: const TextStyle(fontSize: 12, color: Colors.white),
+                      cursorColor: Colors.white,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        hintText: 'Suche nach Medien...',
+                        hintStyle: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 12,
+                        ),
+                        prefixIcon: Padding(
+                          padding: EdgeInsets.only(left: 6),
+                          child: Icon(
+                            Icons.search,
+                            color: Colors.white70,
+                            size: 18,
+                          ),
+                        ),
+                        prefixIconConstraints: BoxConstraints(
+                          minWidth: 24,
+                          maxWidth: 28,
+                        ),
+                        filled: true,
+                        fillColor: Color(0x1FFFFFFF),
+                        border: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white24),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white24),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderSide: BorderSide(color: Colors.white24),
+                        ),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 10,
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
+        body: Padding(padding: const EdgeInsets.all(12), child: _buildGrid()),
       ),
-      body: Padding(padding: const EdgeInsets.all(12), child: _buildGrid()),
     );
   }
 
@@ -340,15 +340,15 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
             final m = items[i];
             final sel = _selected.contains(m.id);
             return GestureDetector(
-              onTap: () {
+              onTap: () async {
                 setState(() {
                   if (sel) {
                     _selected.remove(m.id);
                   } else {
                     _selected.insert(0, m.id);
                   }
-                  _isDirty = true;
                 });
+                await _persistSelection();
               },
               child: Column(
                 children: [
@@ -803,9 +803,31 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
     }
   }
 
-  void _save() {
-    final result = _all.where((m) => _selected.contains(m.id)).toList();
-    setState(() => _isDirty = false);
-    Navigator.pop(context, result);
+  Future<void> _persistSelection() async {
+    if (widget.playlistId == null)
+      return; // ohne Playlist kein direktes Speichern
+    final docs = _all
+        .where((m) => _selected.contains(m.id))
+        .map(
+          (m) => {
+            'id': m.id,
+            'mediaId': m.id,
+            'thumbUrl': m.thumbUrl ?? m.url,
+            'aspectRatio': m.aspectRatio,
+            'type': m.type.name,
+            'createdAt': DateTime.now().millisecondsSinceEpoch,
+          },
+        )
+        .toList();
+    try {
+      await _playlistSvc.setAssets(widget.avatarId, widget.playlistId!, docs);
+      if (mounted) setState(() => _isDirty = false);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Fehler beim Speichern: $e')));
+      }
+    }
   }
 }

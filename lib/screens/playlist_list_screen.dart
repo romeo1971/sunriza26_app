@@ -3,8 +3,9 @@ import '../services/playlist_service.dart';
 import '../models/playlist_models.dart';
 import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
-import 'package:intl/intl.dart';
-import '../utils/playlist_time_utils.dart';
+// import 'package:intl/intl.dart'; // ungenutzt
+// import '../utils/playlist_time_utils.dart'; // ungenutzt, durch Widget ausgelagert
+import '../widgets/playlist_schedule_summary.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 import '../widgets/custom_text_field.dart';
@@ -44,6 +45,86 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _load();
     });
+  }
+
+  Future<void> _confirmDeletePlaylist(Playlist p) async {
+    final first = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Playlist löschen?'),
+        content: const Text(
+          'Dieser Vorgang löscht die Playlist, alle zugehörigen Timeline-Einträge, Timeline-Assets und Scheduler-Einträge. Medien selbst werden nicht gelöscht. Fortfahren?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(foregroundColor: Colors.white70),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+            child: const Text('Ja, löschen'),
+          ),
+        ],
+      ),
+    );
+    if (first != true) return;
+
+    final second = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Wirklich endgültig löschen?'),
+        content: const Text(
+          'Letzte Bestätigung: Die Playlist und alle zugehörigen Verlinkungen werden entfernt. Dieser Schritt kann nicht rückgängig gemacht werden.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            style: TextButton.styleFrom(foregroundColor: Colors.white70),
+            child: const Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.white,
+              shadowColor: Colors.transparent,
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: ShaderMask(
+              shaderCallback: (bounds) => Theme.of(
+                context,
+              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
+              child: const Text(
+                'Endgültig löschen',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (second != true) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await _svc.deleteDeep(widget.avatarId, p.id);
+      if (!mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Playlist gelöscht.')),
+      );
+      await _load();
+    } catch (e) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Lösch-Fehler: $e')));
+    }
   }
 
   Future<void> _load() async {
@@ -597,31 +678,31 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
         }
       },
       style: ButtonStyle(
-        side: MaterialStateProperty.resolveWith<BorderSide>((states) {
+        side: WidgetStateProperty.resolveWith<BorderSide>((states) {
           final isHover =
-              states.contains(MaterialState.hovered) ||
-              states.contains(MaterialState.pressed);
+              states.contains(WidgetState.hovered) ||
+              states.contains(WidgetState.pressed);
           return BorderSide(
             color: isHover ? dangerColor : baseBorderColor,
             width: 1,
           );
         }),
-        foregroundColor: MaterialStateProperty.resolveWith<Color>((states) {
+        foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
           final isHover =
-              states.contains(MaterialState.hovered) ||
-              states.contains(MaterialState.pressed);
+              states.contains(WidgetState.hovered) ||
+              states.contains(WidgetState.pressed);
           return isHover ? dangerColor : baseTextColor;
         }),
-        padding: const MaterialStatePropertyAll(
+        padding: const WidgetStatePropertyAll(
           EdgeInsets.symmetric(horizontal: 2, vertical: 2),
         ),
-        minimumSize: const MaterialStatePropertyAll(Size(0, 24)),
+        minimumSize: const WidgetStatePropertyAll(Size(0, 24)),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         visualDensity: const VisualDensity(horizontal: -3, vertical: -3),
-        textStyle: const MaterialStatePropertyAll(
+        textStyle: const WidgetStatePropertyAll(
           TextStyle(fontSize: 9, fontWeight: FontWeight.w400),
         ),
-        shape: MaterialStatePropertyAll(
+        shape: WidgetStatePropertyAll(
           RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
         ),
       ),
@@ -633,132 +714,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   }
 
   Widget _buildScheduleSummary(Playlist p) {
-    if (p.weeklySchedules.isEmpty && p.specialSchedules.isEmpty) {
-      return const Text(
-        'Kein Scheduler',
-        style: TextStyle(fontSize: 11, color: Colors.grey),
-      );
-    }
-
-    final weekdays = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'];
-    // Symbollisten nicht mehr genutzt; Anzeige erfolgt als zusammengefasste Zeitranges
-
-    // Modus bestimmen: weekly oder special
-    final mode = p.scheduleMode ?? 'weekly';
-    final Map<int, List<int>> weekdaySlots = {};
-    if (mode == 'weekly') {
-      for (final ws in p.weeklySchedules) {
-        weekdaySlots[ws.weekday] = ws.timeSlots.map((t) => t.index).toList();
-      }
-    } else {
-      // Aggregiere SpecialSchedules zu Wochentagen (Infoansicht)
-      for (final sp in p.specialSchedules) {
-        // Guard: ungültige Epochenwerte abfangen
-        DateTime d;
-        try {
-          d = DateTime.fromMillisecondsSinceEpoch(sp.startDate);
-        } catch (_) {
-          continue; // überspringen
-        }
-        final wd = d.weekday;
-        weekdaySlots.putIfAbsent(wd, () => []);
-        for (final t in sp.timeSlots) {
-          final idx = t.index;
-          if (!weekdaySlots[wd]!.contains(idx)) {
-            weekdaySlots[wd]!.add(idx);
-          }
-        }
-      }
-    }
-
-    final dayWidgets = <Widget>[];
-
-    String mergeSlotsLabel(List<int> slots) => buildSlotSummaryLabel(slots);
-
-    // Erstelle Spalte für jeden Wochentag (1-7)
-    for (int wd = 1; wd <= 7; wd++) {
-      if (weekdaySlots.containsKey(wd)) {
-        final ints = weekdaySlots[wd]!;
-        final slotWidgets = <Widget>[
-          Text(
-            ints.length == 6 ? 'Ganztägig' : mergeSlotsLabel(List.from(ints)),
-            style: const TextStyle(fontSize: 9, color: Colors.white70),
-          ),
-        ];
-
-        dayWidgets.add(
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                weekdays[wd - 1],
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              ...slotWidgets,
-            ],
-          ),
-        );
-      }
-    }
-
-    final summary = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.start,
-          children: dayWidgets,
-        ),
-      ],
-    );
-
-    if ((p.scheduleMode ?? 'weekly') == 'special' &&
-        p.specialSchedules.isNotEmpty) {
-      final specials = List<SpecialSchedule>.from(p.specialSchedules)
-        ..sort((a, b) => a.startDate.compareTo(b.startDate));
-      final first = specials.first;
-      // Guard: ungültige Epochenwerte abfangen
-      DateTime? start;
-      try {
-        start = DateTime.fromMillisecondsSinceEpoch(first.startDate);
-      } catch (_) {
-        start = null;
-      }
-      final locale = Localizations.localeOf(context).toLanguageTag();
-      final label = start != null
-          ? DateFormat('EEEE, d. MMM. y', locale).format(start)
-          : 'Sondertermin';
-      final ranges = mergeSlotsLabel(
-        first.timeSlots.map((e) => e.index).toList(),
-      );
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.amber,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            ranges,
-            style: const TextStyle(fontSize: 11, color: Colors.white70),
-          ),
-          const SizedBox(height: 6),
-          // summary (Wochenübersicht) bewusst nicht erneut rendern
-        ],
-      );
-    }
-
-    return summary;
+    return PlaylistScheduleSummary(playlist: p);
   }
 
   // Failsafe: Verhindert, dass UI crasht, falls die Zusammenfassung
@@ -1020,43 +976,79 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                 );
               }
             },
-            icon: ShaderMask(
-              shaderCallback: (bounds) => Theme.of(
-                context,
-              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
-              child: const Icon(
-                Icons.rule_folder_outlined,
-                color: Colors.white,
-                size: 21.4,
-              ),
+            icon: Builder(
+              builder: (context) {
+                final grad = Theme.of(
+                  context,
+                ).extension<AppGradients>()?.magentaBlue;
+                if (grad == null) {
+                  return const Icon(
+                    Icons.rule_folder_outlined,
+                    color: Colors.white,
+                    size: 21.4,
+                  );
+                }
+                return ShaderMask(
+                  shaderCallback: (bounds) => grad.createShader(bounds),
+                  child: const Icon(
+                    Icons.rule_folder_outlined,
+                    color: Colors.white,
+                    size: 21.4,
+                  ),
+                );
+              },
             ),
           ),
           IconButton(
             tooltip: loc.t('avatars.refreshTooltip'),
             onPressed: _load,
-            icon: ShaderMask(
-              shaderCallback: (bounds) => Theme.of(
-                context,
-              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
-              child: const Icon(
-                Icons.refresh_outlined,
-                color: Colors.white,
-                size: 21.4,
-              ),
+            icon: Builder(
+              builder: (context) {
+                final grad = Theme.of(
+                  context,
+                ).extension<AppGradients>()?.magentaBlue;
+                if (grad == null) {
+                  return const Icon(
+                    Icons.refresh_outlined,
+                    color: Colors.white,
+                    size: 21.4,
+                  );
+                }
+                return ShaderMask(
+                  shaderCallback: (bounds) => grad.createShader(bounds),
+                  child: const Icon(
+                    Icons.refresh_outlined,
+                    color: Colors.white,
+                    size: 21.4,
+                  ),
+                );
+              },
             ),
           ),
           IconButton(
             tooltip: loc.t('playlists.new'),
             onPressed: _create,
-            icon: ShaderMask(
-              shaderCallback: (bounds) => Theme.of(
-                context,
-              ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
-              child: const Icon(
-                Icons.add_outlined,
-                color: Colors.white,
-                size: 21.4,
-              ),
+            icon: Builder(
+              builder: (context) {
+                final grad = Theme.of(
+                  context,
+                ).extension<AppGradients>()?.magentaBlue;
+                if (grad == null) {
+                  return const Icon(
+                    Icons.add_outlined,
+                    color: Colors.white,
+                    size: 21.4,
+                  );
+                }
+                return ShaderMask(
+                  shaderCallback: (bounds) => grad.createShader(bounds),
+                  child: const Icon(
+                    Icons.add_outlined,
+                    color: Colors.white,
+                    size: 21.4,
+                  ),
+                );
+              },
             ),
           ),
         ],
@@ -1098,245 +1090,406 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                   constraints: const BoxConstraints(
                                     minHeight: 178,
                                   ),
-                                  child: Row(
+                                  child: Column(
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      // Cover Image mit Upload-Icon
-                                      SizedBox(
-                                        width: 100,
-                                        height: 178,
-                                        child: Stack(
-                                          children: [
-                                            // Cover Image
-                                            Container(
-                                              width: 100,
-                                              height: 178,
-                                              decoration: BoxDecoration(
-                                                color: Colors.grey.shade800,
-                                                borderRadius:
-                                                    BorderRadius.circular(8),
-                                              ),
-                                              clipBehavior: Clip.hardEdge,
-                                              child: p.coverImageUrl != null
-                                                  ? Image.network(
-                                                      p.coverImageUrl!,
-                                                      width: 100,
-                                                      height: 178,
-                                                      fit: BoxFit.cover,
-                                                    )
-                                                  : const Icon(
-                                                      Icons.playlist_play,
-                                                      size: 60,
-                                                      color: Colors.white54,
-                                                    ),
-                                            ),
-                                            // Upload-Icon (nur in list)
-                                            Positioned(
-                                              bottom: 4,
-                                              right: 4,
-                                              child: MouseRegion(
-                                                cursor:
-                                                    SystemMouseCursors.click,
-                                                child: GestureDetector(
-                                                  onTap: () =>
-                                                      _uploadCoverImage(p),
-                                                  child: Container(
-                                                    width: 28,
-                                                    height: 28,
-                                                    decoration: BoxDecoration(
-                                                      gradient:
-                                                          const LinearGradient(
-                                                            colors: [
-                                                              AppColors.magenta,
-                                                              AppColors
-                                                                  .lightBlue,
-                                                            ],
-                                                          ),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            14,
-                                                          ),
-                                                    ),
-                                                    child: const Icon(
-                                                      Icons.file_upload,
-                                                      color: Colors.white,
-                                                      size: 16,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                            // (kein Playlist-Lösch-Icon hier)
-                                            // Delete-Icon (nur wenn Cover vorhanden)
-                                            if (p.coverImageUrl != null &&
-                                                p.coverImageUrl!.isNotEmpty)
-                                              Positioned(
-                                                top: 4,
-                                                right: 4,
-                                                child: MouseRegion(
-                                                  cursor:
-                                                      SystemMouseCursors.click,
-                                                  child: GestureDetector(
-                                                    onTap: () =>
-                                                        _deleteCoverImage(p),
-                                                    child: Container(
-                                                      width: 28,
-                                                      height: 28,
-                                                      decoration: BoxDecoration(
-                                                        color: const Color(
-                                                          0x60000000,
-                                                        ),
-                                                        border: Border.all(
-                                                          color: Colors.white
-                                                              .withValues(
-                                                                alpha: 0.3,
-                                                              ),
-                                                          width: 1,
-                                                        ),
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              14,
-                                                            ),
-                                                      ),
-                                                      child: const Icon(
-                                                        Icons.delete,
-                                                        color: Colors.white,
-                                                        size: 16,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                      ),
-                                      const SizedBox(width: 16),
-                                      // Content
-                                      Expanded(
+                                      // Titel + Anzeigezeit (volle Breite)
+                                      Container(
+                                        width: double.infinity,
                                         child: Column(
                                           crossAxisAlignment:
                                               CrossAxisAlignment.start,
                                           children: [
-                                            // Titel + dezenter "Playlist löschen" Button oben rechts
-                                            Row(
-                                              crossAxisAlignment:
-                                                  CrossAxisAlignment.center,
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    p.name,
-                                                    style: const TextStyle(
-                                                      fontSize: 16,
-                                                      fontWeight:
-                                                          FontWeight.w500,
-                                                    ),
-                                                    overflow:
-                                                        TextOverflow.ellipsis,
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                _buildDeletePlaylistButton(p),
-                                              ],
-                                            ),
-                                            const SizedBox(height: 8),
-                                            if (p.highlightTag != null) ...[
-                                              const SizedBox(height: 6),
-                                              Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 8,
-                                                      vertical: 2,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.amber
-                                                      .withValues(alpha: 0.3),
-                                                  borderRadius:
-                                                      BorderRadius.circular(12),
-                                                  border: Border.all(
-                                                    color: Colors.amber,
-                                                  ),
-                                                ),
-                                                child: Text(
-                                                  p.highlightTag!,
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                    color: Colors.amber,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                            const SizedBox(height: 8),
                                             Text(
-                                              'Anzeigezeit: ${p.showAfterSec}s nach Chat-Beginn',
+                                              p.name,
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Anzeigezeit: ${p.showAfterSec}s nach Chat-Start',
                                               style: const TextStyle(
                                                 fontSize: 12,
                                                 color: Colors.white70,
                                               ),
                                             ),
-                                            const SizedBox(height: 8),
-                                            _buildSafeSummary(p),
-                                            const SizedBox(height: 12),
-                                            // Zwei Buttons: Scheduler & Timeline
-                                            Row(
-                                              children: [
-                                                Expanded(
-                                                  child: ElevatedButton.icon(
-                                                    onPressed: () =>
-                                                        _openEdit(p),
-                                                    icon: const Icon(
-                                                      Icons.calendar_today,
-                                                      size: 16,
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          // Linke Spalte: Bild
+                                          Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              SizedBox(
+                                                width: 100,
+                                                height: 178,
+                                                child: Stack(
+                                                  children: [
+                                                    // Cover Image
+                                                    Container(
+                                                      width: 100,
+                                                      height: 178,
+                                                      decoration: BoxDecoration(
+                                                        color: Colors
+                                                            .grey
+                                                            .shade800,
+                                                        borderRadius:
+                                                            BorderRadius.circular(
+                                                              8,
+                                                            ),
+                                                      ),
+                                                      clipBehavior:
+                                                          Clip.hardEdge,
+                                                      child:
+                                                          p.coverImageUrl !=
+                                                              null
+                                                          ? Image.network(
+                                                              p.coverImageUrl!,
+                                                              width: 100,
+                                                              height: 178,
+                                                              fit: BoxFit.cover,
+                                                            )
+                                                          : const Icon(
+                                                              Icons
+                                                                  .playlist_play,
+                                                              size: 60,
+                                                              color: Colors
+                                                                  .white54,
+                                                            ),
                                                     ),
-                                                    label: const Text(
-                                                      'Scheduler',
-                                                    ),
-                                                    style: ElevatedButton.styleFrom(
-                                                      backgroundColor: Colors
-                                                          .white
-                                                          .withValues(
-                                                            alpha: 0.1,
+                                                    // Upload-Icon (unten rechts)
+                                                    Positioned(
+                                                      bottom: 4,
+                                                      right: 4,
+                                                      child: MouseRegion(
+                                                        cursor:
+                                                            SystemMouseCursors
+                                                                .click,
+                                                        child: GestureDetector(
+                                                          onTap: () =>
+                                                              _uploadCoverImage(
+                                                                p,
+                                                              ),
+                                                          child: Container(
+                                                            width: 28,
+                                                            height: 28,
+                                                            decoration: BoxDecoration(
+                                                              gradient: const LinearGradient(
+                                                                colors: [
+                                                                  AppColors
+                                                                      .magenta,
+                                                                  AppColors
+                                                                      .lightBlue,
+                                                                ],
+                                                              ),
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    14,
+                                                                  ),
+                                                            ),
+                                                            child: const Icon(
+                                                              Icons.file_upload,
+                                                              color:
+                                                                  Colors.white,
+                                                              size: 16,
+                                                            ),
                                                           ),
-                                                      foregroundColor:
-                                                          Colors.white,
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            vertical: 8,
-                                                          ),
+                                                        ),
+                                                      ),
                                                     ),
-                                                  ),
+                                                    // Kleines Trash-Icon nur anzeigen, wenn ein Cover existiert
+                                                    if (p.coverImageUrl !=
+                                                            null &&
+                                                        p
+                                                            .coverImageUrl!
+                                                            .isNotEmpty)
+                                                      Positioned(
+                                                        left: 4,
+                                                        bottom: 4,
+                                                        child: Container(
+                                                          width: 28,
+                                                          height: 28,
+                                                          decoration:
+                                                              const BoxDecoration(
+                                                                color: Color(
+                                                                  0x40000000,
+                                                                ), // #00000040
+                                                                shape: BoxShape
+                                                                    .circle,
+                                                              ),
+                                                          child: IconButton(
+                                                            tooltip:
+                                                                'Cover löschen',
+                                                            padding:
+                                                                EdgeInsets.zero,
+                                                            constraints:
+                                                                const BoxConstraints(),
+                                                            icon: const Icon(
+                                                              Icons
+                                                                  .delete_outline,
+                                                              size: 16,
+                                                              color:
+                                                                  Colors.white,
+                                                            ),
+                                                            onPressed: () =>
+                                                                _deleteCoverImage(
+                                                                  p,
+                                                                ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    // Großer "Playlist löschen"-Chip oben links im Bild
+                                                    Positioned(
+                                                      left: 6,
+                                                      top: 6,
+                                                      child: OutlinedButton(
+                                                        onPressed: () =>
+                                                            _confirmDeletePlaylist(
+                                                              p,
+                                                            ),
+                                                        style: OutlinedButton.styleFrom(
+                                                          padding:
+                                                              const EdgeInsets.symmetric(
+                                                                horizontal: 6,
+                                                                vertical: 2,
+                                                              ),
+                                                          side:
+                                                              const BorderSide(
+                                                                color: Colors
+                                                                    .white70,
+                                                                width: 1,
+                                                              ),
+                                                          foregroundColor:
+                                                              Colors.white,
+                                                          backgroundColor:
+                                                              const Color(
+                                                                0x55000000,
+                                                              ),
+                                                          textStyle:
+                                                              const TextStyle(
+                                                                fontSize: 10,
+                                                              ),
+                                                          minimumSize:
+                                                              const Size(0, 0),
+                                                          tapTargetSize:
+                                                              MaterialTapTargetSize
+                                                                  .shrinkWrap,
+                                                        ),
+                                                        child: const Text(
+                                                          'Playlist löschen',
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ],
                                                 ),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: ElevatedButton.icon(
-                                                    onPressed: () =>
-                                                        _openTimeline(p),
-                                                    icon: const Icon(
-                                                      Icons.view_timeline,
-                                                      size: 16,
-                                                    ),
-                                                    label: const Text(
-                                                      'Timeline',
-                                                    ),
-                                                    style: ElevatedButton.styleFrom(
-                                                      backgroundColor: Colors
-                                                          .white
+                                              ),
+                                              const SizedBox(height: 8),
+                                            ],
+                                          ),
+                                          const SizedBox(width: 16),
+                                          // Rechte Spalte: Wochentage + kleine Buttons
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                if (p.highlightTag != null) ...[
+                                                  const SizedBox(height: 6),
+                                                  Container(
+                                                    padding:
+                                                        const EdgeInsets.symmetric(
+                                                          horizontal: 8,
+                                                          vertical: 2,
+                                                        ),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.amber
                                                           .withValues(
-                                                            alpha: 0.1,
+                                                            alpha: 0.3,
                                                           ),
-                                                      foregroundColor:
-                                                          Colors.white,
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            vertical: 8,
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                            12,
                                                           ),
+                                                      border: Border.all(
+                                                        color: Colors.amber,
+                                                      ),
+                                                    ),
+                                                    child: Text(
+                                                      p.highlightTag!,
+                                                      style: const TextStyle(
+                                                        fontSize: 11,
+                                                        color: Colors.amber,
+                                                      ),
                                                     ),
                                                   ),
+                                                ],
+                                                const SizedBox(height: 4),
+                                                _buildSafeSummary(p),
+                                                const SizedBox(height: 8),
+                                                LayoutBuilder(
+                                                  builder: (context, constraints) {
+                                                    final isNarrow =
+                                                        constraints.maxWidth <
+                                                        240;
+                                                    final buttons = [
+                                                      SizedBox(
+                                                        height: 24,
+                                                        child: ElevatedButton(
+                                                          onPressed: () =>
+                                                              _openEdit(p),
+                                                          style: ElevatedButton.styleFrom(
+                                                            backgroundColor:
+                                                                Colors.white,
+                                                            foregroundColor:
+                                                                AppColors
+                                                                    .magenta,
+                                                            padding:
+                                                                const EdgeInsets.symmetric(
+                                                                  horizontal:
+                                                                      12,
+                                                                  vertical: 10,
+                                                                ),
+                                                            shape: RoundedRectangleBorder(
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    12,
+                                                                  ),
+                                                            ),
+                                                            minimumSize:
+                                                                const Size(
+                                                                  0,
+                                                                  24,
+                                                                ),
+                                                          ),
+                                                          child: ShaderMask(
+                                                            blendMode:
+                                                                BlendMode.srcIn,
+                                                            shaderCallback: (b) =>
+                                                                const LinearGradient(
+                                                                  colors: [
+                                                                    AppColors
+                                                                        .magenta,
+                                                                    AppColors
+                                                                        .lightBlue,
+                                                                  ],
+                                                                  begin: Alignment
+                                                                      .topLeft,
+                                                                  end: Alignment
+                                                                      .bottomRight,
+                                                                ).createShader(
+                                                                  b,
+                                                                ),
+                                                            child: const Text(
+                                                              'Scheduler',
+                                                              style: TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                fontSize: 14,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                      SizedBox(
+                                                        height: 24,
+                                                        child: ElevatedButton(
+                                                          onPressed: () =>
+                                                              _openTimeline(p),
+                                                          style: ElevatedButton.styleFrom(
+                                                            backgroundColor:
+                                                                Colors.white,
+                                                            foregroundColor:
+                                                                AppColors
+                                                                    .magenta,
+                                                            padding:
+                                                                const EdgeInsets.symmetric(
+                                                                  horizontal:
+                                                                      12,
+                                                                  vertical: 10,
+                                                                ),
+                                                            shape: RoundedRectangleBorder(
+                                                              borderRadius:
+                                                                  BorderRadius.circular(
+                                                                    12,
+                                                                  ),
+                                                            ),
+                                                            minimumSize:
+                                                                const Size(
+                                                                  0,
+                                                                  24,
+                                                                ),
+                                                          ),
+                                                          child: ShaderMask(
+                                                            blendMode:
+                                                                BlendMode.srcIn,
+                                                            shaderCallback: (b) =>
+                                                                const LinearGradient(
+                                                                  colors: [
+                                                                    AppColors
+                                                                        .magenta,
+                                                                    AppColors
+                                                                        .lightBlue,
+                                                                  ],
+                                                                  begin: Alignment
+                                                                      .topLeft,
+                                                                  end: Alignment
+                                                                      .bottomRight,
+                                                                ).createShader(
+                                                                  b,
+                                                                ),
+                                                            child: const Text(
+                                                              'Timeline',
+                                                              style: TextStyle(
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w600,
+                                                                fontSize: 14,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ];
+                                                    return isNarrow
+                                                        ? Column(
+                                                            crossAxisAlignment:
+                                                                CrossAxisAlignment
+                                                                    .start,
+                                                            children: [
+                                                              buttons[0],
+                                                              const SizedBox(
+                                                                height: 6,
+                                                              ),
+                                                              buttons[1],
+                                                            ],
+                                                          )
+                                                        : Row(
+                                                            children: [
+                                                              buttons[0],
+                                                              const SizedBox(
+                                                                width: 8,
+                                                              ),
+                                                              buttons[1],
+                                                            ],
+                                                          );
+                                                  },
                                                 ),
                                               ],
                                             ),
-                                          ],
-                                        ),
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),

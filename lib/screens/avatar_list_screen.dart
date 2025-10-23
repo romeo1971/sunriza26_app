@@ -9,6 +9,7 @@ import '../services/localization_service.dart';
 import 'avatar_review_facts_screen.dart';
 import 'package:provider/provider.dart';
 import '../widgets/custom_text_field.dart';
+import 'package:flutter/services.dart';
 
 class AvatarListScreen extends StatefulWidget {
   const AvatarListScreen({super.key});
@@ -27,6 +28,75 @@ class _AvatarListScreenState extends State<AvatarListScreen>
   String _searchTerm = '';
   int _currentPage = 0;
   static const int _avatarsPerPage = 4;
+
+  // Erzeuge kurze, nicht rückrechenbare Code-IDs (FNV-1a 32-bit → Base36)
+  String _shortCode(String input) {
+    int hash = 0x811C9DC5;
+    for (int i = 0; i < input.length; i++) {
+      hash ^= input.codeUnitAt(i);
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    // Base36 kompakt
+    return hash.abs().toRadixString(36);
+  }
+
+  String _genSessionId() {
+    // sehr kurze Session-ID für Iframe (client-seitig; eigentlicher Token-Join via Backend)
+    final ts = DateTime.now().millisecondsSinceEpoch.toRadixString(36);
+    final rnd = (DateTime.now().microsecondsSinceEpoch & 0xFFFFFF)
+        .toRadixString(36);
+    return 'session-$ts$rnd';
+  }
+
+  String _buildEmbedUrl(String avatarId, {bool withSession = false}) {
+    final code = _shortCode(avatarId);
+    final room = withSession ? _genSessionId() : '{ROOM_ID}';
+    return 'https://www.hauau.com/app/embed/chat?room=$room&code=$code';
+  }
+
+  Widget _buildEmbedBadge(String avatarId) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () async {
+          final url = _buildEmbedUrl(avatarId, withSession: true);
+          await Clipboard.setData(ClipboardData(text: url));
+          if (!mounted) return;
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Embed-Link kopiert')));
+        },
+        child: Container(
+          height: 24,
+          constraints: const BoxConstraints(minHeight: 24),
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFFE91E63), AppColors.lightBlue],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: const [
+              Icon(Icons.link, size: 14, color: Colors.white),
+              SizedBox(width: 6),
+              Text(
+                'Embed-Link',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 
   @override
   bool get wantKeepAlive => true;
@@ -469,6 +539,8 @@ class _AvatarListScreenState extends State<AvatarListScreen>
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
+                          const SizedBox(height: 6),
+                          _buildEmbedBadge(avatar.id),
                           // "Noch keine Nachrichten" ENTFERNT - nur wenn tatsächlich eine Message da ist
                           if (avatar.lastMessage != null &&
                               avatar.lastMessage!.isNotEmpty) ...[
