@@ -28,6 +28,10 @@ import '../services/media_service.dart';
 import '../services/shared_moments_service.dart';
 import '../models/media_models.dart';
 import '../widgets/liveportrait_canvas.dart';
+import '../widgets/chat_bubbles/user_message_bubble.dart';
+import '../widgets/chat_bubbles/avatar_message_bubble.dart';
+import '../widgets/hero_chat_fab_button.dart';
+import 'hero_chat_screen.dart';
 
 // GLOBAL Guard: verhindert mehrfache /publisher/start Calls über Widget-Lifecycle hinweg!
 final Map<String, DateTime> _globalActiveMuseTalkRooms = {};
@@ -49,6 +53,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   bool _firstValidSend = false; // vermeidet Kosten vor erstem echten Senden
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
+  final Map<String, Timer> _deleteTimers = {}; // Hero Chat Lösch-Timer
   Timer? _publisherIdleTimer; // Stoppt MuseTalk bei Inaktivität (Kostenbremse)
   bool _isRecording = false;
   bool _isTyping = false;
@@ -1601,9 +1606,23 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               },
             ),
           ),
-          // Symmetrischer Platzhalter rechts (entspricht IconButton-Breite)
-          const SizedBox(width: 48),
-          // KEINE Suche im Chat!
+          // Hero Chat FAB Button
+          HeroChatFabButton(
+            highlightCount: _messages.where((m) => m.isHighlighted).length,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => HeroChatScreen(
+                    avatarData: _avatarData!,
+                    messages: _messages,
+                    onIconChanged: _handleIconChanged,
+                  ),
+                ),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
         ],
       ),
     );
@@ -1825,134 +1844,93 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   }
 
   Widget _buildMessageBubble(ChatMessage message) {
-    final isUser = message.isUser;
+    return message.isUser
+        ? UserMessageBubble(
+            message: message,
+            onIconChanged: _handleIconChanged,
+          )
+        : AvatarMessageBubble(
+            message: message,
+            onIconChanged: _handleIconChanged,
+            avatarImageUrl: _avatarData?.avatarImageUrl,
+          );
+  }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        mainAxisAlignment: isUser
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
-        children: [
-          // Mini-Avatar (KI) ausgeblendet
-          Flexible(
-            child: Container(
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.78,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-              decoration: BoxDecoration(
-                color: isUser ? Colors.black : Colors.grey.shade800,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Flexible(
-                    child: GestureDetector(
-                      onTap: () async {
-                        if (!isUser) {
-                          if (message.audioPath != null) {
-                            await _playAudioAtPath(message.audioPath!);
-                          } else {
-                            final p = await _ensureTtsForText(message.text);
-                            if (p != null) {
-                              // persist audioPath into this message
-                              final idx = _messages.indexOf(message);
-                              if (idx >= 0) {
-                                setState(() {
-                                  _messages[idx] = ChatMessage(
-                                    text: message.text,
-                                    isUser: false,
-                                    audioPath: p,
-                                    timestamp: message.timestamp,
-                                  );
-                                });
-                              }
-                              await _playAudioAtPath(p);
-                            } else {
-                              _showSystemSnack('TTS nicht verfügbar');
-                            }
-                          }
-                        }
-                      },
-                      child: Text(
-                        message.text,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (!isUser)
-                    Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: () async {
-                            if (_player.playing) {
-                              await _player.pause();
-                              setState(() => _isFileSpeaking = false);
-                            } else {
-                              if (_player.processingState ==
-                                      ProcessingState.completed ||
-                                  _player.processingState ==
-                                      ProcessingState.idle) {
-                                // Restart from beginning
-                                if (message.audioPath != null) {
-                                  await _playAudioAtPath(message.audioPath!);
-                                } else {
-                                  final p = await _ensureTtsForText(
-                                    message.text,
-                                  );
-                                  if (p != null) {
-                                    final idx = _messages.indexOf(message);
-                                    if (idx >= 0) {
-                                      setState(() {
-                                        _messages[idx] = ChatMessage(
-                                          text: message.text,
-                                          isUser: false,
-                                          audioPath: p,
-                                          timestamp: message.timestamp,
-                                        );
-                                      });
-                                    }
-                                    await _playAudioAtPath(p);
-                                  }
-                                }
-                              } else {
-                                // Resume
-                                await _player.play();
-                                setState(() => _isFileSpeaking = true);
-                              }
-                            }
-                          },
-                          child: const SizedBox(
-                            width: 36,
-                            height: 36,
-                            child: Center(
-                              child: Icon(
-                                Icons.volume_up,
-                                color: Colors.white70,
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          // Mini-Avatar (User) ausgeblendet
-        ],
-      ),
-    );
+  void _handleIconChanged(ChatMessage message, String? icon) {
+    setState(() {
+      if (icon != null) {
+        // Icon setzen
+        message.highlightIcon = icon;
+        message.highlightedAt = DateTime.now();
+        message.deleteTimerStart = null;
+        
+        // Stoppe laufenden Timer
+        _deleteTimers[message.timestamp.toString()]?.cancel();
+        _deleteTimers.remove(message.timestamp.toString());
+        
+      } else {
+        // Icon entfernen → 2-Min Timer starten
+        message.highlightIcon = null;
+        message.deleteTimerStart = DateTime.now();
+        
+        // Timer: Löscht Message nach 2 Minuten
+        _deleteTimers[message.timestamp.toString()] = Timer(
+          const Duration(minutes: 2),
+          () {
+            setState(() {
+              _messages.remove(message);
+              _deleteTimers.remove(message.timestamp.toString());
+            });
+            _deleteMessageHighlightFromFirebase(message);
+          },
+        );
+      }
+    });
+    
+    _saveMessageHighlightToFirebase(message);
+  }
+
+  Future<void> _saveMessageHighlightToFirebase(ChatMessage message) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _avatarData == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .collection('heroHighlights')
+          .doc(message.timestamp.millisecondsSinceEpoch.toString())
+          .set({
+        'text': message.text,
+        'isUser': message.isUser,
+        'timestamp': message.timestamp.millisecondsSinceEpoch,
+        'highlightIcon': message.highlightIcon,
+        'highlightedAt': message.highlightedAt?.millisecondsSinceEpoch,
+        'deleteTimerStart': message.deleteTimerStart?.millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('❌ Hero Highlight speichern fehlgeschlagen: $e');
+    }
+  }
+
+  Future<void> _deleteMessageHighlightFromFirebase(ChatMessage message) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _avatarData == null) return;
+
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .collection('heroHighlights')
+          .doc(message.timestamp.millisecondsSinceEpoch.toString())
+          .delete();
+    } catch (e) {
+      debugPrint('❌ Hero Highlight löschen fehlgeschlagen: $e');
+    }
   }
 
   Widget _buildInputArea() {
@@ -3408,6 +3386,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _chunk2Controller?.dispose();
     _chunk3Controller?.dispose();
     _publisherIdleTimer?.cancel();
+    // Hero Chat Timer aufräumen
+    for (var timer in _deleteTimers.values) {
+      timer.cancel();
+    }
+    _deleteTimers.clear();
     // Lipsync Strategy aufräumen (schließt WebSocket!)
     _lipsync.dispose();
 
@@ -3711,11 +3694,30 @@ class ChatMessage {
   final bool isUser;
   final DateTime timestamp;
   final String? audioPath;
-
+  
+  // Hero Chat Highlights
+  String? highlightIcon; // 🐣🔥🍻 etc.
+  DateTime? highlightedAt;
+  DateTime? deleteTimerStart; // Start des 2-Min Timers
+  
   ChatMessage({
     required this.text,
     required this.isUser,
     this.audioPath,
     DateTime? timestamp,
+    this.highlightIcon,
+    this.highlightedAt,
+    this.deleteTimerStart,
   }) : timestamp = timestamp ?? DateTime.now();
+  
+  // Helper: Ist diese Nachricht highlighted?
+  bool get isHighlighted => highlightIcon != null;
+  
+  // Helper: Verbleibende Zeit bis Löschung (in Sekunden)
+  int? get remainingDeleteSeconds {
+    if (deleteTimerStart == null) return null;
+    final elapsed = DateTime.now().difference(deleteTimerStart!).inSeconds;
+    final remaining = 120 - elapsed; // 2 Minuten = 120 Sekunden
+    return remaining > 0 ? remaining : 0;
+  }
 }
