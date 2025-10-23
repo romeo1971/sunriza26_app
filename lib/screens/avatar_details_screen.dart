@@ -7634,11 +7634,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
 
       // BitHuman Agent erstellen
-      final agentId = await BitHumanService.createAgentFromUrls(
+      final agentId = await BitHumanService.createAgent(
         imageUrl: heroImageUrl,
         audioUrl: heroAudioUrl,
-        model: 'essence', // TODO: Von LiveAvatarTile Toggle übergeben
-        name: '${_avatarData!.firstName} ${_avatarData!.lastName}',
+        prompt: 'Du bist ${_avatarData!.firstName} ${_avatarData!.lastName}. ' 
+                'Antworte in einem freundlichen und hilfsbereiten Ton.',
       );
 
       if (agentId != null && agentId.isNotEmpty) {

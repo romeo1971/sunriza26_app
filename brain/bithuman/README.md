@@ -1,81 +1,187 @@
-# bitHuman Integration - Übersicht
+# bitHuman Integration - Vollständige Anleitung
 
-Diese Integration ermöglicht die Erstellung von Live Avataren mit bitHuman AI.
+## 📚 Dokumentation (1:1 aus PDFs)
 
-## Dateien
+- **[AGENT_GENERATION_API.md](./AGENT_GENERATION_API.md)** - REST API zum Erstellen von Agents
+- **[LIVEKIT_CLOUD_PLUGIN.md](./LIVEKIT_CLOUD_PLUGIN.md)** - Python Plugin für LiveKit Integration
+- **[ENV_SETUP.md](./ENV_SETUP.md)** - Environment Variables Setup
+- **[IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md)** - Technische Übersicht
 
-- `agent-generation-api.md` - Dokumentation der Agent Generation API
-- `livekit-cloud-plugin.md` - Dokumentation des LiveKit Cloud Plugins
+## 🚀 Quick Start
 
-## Setup
+### 1. API Credentials holen
 
-### 1. API Keys
+Gehe zu https://imaginex.bithuman.ai und hole deinen **API Secret**
 
-Füge in deiner `.env` Datei hinzu:
+### 2. .env erweitern
 
 ```env
-BITHUMAN_API_KEY=your_api_key_here
-BITHUMAN_API_SECRET=your_api_secret_here
+BITHUMAN_API_SECRET=your_secret_here
 ```
 
-### 2. Flutter Integration
+### 3. Flutter App - Agent erstellen
 
-Die Integration ist bereits vollständig implementiert:
+```dart
+// In avatar_details_screen.dart - Dynamics → Live Avatar
+// Klicke "Generieren" Button
 
-- **Service**: `lib/services/bithuman_service.dart`
-- **UI Widget**: `lib/widgets/expansion_tiles/live_avatar_tile.dart`
-- **Integration**: `lib/screens/avatar_details_screen.dart`
-
-## Verwendung
-
-1. Öffne einen Avatar in der `avatar_details_screen`
-2. Scrolle zu **Dynamics** → **Live Avatar**
-3. Stelle sicher, dass **Hero-Image** und **Hero-Audio** hochgeladen sind
-4. Wähle das Modell: **essence** (natürlich) oder **expression** (expressiv)
-5. Klicke auf **Generieren**
-6. Die **Agent ID** wird automatisch in Firebase gespeichert
-
-## Agent ID Speicherung
-
-Die Agent ID wird in Firestore unter dem Avatar gespeichert:
-
-```json
-{
-  "liveAvatar": {
-    "agentId": "agent_abc123xyz",
-    "model": "essence",
-    "createdAt": "2025-01-23T12:00:00Z"
-  }
-}
+final agentId = await BitHumanService.createAgent(
+  imageUrl: heroImageUrl,
+  audioUrl: heroAudioUrl,
+  prompt: 'Du bist ...',
+);
+// → Agent ID wird in Firebase gespeichert
 ```
 
-## Nächste Schritte
+### 4. Python Backend - Agent in LiveKit starten
 
-Nach erfolgreicher Agent-Generierung:
+```bash
+cd backend
+source venv/bin/activate
 
-1. Agent ID kann für LiveKit Room Integration verwendet werden
-2. Siehe `livekit-cloud-plugin.md` für Room-Integration
-3. Chat-Screen kann Agent via LiveKit einbinden
+# Agent mit ID aus Flutter starten
+python bithuman_livekit_agent.py --agent-id A91XMB7113 --room my-room
+```
 
-## Modal.com Services
+### 5. Flutter App - Mit Room verbinden
 
-Die folgenden Modal.com Services könnten durch bitHuman ersetzt werden:
+```dart
+// LiveKit Client (haben wir schon)
+final room = Room();
+await room.connect(livekitUrl, roomToken);
 
-- `modal_liveportrait_ws.py` (Avatar-Generierung)
-- `modal_musetalk.py` (Lipsync-Animation)
-- Teile von `modal_dynamics.py`
+// → Video vom Avatar wird automatisch empfangen
+```
 
-## Vorteile
+## 📋 Was wurde implementiert
 
-✅ Einfachere Integration  
-✅ Bessere Performance  
-✅ Real-time Lipsync  
-✅ Keine eigene Infrastruktur  
-✅ Skalierbar  
-✅ Niedrigere Latenz  
+### ✅ Flutter (Client)
 
-## Support
+**Service:** `lib/services/bithuman_service.dart`
+- `createAgent()` - Agent via REST API erstellen
+- `getAgentStatus()` - Agent Status abfragen
+- `waitForAgent()` - Auf Agent-Fertigstellung warten
 
-- [bitHuman Docs](https://docs.bithuman.ai)
-- [LiveKit Docs](https://docs.livekit.io)
+**UI:** `lib/widgets/expansion_tiles/live_avatar_tile.dart`
+- Toggle: essence / expression
+- Button: Generieren
+- Status-Anzeige: Agent ID
 
+**Integration:** `lib/screens/avatar_details_screen.dart`
+- `_generateLiveAvatar()` - Agent-Generierung starten
+- `_loadLiveAvatarData()` - Agent ID aus Firebase laden
+- Firebase: `liveAvatar` Collection
+
+### ✅ Python Backend (Server)
+
+**Script:** `backend/bithuman_livekit_agent.py`
+- Verbindet bitHuman Agent mit LiveKit Room
+- Verarbeitet Audio-Input
+- Sendet Video-Output
+
+**Setup:** `backend/README_BITHUMAN.md`
+- Installation-Anleitung
+- Usage-Beispiele
+- Troubleshooting
+
+### ✅ Dokumentation
+
+Alle aus PDFs 1:1 übertragen:
+- Agent Generation API
+- LiveKit Cloud Plugin
+- Environment Setup
+
+## 🔄 Workflow
+
+```
+1. Flutter: Erstellt Agent    → POST /v1/agent/generate → agent_id
+2. Flutter: Speichert in Firebase
+3. Python:  Startet Agent     → bithuman.AvatarSession(agent_id)
+4. Python:  Verbindet LiveKit → room.connect()
+5. Flutter: Verbindet LiveKit → room.connect()
+6. Flutter: ← Video vom Avatar
+```
+
+## 🛠 Installation
+
+### Flutter (keine neuen Dependencies)
+
+```bash
+# Bereits vorhanden:
+# - http
+# - livekit_client
+# - flutter_dotenv
+```
+
+### Python Backend
+
+```bash
+cd backend
+
+# 1. venv erstellen
+python3 -m venv venv
+source venv/bin/activate
+
+# 2. Dependencies
+pip install livekit livekit-agents python-dotenv
+
+# 3. bitHuman Plugin
+uv pip install git+https://github.com/livekit/agents@main#subdirectory=livekit-plugins/livekit-plugins-bithuman
+```
+
+## 📊 API Limits
+
+**Free Tier:**
+- 199 Credits / Monat
+- Community Support
+
+**Pro:**
+- Unlimited Credits
+- Priority Support
+- Custom Training
+
+## 🚨 Troubleshooting
+
+### Agent erstellen schlägt fehl
+
+```dart
+// Check Logs:
+// "❌ BitHuman API Secret fehlt" → .env prüfen
+// "❌ BitHuman API Fehler: 401" → API Secret falsch
+// "❌ BitHuman API Fehler: 429" → Rate Limit
+```
+
+### Python Agent startet nicht
+
+```bash
+# Check Installation:
+python -c "import bithuman; print('OK')"
+
+# Check Credentials:
+echo $BITHUMAN_API_SECRET
+echo $LIVEKIT_URL
+```
+
+### LiveKit Connection Failed
+
+- Prüfe `LIVEKIT_URL` (muss `wss://` starten)
+- Prüfe API Keys sind korrekt
+- Teste mit `livekit-cli connect`
+
+## 📖 Weiterführende Links
+
+- **bitHuman Docs:** https://docs.bithuman.ai
+- **imaginex Platform:** https://imaginex.bithuman.ai
+- **LiveKit Docs:** https://docs.livekit.io
+
+## ⚠️ WICHTIG
+
+**Dies ist Server-Client Architektur:**
+- Flutter App = Client (erstellt Agent, verbindet mit Room)
+- Python Script = Server (steuert Agent in Room)
+- Beide müssen gleichzeitig laufen!
+
+**Für Production:**
+- Python Agent als Service deployen (Systemd/Docker)
+- Auto-Start beim Agent-Erstellen aus Flutter
+- Health Checks implementieren

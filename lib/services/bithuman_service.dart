@@ -5,91 +5,78 @@ import 'dart:convert';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class BitHumanService {
-  static const String _baseUrl = 'https://api.bithuman.ai/v1';
-  static String? _apiKey;
+  static const String _baseUrl = 'https://public.api.bithuman.ai';
   static String? _apiSecret;
 
-  /// Initialisiert BitHuman mit API Credentials aus .env
+  /// Initialisiert BitHuman mit API Secret aus .env
   static Future<void> initialize() async {
     try {
-      _apiKey = dotenv.env['BITHUMAN_API_KEY'];
       _apiSecret = dotenv.env['BITHUMAN_API_SECRET'];
 
-      if (_apiKey == null || _apiKey!.isEmpty) {
-        debugPrint('⚠️ BITHUMAN_API_KEY nicht in .env gefunden');
-      }
       if (_apiSecret == null || _apiSecret!.isEmpty) {
         debugPrint('⚠️ BITHUMAN_API_SECRET nicht in .env gefunden');
-      }
-
-      if (_apiKey != null && _apiSecret != null) {
-        final maskedKey = _apiKey!.length > 6
-            ? '${_apiKey!.substring(0, 3)}***${_apiKey!.substring(_apiKey!.length - 3)}'
+        debugPrint('   Hole API Secret von: imaginex.bithuman.ai');
+      } else {
+        final masked = _apiSecret!.length > 8
+            ? '${_apiSecret!.substring(0, 4)}***${_apiSecret!.substring(_apiSecret!.length - 4)}'
             : '***';
-        debugPrint('✅ BitHuman Service initialisiert (key=$maskedKey)');
+        debugPrint('✅ BitHuman Service initialisiert (secret=$masked)');
       }
     } catch (e) {
       debugPrint('❌ BitHuman Initialisierung fehlgeschlagen: $e');
     }
   }
 
-  /// Erstellt einen BitHuman Agent
+  /// Erstellt einen BitHuman Agent via REST API
   /// 
-  /// [imagePath] - Lokaler Pfad zum Hero-Image
-  /// [audioPath] - Lokaler Pfad zum Hero-Audio
-  /// [model] - 'essence' oder 'expression'
-  /// [name] - Optionaler Name des Agents
+  /// [imageUrl] - URL zum Hero-Image
+  /// [audioUrl] - URL zum Hero-Audio
+  /// [prompt] - System Prompt für den Agent
+  /// [videoUrl] - Optional: Video URL
   /// 
   /// Returns agent_id oder null bei Fehler
   static Future<String?> createAgent({
-    required String imagePath,
-    required String audioPath,
-    required String model,
-    String? name,
+    String? imageUrl,
+    String? audioUrl,
+    String? videoUrl,
+    String? prompt,
   }) async {
-    if (_apiKey == null || _apiSecret == null) {
-      debugPrint('❌ BitHuman API Credentials fehlen');
+    if (_apiSecret == null || _apiSecret!.isEmpty) {
+      debugPrint('❌ BitHuman API Secret fehlt');
       return null;
     }
 
     try {
       debugPrint('🚀 BitHuman Agent erstellen...');
-      debugPrint('   Image: $imagePath');
-      debugPrint('   Audio: $audioPath');
-      debugPrint('   Model: $model');
+      debugPrint('   Image: $imageUrl');
+      debugPrint('   Audio: $audioUrl');
+      debugPrint('   Prompt: $prompt');
 
-      final request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$_baseUrl/agents'),
+      final body = <String, dynamic>{};
+      if (prompt != null && prompt.isNotEmpty) body['prompt'] = prompt;
+      if (imageUrl != null && imageUrl.isNotEmpty) body['image'] = imageUrl;
+      if (videoUrl != null && videoUrl.isNotEmpty) body['video'] = videoUrl;
+      if (audioUrl != null && audioUrl.isNotEmpty) body['audio'] = audioUrl;
+
+      final response = await http.post(
+        Uri.parse('$_baseUrl/v1/agent/generate'),
+        headers: {
+          'Content-Type': 'application/json',
+          'api-secret': _apiSecret!,
+        },
+        body: json.encode(body),
       );
 
-      // Headers
-      request.headers['X-API-Key'] = _apiKey!;
-      request.headers['X-API-Secret'] = _apiSecret!;
-
-      // Files
-      request.files.add(await http.MultipartFile.fromPath('image', imagePath));
-      request.files.add(await http.MultipartFile.fromPath('audio', audioPath));
-
-      // Fields
-      request.fields['model'] = model;
-      if (name != null && name.isNotEmpty) {
-        request.fields['name'] = name;
-      }
-
-      debugPrint('📤 Sende Request an BitHuman API...');
-      final response = await request.send();
-      final responseBody = await response.stream.bytesToString();
-
       debugPrint('📥 Response Status: ${response.statusCode}');
-      debugPrint('📥 Response Body: $responseBody');
+      debugPrint('📥 Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
-        final data = json.decode(responseBody);
+        final data = json.decode(response.body);
         final agentId = data['agent_id'] as String?;
+        final status = data['status'] as String?;
 
         if (agentId != null) {
-          debugPrint('✅ Agent erfolgreich erstellt: $agentId');
+          debugPrint('✅ Agent erfolgreich erstellt: $agentId (status: $status)');
           return agentId;
         } else {
           debugPrint('⚠️ Keine agent_id in Response gefunden');
@@ -97,7 +84,7 @@ class BitHumanService {
         }
       } else {
         debugPrint('❌ BitHuman API Fehler: ${response.statusCode}');
-        debugPrint('   Body: $responseBody');
+        debugPrint('   Body: ${response.body}');
         return null;
       }
     } catch (e, stackTrace) {
@@ -107,127 +94,62 @@ class BitHumanService {
     }
   }
 
-  /// Lädt eine Remote-Datei herunter und gibt den lokalen Pfad zurück
-  static Future<String?> _downloadFile(String url, String filename) async {
-    try {
-      final response = await http.get(Uri.parse(url));
-      if (response.statusCode == 200) {
-        final tempDir = Directory.systemTemp;
-        final file = File('${tempDir.path}/$filename');
-        await file.writeAsBytes(response.bodyBytes);
-        return file.path;
-      }
-    } catch (e) {
-      debugPrint('❌ Download fehlgeschlagen: $e');
-    }
-    return null;
-  }
-
-  /// Erstellt Agent mit URLs statt lokalen Pfaden
-  static Future<String?> createAgentFromUrls({
-    required String imageUrl,
-    required String audioUrl,
-    required String model,
-    String? name,
-  }) async {
-    try {
-      debugPrint('📥 Lade Hero-Image herunter...');
-      final imagePath = await _downloadFile(imageUrl, 'hero_image.jpg');
-      if (imagePath == null) {
-        debugPrint('❌ Hero-Image Download fehlgeschlagen');
-        return null;
-      }
-
-      debugPrint('📥 Lade Hero-Audio herunter...');
-      final audioPath = await _downloadFile(audioUrl, 'hero_audio.mp3');
-      if (audioPath == null) {
-        debugPrint('❌ Hero-Audio Download fehlgeschlagen');
-        return null;
-      }
-
-      return await createAgent(
-        imagePath: imagePath,
-        audioPath: audioPath,
-        model: model,
-        name: name,
-      );
-    } catch (e) {
-      debugPrint('❌ createAgentFromUrls Exception: $e');
+  /// Prüft Agent Status
+  static Future<Map<String, dynamic>?> getAgentStatus(String agentId) async {
+    if (_apiSecret == null || _apiSecret!.isEmpty) {
+      debugPrint('❌ BitHuman API Secret fehlt');
       return null;
     }
-  }
-
-  /// Fügt Agent zu LiveKit Room hinzu
-  static Future<bool> joinAgentToRoom({
-    required String agentId,
-    required String roomUrl,
-    required String roomToken,
-    String? participantName,
-  }) async {
-    if (_apiKey == null || _apiSecret == null) {
-      debugPrint('❌ BitHuman API Credentials fehlen');
-      return false;
-    }
 
     try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/agents/$agentId/join-room'),
+      final response = await http.get(
+        Uri.parse('$_baseUrl/v1/agent/status/$agentId'),
         headers: {
-          'X-API-Key': _apiKey!,
-          'X-API-Secret': _apiSecret!,
-          'Content-Type': 'application/json',
+          'api-secret': _apiSecret!,
         },
-        body: json.encode({
-          'room_url': roomUrl,
-          'room_token': roomToken,
-          'participant_name': participantName ?? 'BitHuman Agent',
-        }),
       );
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        final success = data['success'] as bool? ?? false;
-        if (success) {
-          debugPrint('✅ Agent erfolgreich in Room hinzugefügt');
+        debugPrint('✅ Agent Status: ${data['data']['status']}');
+        return data['data'] as Map<String, dynamic>?;
+      } else {
+        debugPrint('❌ Status Check Fehler: ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('❌ getAgentStatus Exception: $e');
+      return null;
+    }
+  }
+
+  /// Wartet bis Agent ready ist
+  static Future<bool> waitForAgent(String agentId, {Duration timeout = const Duration(minutes: 5)}) async {
+    final startTime = DateTime.now();
+    
+    while (DateTime.now().difference(startTime) < timeout) {
+      final status = await getAgentStatus(agentId);
+      
+      if (status != null) {
+        final statusStr = status['status'] as String?;
+        
+        if (statusStr == 'ready') {
+          debugPrint('✅ Agent ready: ${status['model_url']}');
           return true;
+        } else if (statusStr == 'failed') {
+          debugPrint('❌ Agent Generation failed');
+          return false;
         }
+        
+        debugPrint('⏳ Agent Status: $statusStr (waiting...)');
       }
-
-      debugPrint('❌ Join Room fehlgeschlagen: ${response.statusCode}');
-      return false;
-    } catch (e) {
-      debugPrint('❌ joinAgentToRoom Exception: $e');
-      return false;
+      
+      await Future.delayed(const Duration(seconds: 5));
     }
+    
+    debugPrint('❌ Timeout waiting for agent');
+    return false;
   }
 
-  /// Entfernt Agent aus LiveKit Room
-  static Future<bool> removeAgentFromRoom(String agentId) async {
-    if (_apiKey == null || _apiSecret == null) {
-      debugPrint('❌ BitHuman API Credentials fehlen');
-      return false;
-    }
-
-    try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/agents/$agentId/leave-room'),
-        headers: {
-          'X-API-Key': _apiKey!,
-          'X-API-Secret': _apiSecret!,
-        },
-      );
-
-      if (response.statusCode == 200) {
-        debugPrint('✅ Agent erfolgreich aus Room entfernt');
-        return true;
-      }
-
-      debugPrint('⚠️ Remove from Room: ${response.statusCode}');
-      return false;
-    } catch (e) {
-      debugPrint('❌ removeAgentFromRoom Exception: $e');
-      return false;
-    }
-  }
 }
 
