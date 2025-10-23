@@ -1741,16 +1741,112 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                   '${_timeline[i].originalFileName ?? _timeline[i].url.split('/').last}\n${_timeline[i].type.name}  AR:${(_timeline[i].aspectRatio ?? 0).toStringAsFixed(2)}',
                               child: ReorderableDragStartListener(
                                 index: i,
-                                child: ListTile(
-                                  leading: _buildThumb(_timeline[i], size: 40),
-                                  title: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
+                                child: Container(
+                                  margin: const EdgeInsets.only(bottom: 12),
+                                  padding: const EdgeInsets.all(12),
+                                  child: Row(
                                     children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
+                                      // Image links - volle Höhe
+                                      SizedBox(
+                                        width: 50,
+                                        height: 72,
+                                        child: ClipRRect(
+                                          borderRadius: const BorderRadius.only(
+                                            topLeft: Radius.circular(8),
+                                            bottomLeft: Radius.circular(8),
+                                          ),
+                                          child:
+                                              _timeline[i].type ==
+                                                  AvatarMediaType.image
+                                              ? Image.network(
+                                                  _timeline[i].url,
+                                                  width: 50,
+                                                  height: 72,
+                                                  fit: BoxFit.cover,
+                                                )
+                                              : _buildThumb(
+                                                  _timeline[i],
+                                                  size: 65,
+                                                ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      // Content Mitte
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            // Nur Startzeit anzeigen
+                                            Builder(
+                                              builder: (_) {
+                                                final se =
+                                                    _computeStartEndSeconds(i);
+                                                return Text(
+                                                  _formatMmSs(se[0]),
+                                                  style: const TextStyle(
+                                                    fontSize: 11,
+                                                    color: Colors.white70,
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                            const SizedBox(height: 4),
+                                            // Dropdown - exakt wie details_screen
+                                            Container(
+                                              height: 24,
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 2,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.3,
+                                                ),
+                                                borderRadius:
+                                                    BorderRadius.circular(4),
+                                              ),
+                                              child: DropdownButtonHideUnderline(
+                                                child: DropdownButton<int>(
+                                                  value: _getItemMinutes(i),
+                                                  isExpanded: false,
+                                                  dropdownColor: Colors.black87,
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
+                                                  icon: const Icon(
+                                                    Icons.arrow_drop_down,
+                                                    size: 14,
+                                                    color: Colors.white70,
+                                                  ),
+                                                  items: List.generate(
+                                                    30,
+                                                    (
+                                                      index,
+                                                    ) => DropdownMenuItem<int>(
+                                                      value: index + 1,
+                                                      child: Text(
+                                                        '${index + 1} Min.',
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                  onChanged: (value) {
+                                                    if (value != null) {
+                                                      _setItemMinutes(i, value);
+                                                    }
+                                                  },
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            // Name
+                                            Text(
                                               _displayName(_timeline[i]),
                                               overflow: TextOverflow.ellipsis,
                                               maxLines: 2,
@@ -1758,70 +1854,65 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                                 fontSize: 12,
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          Builder(
-                                            builder: (_) {
-                                              final se =
-                                                  _computeStartEndSeconds(i);
-                                              return Text(
-                                                '${_formatMmSs(se[0])} - ${_formatMmSs(se[1])}',
-                                                style: const TextStyle(
-                                                  fontSize: 11,
-                                                  color: Colors.white70,
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      _GradientMinutesPicker(
-                                        minutes: _getItemMinutes(i),
-                                        onPick: (m) => _setItemMinutes(i, m),
-                                      ),
-                                    ],
-                                  ),
-                                  trailing: IconButton(
-                                    tooltip: 'Entfernen',
-                                    icon: const Icon(
-                                      Icons.close,
-                                      color: Colors.white70,
-                                    ),
-                                    onPressed: () async {
-                                      final confirm = await showDialog<bool>(
-                                        context: context,
-                                        builder: (ctx) => AlertDialog(
-                                          title: const Text('Asset entfernen?'),
-                                          content: const Text(
-                                            'Dieses Asset aus der Timeline entfernen?',
-                                          ),
-                                          actions: [
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(ctx, false),
-                                              child: const Text('Abbrechen'),
-                                            ),
-                                            TextButton(
-                                              onPressed: () =>
-                                                  Navigator.pop(ctx, true),
-                                              child: const Text('Entfernen'),
-                                            ),
                                           ],
                                         ),
-                                      );
-                                      if (confirm != true) return;
-                                      setState(() {
-                                        if (i < _timeline.length &&
-                                            i < _timelineKeys.length) {
-                                          _timeline.removeAt(i);
-                                          _timelineKeys.removeAt(i);
-                                          _syncKeysLength();
-                                          _isDirty = true;
-                                        }
-                                      });
-                                      await _persistTimelineItems();
-                                    },
+                                      ),
+                                      // 6-Punkte Drag Icon rechts außen
+                                      Icon(
+                                        Icons.drag_indicator,
+                                        color: Colors.white70,
+                                        size: 20,
+                                      ),
+                                      const SizedBox(width: 8),
+                                      // Delete Button rechts
+                                      IconButton(
+                                        tooltip: 'Entfernen',
+                                        icon: const Icon(
+                                          Icons.close,
+                                          color: Colors.white70,
+                                        ),
+                                        onPressed: () async {
+                                          final confirm = await showDialog<bool>(
+                                            context: context,
+                                            builder: (ctx) => AlertDialog(
+                                              title: const Text(
+                                                'Asset entfernen?',
+                                              ),
+                                              content: const Text(
+                                                'Dieses Asset aus der Timeline entfernen?',
+                                              ),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(ctx, false),
+                                                  child: const Text(
+                                                    'Abbrechen',
+                                                  ),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () =>
+                                                      Navigator.pop(ctx, true),
+                                                  child: const Text(
+                                                    'Entfernen',
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm != true) return;
+                                          setState(() {
+                                            if (i < _timeline.length &&
+                                                i < _timelineKeys.length) {
+                                              _timeline.removeAt(i);
+                                              _timelineKeys.removeAt(i);
+                                              _syncKeysLength();
+                                              _isDirty = true;
+                                            }
+                                          });
+                                          await _persistTimelineItems();
+                                        },
+                                      ),
+                                    ],
                                   ),
                                 ),
                               ),
