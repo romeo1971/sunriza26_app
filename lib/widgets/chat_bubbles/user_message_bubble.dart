@@ -32,18 +32,16 @@ class UserMessageBubble extends StatelessWidget {
                 maxWidth: MediaQuery.of(context).size.width * 0.75,
               ),
               padding: const EdgeInsets.symmetric(
-                horizontal: 12,
-                vertical: 8,
+                horizontal: 10,
+                vertical: 6,
               ),
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFF00B09B), Color(0xFF96C93D)],
-                ),
+                color: const Color(0xFF005C4B), // WhatsApp Dark Green
                 borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(18),
-                  topRight: Radius.circular(18),
-                  bottomLeft: Radius.circular(18),
-                  bottomRight: Radius.circular(4),
+                  topLeft: Radius.circular(8),
+                  topRight: Radius.circular(8),
+                  bottomLeft: Radius.circular(8),
+                  bottomRight: Radius.circular(2),
                 ),
                 boxShadow: [
                   BoxShadow(
@@ -57,33 +55,41 @@ class UserMessageBubble extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Delete Timer (wenn aktiv)
-                  if (message.deleteTimerStart != null)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: _buildDeleteTimer(),
-                    ),
-                  
                   // Message Text
                   Text(
                     message.text,
                     style: const TextStyle(
                       color: Colors.white,
-                      fontSize: 16,
-                      height: 1.4,
+                      fontSize: 14.5,
+                      height: 1.35,
                     ),
                   ),
                   
-                  // Timestamp (klein, rechts unten)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      _formatTime(message.timestamp),
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
-                        fontSize: 11,
+                  const SizedBox(height: 4),
+                  
+                  // Bottom Row: Delete (links) + Zeit (rechts)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // Delete Button (klein, links)
+                      GestureDetector(
+                        onTap: () => _showDeleteConfirm(context),
+                        child: Icon(
+                          Icons.close,
+                          size: 10,
+                          color: Colors.white.withValues(alpha: 0.4),
+                        ),
                       ),
-                    ),
+                      
+                      // Timestamp (rechts)
+                      Text(
+                        _formatTime(message.timestamp),
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -136,25 +142,45 @@ class UserMessageBubble extends StatelessWidget {
     );
   }
 
-  String _formatTime(DateTime timestamp) {
-    return '${timestamp.hour.toString().padLeft(2, '0')}:${timestamp.minute.toString().padLeft(2, '0')}';
+  String _formatTime(DateTime dt) {
+    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _showDeleteConfirm(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0A0A0A),
+        title: const Text('Nachricht löschen?', style: TextStyle(color: Colors.white)),
+        content: const Text(
+          'Diese Nachricht wird dauerhaft gelöscht.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Abbrechen', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Löschen', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed == true) {
+      onIconChanged(message, null); // Entfernt auch Highlight
+      // TODO: Firebase Message löschen
+    }
   }
 
   void _showIconPicker(BuildContext context) {
     final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
 
-    final position = renderBox.localToGlobal(Offset.zero);
-    
-    // Box OBERHALB der Blase positionieren (mit 8px Abstand)
-    final boxY = position.dy - 120; // 120px = ca. Höhe der Icon-Box
-    
-    // Falls zu nah am oberen Rand, nach unten verschieben
-    final finalY = boxY < 100 ? position.dy + 60 : boxY;
-
-    HeroChatIconPicker.showAtPosition(
+    HeroChatIconPicker.showCentered(
       context,
-      position: Offset(position.dx, finalY),
       alignRight: true,
       selectedIcon: message.highlightIcon,
       onIconSelected: (icon) => onIconChanged(message, icon),

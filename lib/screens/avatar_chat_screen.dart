@@ -66,6 +66,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   final bool _isMuted =
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
   bool _isStoppingPlayback = false;
+  bool _historyLoaded = false; // History vorhanden, aber initial nicht eingeblendet
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<Duration>? _playerPositionSub;
   StreamSubscription<VisemeEvent>? _visemeSub;
@@ -837,8 +838,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           setState(() {
             _avatarData = AvatarData.fromMap(doc.data()!);
           });
-          // Messages laden
-          await _loadInitialMessages();
         }
         // Starte Firestore-Listener für Live-Updates
         _startAvatarListener(args.id);
@@ -854,8 +853,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           setState(() {
             _avatarData = AvatarData.fromMap(doc.data()!);
           });
-          // Messages laden
-          await _loadInitialMessages();
           // Starte Firestore-Listener für Live-Updates
           _startAvatarListener(widget.avatarId!);
         }
@@ -901,13 +898,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                   ? _friendlyGreet(_partnerName ?? '')
                   : 'Hallo, schön, dass Du vorbeischaust. Magst Du mir Deinen Namen verraten?');
 
+        // Chat History laden (OHNE sie anzuzeigen)
+        _loadInitialMessages();
+
         // Video laden; danach Greeting abspielen
         _initLiveAvatar(_avatarData!.id).then((_) async {
+          if (!mounted) return; // Screen disposed? → STOP
+          
           final lipsyncEnabled =
               (_avatarData?.training?['lipsyncEnabled'] as bool?) ?? true;
           if (!manual && _hasIdleDynamics && lipsyncEnabled) {
             await _maybeJoinLiveKit();
           }
+          
+          if (!mounted) return; // Nochmal prüfen vor Greeting
+          
           debugPrint('🎙️ Auto‑Greeting');
           unawaited(_botSay(greet));
         });
@@ -1193,58 +1198,20 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             ),
           ),
           actions: [
-            AnimatedBuilder(
-              animation: LiveKitService().connectionStatus,
-              builder: (context, _) {
-                final s = LiveKitService().connectionStatus.value;
-                Color bg = Colors.black.withValues(alpha: 0.6);
-                if (s == 'connected') bg = Colors.green.withValues(alpha: 0.7);
-                if (s == 'reconnecting') {
-                  bg = Colors.orange.withValues(alpha: 0.7);
-                }
-                if (s == 'disconnected') bg = Colors.red.withValues(alpha: 0.7);
-                if (s == 'ended') bg = Colors.grey.withValues(alpha: 0.7);
-                final room = LiveKitService().roomName ?? '-';
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: bg,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'LK: $s',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                        ),
-                      ),
+            IconButton(
+              tooltip: 'Hero Chat',
+              icon: const Icon(Icons.bookmark, color: Colors.white),
+              onPressed: () {
+                if (_avatarData == null) return;
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => HeroChatScreen(
+                      avatarData: _avatarData!,
+                      messages: _messages,
+                      onIconChanged: _handleIconChanged,
                     ),
-                    Container(
-                      margin: const EdgeInsets.only(right: 8),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.blueGrey.withValues(alpha: 0.7),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        'MT room: $room',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
+                  ),
                 );
               },
             ),
@@ -1259,7 +1226,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               // Positioned MUSS außen sein, Hero innen!
               Positioned.fill(
                 child: Hero(
-                  tag: 'avatar-${_avatarData?.id}',
+                  tag: 'avatar-chat-${_avatarData?.id}',
                   child: ValueListenableBuilder<lk.VideoTrack?>(
                     valueListenable: LiveKitService().remoteVideo,
                     builder: (context, remoteVideoTrack, _) {
@@ -1345,8 +1312,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                       SizedBox(height: 200, child: _buildChatMessages()),
 
                       // Input-Bereich
-                      _buildInputArea(),
-                      const SizedBox(height: 28),
+                    _buildInputArea(),
+
+                    const SizedBox(height: 28),
                     ],
                   ),
                 ),
@@ -1801,50 +1769,84 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       ),
       child: Column(
         children: [
-          // Loading Indicator oben (beim Nachladen älterer Messages)
-          if (_isLoadingMore)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Colors.white.withValues(alpha: 0.6),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Lade ältere Nachrichten...',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
+          // "Ältere Nachrichten anzeigen" Link
+          if (_historyLoaded && _hasMoreMessages)
+            GestureDetector(
+              onTap: _isLoadingMore ? null : _loadMoreMessages,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 6, bottom: 2),
+                child: Center(
+                  child: Text(
+                    _isLoadingMore ? 'Lade ältere Nachrichten…' : 'Ältere Nachrichten anzeigen',
+                    style: const TextStyle(
+                      color: Colors.white70,
                       fontSize: 12,
+                      decoration: TextDecoration.underline,
                     ),
                   ),
-                ],
+                ),
               ),
             ),
           // Nachrichten-Liste
           Expanded(
             child: _messages.isEmpty
                 ? _buildEmptyState()
-                : ListView.builder(
-                    controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _messages.length,
-                    itemBuilder: (context, index) {
-                      return _buildMessageBubble(_messages[index]);
-                    },
-                  ),
+                : _buildDatedMessageList(),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildDatedMessageList() {
+    final items = <Widget>[];
+    DateTime? lastDate;
+    for (final m in _messages) {
+      final day = DateTime(m.timestamp.year, m.timestamp.month, m.timestamp.day);
+      if (lastDate == null || day.isAfter(lastDate!)) {
+        items.add(_buildDateSeparator(day));
+        lastDate = day;
+      }
+      items.add(_buildMessageBubble(m));
+    }
+    return ListView(
+      controller: _scrollController,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      children: items,
+    );
+  }
+
+  Widget _buildDateSeparator(DateTime day) {
+    final label = _formatDay(day);
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatDay(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final day = DateTime(d.year, d.month, d.day);
+    if (day == today) return 'Heute';
+    if (day == yesterday) return 'Gestern';
+    return '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
   }
 
   Widget _buildEmptyState() {
@@ -1866,37 +1868,42 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   }
 
   void _handleIconChanged(ChatMessage message, String? icon) {
+    // WICHTIG: Finde Message in lokaler Liste über timestamp (Hero-Screen hat andere Objekte!)
+    final localMessage = _messages.firstWhere(
+      (m) => m.timestamp.millisecondsSinceEpoch == message.timestamp.millisecondsSinceEpoch,
+      orElse: () => message, // Fallback: Original-Message verwenden
+    );
+    
     setState(() {
       if (icon != null) {
-        // Icon setzen
-        message.highlightIcon = icon;
-        message.highlightedAt = DateTime.now();
-        message.deleteTimerStart = null;
+        // Icon setzen (neu markiert)
+        localMessage.highlightIcon = icon;
+        localMessage.highlightedAt = DateTime.now();
+        localMessage.deleteTimerStart = null;
         
-        // Stoppe laufenden Timer
-        _deleteTimers[message.timestamp.toString()]?.cancel();
-        _deleteTimers.remove(message.timestamp.toString());
+        // Stoppe laufenden Timer (falls vorhanden)
+        _deleteTimers[localMessage.timestamp.toString()]?.cancel();
+        _deleteTimers.remove(localMessage.timestamp.toString());
+        
+        // Firebase: Highlight speichern
+        _saveMessageHighlightToFirebase(localMessage);
         
       } else {
-        // Icon entfernen → 2-Min Timer starten
-        message.highlightIcon = null;
-        message.deleteTimerStart = DateTime.now();
+        // Icon entfernen (aus Hero-Screen gelöscht)
+        localMessage.highlightIcon = null;
+        localMessage.highlightedAt = null;
+        localMessage.deleteTimerStart = null;
         
-        // Timer: Löscht Message nach 2 Minuten
-        _deleteTimers[message.timestamp.toString()] = Timer(
-          const Duration(minutes: 2),
-          () {
-            setState(() {
-              _messages.remove(message);
-              _deleteTimers.remove(message.timestamp.toString());
-            });
-            _deleteMessageHighlightFromFirebase(message);
-          },
-        );
+        // Stoppe Timer falls vorhanden
+        _deleteTimers[localMessage.timestamp.toString()]?.cancel();
+        _deleteTimers.remove(localMessage.timestamp.toString());
+        
+        // Firebase: Highlight löschen
+        _deleteMessageHighlightFromFirebase(localMessage);
+        
+        // Message bleibt im Chat sichtbar (nur Icon weg)
       }
     });
-    
-    _saveMessageHighlightToFirebase(message);
   }
 
   Future<void> _saveMessageHighlightToFirebase(ChatMessage message) async {
@@ -1952,11 +1959,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           // gesamte Leiste leicht weiß, ohne Farbstich
           color: Colors.white.withOpacity(0.3),
         ),
-        child: ValueListenableBuilder<TextEditingValue>(
-          valueListenable: _messageController,
-          builder: (context, value, _) {
-            final hasText = value.text.trim().isNotEmpty;
-            return Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ValueListenableBuilder<TextEditingValue>(
+              valueListenable: _messageController,
+              builder: (context, value, _) {
+                final hasText = value.text.trim().isNotEmpty;
+                return Row(
               children: [
                 // Plus-Button (Anhänge)
                 GestureDetector(
@@ -2074,9 +2084,53 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                 ),
               ],
             );
-          },
+              },
+            ),
+            const SizedBox(height: 6),
+            _buildMtRoomFooter(),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildMtRoomFooter() {
+    final room = LiveKitService().roomName;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Tooltip(
+          message: room == null || room.isEmpty ? 'Room: -' : 'Room: $room',
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: const Color(0xFF7E57C2), // GMBC
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Text(
+              'mt-room',
+              style: TextStyle(color: Colors.white, fontSize: 11),
+            ),
+          ),
+        ),
+        ValueListenableBuilder<bool>(
+          valueListenable: LiveKitService().connected,
+          builder: (context, connected, _) {
+            if (!connected) return const SizedBox.shrink();
+            return Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.green, // verbunden = grün
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'LKC',
+                style: TextStyle(color: Colors.white, fontSize: 11),
+              ),
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -2432,6 +2486,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   }
 
   Future<void> _botSay(String text) async {
+    // Screen disposed? → SOFORT ABBRECHEN
+    if (!mounted) {
+      debugPrint('⚠️ _botSay aborted: Screen disposed');
+      return;
+    }
+    
     // Rate-Limiting: Prüfe letzte TTS-Anfrage
     final now = DateTime.now();
     if (_lastTtsRequestTime != null) {
@@ -2442,6 +2502,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       }
     }
     _lastTtsRequestTime = DateTime.now();
+
+    // Nochmal prüfen nach delay
+    if (!mounted) {
+      debugPrint('⚠️ _botSay aborted after delay: Screen disposed');
+      return;
+    }
 
     // PRIORITÄT: Streaming (schnell!)
     if (_lipsync.visemeStream != null &&
@@ -2806,6 +2872,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     required bool isUser,
   }) async {
     try {
+      // 1) Greeting-Dedupe: Speichere nicht, wenn letzte Bot-Message gleich ist
+      if (!isUser && _messages.isNotEmpty) {
+        final last = _messages.lastWhere((m) => !m.isUser, orElse: () => ChatMessage(text: '', isUser: false));
+        if (last.text.trim() == text.trim() && text.trim().isNotEmpty) {
+          debugPrint('⚠️ Skip persist: duplicate greeting');
+          return;
+        }
+      }
+
       if (_avatarData == null) {
         debugPrint('⚠️ Cannot persist: _avatarData is null');
         return;
@@ -2856,14 +2931,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     }
   }
 
-  // Initial Messages laden (letzte 20)
+  // Initial Messages prüfen (nur Count, keine Daten laden)
   Future<void> _loadInitialMessages() async {
     if (_avatarData == null) return;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
     final chatId = '${uid}_${_avatarData!.id}';
-    debugPrint('📥 Lade Chat-Messages für chatId: $chatId');
+    debugPrint('📥 Prüfe Messages für chatId: $chatId');
 
     try {
       final snapshot = await FirebaseFirestore.instance
@@ -2871,8 +2946,52 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           .doc(chatId)
           .collection('messages')
           .orderBy('timestamp', descending: true)
-          .limit(20)
+          .limit(1) // Nur prüfen ob Messages existieren
           .get();
+
+      debugPrint('📥 Messages vorhanden: ${snapshot.docs.isNotEmpty}');
+
+      if (!mounted) return;
+
+      // NUR Flag setzen, KEINE Messages laden
+      setState(() {
+        _hasMoreMessages = snapshot.docs.isNotEmpty; // Link zeigen wenn Messages da
+        _historyLoaded = true;
+      });
+      
+      debugPrint('✅ Link aktiv: $_hasMoreMessages');
+    } catch (e) {
+      debugPrint('❌ Messages prüfen fehlgeschlagen: $e');
+    }
+  }
+
+  // Messages laden (Infinite Scroll - OHNE startAfter beim 1. Mal)
+  Future<void> _loadMoreMessages() async {
+    if (_avatarData == null || _isLoadingMore) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    debugPrint('📥 _loadMoreMessages: Start... (_lastMessageDoc=${_lastMessageDoc?.id ?? "null"})');
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final chatId = '${uid}_${_avatarData!.id}';
+      
+      // Query: Wenn _lastMessageDoc null → Start vom Anfang, sonst nach letztem Doc
+      var query = FirebaseFirestore.instance
+          .collection('avatarUserChats')
+          .doc(chatId)
+          .collection('messages')
+          .orderBy('timestamp', descending: true);
+      
+      if (_lastMessageDoc != null) {
+        debugPrint('📥 Query: startAfter ${_lastMessageDoc!.id}');
+        query = query.startAfterDocument(_lastMessageDoc!);
+      } else {
+        debugPrint('📥 Query: Start vom Anfang (1. Load)');
+      }
+      
+      final snapshot = await query.limit(50).get();
 
       debugPrint('📥 Gefunden: ${snapshot.docs.length} Messages');
 
@@ -2900,68 +3019,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       }
 
       setState(() {
-        _messages.clear(); // Erst leeren
-        _messages.addAll(messages.reversed); // Älteste zuerst
-        _lastMessageDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
-        _hasMoreMessages = snapshot.docs.length == 20;
-      });
-      
-      debugPrint('✅ ${messages.length} Messages geladen und angezeigt');
-    } catch (e) {
-      debugPrint('❌ Messages laden fehlgeschlagen: $e');
-    }
-  }
-
-  // Weitere Messages laden (Infinite Scroll)
-  Future<void> _loadMoreMessages() async {
-    if (_avatarData == null || _lastMessageDoc == null || _isLoadingMore) return;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-
-    setState(() => _isLoadingMore = true);
-
-    try {
-      final chatId = '${uid}_${_avatarData!.id}';
-      final snapshot = await FirebaseFirestore.instance
-          .collection('avatarUserChats')
-          .doc(chatId)
-          .collection('messages')
-          .orderBy('timestamp', descending: true)
-          .startAfterDocument(_lastMessageDoc!)
-          .limit(20)
-          .get();
-
-      if (!mounted) return;
-
-      final messages = <ChatMessage>[];
-      for (var doc in snapshot.docs) {
-        final data = doc.data();
-        final ts = data['timestamp'] as int?;
-        final timestamp = ts != null 
-            ? DateTime.fromMillisecondsSinceEpoch(ts)
-            : DateTime.now();
-        
-        // Backend-Format: sender + content ODER altes Format: isUser + text
-        final sender = data['sender'] as String?;
-        final content = data['content'] as String?;
-        final isUser = sender == 'user' || (data['isUser'] as bool?) == true;
-        final text = content ?? data['text'] as String? ?? '';
-        
-        messages.add(ChatMessage(
-          text: text,
-          isUser: isUser,
-          timestamp: timestamp,
-        ));
-      }
-
-      setState(() {
         _messages.insertAll(0, messages.reversed); // Älteste zuerst
         _lastMessageDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
-        _hasMoreMessages = snapshot.docs.length == 20;
+        _hasMoreMessages = snapshot.docs.length == 50;
         _isLoadingMore = false;
       });
+      
+      debugPrint('✅ ${messages.length} Messages geladen. Total: ${_messages.length}');
     } catch (e) {
-      debugPrint('❌ Weitere Messages laden fehlgeschlagen: $e');
+      debugPrint('❌ Messages laden fehlgeschlagen: $e');
       if (mounted) {
         setState(() => _isLoadingMore = false);
       }
@@ -3466,7 +3532,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       timer.cancel();
     }
     _deleteTimers.clear();
-    // Lipsync Strategy aufräumen (schließt WebSocket!)
+    
+    // WICHTIG: Lipsync Strategy STOP bevor dispose (stoppt Audio!)
+    debugPrint('🛑 Stopping Lipsync Strategy audio...');
+    _lipsync.stop().catchError((e) {
+      debugPrint('⚠️ Lipsync stop error: $e');
+    });
     _lipsync.dispose();
 
     // LiveKit disconnecten (spart ~1€/Monat bei 2.500 Min idle!)
@@ -3478,6 +3549,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       unawaited(_stopLiveKitPublisher(roomName));
       unawaited(LiveKitService().leave());
     }
+
+    // Audio-Playback sofort stoppen, falls noch nicht gestartet/queued
+    () async {
+      try {
+        if (_player.playing) {
+          await _player.stop();
+        }
+      } catch (_) {}
+    }();
 
     super.dispose();
   }

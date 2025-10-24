@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../screens/avatar_chat_screen.dart';
+import '../theme/app_theme.dart';
 import '../models/avatar_data.dart';
 
 /// Hero Chat Screen - Zeigt nur highlighted Nachrichten
@@ -24,38 +27,139 @@ class HeroChatScreen extends StatefulWidget {
 class _HeroChatScreenState extends State<HeroChatScreen> {
   final Set<String> _activeFilters = {}; // Icons die aktiv sind (colored)
   bool _showAllIcons = true; // Alle anzeigen oder nur gefilterte
+  final List<ChatMessage> _messages = [];
+  DocumentSnapshot<Map<String, dynamic>>? _lastDoc;
+  bool _hasMore = true;
+  bool _isLoading = false;
+  bool _filterUser = true;
+  bool _filterAvatar = true;
 
   @override
   void initState() {
     super.initState();
     // Initial: Alle Icons aktiv
-    _initializeFilters();
+    _loadHighlights();
   }
 
-  void _initializeFilters() {
-    final Set<String> allIcons = {};
-    for (final msg in widget.messages) {
-      if (msg.highlightIcon != null) {
-        allIcons.add(msg.highlightIcon!);
+  Future<void> _loadHighlights() async {
+    if (_isLoading) return;
+    setState(() => _isLoading = true);
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(widget.avatarData.id)
+          .collection('heroHighlights')
+          .orderBy('timestamp', descending: true)
+          .limit(20)
+          .get();
+      final loaded = <ChatMessage>[];
+      final Set<String> allIcons = {};
+      for (final d in snap.docs) {
+        final data = d.data();
+        final ts = (data['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
+        final msg = ChatMessage(
+          text: (data['text'] as String?) ?? '',
+          isUser: (data['isUser'] as bool?) ?? false,
+          timestamp: DateTime.fromMillisecondsSinceEpoch(ts),
+          highlightIcon: data['highlightIcon'] as String?,
+          highlightedAt: (data['highlightedAt'] is int)
+              ? DateTime.fromMillisecondsSinceEpoch(data['highlightedAt'] as int)
+              : null,
+          deleteTimerStart: (data['deleteTimerStart'] is int)
+              ? DateTime.fromMillisecondsSinceEpoch(data['deleteTimerStart'] as int)
+              : null,
+        );
+        loaded.add(msg);
+        if (msg.highlightIcon != null) allIcons.add(msg.highlightIcon!);
       }
+      if (!mounted) return;
+      debugPrint('📥 Hero: Initial geladen: ${loaded.length}, _hasMore=${snap.docs.length == 20}');
+      setState(() {
+        _messages
+          ..clear()
+          ..addAll(loaded.reversed); // älteste zuerst
+        _activeFilters
+          ..clear()
+          ..addAll(allIcons);
+        _lastDoc = snap.docs.isNotEmpty ? snap.docs.last : null;
+        _hasMore = snap.docs.length == 20; // Link zeigen, wenn volle 20 geladen wurden
+        _isLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _isLoading = false);
     }
-    setState(() {
-      _activeFilters.addAll(allIcons);
-    });
+  }
+
+  Future<void> _loadMore() async {
+    if (_isLoading || !_hasMore) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null || _lastDoc == null) return;
+    
+    debugPrint('📥 Hero: _loadMore start...');
+    setState(() => _isLoading = true);
+    
+    try {
+      final snap = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('avatars')
+          .doc(widget.avatarData.id)
+          .collection('heroHighlights')
+          .orderBy('timestamp', descending: true)
+          .startAfterDocument(_lastDoc!)
+          .limit(20)
+          .get();
+      
+      debugPrint('📥 Hero: Gefunden ${snap.docs.length} weitere Highlights');
+      
+      final more = <ChatMessage>[];
+      for (final d in snap.docs) {
+        final data = d.data();
+        final ts = (data['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
+        more.add(ChatMessage(
+          text: (data['text'] as String?) ?? '',
+          isUser: (data['isUser'] as bool?) ?? false,
+          timestamp: DateTime.fromMillisecondsSinceEpoch(ts),
+          highlightIcon: data['highlightIcon'] as String?,
+          highlightedAt: (data['highlightedAt'] is int)
+              ? DateTime.fromMillisecondsSinceEpoch(data['highlightedAt'] as int)
+              : null,
+          deleteTimerStart: (data['deleteTimerStart'] is int)
+              ? DateTime.fromMillisecondsSinceEpoch(data['deleteTimerStart'] as int)
+              : null,
+        ));
+      }
+      if (!mounted) return;
+      setState(() {
+        _messages.insertAll(0, more.reversed); // ältere oben ergänzen
+        _lastDoc = snap.docs.isNotEmpty ? snap.docs.last : _lastDoc;
+        _hasMore = snap.docs.length == 20; // Weiter laden, wenn volle 20 geladen wurden
+        _isLoading = false;
+      });
+      
+      debugPrint('✅ Hero: ${more.length} weitere geladen. Total: ${_messages.length}');
+    } catch (e) {
+      debugPrint('❌ Hero: _loadMore fehlgeschlagen: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   List<ChatMessage> get _filteredMessages {
-    if (_showAllIcons) {
-      return widget.messages.where((m) => m.isHighlighted).toList();
+    Iterable<ChatMessage> it = _messages.where((m) => m.isHighlighted);
+    if (!_showAllIcons) {
+      it = it.where((m) => m.highlightIcon != null && _activeFilters.contains(m.highlightIcon!));
     }
-    return widget.messages
-        .where((m) => m.highlightIcon != null && _activeFilters.contains(m.highlightIcon!))
-        .toList();
+    it = it.where((m) => (_filterUser && m.isUser) || (_filterAvatar && !m.isUser));
+    return it.toList();
   }
 
   List<String> get _allUsedIcons {
     final Set<String> icons = {};
-    for (final msg in widget.messages) {
+    for (final msg in _messages) {
       if (msg.highlightIcon != null) {
         icons.add(msg.highlightIcon!);
       }
@@ -101,6 +205,23 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
                   // Header mit Icon-Filtern
                   _buildHeader(),
                   
+                  // Load more link
+                  if (_hasMore)
+                    GestureDetector(
+                      onTap: _isLoading ? null : _loadMore,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          _isLoading ? 'Lade ältere Highlights…' : 'Ältere Highlights anzeigen',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 12,
+                            decoration: TextDecoration.underline,
+                          ),
+                        ),
+                      ),
+                    ),
+
                   // Messages
                   Expanded(
                     child: _filteredMessages.isEmpty
@@ -170,7 +291,70 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
           
           // Icon Filters
           _buildIconFilters(),
+
+          const SizedBox(height: 8),
+
+          // Sender-Filter (User / Avatar)
+          Row(
+            children: [
+              _buildSenderToggle(
+                active: _filterUser,
+                label: 'User',
+                imageUrl: FirebaseAuth.instance.currentUser?.photoURL,
+                fallbackIcon: Icons.person,
+                onTap: () => setState(() => _filterUser = !_filterUser),
+              ),
+              const SizedBox(width: 8),
+              _buildSenderToggle(
+                active: _filterAvatar,
+                label: 'Avatar',
+                imageUrl: widget.avatarData.avatarImageUrl,
+                fallbackIcon: Icons.smart_toy_outlined,
+                onTap: () => setState(() => _filterAvatar = !_filterAvatar),
+              ),
+            ],
+          ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildSenderToggle({
+    required bool active,
+    required String label,
+    required String? imageUrl,
+    required IconData fallbackIcon,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? Colors.white.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? Colors.white.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.2),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 10,
+              backgroundColor: Colors.white.withValues(alpha: 0.1),
+              backgroundImage: (imageUrl != null && imageUrl.isNotEmpty) ? NetworkImage(imageUrl) : null,
+              child: (imageUrl == null || imageUrl.isEmpty)
+                  ? Icon(fallbackIcon, size: 14, color: Colors.white70)
+                  : null,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 12),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -325,108 +509,228 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
   }
 
   Widget _buildMessageList() {
-    return ListView.builder(
+    final items = <Widget>[];
+    DateTime? lastDate;
+    for (final m in _filteredMessages) {
+      final day = DateTime(m.timestamp.year, m.timestamp.month, m.timestamp.day);
+      if (lastDate == null || day.isAfter(lastDate!)) {
+        items.add(_buildDateSeparator(day));
+        lastDate = day;
+      }
+      items.add(_buildMessageCard(m));
+    }
+    return ListView(
       padding: const EdgeInsets.all(16),
-      itemCount: _filteredMessages.length,
-      itemBuilder: (context, index) {
-        final message = _filteredMessages[index];
-        return _buildMessageCard(message);
-      },
+      children: items,
     );
   }
 
-  Widget _buildMessageCard(ChatMessage message) {
-    final hasDeleteTimer = message.deleteTimerStart != null;
-    final remainingSeconds = message.remainingDeleteSeconds ?? 0;
+  Widget _buildDateSeparator(DateTime day) {
+    final label = _formatDay(day);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 16),
-      padding: const EdgeInsets.all(16),
+  String _formatDay(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final day = DateTime(d.year, d.month, d.day);
+    if (day == today) return 'Heute';
+    if (day == yesterday) return 'Gestern';
+    return '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
+  }
+
+  Widget _buildMessageCard(ChatMessage message) {
+    // WhatsApp-Style Bubble (gleiche Größe wie Chat)
+    final bubble = Container(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width * 0.75,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: message.isUser
-            ? Colors.blue.withValues(alpha: 0.2)
-            : Colors.purple.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.3),
-        ),
+            ? const Color(0xFF005C4B) // User: WhatsApp Green
+            : const Color(0xFF1F2C34), // Avatar: WhatsApp Dark
+        borderRadius: message.isUser
+            ? const BorderRadius.only(
+                topLeft: Radius.circular(8),
+                topRight: Radius.circular(8),
+                bottomLeft: Radius.circular(8),
+                bottomRight: Radius.circular(2),
+              )
+            : const BorderRadius.only(
+                topLeft: Radius.circular(8),
+                topRight: Radius.circular(8),
+                bottomLeft: Radius.circular(2),
+                bottomRight: Radius.circular(8),
+              ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // Header: Icon + Timestamp
+          // Icon + Text
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (message.highlightIcon != null)
-                Text(
-                  message.highlightIcon!,
-                  style: const TextStyle(fontSize: 24),
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Text(message.highlightIcon!, style: const TextStyle(fontSize: 18)),
                 ),
-              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  '${message.timestamp.hour}:${message.timestamp.minute.toString().padLeft(2, '0')}',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
-                    fontSize: 12,
+                  message.text,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14.5,
+                    height: 1.35,
                   ),
-                ),
-              ),
-              // Delete Timer
-              if (hasDeleteTimer)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.3),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.timer, color: Colors.red, size: 14),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${remainingSeconds}s',
-                        style: const TextStyle(
-                          color: Colors.red,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              const SizedBox(width: 8),
-              // Remove Icon Button
-              GestureDetector(
-                onTap: () {
-                  // Icon entfernen → Timer starten
-                  widget.onIconChanged(message, null);
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: const Icon(Icons.close, color: Colors.red, size: 16),
                 ),
               ),
             ],
           ),
           
-          const SizedBox(height: 12),
+          const SizedBox(height: 4),
           
-          // Message Text
-          Text(
-            message.text,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-            ),
+          // Bottom Row: Delete (links) + Zeit (rechts)
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              // Remove Highlight Button
+              _buildRemoveButton(() async {
+                final confirmed = await _confirmRemove(context);
+                if (confirmed == true && mounted) {
+                  setState(() {
+                    _messages.remove(message);
+                  });
+                  widget.onIconChanged(message, null);
+                  await _removeIconFromChatMessage(message);
+                }
+              }),
+              
+              // Timestamp (rechts)
+              Text(
+                '${message.timestamp.hour.toString().padLeft(2, '0')}:${message.timestamp.minute.toString().padLeft(2, '0')}',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.4),
+                  fontSize: 10,
+                ),
+              ),
+            ],
           ),
         ],
       ),
+    );
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: message.isUser
+            ? [
+                const Spacer(),
+                Flexible(child: bubble),
+              ]
+            : [
+                Flexible(child: bubble),
+                const Spacer(),
+              ],
+      ),
+    );
+  }
+
+  Widget _buildRemoveButton(VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Icon(
+        Icons.close,
+        size: 10,
+        color: Colors.white.withValues(alpha: 0.4),
+      ),
+    );
+  }
+
+  // Icon aus Chat-Message entfernen (damit es im Chat nicht mehr angezeigt wird)
+  Future<void> _removeIconFromChatMessage(ChatMessage message) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    
+    try {
+      final chatId = '${uid}_${widget.avatarData.id}';
+      final msgId = 'msg-${message.timestamp.millisecondsSinceEpoch}-${uid.substring(0, 6)}';
+      
+      await FirebaseFirestore.instance
+          .collection('avatarUserChats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(msgId)
+          .update({
+            'highlightIcon': FieldValue.delete(),
+            'highlightedAt': FieldValue.delete(),
+          });
+      
+      debugPrint('✅ Icon aus Chat-Message entfernt: $msgId');
+    } catch (e) {
+      debugPrint('⚠️ Icon aus Chat-Message entfernen fehlgeschlagen: $e');
+    }
+  }
+
+  Future<bool?> _confirmRemove(BuildContext context) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: const Color(0xFF0A0A0A),
+          title: const Text('Highlight entfernen?', style: TextStyle(color: Colors.white)),
+          content: const Text(
+            'Soll dieses Highlight entfernt werden? (Löschung in 2 Minuten)',
+            style: TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Abbrechen', style: TextStyle(color: Colors.white70)),
+            ),
+            GestureDetector(
+              onTap: () => Navigator.pop(context, true),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [AppColors.magenta, AppColors.lightBlue]),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('Entfernen', style: TextStyle(color: Colors.white)),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

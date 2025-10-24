@@ -74,21 +74,71 @@ class HeroChatIconPicker extends StatelessWidget {
     overlay.insert(entry);
   }
 
+  /// Zeigt den Icon-Picker zentriert über dem Chat
+  static void showCentered(
+    BuildContext context, {
+    required bool alignRight,
+    String? selectedIcon,
+    required Function(String) onIconSelected,
+    required VoidCallback onRemove,
+  }) {
+    final overlay = Overlay.of(context);
+    late OverlayEntry entry;
+
+    entry = OverlayEntry(
+      builder: (context) => Stack(
+        children: [
+          // Tap ins Leere schließt den Dialog
+          Positioned.fill(
+            child: GestureDetector(
+              onTap: () => entry.remove(),
+              child: Container(color: Colors.transparent),
+            ),
+          ),
+          // Zentrierter Picker
+          Positioned.fill(
+            child: Center(
+              child: Material(
+                color: Colors.transparent,
+                child: HeroChatIconPicker(
+                  selectedIcon: selectedIcon,
+                  alignRight: alignRight,
+                  onIconSelected: (icon) {
+                    onIconSelected(icon);
+                    entry.remove();
+                  },
+                  onClose: () {
+                    if (selectedIcon != null) {
+                      onRemove();
+                    }
+                    entry.remove();
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    overlay.insert(entry);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
       constraints: const BoxConstraints(maxWidth: 240),
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.92),
+        color: Colors.black.withValues(alpha: 0.85),
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.25),
+          color: Colors.white.withValues(alpha: 0.2),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.6),
+            color: Colors.black.withValues(alpha: 0.4),
             blurRadius: 16,
             offset: const Offset(0, -2),
           ),
