@@ -236,6 +236,26 @@ service cloud.firestore {
       allow create, update, delete: if signedIn() && uid == request.auth.uid;
     }
 
+    // Avatar-User Chat Messages (Backend-kompatibel)
+    match /avatarUserChats/{chatId}/messages/{messageId} {
+      // chatId format: "{userId}_{avatarId}"
+      allow get, list: if signedIn() && chatId.split('_')[0] == request.auth.uid;
+      allow create: if signedIn() 
+        && chatId.split('_')[0] == request.auth.uid
+        && request.resource.data.keys().hasOnly(['message_id', 'sender', 'content', 'timestamp', 'avatar_id', 'user_id'])
+        && request.resource.data.sender in ['user', 'avatar']
+        && request.resource.data.content is string
+        && request.resource.data.timestamp is int;
+      allow delete: if signedIn() && chatId.split('_')[0] == request.auth.uid;
+    }
+
+    // Hero Highlights per Avatar
+    match /users/{uid}/avatars/{avatarId}/heroHighlights/{messageId} {
+      allow get, list: if signedIn() && uid == request.auth.uid;
+      allow create, update: if signedIn() && uid == request.auth.uid;
+      allow delete: if signedIn() && uid == request.auth.uid;
+    }
+
     // Avatar Freetexts (Struppi-System)
     match /avatars/{avatarId}/freetexts/{docId} {
       allow create: if signedIn()

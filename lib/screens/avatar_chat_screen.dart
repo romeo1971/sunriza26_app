@@ -54,6 +54,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   final Map<String, Timer> _deleteTimers = {}; // Hero Chat Lösch-Timer
+  DocumentSnapshot? _lastMessageDoc; // Für Infinite Scroll Pagination
+  bool _isLoadingMore = false;
+  bool _hasMoreMessages = true;
   Timer? _publisherIdleTimer; // Stoppt MuseTalk bei Inaktivität (Kostenbremse)
   bool _isRecording = false;
   bool _isTyping = false;
@@ -98,10 +101,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   bool _isKnownPartner = false;
   String? _partnerPetName;
   String? _partnerRole;
-  static const int _pageSize = 30;
-  DocumentSnapshot<Map<String, dynamic>>? _oldestDoc;
-  bool _hasMore = true;
-  bool _isLoadingMore = false;
 
   AvatarData? _avatarData;
   String? _cachedVoiceId; // Cache für schnellen Zugriff!
@@ -820,6 +819,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         _lpKey.currentState?.sendAudioChunk(bytes, chunk.ptsMs);
       });
     }
+    // Scroll Listener für Infinite Scroll (oben = ältere Messages)
+    _scrollController.addListener(_onScroll);
+    
     // Empfange AvatarData SOFORT (synchron) von der vorherigen Seite
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final args = ModalRoute.of(context)?.settings.arguments;
@@ -835,6 +837,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           setState(() {
             _avatarData = AvatarData.fromMap(doc.data()!);
           });
+          // Messages laden
+          await _loadInitialMessages();
         }
         // Starte Firestore-Listener für Live-Updates
         _startAvatarListener(args.id);
@@ -850,6 +854,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           setState(() {
             _avatarData = AvatarData.fromMap(doc.data()!);
           });
+          // Messages laden
+          await _loadInitialMessages();
           // Starte Firestore-Listener für Live-Updates
           _startAvatarListener(widget.avatarId!);
         }
@@ -887,8 +893,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           await _lipsync.warmUp();
         } catch (_) {}
         final manual = (dotenv.env['LIVEKIT_MANUAL_START'] ?? '').trim() == '1';
-        // History parallel laden (nicht blockierend!)
-        unawaited(_loadHistory());
 
         // Auto‑Greeting aktiv (kostengünstig)
         final greet = (_avatarData?.greetingText?.trim().isNotEmpty == true)
@@ -1797,27 +1801,32 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       ),
       child: Column(
         children: [
-          if (_messages.isNotEmpty && _hasMore)
-            Padding(
-              padding: const EdgeInsets.only(top: 6.0, bottom: 2.0),
-              child: TextButton.icon(
-                onPressed: _isLoadingMore ? null : _loadMoreHistory,
-                icon: const Icon(
-                  Icons.history,
-                  color: Colors.white70,
-                  size: 18,
-                ),
-                label: Builder(
-                  builder: (context) {
-                    final t = (_isLoadingMore)
-                        ? 'chat.loadingOlder'
-                        : 'chat.showOlder';
-                    return Text(
-                      context.read<LocalizationService>().t(t),
-                      style: const TextStyle(color: Colors.white70),
-                    );
-                  },
-                ),
+          // Loading Indicator oben (beim Nachladen älterer Messages)
+          if (_isLoadingMore)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      valueColor: AlwaysStoppedAnimation<Color>(
+                        Colors.white.withValues(alpha: 0.6),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Lade ältere Nachrichten...',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
             ),
           // Nachrichten-Liste
@@ -2791,63 +2800,172 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     }
   }
 
-  Future<void> _loadHistory() async {
-    try {
-      if (_avatarData == null) return;
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) return;
-      final fs = FirebaseFirestore.instance;
-      final snap = await fs
-          .collection('users')
-          .doc(uid)
-          .collection('avatars')
-          .doc(_avatarData?.id ?? '')
-          .collection('chat')
-          .orderBy('createdAt')
-          .limit(_pageSize)
-          .get();
-      final List<ChatMessage> loaded = [];
-      for (final d in snap.docs) {
-        final data = d.data();
-        final text = (data['text'] as String?) ?? '';
-        if (text.isEmpty) continue;
-        final isUser = (data['isUser'] as bool?) ?? false;
-        loaded.add(ChatMessage(text: text, isUser: isUser));
-      }
-      if (mounted && loaded.isNotEmpty) {
-        setState(() {
-          _messages
-            ..clear()
-            ..addAll(loaded);
-          _oldestDoc = snap.docs.isNotEmpty ? snap.docs.first : null;
-          _hasMore = snap.docs.length == _pageSize;
-        });
-        _scrollToBottom();
-      }
-    } catch (_) {}
-  }
 
   Future<void> _persistMessage({
     required String text,
     required bool isUser,
   }) async {
     try {
-      if (_avatarData == null) return;
+      if (_avatarData == null) {
+        debugPrint('⚠️ Cannot persist: _avatarData is null');
+        return;
+      }
       final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) return;
+      if (uid == null) {
+        debugPrint('⚠️ Cannot persist: user not logged in');
+        return;
+      }
       final fs = FirebaseFirestore.instance;
+      final chatId = '${uid}_${_avatarData!.id}';
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final messageId = 'msg-$timestamp-${uid.substring(0, 6)}';
+      
+      debugPrint('💾 Speichere Message: avatarUserChats/$chatId/messages/$messageId');
+      
+      // Backend-kompatibles Format
       await fs
-          .collection('users')
-          .doc(uid)
-          .collection('avatars')
-          .doc(_avatarData?.id ?? '')
-          .collection('chat')
-          .add({
-            'text': text,
-            'isUser': isUser,
-            'createdAt': FieldValue.serverTimestamp(),
+          .collection('avatarUserChats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(messageId)
+          .set({
+            'message_id': messageId,
+            'sender': isUser ? 'user' : 'avatar',
+            'content': text,
+            'timestamp': timestamp,
+            'avatar_id': _avatarData!.id,
+            'user_id': uid,
           });
-    } catch (_) {}
+      
+      debugPrint('✅ Message gespeichert: "${text.substring(0, text.length > 30 ? 30 : text.length)}..."');
+    } catch (e) {
+      debugPrint('❌ _persistMessage Fehler: $e');
+    }
+  }
+
+  // Scroll Listener für Infinite Scroll
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    
+    // Wenn ganz oben (mit kleinem Threshold) → ältere Messages laden
+    final threshold = 200.0;
+    if (_scrollController.position.pixels <= threshold && 
+        !_isLoadingMore && 
+        _hasMoreMessages) {
+      _loadMoreMessages();
+    }
+  }
+
+  // Initial Messages laden (letzte 20)
+  Future<void> _loadInitialMessages() async {
+    if (_avatarData == null) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    final chatId = '${uid}_${_avatarData!.id}';
+    debugPrint('📥 Lade Chat-Messages für chatId: $chatId');
+
+    try {
+      final snapshot = await FirebaseFirestore.instance
+          .collection('avatarUserChats')
+          .doc(chatId)
+          .collection('messages')
+          .orderBy('timestamp', descending: true)
+          .limit(20)
+          .get();
+
+      debugPrint('📥 Gefunden: ${snapshot.docs.length} Messages');
+
+      if (!mounted) return;
+
+      final messages = <ChatMessage>[];
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final ts = data['timestamp'] as int?;
+        final timestamp = ts != null 
+            ? DateTime.fromMillisecondsSinceEpoch(ts)
+            : DateTime.now();
+        
+        // Backend-Format: sender + content ODER altes Format: isUser + text
+        final sender = data['sender'] as String?;
+        final content = data['content'] as String?;
+        final isUser = sender == 'user' || (data['isUser'] as bool?) == true;
+        final text = content ?? data['text'] as String? ?? '';
+        
+        messages.add(ChatMessage(
+          text: text,
+          isUser: isUser,
+          timestamp: timestamp,
+        ));
+      }
+
+      setState(() {
+        _messages.clear(); // Erst leeren
+        _messages.addAll(messages.reversed); // Älteste zuerst
+        _lastMessageDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
+        _hasMoreMessages = snapshot.docs.length == 20;
+      });
+      
+      debugPrint('✅ ${messages.length} Messages geladen und angezeigt');
+    } catch (e) {
+      debugPrint('❌ Messages laden fehlgeschlagen: $e');
+    }
+  }
+
+  // Weitere Messages laden (Infinite Scroll)
+  Future<void> _loadMoreMessages() async {
+    if (_avatarData == null || _lastMessageDoc == null || _isLoadingMore) return;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    setState(() => _isLoadingMore = true);
+
+    try {
+      final chatId = '${uid}_${_avatarData!.id}';
+      final snapshot = await FirebaseFirestore.instance
+          .collection('avatarUserChats')
+          .doc(chatId)
+          .collection('messages')
+          .orderBy('timestamp', descending: true)
+          .startAfterDocument(_lastMessageDoc!)
+          .limit(20)
+          .get();
+
+      if (!mounted) return;
+
+      final messages = <ChatMessage>[];
+      for (var doc in snapshot.docs) {
+        final data = doc.data();
+        final ts = data['timestamp'] as int?;
+        final timestamp = ts != null 
+            ? DateTime.fromMillisecondsSinceEpoch(ts)
+            : DateTime.now();
+        
+        // Backend-Format: sender + content ODER altes Format: isUser + text
+        final sender = data['sender'] as String?;
+        final content = data['content'] as String?;
+        final isUser = sender == 'user' || (data['isUser'] as bool?) == true;
+        final text = content ?? data['text'] as String? ?? '';
+        
+        messages.add(ChatMessage(
+          text: text,
+          isUser: isUser,
+          timestamp: timestamp,
+        ));
+      }
+
+      setState(() {
+        _messages.insertAll(0, messages.reversed); // Älteste zuerst
+        _lastMessageDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
+        _hasMoreMessages = snapshot.docs.length == 20;
+        _isLoadingMore = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Weitere Messages laden fehlgeschlagen: $e');
+      if (mounted) {
+        setState(() => _isLoadingMore = false);
+      }
+    }
   }
 
   // Partnername laden/speichern
@@ -3123,49 +3241,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         .join(' ');
   }
 
-  Future<void> _loadMoreHistory() async {
-    if (_avatarData == null || _isLoadingMore || _oldestDoc == null) return;
-    setState(() => _isLoadingMore = true);
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) return;
-      final fs = FirebaseFirestore.instance;
-      final q = fs
-          .collection('users')
-          .doc(uid)
-          .collection('avatars')
-          .doc(_avatarData?.id ?? '')
-          .collection('chat')
-          .orderBy('createdAt')
-          .endBeforeDocument(_oldestDoc!)
-          .limitToLast(_pageSize);
-      final snap = await q.get();
-      if (snap.docs.isEmpty) {
-        setState(() {
-          _hasMore = false;
-        });
-        return;
-      }
-      final List<ChatMessage> older = [];
-      for (final d in snap.docs) {
-        final data = d.data();
-        final text = (data['text'] as String?) ?? '';
-        if (text.isEmpty) continue;
-        final isUser = (data['isUser'] as bool?) ?? false;
-        older.add(ChatMessage(text: text, isUser: isUser));
-      }
-      if (mounted && older.isNotEmpty) {
-        setState(() {
-          _messages.insertAll(0, older);
-          _oldestDoc = snap.docs.first;
-          _hasMore = snap.docs.length == _pageSize;
-        });
-      }
-    } catch (_) {
-    } finally {
-      if (mounted) setState(() => _isLoadingMore = false);
-    }
-  }
 
   Future<void> _saveInsight(
     String fullText, {

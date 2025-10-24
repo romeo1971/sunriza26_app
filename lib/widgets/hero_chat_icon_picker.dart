@@ -77,51 +77,36 @@ class HeroChatIconPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      constraints: const BoxConstraints(maxWidth: 280),
-      padding: const EdgeInsets.all(12),
+      constraints: const BoxConstraints(maxWidth: 240),
+      padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.95),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.black.withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: Colors.white.withValues(alpha: 0.3),
+          color: Colors.white.withValues(alpha: 0.25),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.5),
-            blurRadius: 20,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.6),
+            blurRadius: 16,
+            offset: const Offset(0, -2),
           ),
         ],
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: alignRight ? CrossAxisAlignment.end : CrossAxisAlignment.start,
         children: [
-          // Title
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              selectedIcon != null ? 'Icon ändern' : 'Icon wählen',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          // Icons Grid
+          // Icons Grid (kompakter)
           Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            alignment: alignRight ? WrapAlignment.end : WrapAlignment.start,
+            spacing: 4,
+            runSpacing: 4,
+            alignment: WrapAlignment.center,
             children: icons.map((icon) => _buildIconButton(icon)).toList(),
           ),
           // Remove Button (wenn Icon bereits gesetzt)
           if (selectedIcon != null) ...[
-            const SizedBox(height: 8),
-            const Divider(color: Colors.white24, height: 1),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             _buildRemoveButton(),
           ],
         ],
@@ -134,24 +119,24 @@ class HeroChatIconPicker extends StatelessWidget {
     return GestureDetector(
       onTap: () => onIconSelected(icon),
       child: Container(
-        width: 40,
-        height: 40,
+        width: 34,
+        height: 34,
         decoration: BoxDecoration(
           color: isSelected
-              ? Colors.white.withValues(alpha: 0.3)
-              : Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected
-                ? Colors.white.withValues(alpha: 0.8)
-                : Colors.white.withValues(alpha: 0.2),
-            width: isSelected ? 2 : 1,
-          ),
+              ? Colors.white.withValues(alpha: 0.2)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+          border: isSelected
+              ? Border.all(
+                  color: Colors.white.withValues(alpha: 0.5),
+                  width: 1.5,
+                )
+              : null,
         ),
         child: Center(
           child: Text(
             icon,
-            style: const TextStyle(fontSize: 24),
+            style: const TextStyle(fontSize: 20),
           ),
         ),
       ),
@@ -163,12 +148,12 @@ class HeroChatIconPicker extends StatelessWidget {
       onTap: onClose,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
         decoration: BoxDecoration(
           color: Colors.red.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(6),
           border: Border.all(
-            color: Colors.red.withValues(alpha: 0.5),
+            color: Colors.red.withValues(alpha: 0.4),
             width: 1,
           ),
         ),
@@ -176,14 +161,14 @@ class HeroChatIconPicker extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.close, color: Colors.red, size: 16),
-            const SizedBox(width: 6),
+            const Icon(Icons.close, color: Colors.red, size: 14),
+            const SizedBox(width: 4),
             const Text(
-              'Icon entfernen',
+              'Entfernen',
               style: TextStyle(
                 color: Colors.red,
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
               ),
             ),
           ],

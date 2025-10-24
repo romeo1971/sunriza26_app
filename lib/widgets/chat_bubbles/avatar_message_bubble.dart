@@ -25,23 +25,7 @@ class AvatarMessageBubble extends StatelessWidget {
           right: 64,
           bottom: 4,
         ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // Avatar (kleines rundes Bild)
-            if (avatarImageUrl != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 8, bottom: 0),
-                child: CircleAvatar(
-                  radius: 16,
-                  backgroundImage: NetworkImage(avatarImageUrl!),
-                  backgroundColor: Colors.grey[800],
-                ),
-              ),
-            
-            // Message Column
-            Flexible(
-              child: Column(
+        child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   // Message Container
@@ -61,12 +45,6 @@ class AvatarMessageBubble extends StatelessWidget {
                         bottomLeft: Radius.circular(4),
                         bottomRight: Radius.circular(18),
                       ),
-                      border: message.isHighlighted
-                          ? Border.all(
-                              color: Colors.yellow.withValues(alpha: 0.8),
-                              width: 2,
-                            )
-                          : null,
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black.withValues(alpha: 0.2),
@@ -121,9 +99,6 @@ class AvatarMessageBubble extends StatelessWidget {
                       ),
                     ),
                 ],
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -170,11 +145,16 @@ class AvatarMessageBubble extends StatelessWidget {
     if (renderBox == null) return;
 
     final position = renderBox.localToGlobal(Offset.zero);
-    final size = renderBox.size;
+    
+    // Box OBERHALB der Blase positionieren (mit 8px Abstand)
+    final boxY = position.dy - 120; // 120px = ca. Höhe der Icon-Box
+    
+    // Falls zu nah am oberen Rand, nach unten verschieben
+    final finalY = boxY < 100 ? position.dy + 60 : boxY;
 
     HeroChatIconPicker.showAtPosition(
       context,
-      position: Offset(position.dx, position.dy + size.height + 4),
+      position: Offset(position.dx, finalY),
       alignRight: false,
       selectedIcon: message.highlightIcon,
       onIconSelected: (icon) => onIconChanged(message, icon),

@@ -45,12 +45,6 @@ class UserMessageBubble extends StatelessWidget {
                   bottomLeft: Radius.circular(18),
                   bottomRight: Radius.circular(4),
                 ),
-                border: message.isHighlighted
-                    ? Border.all(
-                        color: Colors.yellow.withValues(alpha: 0.8),
-                        width: 2,
-                      )
-                    : null,
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.15),
@@ -151,11 +145,16 @@ class UserMessageBubble extends StatelessWidget {
     if (renderBox == null) return;
 
     final position = renderBox.localToGlobal(Offset.zero);
-    final size = renderBox.size;
+    
+    // Box OBERHALB der Blase positionieren (mit 8px Abstand)
+    final boxY = position.dy - 120; // 120px = ca. Höhe der Icon-Box
+    
+    // Falls zu nah am oberen Rand, nach unten verschieben
+    final finalY = boxY < 100 ? position.dy + 60 : boxY;
 
     HeroChatIconPicker.showAtPosition(
       context,
-      position: Offset(position.dx + size.width, position.dy + size.height + 4),
+      position: Offset(position.dx, finalY),
       alignRight: true,
       selectedIcon: message.highlightIcon,
       onIconSelected: (icon) => onIconChanged(message, icon),
