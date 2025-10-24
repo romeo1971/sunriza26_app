@@ -1312,9 +1312,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                       SizedBox(height: 200, child: _buildChatMessages()),
 
                       // Input-Bereich
-                    _buildInputArea(),
+                      _buildInputArea(),
 
-                    const SizedBox(height: 28),
+                      const SizedBox(height: 28),
                     ],
                   ),
                 ),
@@ -1779,7 +1779,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                   child: Text(
                     _isLoadingMore ? 'Lade ältere Nachrichten…' : 'Ältere Nachrichten anzeigen',
                     style: const TextStyle(
-                      color: Colors.white70,
+                  color: Colors.white70,
                       fontSize: 12,
                       decoration: TextDecoration.underline,
                     ),
@@ -1825,7 +1825,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
+              decoration: BoxDecoration(
               color: Colors.white.withOpacity(0.15),
               borderRadius: BorderRadius.circular(12),
             ),
@@ -1859,18 +1859,20 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         ? UserMessageBubble(
             message: message,
             onIconChanged: _handleIconChanged,
+            onDelete: _deleteMessage,
           )
         : AvatarMessageBubble(
             message: message,
             onIconChanged: _handleIconChanged,
+            onDelete: _deleteMessage,
             avatarImageUrl: _avatarData?.avatarImageUrl,
           );
   }
 
   void _handleIconChanged(ChatMessage message, String? icon) {
-    // WICHTIG: Finde Message in lokaler Liste über timestamp (Hero-Screen hat andere Objekte!)
+    // WICHTIG: Finde Message in lokaler Liste über messageId
     final localMessage = _messages.firstWhere(
-      (m) => m.timestamp.millisecondsSinceEpoch == message.timestamp.millisecondsSinceEpoch,
+      (m) => m.messageId == message.messageId,
       orElse: () => message, // Fallback: Original-Message verwenden
     );
     
@@ -1878,74 +1880,71 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (icon != null) {
         // Icon setzen (neu markiert)
         localMessage.highlightIcon = icon;
-        localMessage.highlightedAt = DateTime.now();
-        localMessage.deleteTimerStart = null;
-        
-        // Stoppe laufenden Timer (falls vorhanden)
-        _deleteTimers[localMessage.timestamp.toString()]?.cancel();
-        _deleteTimers.remove(localMessage.timestamp.toString());
-        
-        // Firebase: Highlight speichern
-        _saveMessageHighlightToFirebase(localMessage);
-        
       } else {
         // Icon entfernen (aus Hero-Screen gelöscht)
         localMessage.highlightIcon = null;
-        localMessage.highlightedAt = null;
-        localMessage.deleteTimerStart = null;
-        
-        // Stoppe Timer falls vorhanden
-        _deleteTimers[localMessage.timestamp.toString()]?.cancel();
-        _deleteTimers.remove(localMessage.timestamp.toString());
-        
-        // Firebase: Highlight löschen
-        _deleteMessageHighlightFromFirebase(localMessage);
-        
-        // Message bleibt im Chat sichtbar (nur Icon weg)
       }
     });
+    
+    // Firebase: Update highlightIcon Feld direkt in avatarUserChats/messages
+    _updateMessageIcon(localMessage.messageId, icon);
   }
 
-  Future<void> _saveMessageHighlightToFirebase(ChatMessage message) async {
+  // Update highlightIcon direkt in avatarUserChats/messages
+  Future<void> _updateMessageIcon(String messageId, String? icon) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || _avatarData == null) return;
 
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('avatars')
-          .doc(_avatarData!.id)
-          .collection('heroHighlights')
-          .doc(message.timestamp.millisecondsSinceEpoch.toString())
-          .set({
-        'text': message.text,
-        'isUser': message.isUser,
-        'timestamp': message.timestamp.millisecondsSinceEpoch,
-        'highlightIcon': message.highlightIcon,
-        'highlightedAt': message.highlightedAt?.millisecondsSinceEpoch,
-        'deleteTimerStart': message.deleteTimerStart?.millisecondsSinceEpoch,
-      });
+      final chatId = '${uid}_${_avatarData!.id}';
+      
+      if (icon != null) {
+        // Icon setzen
+        await FirebaseFirestore.instance
+            .collection('avatarUserChats')
+            .doc(chatId)
+            .collection('messages')
+            .doc(messageId)
+            .update({'highlightIcon': icon});
+        debugPrint('✅ Icon gesetzt: $messageId → $icon');
+      } else {
+        // Icon entfernen
+        await FirebaseFirestore.instance
+            .collection('avatarUserChats')
+            .doc(chatId)
+            .collection('messages')
+            .doc(messageId)
+            .update({'highlightIcon': FieldValue.delete()});
+        debugPrint('✅ Icon entfernt: $messageId');
+      }
     } catch (e) {
-      debugPrint('❌ Hero Highlight speichern fehlgeschlagen: $e');
+      debugPrint('❌ Icon Update fehlgeschlagen: $e');
     }
   }
 
-  Future<void> _deleteMessageHighlightFromFirebase(ChatMessage message) async {
+  // Message löschen (aus View + Firebase)
+  void _deleteMessage(ChatMessage message) async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null || _avatarData == null) return;
 
     try {
+      // 1) Lokal entfernen (sofort)
+      setState(() {
+        _messages.remove(message);
+      });
+
+      // 2) Firebase löschen
+      final chatId = '${uid}_${_avatarData!.id}';
       await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('avatars')
-          .doc(_avatarData!.id)
-          .collection('heroHighlights')
-          .doc(message.timestamp.millisecondsSinceEpoch.toString())
+          .collection('avatarUserChats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(message.messageId)
           .delete();
+      
+      debugPrint('✅ Message gelöscht: ${message.messageId}');
     } catch (e) {
-      debugPrint('❌ Hero Highlight löschen fehlgeschlagen: $e');
+      debugPrint('❌ Message löschen fehlgeschlagen: $e');
     }
   }
 
@@ -1963,10 +1962,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             ValueListenableBuilder<TextEditingValue>(
-              valueListenable: _messageController,
-              builder: (context, value, _) {
-                final hasText = value.text.trim().isNotEmpty;
-                return Row(
+          valueListenable: _messageController,
+          builder: (context, value, _) {
+            final hasText = value.text.trim().isNotEmpty;
+            return Row(
               children: [
                 // Plus-Button (Anhänge)
                 GestureDetector(
@@ -2084,7 +2083,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                 ),
               ],
             );
-              },
+          },
             ),
             const SizedBox(height: 6),
             _buildMtRoomFooter(),
@@ -2722,13 +2721,24 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   void _addMessage(String text, bool isUser, {String? audioPath}) {
     if (!mounted) return;
+    
+    // Generate messageId
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final messageId = 'msg-$timestamp-${uid?.substring(0, 6) ?? 'anon'}';
+    
     setState(() {
       _messages.add(
-        ChatMessage(text: text, isUser: isUser, audioPath: audioPath),
+        ChatMessage(
+          messageId: messageId,
+          text: text,
+          isUser: isUser,
+          audioPath: audioPath,
+        ),
       );
     });
     _scrollToBottom();
-    _persistMessage(text: text, isUser: isUser);
+    _persistMessage(messageId: messageId, text: text, isUser: isUser);
   }
 
   Future<void> _chatWithBackend(String userText) async {
@@ -2868,13 +2878,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
 
   Future<void> _persistMessage({
+    required String messageId,
     required String text,
     required bool isUser,
   }) async {
     try {
       // 1) Greeting-Dedupe: Speichere nicht, wenn letzte Bot-Message gleich ist
       if (!isUser && _messages.isNotEmpty) {
-        final last = _messages.lastWhere((m) => !m.isUser, orElse: () => ChatMessage(text: '', isUser: false));
+        final last = _messages.lastWhere(
+          (m) => !m.isUser,
+          orElse: () => ChatMessage(messageId: '', text: '', isUser: false),
+        );
         if (last.text.trim() == text.trim() && text.trim().isNotEmpty) {
           debugPrint('⚠️ Skip persist: duplicate greeting');
           return;
@@ -2893,11 +2907,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       final fs = FirebaseFirestore.instance;
       final chatId = '${uid}_${_avatarData!.id}';
       final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final messageId = 'msg-$timestamp-${uid.substring(0, 6)}';
       
       debugPrint('💾 Speichere Message: avatarUserChats/$chatId/messages/$messageId');
       
-      // Backend-kompatibles Format
+      // Backend-kompatibles Format + highlightIcon
       await fs
           .collection('avatarUserChats')
           .doc(chatId)
@@ -2910,6 +2923,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             'timestamp': timestamp,
             'avatar_id': _avatarData!.id,
             'user_id': uid,
+            // highlightIcon wird später via update() gesetzt
           });
       
       debugPrint('✅ Message gespeichert: "${text.substring(0, text.length > 30 ? 30 : text.length)}..."');
@@ -2933,9 +2947,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   // Initial Messages prüfen (nur Count, keine Daten laden)
   Future<void> _loadInitialMessages() async {
-    if (_avatarData == null) return;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+      if (_avatarData == null) return;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
 
     final chatId = '${uid}_${_avatarData!.id}';
     debugPrint('📥 Prüfe Messages für chatId: $chatId');
@@ -2954,7 +2968,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (!mounted) return;
 
       // NUR Flag setzen, KEINE Messages laden
-      setState(() {
+        setState(() {
         _hasMoreMessages = snapshot.docs.isNotEmpty; // Link zeigen wenn Messages da
         _historyLoaded = true;
       });
@@ -2968,8 +2982,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   // Messages laden (Infinite Scroll - OHNE startAfter beim 1. Mal)
   Future<void> _loadMoreMessages() async {
     if (_avatarData == null || _isLoadingMore) return;
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
 
     debugPrint('📥 _loadMoreMessages: Start... (_lastMessageDoc=${_lastMessageDoc?.id ?? "null"})');
     setState(() => _isLoadingMore = true);
@@ -3010,11 +3024,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         final content = data['content'] as String?;
         final isUser = sender == 'user' || (data['isUser'] as bool?) == true;
         final text = content ?? data['text'] as String? ?? '';
+        final messageId = doc.id; // Firestore doc ID als messageId
+        final highlightIcon = data['highlightIcon'] as String?;
         
         messages.add(ChatMessage(
+          messageId: messageId,
           text: text,
           isUser: isUser,
           timestamp: timestamp,
+          highlightIcon: highlightIcon,
         ));
       }
 
@@ -3845,34 +3863,24 @@ class _ChatInputField extends StatelessWidget {
 }
 
 class ChatMessage {
+  final String messageId; // PRIMARY KEY: msg-{timestamp}-{uid6}
   final String text;
   final bool isUser;
   final DateTime timestamp;
   final String? audioPath;
   
-  // Hero Chat Highlights
+  // Hero Chat Highlight (direkt in Message gespeichert)
   String? highlightIcon; // 🐣🔥🍻 etc.
-  DateTime? highlightedAt;
-  DateTime? deleteTimerStart; // Start des 2-Min Timers
-  
+
   ChatMessage({
+    required this.messageId,
     required this.text,
     required this.isUser,
     this.audioPath,
     DateTime? timestamp,
     this.highlightIcon,
-    this.highlightedAt,
-    this.deleteTimerStart,
   }) : timestamp = timestamp ?? DateTime.now();
   
   // Helper: Ist diese Nachricht highlighted?
   bool get isHighlighted => highlightIcon != null;
-  
-  // Helper: Verbleibende Zeit bis Löschung (in Sekunden)
-  int? get remainingDeleteSeconds {
-    if (deleteTimerStart == null) return null;
-    final elapsed = DateTime.now().difference(deleteTimerStart!).inSeconds;
-    final remaining = 120 - elapsed; // 2 Minuten = 120 Sekunden
-    return remaining > 0 ? remaining : 0;
-  }
 }

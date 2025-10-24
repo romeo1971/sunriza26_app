@@ -6,12 +6,14 @@ import '../hero_chat_icon_picker.dart';
 class AvatarMessageBubble extends StatelessWidget {
   final ChatMessage message;
   final Function(ChatMessage, String?) onIconChanged;
+  final Function(ChatMessage)? onDelete;
   final String? avatarImageUrl;
-  
+
   const AvatarMessageBubble({
     super.key,
     required this.message,
     required this.onIconChanged,
+    this.onDelete,
     this.avatarImageUrl,
   });
 
@@ -112,37 +114,6 @@ class AvatarMessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildDeleteTimer() {
-    final remainingSeconds = message.remainingDeleteSeconds ?? 0;
-    
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-          decoration: BoxDecoration(
-            color: Colors.red.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.timer, color: Colors.white, size: 11),
-              const SizedBox(width: 3),
-              Text(
-                '${remainingSeconds}s',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
 
   String _formatTime(DateTime dt) {
     return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
@@ -171,9 +142,8 @@ class AvatarMessageBubble extends StatelessWidget {
       ),
     );
     
-    if (confirmed == true) {
-      onIconChanged(message, null); // Entfernt auch Highlight
-      // TODO: Firebase Message löschen
+    if (confirmed == true && onDelete != null) {
+      onDelete!(message);
     }
   }
 

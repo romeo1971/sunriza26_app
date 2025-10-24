@@ -246,6 +246,7 @@ service cloud.firestore {
         && request.resource.data.sender in ['user', 'avatar']
         && request.resource.data.content is string
         && request.resource.data.timestamp is int;
+      allow update: if signedIn() && chatId.split('_')[0] == request.auth.uid;
       allow delete: if signedIn() && chatId.split('_')[0] == request.auth.uid;
     }
 

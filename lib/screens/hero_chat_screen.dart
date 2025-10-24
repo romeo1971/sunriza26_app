@@ -47,34 +47,42 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
     try {
+      // Query: Alle Messages laden, dann filtern (Fallback ohne Index)
+      final chatId = '${uid}_${widget.avatarData.id}';
       final snap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('avatars')
-          .doc(widget.avatarData.id)
-          .collection('heroHighlights')
+          .collection('avatarUserChats')
+          .doc(chatId)
+          .collection('messages')
           .orderBy('timestamp', descending: true)
-          .limit(20)
+          .limit(200) // Mehr laden, dann filtern
           .get();
       final loaded = <ChatMessage>[];
       final Set<String> allIcons = {};
       for (final d in snap.docs) {
         final data = d.data();
+        final highlightIcon = data['highlightIcon'] as String?;
+        
+        // FILTER: Nur Messages mit Icon
+        if (highlightIcon == null) continue;
+        
         final ts = (data['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
+        final sender = data['sender'] as String?;
+        final content = data['content'] as String?;
+        final text = content ?? data['text'] as String? ?? '';
+        final isUser = sender == 'user' || (data['isUser'] as bool?) == true;
+        
         final msg = ChatMessage(
-          text: (data['text'] as String?) ?? '',
-          isUser: (data['isUser'] as bool?) ?? false,
+          messageId: d.id,
+          text: text,
+          isUser: isUser,
           timestamp: DateTime.fromMillisecondsSinceEpoch(ts),
-          highlightIcon: data['highlightIcon'] as String?,
-          highlightedAt: (data['highlightedAt'] is int)
-              ? DateTime.fromMillisecondsSinceEpoch(data['highlightedAt'] as int)
-              : null,
-          deleteTimerStart: (data['deleteTimerStart'] is int)
-              ? DateTime.fromMillisecondsSinceEpoch(data['deleteTimerStart'] as int)
-              : null,
+          highlightIcon: highlightIcon,
         );
         loaded.add(msg);
-        if (msg.highlightIcon != null) allIcons.add(msg.highlightIcon!);
+        allIcons.add(highlightIcon);
+        
+        // Stop bei 20 gefilterten Messages
+        if (loaded.length >= 20) break;
       }
       if (!mounted) return;
       debugPrint('📥 Hero: Initial geladen: ${loaded.length}, _hasMore=${snap.docs.length == 20}');
@@ -103,35 +111,42 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
     setState(() => _isLoading = true);
     
     try {
+      final chatId = '${uid}_${widget.avatarData.id}';
       final snap = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(uid)
-          .collection('avatars')
-          .doc(widget.avatarData.id)
-          .collection('heroHighlights')
+          .collection('avatarUserChats')
+          .doc(chatId)
+          .collection('messages')
           .orderBy('timestamp', descending: true)
           .startAfterDocument(_lastDoc!)
-          .limit(20)
+          .limit(200)
           .get();
       
-      debugPrint('📥 Hero: Gefunden ${snap.docs.length} weitere Highlights');
+      debugPrint('📥 Hero: Gefunden ${snap.docs.length} weitere Messages');
       
       final more = <ChatMessage>[];
       for (final d in snap.docs) {
         final data = d.data();
+        final highlightIcon = data['highlightIcon'] as String?;
+        
+        // FILTER: Nur Messages mit Icon
+        if (highlightIcon == null) continue;
+        
         final ts = (data['timestamp'] as int?) ?? DateTime.now().millisecondsSinceEpoch;
+        final sender = data['sender'] as String?;
+        final content = data['content'] as String?;
+        final text = content ?? data['text'] as String? ?? '';
+        final isUser = sender == 'user' || (data['isUser'] as bool?) == true;
+        
         more.add(ChatMessage(
-          text: (data['text'] as String?) ?? '',
-          isUser: (data['isUser'] as bool?) ?? false,
+          messageId: d.id,
+          text: text,
+          isUser: isUser,
           timestamp: DateTime.fromMillisecondsSinceEpoch(ts),
-          highlightIcon: data['highlightIcon'] as String?,
-          highlightedAt: (data['highlightedAt'] is int)
-              ? DateTime.fromMillisecondsSinceEpoch(data['highlightedAt'] as int)
-              : null,
-          deleteTimerStart: (data['deleteTimerStart'] is int)
-              ? DateTime.fromMillisecondsSinceEpoch(data['deleteTimerStart'] as int)
-              : null,
+          highlightIcon: highlightIcon,
         ));
+        
+        // Stop bei 20 gefilterten Messages
+        if (more.length >= 20) break;
       }
       if (!mounted) return;
       setState(() {
@@ -618,23 +633,11 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
           
           const SizedBox(height: 4),
           
-          // Bottom Row: Delete (links) + Zeit (rechts)
+          // Bottom Row: Nur Zeit (rechts)
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              // Remove Highlight Button
-              _buildRemoveButton(() async {
-                final confirmed = await _confirmRemove(context);
-                if (confirmed == true && mounted) {
-                  setState(() {
-                    _messages.remove(message);
-                  });
-                  widget.onIconChanged(message, null);
-                  await _removeIconFromChatMessage(message);
-                }
-              }),
-              
-              // Timestamp (rechts)
+              // Timestamp
               Text(
                 '${message.timestamp.hour.toString().padLeft(2, '0')}:${message.timestamp.minute.toString().padLeft(2, '0')}',
                 style: TextStyle(
@@ -665,73 +668,5 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
     );
   }
 
-  Widget _buildRemoveButton(VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Icon(
-        Icons.close,
-        size: 10,
-        color: Colors.white.withValues(alpha: 0.4),
-      ),
-    );
-  }
-
-  // Icon aus Chat-Message entfernen (damit es im Chat nicht mehr angezeigt wird)
-  Future<void> _removeIconFromChatMessage(ChatMessage message) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    
-    try {
-      final chatId = '${uid}_${widget.avatarData.id}';
-      final msgId = 'msg-${message.timestamp.millisecondsSinceEpoch}-${uid.substring(0, 6)}';
-      
-      await FirebaseFirestore.instance
-          .collection('avatarUserChats')
-          .doc(chatId)
-          .collection('messages')
-          .doc(msgId)
-          .update({
-            'highlightIcon': FieldValue.delete(),
-            'highlightedAt': FieldValue.delete(),
-          });
-      
-      debugPrint('✅ Icon aus Chat-Message entfernt: $msgId');
-    } catch (e) {
-      debugPrint('⚠️ Icon aus Chat-Message entfernen fehlgeschlagen: $e');
-    }
-  }
-
-  Future<bool?> _confirmRemove(BuildContext context) async {
-    return showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF0A0A0A),
-          title: const Text('Highlight entfernen?', style: TextStyle(color: Colors.white)),
-          content: const Text(
-            'Soll dieses Highlight entfernt werden? (Löschung in 2 Minuten)',
-            style: TextStyle(color: Colors.white70),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Abbrechen', style: TextStyle(color: Colors.white70)),
-            ),
-            GestureDetector(
-              onTap: () => Navigator.pop(context, true),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(colors: [AppColors.magenta, AppColors.lightBlue]),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text('Entfernen', style: TextStyle(color: Colors.white)),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
 }
 

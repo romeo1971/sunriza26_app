@@ -214,7 +214,7 @@ class HeroChatIconPicker extends StatelessWidget {
             const Icon(Icons.close, color: Colors.red, size: 14),
             const SizedBox(width: 4),
             const Text(
-              'Entfernen',
+              'Auswahl aufheben',
               style: TextStyle(
                 color: Colors.red,
                 fontSize: 11,
