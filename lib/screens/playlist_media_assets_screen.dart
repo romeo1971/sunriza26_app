@@ -804,8 +804,9 @@ class _PlaylistMediaAssetsScreenState extends State<PlaylistMediaAssetsScreen> {
   }
 
   Future<void> _persistSelection() async {
-    if (widget.playlistId == null)
+    if (widget.playlistId == null) {
       return; // ohne Playlist kein direktes Speichern
+    }
     final docs = _all
         .where((m) => _selected.contains(m.id))
         .map(

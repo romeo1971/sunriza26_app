@@ -1803,7 +1803,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     DateTime? lastDate;
     for (final m in _messages) {
       final day = DateTime(m.timestamp.year, m.timestamp.month, m.timestamp.day);
-      if (lastDate == null || day.isAfter(lastDate!)) {
+      if (lastDate == null || day.isAfter(lastDate)) {
         items.add(_buildDateSeparator(day));
         lastDate = day;
       }
@@ -2932,21 +2932,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     }
   }
 
-  // Scroll Listener für Infinite Scroll
+  // Scroll Listener für Infinite Scroll (DEAKTIVIERT - nur noch per Button "Ältere Nachrichten")
   void _onScroll() {
-    if (!_scrollController.hasClients) return;
-    
-    // Wenn ganz oben (mit kleinem Threshold) → ältere Messages laden
-    final threshold = 200.0;
-    if (_scrollController.position.pixels <= threshold && 
-        !_isLoadingMore && 
-        _hasMoreMessages) {
-      _loadMoreMessages();
-    }
+    return; // Auto-Load deaktiviert
   }
 
   // Initial Messages prüfen (nur Count, keine Daten laden)
   Future<void> _loadInitialMessages() async {
+      if (_historyLoaded) return; // Nur einmal prüfen
       if (_avatarData == null) return;
       final uid = FirebaseAuth.instance.currentUser?.uid;
       if (uid == null) return;

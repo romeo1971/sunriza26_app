@@ -1095,7 +1095,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       // Titel + Anzeigezeit (volle Breite)
-                                      Container(
+                                      SizedBox(
                                         width: double.infinity,
                                         child: Column(
                                           crossAxisAlignment:

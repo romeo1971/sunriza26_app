@@ -26,7 +26,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
   String _tab = 'images'; // images|videos|documents|audio
   bool _portrait = true;
   bool _showAssets = true; // Toggle: Media Assets sichtbar
-  bool _showTimeline = true; // Toggle: Timeline sichtbar
+  final bool _showTimeline = true; // Toggle: Timeline sichtbar
   final _mediaSvc = MediaService();
   final _playlistSvc = PlaylistService();
   List<AvatarMedia> _allMedia = [];
@@ -2417,8 +2417,9 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                                           ],
                                                         ),
                                                       );
-                                                      if (confirm != true)
+                                                      if (confirm != true) {
                                                         return;
+                                                      }
                                       setState(() {
                                                         if (i <
                                                                 _timeline

@@ -528,7 +528,7 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
     DateTime? lastDate;
     for (final m in _filteredMessages) {
       final day = DateTime(m.timestamp.year, m.timestamp.month, m.timestamp.day);
-      if (lastDate == null || day.isAfter(lastDate!)) {
+      if (lastDate == null || day.isAfter(lastDate)) {
         items.add(_buildDateSeparator(day));
         lastDate = day;
       }
