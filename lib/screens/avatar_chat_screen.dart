@@ -34,7 +34,8 @@ import '../widgets/liveportrait_canvas.dart';
 import '../widgets/chat_bubbles/user_message_bubble.dart';
 import '../widgets/chat_bubbles/avatar_message_bubble.dart';
 import '../widgets/hero_chat_fab_button.dart';
-import '../widgets/media/timeline_audio_slider.dart';
+import '../widgets/media/timeline_media_slider.dart';
+import '../widgets/media/timeline_media_overlay.dart';
 import 'hero_chat_screen.dart';
 
 // GLOBAL Guard: verhindert mehrfache /publisher/start Calls über Widget-Lifecycle hinweg!
@@ -1702,11 +1703,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             },
           ),
 
-          // Timeline Audio Slider (links am Bildrand)
+          // Timeline Media Slider (links am Bildrand, alle Media-Typen)
           if (_timelineSliderVisible && _activeTimelineItem != null)
-            TimelineAudioSlider(
-              audioMedia: _activeTimelineItem!,
+            TimelineMediaSlider(
+              media: _activeTimelineItem!,
               slidingDuration: const Duration(minutes: 2),
+              isBlurred: !_isTimelineItemPurchased(), // Blur wenn nicht gekauft
               onTap: _onTimelineItemTap,
             ),
           const SizedBox(width: 8),
@@ -3976,14 +3978,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               if (mediaDoc.exists) {
                 final media = AvatarMedia.fromMap(mediaDoc.data()!);
                 
-                // Nur Audio mit Cover Images anzeigen (vorerst)
-                if (media.type == AvatarMediaType.audio && 
-                    media.coverImages != null && 
-                    media.coverImages!.isNotEmpty) {
-                  nextItem = media;
-                  nextDelay = Duration.zero; // Sofort anzeigen
-                  break;
-                }
+                // Alle Media-Typen anzeigen (Image, Video, Audio, Document)
+                nextItem = media;
+                nextDelay = Duration.zero; // Sofort anzeigen
+                break;
               }
             }
           }
@@ -4034,12 +4032,36 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     });
   }
 
-  /// Öffnet Kauf/Annahme Dialog für Timeline Item
+  /// Prüft ob Timeline Item bereits gekauft wurde
+  bool _isTimelineItemPurchased() {
+    if (_activeTimelineItem == null) return false;
+    
+    // Kostenlose Items sind immer "gekauft"
+    final price = _activeTimelineItem!.price ?? 0.0;
+    if (price == 0.0) return false; // Trotzdem Blur zeigen für "Annehmen" Flow
+    
+    // TODO: Prüfe in Firestore ob User das Item gekauft hat
+    // Vorerst: Alle kostenpflichtigen Items sind "nicht gekauft"
+    return false;
+  }
+
+  /// Öffnet Fullsize Overlay für Timeline Item
   void _onTimelineItemTap() {
     if (_activeTimelineItem == null) return;
     
-    // Dialog öffnen mit Kauf/Annahme Optionen
-    _showTimelinePurchaseDialog(_activeTimelineItem!);
+    showDialog(
+      context: context,
+      builder: (ctx) => TimelineMediaOverlay(
+        media: _activeTimelineItem!,
+        isPurchased: _isTimelineItemPurchased(),
+        onPurchase: () {
+          // Schließe Overlay
+          Navigator.pop(ctx);
+          // Öffne Purchase Dialog
+          _showTimelinePurchaseDialog(_activeTimelineItem!);
+        },
+      ),
+    );
   }
 
   /// Zeigt Kauf/Annahme Dialog
