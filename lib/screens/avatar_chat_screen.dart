@@ -61,6 +61,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   bool _isRecording = false;
   bool _isTyping = false;
   double _chatHeight = 200.0; // Resizable Chat-Höhe
+  bool _chatHandleHovered = false;
   bool _isStreamingSpeaking = false; // steuert LivePortrait Canvas
   bool _isFileSpeaking = false; // steuert Datei‑Replay
   // ignore: unused_field
@@ -1377,21 +1378,31 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                       // Resize-Handle
                       MouseRegion(
                         cursor: SystemMouseCursors.resizeUpDown,
+                        onEnter: (_) => setState(() => _chatHandleHovered = true),
+                        onExit: (_) => setState(() => _chatHandleHovered = false),
                         child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
                           onVerticalDragUpdate: (details) {
                             setState(() {
-                              _chatHeight = (_chatHeight - details.delta.dy).clamp(150.0, 600.0);
+                              final maxHeight = MediaQuery.of(context).size.height - 200; // Bildschirmhöhe - Header/Input
+                              _chatHeight = (_chatHeight - details.delta.dy).clamp(150.0, maxHeight);
                             });
                           },
                           child: Container(
-                            height: 12,
-                            color: Colors.transparent,
+                            height: 16,
+                            decoration: _chatHandleHovered
+                                ? const BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: [AppColors.magenta, AppColors.lightBlue],
+                                    ),
+                                  )
+                                : null,
                             child: Center(
                               child: Container(
                                 width: 40,
                                 height: 4,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.3),
+                                  color: Colors.white,
                                   borderRadius: BorderRadius.circular(2),
                                 ),
                               ),
@@ -3796,6 +3807,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
     debugPrint('▶️ Playing idle.mp4 (10s Loop)...');
     _currentChunk = 4;
+    _idleController!.setLooping(true);
     _idleController!.seekTo(Duration.zero);
     _idleController!.play();
     setState(() {}); // UI refresh
