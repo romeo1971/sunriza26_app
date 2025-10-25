@@ -26,11 +26,13 @@ import 'package:video_player/video_player.dart';
 import '../services/playlist_service.dart';
 import '../services/media_service.dart';
 import '../services/shared_moments_service.dart';
+import '../services/moments_service.dart';
 import '../models/media_models.dart';
 import '../widgets/liveportrait_canvas.dart';
 import '../widgets/chat_bubbles/user_message_bubble.dart';
 import '../widgets/chat_bubbles/avatar_message_bubble.dart';
 import '../widgets/hero_chat_fab_button.dart';
+import '../widgets/media/timeline_audio_slider.dart';
 import 'hero_chat_screen.dart';
 
 // GLOBAL Guard: verhindert mehrfache /publisher/start Calls über Widget-Lifecycle hinweg!
@@ -71,7 +73,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   bool _historyLoaded = false; // History vorhanden, aber initial nicht eingeblendet
   // Multi-Delete-Modus (WhatsApp-Style)
   bool _isMultiDeleteMode = false;
-  final Set<String> _selectedMessageIds = {};  StreamSubscription<PlayerState>? _playerStateSub;
+  final Set<String> _selectedMessageIds = {};
+  
+  // Timeline Integration (Audio Cover Slider)
+  AvatarMedia? _activeTimelineItem;
+  Timer? _timelineTimer;
+  bool _timelineSliderVisible = false;
+  
+  StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<Duration>? _playerPositionSub;
   StreamSubscription<VisemeEvent>? _visemeSub;
   final GlobalKey<LivePortraitCanvasState> _lpKey =
@@ -919,6 +928,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         // Chat History laden (OHNE sie anzuzeigen)
         _loadInitialMessages();
 
+        // Timeline initialisieren (Audio Cover Slider)
+        _initTimeline();
+
         // Video laden; danach Greeting abspielen
         _initLiveAvatar(_avatarData!.id).then((_) async {
           if (!mounted) return; // Screen disposed? → STOP
@@ -1687,6 +1699,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               );
             },
           ),
+
+          // Timeline Audio Slider (links am Bildrand)
+          if (_timelineSliderVisible && _activeTimelineItem != null)
+            TimelineAudioSlider(
+              audioMedia: _activeTimelineItem!,
+              slidingDuration: const Duration(minutes: 2),
+              onTap: _onTimelineItemTap,
+            ),
           const SizedBox(width: 8),
         ],
       ),
@@ -3836,6 +3856,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     }
     _deleteTimers.clear();
     
+    // Timeline Timer aufräumen
+    _timelineTimer?.cancel();
+    
     // WICHTIG: Lipsync Strategy STOP bevor dispose (stoppt Audio!)
     debugPrint('🛑 Stopping Lipsync Strategy audio...');
     _lipsync.stop().catchError((e) {
@@ -3869,9 +3892,366 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     super.dispose();
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // TIMELINE INTEGRATION
+  // ═══════════════════════════════════════════════════════════════════════
+
+  /// Lädt Timeline Items basierend auf Scheduler und zeigt sie an
+  Future<void> _initTimeline() async {
+    if (_avatarData == null) return;
+    
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    debugPrint('📅 Initializing Timeline for avatar ${_avatarData!.id}');
+    
+    // Lade aktive Timeline Items für heute
+    await _loadNextTimelineItem();
+  }
+
+  /// Lädt das nächste Timeline Item basierend auf Scheduler
+  Future<void> _loadNextTimelineItem() async {
+    if (_avatarData == null) return;
+    
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      // Hole Timeline Items mit Scheduler
+      final now = DateTime.now();
+      final weekday = now.weekday; // 1=Monday, 7=Sunday
+      final currentTime = now.hour * 60 + now.minute; // Minuten seit Mitternacht
+
+      // Query Timeline Items mit aktivem Scheduler
+      final timelineSnapshot = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .collection('timeline')
+          .where('active', isEqualTo: true)
+          .get();
+
+      if (timelineSnapshot.docs.isEmpty) {
+        debugPrint('📅 No active timeline items');
+        return;
+      }
+
+      // Filter nach Scheduler (Wochentag + Zeitraum)
+      AvatarMedia? nextItem;
+      Duration? nextDelay;
+
+      for (final doc in timelineSnapshot.docs) {
+        final data = doc.data();
+        final mediaId = data['mediaId'] as String?;
+        if (mediaId == null) continue;
+
+        // Hole Scheduler für dieses Timeline Item
+        final schedulerDocs = await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(_avatarData!.id)
+            .collection('timeline')
+            .doc(doc.id)
+            .collection('scheduler')
+            .where('active', isEqualTo: true)
+            .where('weekdays', arrayContains: weekday)
+            .get();
+
+        for (final schedulerDoc in schedulerDocs.docs) {
+          final schedulerData = schedulerDoc.data();
+          final startTime = schedulerData['startTime'] as int?; // Minuten
+          final endTime = schedulerData['endTime'] as int?; // Minuten
+
+          if (startTime != null && endTime != null) {
+            // Check ob aktuell im Zeitfenster
+            if (currentTime >= startTime && currentTime <= endTime) {
+              // Hole Media Asset
+              final mediaDoc = await FirebaseFirestore.instance
+                  .collection('avatars')
+                  .doc(_avatarData!.id)
+                  .collection('media')
+                  .doc(mediaId)
+                  .get();
+
+              if (mediaDoc.exists) {
+                final media = AvatarMedia.fromMap(mediaDoc.data()!);
+                
+                // Nur Audio mit Cover Images anzeigen (vorerst)
+                if (media.type == AvatarMediaType.audio && 
+                    media.coverImages != null && 
+                    media.coverImages!.isNotEmpty) {
+                  nextItem = media;
+                  nextDelay = Duration.zero; // Sofort anzeigen
+                  break;
+                }
+              }
+            }
+          }
+        }
+
+        if (nextItem != null) break;
+      }
+
+      if (nextItem != null && mounted) {
+        debugPrint('📅 Showing timeline item: ${nextItem.id}');
+        _showTimelineItem(nextItem, nextDelay ?? Duration.zero);
+      } else {
+        debugPrint('📅 No timeline items for current time');
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading timeline: $e');
+    }
+  }
+
+  /// Zeigt Timeline Item mit Slider-Animation
+  void _showTimelineItem(AvatarMedia media, Duration delay) {
+    _timelineTimer?.cancel();
+    
+    _timelineTimer = Timer(delay, () {
+      if (!mounted) return;
+      
+      setState(() {
+        _activeTimelineItem = media;
+        _timelineSliderVisible = true;
+      });
+
+      // Nach 1-3 Minuten ausblenden und nächstes Item laden
+      final displayDuration = const Duration(minutes: 2); // Vorerst fix 2 Min
+      
+      _timelineTimer = Timer(displayDuration, () {
+        if (!mounted) return;
+        
+        setState(() {
+          _timelineSliderVisible = false;
+          _activeTimelineItem = null;
+        });
+
+        // Nächstes Item nach 5 Sekunden laden
+        _timelineTimer = Timer(const Duration(seconds: 5), () {
+          _loadNextTimelineItem();
+        });
+      });
+    });
+  }
+
+  /// Öffnet Kauf/Annahme Dialog für Timeline Item
+  void _onTimelineItemTap() {
+    if (_activeTimelineItem == null) return;
+    
+    // Dialog öffnen mit Kauf/Annahme Optionen
+    _showTimelinePurchaseDialog(_activeTimelineItem!);
+  }
+
+  /// Zeigt Kauf/Annahme Dialog
+  Future<void> _showTimelinePurchaseDialog(AvatarMedia media) async {
+    final price = media.price ?? 0.0;
+    final isFree = price == 0.0;
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => _TimelinePurchaseDialog(
+        media: media,
+        price: price,
+        isFree: isFree,
+      ),
+    );
+  }
+
   @override
   bool get wantKeepAlive => true;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TIMELINE PURCHASE DIALOG
+// ═══════════════════════════════════════════════════════════════════════════
+
+class _TimelinePurchaseDialog extends StatefulWidget {
+  final AvatarMedia media;
+  final double price;
+  final bool isFree;
+
+  const _TimelinePurchaseDialog({
+    required this.media,
+    required this.price,
+    required this.isFree,
+  });
+
+  @override
+  State<_TimelinePurchaseDialog> createState() => _TimelinePurchaseDialogState();
+}
+
+class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
+  bool _isProcessing = false;
+  final _momentsService = MomentsService();
+
+  Future<void> _handlePurchase() async {
+    if (_isProcessing) return;
+
+    setState(() => _isProcessing = true);
+
+    try {
+      // Für kostenlose Items: Direkt speichern
+      if (widget.isFree) {
+        await _momentsService.saveMoment(
+          media: widget.media,
+          price: 0.0,
+          paymentMethod: 'free',
+        );
+
+        if (!mounted) return;
+        
+        // Schließe Dialog
+        Navigator.pop(context);
+
+        // Zeige Erfolgs-Meldung
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '✅ ${widget.media.originalFileName ?? 'Item'} wurde zu Moments hinzugefügt!',
+            ),
+            backgroundColor: AppColors.lightBlue,
+          ),
+        );
+      } else {
+        // Für kostenpflichtige Items: Stripe Checkout oder Credits
+        // TODO: Implement Stripe/Credits Integration
+        if (!mounted) return;
+        
+        Navigator.pop(context);
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('💳 Bezahlsystem wird noch implementiert...'),
+            backgroundColor: AppColors.magenta,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Purchase error: $e');
+      
+      if (!mounted) return;
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Fehler: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.darkSurface,
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(
+              widget.isFree ? 'Kostenlos' : '${widget.price.toStringAsFixed(2)} €',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+          if (_isProcessing)
+            const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            ),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Cover Image
+          if (widget.media.coverImages != null && widget.media.coverImages!.isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                widget.media.coverImages!.first.url,
+                height: 200,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stack) => Container(
+                  height: 200,
+                  color: Colors.grey.shade800,
+                  child: const Icon(Icons.music_note, size: 48, color: Colors.white54),
+                ),
+              ),
+            )
+          else
+            // Fallback: Thumbnail oder Icon
+            Container(
+              height: 200,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                gradient: LinearGradient(
+                  colors: [
+                    AppColors.magenta.withValues(alpha: 0.3),
+                    AppColors.lightBlue.withValues(alpha: 0.3),
+                  ],
+                ),
+              ),
+              child: const Icon(Icons.music_note, size: 64, color: Colors.white54),
+            ),
+          const SizedBox(height: 16),
+          
+          // Dateiname
+          Text(
+            widget.media.originalFileName ?? 'Audio File',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+            ),
+            textAlign: TextAlign.center,
+          ),
+          
+          // Info Text
+          const SizedBox(height: 8),
+          Text(
+            widget.isFree
+                ? 'Diese Datei wird in Moments gespeichert.'
+                : 'Nach dem Kauf wird die Datei in Moments gespeichert.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 12,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: _isProcessing ? null : () => Navigator.pop(context),
+          child: const Text('Abbrechen'),
+        ),
+        ElevatedButton(
+          onPressed: _isProcessing ? null : _handlePurchase,
+          style: ElevatedButton.styleFrom(
+            backgroundColor: widget.isFree ? AppColors.lightBlue : AppColors.magenta,
+          ),
+          child: _isProcessing
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : Text(widget.isFree ? 'Annehmen' : 'Kaufen'),
+        ),
+      ],
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MEDIA DECISION DIALOG (EXISTING)
+// ═══════════════════════════════════════════════════════════════════════════
 
 class _MediaDecisionDialog extends StatefulWidget {
   final String avatarId;
