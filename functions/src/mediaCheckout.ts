@@ -116,15 +116,114 @@ export async function handleMediaPurchaseWebhook(
 
   try {
     const userRef = admin.firestore().collection('users').doc(userId);
+    const firestore = admin.firestore();
+    const storage = admin.storage();
+    
+    // 1. Lade Media Asset Details
+    const mediaDoc = await firestore
+      .collection('avatars')
+      .doc(avatarId)
+      .collection('media')
+      .doc(mediaId)
+      .get();
+    
+    if (!mediaDoc.exists) {
+      console.error(`Media ${mediaId} nicht gefunden`);
+      return;
+    }
+    
+    const mediaData = mediaDoc.data();
+    const originalUrl = mediaData.url;
+    const originalFileName = mediaData.originalFileName || 'media';
+    const thumbUrl = mediaData.thumbUrl;
+    
+    // 2. Kopiere Original-Datei in user/moments Storage
+    const timestamp = Date.now();
+    const fileExt = getFileExtension(originalUrl) || getExtForType(mediaType);
+    const storagePath = `users/${userId}/moments/${avatarId}/${timestamp}${fileExt}`;
+    
+    // Download und Re-Upload (Firebase Storage)
+    const bucket = storage.bucket();
+    const sourceFile = bucket.file(getStoragePathFromUrl(originalUrl));
+    const destFile = bucket.file(storagePath);
+    
+    await sourceFile.copy(destFile);
+    
+    // Get Download URL
+    const [storedUrl] = await destFile.getSignedUrl({
+      action: 'read',
+      expires: '01-01-2100', // Permanent
+    });
+    
+    // 3. Optional: Copy Thumbnail
+    let storedThumbUrl = null;
+    if (thumbUrl) {
+      try {
+        const thumbStoragePath = `users/${userId}/moments/${avatarId}/${timestamp}_thumb.jpg`;
+        const sourceThumb = bucket.file(getStoragePathFromUrl(thumbUrl));
+        const destThumb = bucket.file(thumbStoragePath);
+        await sourceThumb.copy(destThumb);
+        [storedThumbUrl] = await destThumb.getSignedUrl({
+          action: 'read',
+          expires: '01-01-2100',
+        });
+      } catch (error: any) {
+        console.warn('Thumbnail copy failed:', error.message);
+      }
+    }
+    
+    // 4. Create Moment
+    const momentId = firestore.collection('users').doc(userId).collection('moments').doc().id;
+    const price = session.amount_total ? session.amount_total / 100 : 0;
+    const currency = session.currency === 'usd' ? '$' : '€';
+    
+    await userRef.collection('moments').doc(momentId).set({
+      id: momentId,
+      userId,
+      avatarId,
+      type: mediaType,
+      originalUrl,
+      storedUrl,
+      thumbUrl: storedThumbUrl,
+      originalFileName,
+      acquiredAt: timestamp,
+      price,
+      currency,
+      receiptId: null, // Wird gleich gesetzt
+    });
+    
+    // 5. Create Receipt
+    const receiptId = firestore.collection('users').doc(userId).collection('receipts').doc().id;
+    await userRef.collection('receipts').doc(receiptId).set({
+      id: receiptId,
+      userId,
+      avatarId,
+      momentId,
+      price,
+      currency,
+      paymentMethod: 'stripe',
+      createdAt: timestamp,
+      stripePaymentIntentId: String(session.payment_intent || ''),
+      metadata: {
+        mediaId,
+        mediaType,
+        stripeSessionId: session.id,
+      },
+    });
+    
+    // Update Moment with Receipt ID
+    await userRef.collection('moments').doc(momentId).update({
+      receiptId,
+    });
 
-    // Transaktion anlegen
+    // 6. Transaktion anlegen
     await userRef.collection('transactions').add({
       userId,
       type: 'media_purchase',
       mediaId,
       avatarId,
       mediaType,
-      amount: session.amount_total ? session.amount_total / 100 : 0,
+      amount: price,
       currency: session.currency || 'eur',
       stripeSessionId: session.id,
       paymentIntent: session.payment_intent,
@@ -132,19 +231,62 @@ export async function handleMediaPurchaseWebhook(
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // Media als gekauft markieren
+    // 7. Media als gekauft markieren
     await userRef.collection('purchased_media').doc(mediaId).set({
       mediaId,
       avatarId,
       type: mediaType,
-      amount: session.amount_total ? session.amount_total / 100 : 0,
-      currency: session.currency || 'eur',
-      purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
+      price,
+      currency,
+      purchasedAt: timestamp,
     });
 
-    console.log(`Media-Kauf erfolgreich: User ${userId} - Media ${mediaId}`);
+    console.log(`✅ Media-Kauf erfolgreich: User ${userId} - Media ${mediaId} → Moment ${momentId}`);
   } catch (error: any) {
-    console.error('Fehler beim Media-Kauf verarbeiten:', error);
+    console.error('❌ Fehler beim Media-Kauf verarbeiten:', error);
+  }
+}
+
+/**
+ * Helper: Extrahiere Storage-Pfad aus Firebase Download URL
+ */
+function getStoragePathFromUrl(url: string): string {
+  try {
+    // Firebase Storage URL Format: /v0/b/{bucket}/o/{path}
+    const pathMatch = url.match(/\/o\/([^?]+)/);
+    if (pathMatch) {
+      return decodeURIComponent(pathMatch[1]);
+    }
+  } catch (e) {
+    console.warn('Failed to parse storage URL:', url);
+  }
+  return url;
+}
+
+/**
+ * Helper: Dateiendung aus URL extrahieren
+ */
+function getFileExtension(url: string): string | null {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const match = pathname.match(/\.([a-zA-Z0-9]+)(\?|$)/);
+    return match ? `.${match[1]}` : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+/**
+ * Helper: Default Extension für Media Type
+ */
+function getExtForType(type: string): string {
+  switch (type) {
+    case 'image': return '.jpg';
+    case 'video': return '.mp4';
+    case 'audio': return '.mp3';
+    case 'document': return '.pdf';
+    default: return '';
   }
 }
 

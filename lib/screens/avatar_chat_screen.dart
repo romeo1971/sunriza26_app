@@ -78,10 +78,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   bool _isMultiDeleteMode = false;
   final Set<String> _selectedMessageIds = {};
   
-  // Timeline Integration (Audio Cover Slider)
+  // Timeline Integration (Playlist-basiert)
   AvatarMedia? _activeTimelineItem;
   Timer? _timelineTimer;
   bool _timelineSliderVisible = false;
+  List<AvatarMedia> _timelineItems = []; // Media Assets
+  List<Map<String, dynamic>> _timelineItemsMetadata = []; // Playlist Metadata (minutes, delaySec, startSec)
+  int _timelineCurrentIndex = 0; // Aktueller Index
+  final Stopwatch _chatStopwatch = Stopwatch(); // Chat-Zeit (00:00 bei Start)
+  bool _timelineLoop = false; // Loop am Ende?
   
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<Duration>? _playerPositionSub;
@@ -3862,6 +3867,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     
     // Timeline Timer aufräumen
     _timelineTimer?.cancel();
+    _chatStopwatch.stop();
     
     // WICHTIG: Lipsync Strategy STOP bevor dispose (stoppt Audio!)
     debugPrint('🛑 Stopping Lipsync Strategy audio...');
@@ -3897,10 +3903,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   }
 
   // ═══════════════════════════════════════════════════════════════════════
-  // TIMELINE INTEGRATION
+  // TIMELINE INTEGRATION (PLAYLIST-BASIERT)
   // ═══════════════════════════════════════════════════════════════════════
 
-  /// Lädt Timeline Items basierend auf Scheduler und zeigt sie an
+  /// Lädt Timeline Items aus AKTIVER Playlist basierend auf Zeit
   Future<void> _initTimeline() async {
     if (_avatarData == null) return;
     
@@ -3909,148 +3915,303 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
     debugPrint('📅 Initializing Timeline for avatar ${_avatarData!.id}');
     
-    // Lade aktive Timeline Items für heute
-    await _loadNextTimelineItem();
+    // Starte Chat-Timer (00:00)
+    _chatStopwatch.start();
+    
+    // Lade Timeline Items aus aktiver Playlist
+    await _loadPlaylistTimelineItems();
   }
 
-  /// Lädt das nächste Timeline Item basierend auf Scheduler
-  Future<void> _loadNextTimelineItem() async {
+  /// Lädt Timeline Items aus ALLEN Playlists mit Scheduler
+  Future<void> _loadPlaylistTimelineItems() async {
     if (_avatarData == null) return;
     
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-
     try {
-      // Hole Timeline Items mit Scheduler
       final now = DateTime.now();
       final weekday = now.weekday; // 1=Monday, 7=Sunday
-      final currentTime = now.hour * 60 + now.minute; // Minuten seit Mitternacht
 
-      // Query Timeline Items mit aktivem Scheduler
-      final timelineSnapshot = await FirebaseFirestore.instance
+      // 1. Hole ALLE Playlists für Avatar
+      final playlistsSnapshot = await FirebaseFirestore.instance
           .collection('avatars')
           .doc(_avatarData!.id)
-          .collection('timeline')
-          .where('active', isEqualTo: true)
+          .collection('playlists')
           .get();
 
-      if (timelineSnapshot.docs.isEmpty) {
-        debugPrint('📅 No active timeline items');
+      if (playlistsSnapshot.docs.isEmpty) {
+        debugPrint('📅 No playlists found');
         return;
       }
 
-      // Filter nach Scheduler (Wochentag + Zeitraum)
-      AvatarMedia? nextItem;
-      Duration? nextDelay;
+      // 2. Sammle Timeline Items aus allen passenden Playlists
+      final List<Map<String, dynamic>> allItems = [];
 
-      for (final doc in timelineSnapshot.docs) {
-        final data = doc.data();
-        final mediaId = data['mediaId'] as String?;
-        if (mediaId == null) continue;
+      for (final playlistDoc in playlistsSnapshot.docs) {
+        final playlistData = playlistDoc.data();
+        final playlistId = playlistDoc.id;
 
-        // Hole Scheduler für dieses Timeline Item
-        final schedulerDocs = await FirebaseFirestore.instance
-            .collection('avatars')
-            .doc(_avatarData!.id)
-            .collection('timeline')
-            .doc(doc.id)
-            .collection('scheduler')
-            .where('active', isEqualTo: true)
-            .where('weekdays', arrayContains: weekday)
-            .get();
+        // Prüfe ob Playlist aktiv ist (weeklySchedules check)
+        final weeklySchedules = playlistData['weeklySchedules'] as List?;
+        if (weeklySchedules == null) continue;
 
-        for (final schedulerDoc in schedulerDocs.docs) {
-          final schedulerData = schedulerDoc.data();
-          final startTime = schedulerData['startTime'] as int?; // Minuten
-          final endTime = schedulerData['endTime'] as int?; // Minuten
-
-          if (startTime != null && endTime != null) {
-            // Check ob aktuell im Zeitfenster
-            if (currentTime >= startTime && currentTime <= endTime) {
-              // Hole Media Asset
-              final mediaDoc = await FirebaseFirestore.instance
-                  .collection('avatars')
-                  .doc(_avatarData!.id)
-                  .collection('media')
-                  .doc(mediaId)
-                  .get();
-
-              if (mediaDoc.exists) {
-                final media = AvatarMedia.fromMap(mediaDoc.data()!);
-                
-                // Alle Media-Typen anzeigen (Image, Video, Audio, Document)
-                nextItem = media;
-                nextDelay = Duration.zero; // Sofort anzeigen
-                break;
-              }
-            }
+        bool isActiveToday = false;
+        for (final schedule in weeklySchedules) {
+          if (schedule is! Map) continue;
+          final scheduleWeekday = schedule['weekday'] as int?;
+          if (scheduleWeekday == weekday) {
+            isActiveToday = true;
+            break;
           }
         }
 
-        if (nextItem != null) break;
+        if (!isActiveToday) continue;
+
+        // 3. Lade timelineItems aus dieser Playlist
+        final timelineItems = await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(_avatarData!.id)
+            .collection('playlists')
+            .doc(playlistId)
+            .collection('timelineItems')
+            .where('activity', isEqualTo: true)
+            .orderBy('order')
+            .get();
+
+        for (final itemDoc in timelineItems.docs) {
+          final itemData = itemDoc.data();
+          itemData['id'] = itemDoc.id;
+          itemData['playlistId'] = playlistId;
+          allItems.add(itemData);
+        }
       }
 
-      if (nextItem != null && mounted) {
-        debugPrint('📅 Showing timeline item: ${nextItem.id}');
-        _showTimelineItem(nextItem, nextDelay ?? Duration.zero);
-      } else {
-        debugPrint('📅 No timeline items for current time');
+      if (allItems.isEmpty) {
+        debugPrint('📅 No timeline items found');
+        return;
+      }
+
+      // 4. Sortiere Items nach order
+      allItems.sort((a, b) {
+        final aOrder = a['order'] as int? ?? 0;
+        final bOrder = b['order'] as int? ?? 0;
+        return aOrder.compareTo(bOrder);
+      });
+
+      // 5. Konvertiere zu AvatarMedia und speichere
+      final List<AvatarMedia> mediaItems = [];
+      final List<Map<String, dynamic>> itemMetadata = [];
+
+      for (final item in allItems) {
+        final assetId = item['assetId'] as String?;
+        if (assetId == null) continue;
+
+        // Lade Media Asset
+        final mediaDoc = await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(_avatarData!.id)
+            .collection('media')
+            .doc(assetId)
+            .get();
+
+        if (mediaDoc.exists) {
+          final media = AvatarMedia.fromMap(mediaDoc.data()!);
+          mediaItems.add(media);
+          itemMetadata.add(item);
+        }
+      }
+
+      if (mediaItems.isNotEmpty && mounted) {
+        debugPrint('📅 Loaded ${mediaItems.length} timeline items');
+        
+        // Check Loop aus Playlist-Config
+        bool loopEnabled = false;
+        if (playlistsSnapshot.docs.isNotEmpty) {
+          final firstPlaylist = playlistsSnapshot.docs.first.data();
+          loopEnabled = firstPlaylist['timelineLoop'] as bool? ?? false;
+        }
+        
+        setState(() {
+          _timelineItems = mediaItems;
+          _timelineItemsMetadata = itemMetadata;
+          _timelineCurrentIndex = 0;
+          _timelineLoop = loopEnabled;
+        });
+        
+        // Starte Timeline mit erstem Item
+        _scheduleNextTimelineItem();
       }
     } catch (e) {
       debugPrint('❌ Error loading timeline: $e');
     }
   }
 
-  /// Zeigt Timeline Item mit Slider-Animation
-  void _showTimelineItem(AvatarMedia media, Duration delay) {
-    _timelineTimer?.cancel();
+  /// Plant das nächste Timeline Item basierend auf Chat-Zeit
+  void _scheduleNextTimelineItem() {
+    if (_timelineItems.isEmpty || _timelineItemsMetadata.isEmpty) return;
     
-    _timelineTimer = Timer(delay, () {
+    // Check ob Loop oder Ende
+    if (_timelineCurrentIndex >= _timelineItems.length) {
+      if (_timelineLoop) {
+        debugPrint('📅 Timeline Loop: Restarting from beginning');
+        _timelineCurrentIndex = 0;
+      } else {
+        debugPrint('📅 Timeline ended (no loop)');
+        return;
+      }
+    }
+
+    final metadata = _timelineItemsMetadata[_timelineCurrentIndex];
+    final waitMinutes = metadata['minDropdown'] as int? ?? 1;
+    
+    // Warte X Minuten (Chat-Zeit)
+    final waitDuration = Duration(minutes: waitMinutes);
+    
+    debugPrint('📅 Scheduling item ${_timelineCurrentIndex + 1}/${_timelineItems.length} in ${waitMinutes}min (Chat-Zeit)');
+    
+    _timelineTimer = Timer(waitDuration, () {
       if (!mounted) return;
-      
-      setState(() {
-        _activeTimelineItem = media;
-        _timelineSliderVisible = true;
-      });
-
-      // Nach 1-3 Minuten ausblenden und nächstes Item laden
-      final displayDuration = const Duration(minutes: 2); // Vorerst fix 2 Min
-      
-      _timelineTimer = Timer(displayDuration, () {
-        if (!mounted) return;
-        
-        setState(() {
-          _timelineSliderVisible = false;
-          _activeTimelineItem = null;
-        });
-
-        // Nächstes Item nach 5 Sekunden laden
-        _timelineTimer = Timer(const Duration(seconds: 5), () {
-          _loadNextTimelineItem();
-        });
-      });
+      _showCurrentTimelineItem();
     });
   }
 
+  /// Zeigt das aktuelle Timeline Item
+  void _showCurrentTimelineItem() {
+    if (_timelineItems.isEmpty || _timelineItemsMetadata.isEmpty) return;
+    if (_timelineCurrentIndex >= _timelineItems.length) return;
+
+    final item = _timelineItems[_timelineCurrentIndex];
+    final metadata = _timelineItemsMetadata[_timelineCurrentIndex];
+    
+    // Berechne Anzeigedauer
+    int displayMinutes = 3; // Default: 3 Minuten
+    
+    if (_timelineCurrentIndex + 1 < _timelineItemsMetadata.length) {
+      // Es gibt ein nächstes Item
+      final nextMetadata = _timelineItemsMetadata[_timelineCurrentIndex + 1];
+      final nextMinutes = nextMetadata['minDropdown'] as int? ?? 1;
+      
+      // Anzeigedauer = min(3, nextMinutes)
+      displayMinutes = nextMinutes < 3 ? nextMinutes : 3;
+    }
+    // Sonst: Letztes Item = 3 Minuten
+
+    final displayDuration = Duration(minutes: displayMinutes);
+    
+    debugPrint('📅 Showing item ${_timelineCurrentIndex + 1}/${_timelineItems.length}: ${item.originalFileName} (${displayMinutes}min display)');
+    
+    _showTimelineItemWithAnimation(item, displayDuration);
+  }
+
+  /// Zeigt Timeline Item mit Slider-Animation
+  void _showTimelineItemWithAnimation(AvatarMedia media, Duration displayDuration) async {
+    if (!mounted) return;
+    
+    // Purchase Status vorab laden
+    _activeTimelineItem = media;
+    await _isTimelineItemPurchasedAsync();
+    
+    if (!mounted) return;
+    
+    setState(() {
+      _timelineSliderVisible = true;
+    });
+
+    // Nach displayDuration ausblenden
+    _timelineTimer = Timer(displayDuration, () {
+      if (!mounted) return;
+      
+      setState(() {
+        _timelineSliderVisible = false;
+        _activeTimelineItem = null;
+      });
+
+      // Nächstes Item planen
+      _timelineCurrentIndex++;
+      _scheduleNextTimelineItem();
+    });
+  }
+
+  /// Pausiert Timeline (bei Overlay/Purchase)
+  void _pauseTimeline() {
+    _timelineTimer?.cancel();
+    debugPrint('⏸️ Timeline paused');
+  }
+
+  /// Resume Timeline (nach Overlay/Purchase)
+  void _resumeTimeline() {
+    if (_activeTimelineItem != null && _timelineSliderVisible) {
+      // Timeline war aktiv - zeige aktuelles Item weiter
+      // Vereinfacht: Lasse Timer weiterlaufen
+      debugPrint('▶️ Timeline resumed (item continues)');
+    } else {
+      // Timeline war in Wartezeit - plane nächstes Item neu
+      _scheduleNextTimelineItem();
+      debugPrint('▶️ Timeline resumed (scheduling next)');
+    }
+  }
+
+  // Cache für Purchase Status
+  final Map<String, bool> _purchaseStatusCache = {};
+
   /// Prüft ob Timeline Item bereits gekauft wurde
+  Future<bool> _isTimelineItemPurchasedAsync() async {
+    if (_activeTimelineItem == null) return false;
+    
+    final mediaId = _activeTimelineItem!.id;
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return false;
+    
+    // Kostenlose Items sind immer "gekauft" (kein Blur)
+    final price = _activeTimelineItem!.price ?? 0.0;
+    if (price == 0.0) return false; // Blur zeigen für "Annehmen" Flow
+    
+    // Cache prüfen
+    if (_purchaseStatusCache.containsKey(mediaId)) {
+      return _purchaseStatusCache[mediaId]!;
+    }
+    
+    // Firestore Check
+    try {
+      final doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(uid)
+          .collection('purchased_media')
+          .doc(mediaId)
+          .get()
+          .timeout(const Duration(seconds: 3));
+      
+      final isPurchased = doc.exists;
+      _purchaseStatusCache[mediaId] = isPurchased;
+      return isPurchased;
+    } catch (e) {
+      debugPrint('❌ Error checking purchase status: $e');
+      return false; // Bei Fehler: nicht gekauft annehmen
+    }
+  }
+
+  /// Synchrone Version für Build-Context (nutzt Cache)
   bool _isTimelineItemPurchased() {
     if (_activeTimelineItem == null) return false;
     
-    // Kostenlose Items sind immer "gekauft"
-    final price = _activeTimelineItem!.price ?? 0.0;
-    if (price == 0.0) return false; // Trotzdem Blur zeigen für "Annehmen" Flow
+    final mediaId = _activeTimelineItem!.id;
     
-    // TODO: Prüfe in Firestore ob User das Item gekauft hat
-    // Vorerst: Alle kostenpflichtigen Items sind "nicht gekauft"
-    return false;
+    // Kostenlose Items
+    final price = _activeTimelineItem!.price ?? 0.0;
+    if (price == 0.0) return false;
+    
+    // Nutze Cache
+    return _purchaseStatusCache[mediaId] ?? false;
   }
 
   /// Öffnet Fullsize Overlay für Timeline Item
   void _onTimelineItemTap() {
     if (_activeTimelineItem == null) return;
     
+    // Timeline pausieren
+    _pauseTimeline();
+    
     showDialog(
       context: context,
+      barrierDismissible: true,
       builder: (ctx) => TimelineMediaOverlay(
         media: _activeTimelineItem!,
         isPurchased: _isTimelineItemPurchased(),
@@ -4061,22 +4222,30 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           _showTimelinePurchaseDialog(_activeTimelineItem!);
         },
       ),
-    );
+    ).then((_) {
+      // Timeline fortsetzen nach Overlay-Schließen
+      _resumeTimeline();
+    });
   }
 
   /// Zeigt Kauf/Annahme Dialog
   Future<void> _showTimelinePurchaseDialog(AvatarMedia media) async {
+    // Timeline bleibt pausiert während Purchase Dialog
     final price = media.price ?? 0.0;
     final isFree = price == 0.0;
 
     await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => _TimelinePurchaseDialog(
         media: media,
         price: price,
         isFree: isFree,
       ),
     );
+    
+    // Timeline fortsetzen nach Purchase Dialog
+    _resumeTimeline();
   }
 
   @override
@@ -4130,6 +4299,15 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
           price: 0.0,
           paymentMethod: 'free',
         );
+
+        // Update Purchase Status Cache
+        if (context.mounted) {
+          final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+          if (chatState != null) {
+            chatState._purchaseStatusCache[widget.media.id] = true;
+            chatState.setState(() {}); // UI refresh
+          }
+        }
 
         if (!mounted) return;
         
@@ -4186,6 +4364,15 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
             price: widget.price,
             paymentMethod: 'credits',
           );
+
+          // Update Purchase Status Cache
+          if (context.mounted) {
+            final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+            if (chatState != null) {
+              chatState._purchaseStatusCache[widget.media.id] = true;
+              chatState.setState(() {}); // UI refresh
+            }
+          }
 
           if (!mounted) return;
           Navigator.pop(context);

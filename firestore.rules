@@ -81,6 +81,38 @@ service cloud.firestore {
         allow read: if signedIn() && uid == request.auth.uid;
         allow create: if signedIn(); // Cloud Function kann schreiben
       }
+      
+      // Moments (Gekaufte/Angenommene Media Files)
+      match /moments/{momentId} {
+        allow read: if signedIn() && uid == request.auth.uid;
+        allow create: if signedIn() && uid == request.auth.uid
+          && request.resource.data.keys().hasOnly(['id', 'userId', 'avatarId', 'type', 'originalUrl', 'storedUrl', 'thumbUrl', 'originalFileName', 'acquiredAt', 'price', 'currency', 'receiptId'])
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.type in ['image', 'video', 'audio', 'document']
+          && request.resource.data.originalUrl is string
+          && request.resource.data.storedUrl is string
+          && request.resource.data.acquiredAt is int;
+        allow delete: if signedIn() && uid == request.auth.uid;
+      }
+      
+      // Receipts (Kauf-/Download-Belege)
+      match /receipts/{receiptId} {
+        allow read: if signedIn() && uid == request.auth.uid;
+        allow create: if signedIn() // Cloud Function kann schreiben
+          && request.resource.data.keys().hasOnly(['id', 'userId', 'avatarId', 'momentId', 'price', 'currency', 'paymentMethod', 'createdAt', 'stripePaymentIntentId', 'metadata'])
+          && request.resource.data.userId == uid
+          && request.resource.data.paymentMethod in ['free', 'credits', 'stripe']
+          && request.resource.data.price is number
+          && request.resource.data.createdAt is int;
+      }
+      
+      // Purchased Media (Tracking welche Media Items gekauft wurden)
+      match /purchased_media/{mediaId} {
+        allow read: if signedIn() && uid == request.auth.uid;
+        allow create: if signedIn() // Cloud Function oder Frontend kann schreiben
+          && request.resource.data.keys().hasOnly(['mediaId', 'avatarId', 'type', 'price', 'currency', 'credits', 'purchasedAt'])
+          && request.resource.data.purchasedAt is int;
+      }
     }
 
     // Avatar-Dokumente (Struppi-System)
