@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import '../../screens/avatar_chat_screen.dart';
 import '../hero_chat_icon_picker.dart';
 
-/// User Message Bubble (Rechts, WhatsApp-Style)
-class UserMessageBubble extends StatelessWidget {
+/// Avatar Message Bubble (Links, WhatsApp-Style)
+class AvatarMessageBubble extends StatelessWidget {
   final ChatMessage message;
   final Function(ChatMessage, String?) onIconChanged;
   final Function(ChatMessage)? onDelete;
@@ -11,12 +11,14 @@ class UserMessageBubble extends StatelessWidget {
   final bool isSelected;
   final Function(String)? onSelectionToggle;
   final VoidCallback? onMultiDeleteStart;
+  final String? avatarImageUrl;
 
-  const UserMessageBubble({
+  const AvatarMessageBubble({
     super.key,
     required this.message,
     required this.onIconChanged,
     this.onDelete,
+    this.avatarImageUrl,
     this.isMultiDeleteMode = false,
     this.isSelected = false,
     this.onSelectionToggle,
@@ -26,9 +28,9 @@ class UserMessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bubbleWidget = Column(
-      crossAxisAlignment: CrossAxisAlignment.end,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Message Container (White + GMBC gradient 0.2 opacity)
+        // Message Container
         Container(
           constraints: BoxConstraints(
             maxWidth: MediaQuery.of(context).size.width * 0.75,
@@ -38,21 +40,16 @@ class UserMessageBubble extends StatelessWidget {
             vertical: 6,
           ),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [
-                Color(0xFFFFD5F4), // White + 20% Magenta
-                Color(0xFFE8F0FE), // White + 20% LightBlue
-              ],
-            ),
+            color: const Color(0xFFF5F5F5), // lightest grey
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(8),
               topRight: Radius.circular(8),
-              bottomLeft: Radius.circular(8),
-              bottomRight: Radius.circular(2),
+              bottomLeft: Radius.circular(2),
+              bottomRight: Radius.circular(8),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 4,
                 offset: const Offset(0, 2),
               ),
@@ -92,7 +89,7 @@ class UserMessageBubble extends StatelessWidget {
         // Highlight Icon (unter der Blase)
         if (message.highlightIcon != null)
           Padding(
-            padding: const EdgeInsets.only(top: 2, right: 4),
+            padding: const EdgeInsets.only(top: 2, left: 4),
             child: Text(
               message.highlightIcon!,
               style: const TextStyle(fontSize: 18),
@@ -104,43 +101,37 @@ class UserMessageBubble extends StatelessWidget {
     return GestureDetector(
       onLongPress: isMultiDeleteMode ? null : () => _showIconPicker(context),
       onTap: isMultiDeleteMode ? () {
-        if (onSelectionToggle != null) onSelectionToggle!(message.messageId);
+        if (onSelectionToggle != null) onSelectionToggle!(message.id);
       } : null,
       child: Padding(
         padding: const EdgeInsets.only(
-          left: 64,
-          right: 8,
+          left: 8,
+          right: 64,
           bottom: 4,
         ),
         child: isMultiDeleteMode ? Row(
-          mainAxisAlignment: MainAxisAlignment.end,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: bubbleWidget),
-            // Checkbox (WhatsApp-Style) - rechts
+            // Checkbox (WhatsApp-Style)
             Padding(
-              padding: const EdgeInsets.only(left: 8, top: 8),
+              padding: const EdgeInsets.only(right: 8, top: 8),
               child: Container(
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(6),
+                  shape: BoxShape.circle,
                   border: Border.all(
-                    color: isSelected ? Colors.transparent : Colors.grey,
+                    color: isSelected ? Colors.green : Colors.grey,
                     width: 2,
                   ),
-                  gradient: isSelected ? const LinearGradient(
-                    colors: [
-                      Color(0xFFFF2EC8), // Magenta
-                      Color(0xFF8AB4F8), // LightBlue
-                    ],
-                  ) : null,
+                  color: isSelected ? Colors.green : Colors.transparent,
                 ),
                 child: isSelected
                   ? const Icon(Icons.check, size: 16, color: Colors.white)
                   : null,
               ),
             ),
+            Expanded(child: bubbleWidget),
           ],
         ) : bubbleWidget,
       ),
@@ -158,7 +149,7 @@ class UserMessageBubble extends StatelessWidget {
 
     HeroChatIconPicker.showCentered(
       context,
-      alignRight: true,
+      alignRight: false,
       selectedIcon: message.highlightIcon,
       onIconSelected: (icon) => onIconChanged(message, icon),
       onRemove: () => onIconChanged(message, null),

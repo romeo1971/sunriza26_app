@@ -31,7 +31,6 @@ class HeroChatIconPicker extends StatefulWidget {
     required Function(String) onIconSelected,
     required VoidCallback onRemove,
     VoidCallback? onDelete,
-    VoidCallback? onMultiDeleteStart,
   }) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
@@ -70,10 +69,7 @@ class HeroChatIconPicker extends StatefulWidget {
                   onDelete();
                   entry.remove();
                 } : null,
-                onMultiDeleteStart: onMultiDeleteStart != null ? () {
-                  onMultiDeleteStart();
-                  entry.remove();
-                } : null,              ),
+              ),
             ),
           ),
         ],
@@ -91,7 +87,6 @@ class HeroChatIconPicker extends StatefulWidget {
     required Function(String) onIconSelected,
     required VoidCallback onRemove,
     VoidCallback? onDelete,
-    VoidCallback? onMultiDeleteStart,
   }) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
@@ -128,10 +123,7 @@ class HeroChatIconPicker extends StatefulWidget {
                     onDelete();
                     entry.remove();
                   } : null,
-                  onMultiDeleteStart: onMultiDeleteStart != null ? () {
-                    onMultiDeleteStart();
-                    entry.remove();
-                  } : null,                ),
+                ),
               ),
             ),
           ),
@@ -363,6 +355,8 @@ class _HeroChatIconPickerState extends State<HeroChatIconPicker> {
       ),
     );
   }
+}
+
 
   Widget _buildMultiDeleteButton() {
     return GestureDetector(
@@ -398,5 +392,3 @@ class _HeroChatIconPickerState extends State<HeroChatIconPicker> {
     );
   }
 }
-
-

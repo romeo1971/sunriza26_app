@@ -8,7 +8,7 @@ class HeroChatIconPicker extends StatefulWidget {
   final VoidCallback onClose;
   final bool alignRight; // true = User (rechts), false = Avatar (links)
   final VoidCallback? onDelete; // Nachricht löschen
-  final VoidCallback? onMultiDeleteStart; // Mehrere Nachrichten löschen
+
   const HeroChatIconPicker({
     super.key,
     this.selectedIcon,
@@ -16,7 +16,6 @@ class HeroChatIconPicker extends StatefulWidget {
     required this.onClose,
     required this.alignRight,
     this.onDelete,
-    this.onMultiDeleteStart,
   });
 
   @override
@@ -31,7 +30,6 @@ class HeroChatIconPicker extends StatefulWidget {
     required Function(String) onIconSelected,
     required VoidCallback onRemove,
     VoidCallback? onDelete,
-    VoidCallback? onMultiDeleteStart,
   }) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
@@ -70,10 +68,7 @@ class HeroChatIconPicker extends StatefulWidget {
                   onDelete();
                   entry.remove();
                 } : null,
-                onMultiDeleteStart: onMultiDeleteStart != null ? () {
-                  onMultiDeleteStart();
-                  entry.remove();
-                } : null,              ),
+              ),
             ),
           ),
         ],
@@ -91,7 +86,6 @@ class HeroChatIconPicker extends StatefulWidget {
     required Function(String) onIconSelected,
     required VoidCallback onRemove,
     VoidCallback? onDelete,
-    VoidCallback? onMultiDeleteStart,
   }) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
@@ -128,10 +122,7 @@ class HeroChatIconPicker extends StatefulWidget {
                     onDelete();
                     entry.remove();
                   } : null,
-                  onMultiDeleteStart: onMultiDeleteStart != null ? () {
-                    onMultiDeleteStart();
-                    entry.remove();
-                  } : null,                ),
+                ),
               ),
             ),
           ),
@@ -196,11 +187,6 @@ class _HeroChatIconPickerState extends State<HeroChatIconPicker> {
         if (widget.onDelete != null) ...[
           const SizedBox(height: 6),
           _buildDeleteButton(),
-        ],
-        // Multi-Delete Button (Mehrere Nachrichten löschen)
-        if (widget.onMultiDeleteStart != null) ...[
-          const SizedBox(height: 6),
-          _buildMultiDeleteButton(),
         ],
       ],
     );
@@ -363,40 +349,5 @@ class _HeroChatIconPickerState extends State<HeroChatIconPicker> {
       ),
     );
   }
-
-  Widget _buildMultiDeleteButton() {
-    return GestureDetector(
-      onTap: widget.onMultiDeleteStart,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
-        decoration: BoxDecoration(
-          color: Colors.orange.withValues(alpha: 0.2),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: Colors.orange.withValues(alpha: 0.5),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.checklist, color: Colors.orange, size: 14),
-            const SizedBox(width: 4),
-            const Text(
-              'Mehrere Nachrichten löschen',
-              style: TextStyle(
-                color: Colors.orange,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
-
 

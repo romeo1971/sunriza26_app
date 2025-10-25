@@ -785,7 +785,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               if (!mounted) return;
               // Nur stoppen, wenn weiterhin inaktiv
               if (!_isStreamingSpeaking) {
-                debugPrint('⏹️ Auto-stop publisher only (idle 3s)');
+                debugPrint('⏹️ Auto-stop publisher only (idle 5s)');
                 // Nur Publisher stoppen (Session warm lassen, kein Kaltstart beim nächsten Prompt)
                 await _stopLiveKitPublisher(roomName, stopSession: true);
               }

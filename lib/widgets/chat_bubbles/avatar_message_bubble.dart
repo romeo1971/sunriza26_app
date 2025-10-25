@@ -7,6 +7,10 @@ class AvatarMessageBubble extends StatelessWidget {
   final ChatMessage message;
   final Function(ChatMessage, String?) onIconChanged;
   final Function(ChatMessage)? onDelete;
+  final bool isMultiDeleteMode;
+  final bool isSelected;
+  final Function(String)? onSelectionToggle;
+  final VoidCallback? onMultiDeleteStart;
   final String? avatarImageUrl;
 
   const AvatarMessageBubble({
@@ -15,88 +19,126 @@ class AvatarMessageBubble extends StatelessWidget {
     required this.onIconChanged,
     this.onDelete,
     this.avatarImageUrl,
+    this.isMultiDeleteMode = false,
+    this.isSelected = false,
+    this.onSelectionToggle,
+    this.onMultiDeleteStart,
   });
 
   @override
   Widget build(BuildContext context) {
+    final bubbleWidget = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Message Container
+        Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 6,
+          ),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF5F5F5), // lightest grey
+            borderRadius: const BorderRadius.only(
+              topLeft: Radius.circular(8),
+              topRight: Radius.circular(8),
+              bottomLeft: Radius.circular(2),
+              bottomRight: Radius.circular(8),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              // Message Text
+              Padding(
+                padding: const EdgeInsets.only(right: 50),
+                child: Text(
+                  message.text,
+                  style: const TextStyle(
+                    color: Color(0xFF2E2E2E), // dark grey
+                    fontSize: 14.5,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+              
+              // Timestamp (rechts unten, halbe Höhe letzte Zeile)
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Text(
+                  _formatTime(message.timestamp),
+                  style: TextStyle(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    fontSize: 10,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        
+        // Highlight Icon (unter der Blase)
+        if (message.highlightIcon != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2, left: 4),
+            child: Text(
+              message.highlightIcon!,
+              style: const TextStyle(fontSize: 18),
+            ),
+          ),
+      ],
+    );
+
     return GestureDetector(
-      onLongPress: () => _showIconPicker(context),
+      onLongPress: isMultiDeleteMode ? null : () => _showIconPicker(context),
+      onTap: isMultiDeleteMode ? () {
+        if (onSelectionToggle != null) onSelectionToggle!(message.messageId);
+      } : null,
       child: Padding(
         padding: const EdgeInsets.only(
           left: 8,
           right: 64,
           bottom: 4,
         ),
-        child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Message Container
-                  Container(
-                    constraints: BoxConstraints(
-                      maxWidth: MediaQuery.of(context).size.width * 0.75,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF5F5F5), // lightest grey
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(8),
-                        topRight: Radius.circular(8),
-                        bottomLeft: Radius.circular(2),
-                        bottomRight: Radius.circular(8),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 4,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: Stack(
-                      children: [
-                        // Message Text
-                        Padding(
-                          padding: const EdgeInsets.only(right: 50),
-                          child: Text(
-                            message.text,
-                            style: const TextStyle(
-                              color: Color(0xFF2E2E2E), // dark grey
-                              fontSize: 14.5,
-                              height: 1.35,
-                            ),
-                          ),
-                        ),
-                        
-                        // Timestamp (rechts unten, halbe Höhe letzte Zeile)
-                        Positioned(
-                          right: 0,
-                          bottom: 0,
-                          child: Text(
-                            _formatTime(message.timestamp),
-                            style: TextStyle(
-                              color: Colors.black.withValues(alpha: 0.4),
-                              fontSize: 10,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+        child: isMultiDeleteMode ? Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Checkbox (WhatsApp-Style)
+            Padding(
+              padding: const EdgeInsets.only(right: 8, top: 8),
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: isSelected ? Colors.transparent : Colors.grey,
+                    width: 2,
                   ),
-                  
-                  // Highlight Icon (unter der Blase)
-                  if (message.highlightIcon != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2, left: 4),
-                      child: Text(
-                        message.highlightIcon!,
-                        style: const TextStyle(fontSize: 18),
-                      ),
-                    ),
-                ],
-        ),
+                  gradient: isSelected ? const LinearGradient(
+                    colors: [
+                      Color(0xFFFF2EC8), // Magenta
+                      Color(0xFF8AB4F8), // LightBlue
+                    ],
+                  ) : null,
+                ),
+                child: isSelected
+                  ? const Icon(Icons.check, size: 16, color: Colors.white)
+                  : null,
+              ),
+            ),
+            Expanded(child: bubbleWidget),
+          ],
+        ) : bubbleWidget,
       ),
     );
   }
@@ -117,7 +159,7 @@ class AvatarMessageBubble extends StatelessWidget {
       onIconSelected: (icon) => onIconChanged(message, icon),
       onRemove: () => onIconChanged(message, null),
       onDelete: onDelete != null ? () => onDelete!(message) : null,
+      onMultiDeleteStart: onMultiDeleteStart,
     );
   }
 }
-

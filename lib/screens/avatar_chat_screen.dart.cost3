@@ -780,12 +780,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           _publisherIdleTimer = null;
         } else if (roomName != null && roomName.isNotEmpty) {
           _publisherIdleTimer?.cancel();
-          _publisherIdleTimer = Timer(const Duration(seconds: 3), () async {
+          _publisherIdleTimer = Timer(const Duration(seconds: 5), () async {
             try {
               if (!mounted) return;
               // Nur stoppen, wenn weiterhin inaktiv
               if (!_isStreamingSpeaking) {
-                debugPrint('⏹️ Auto-stop publisher only (idle 3s)');
+                debugPrint('⏹️ Auto-stop publisher only (idle 5s)');
                 // Nur Publisher stoppen (Session warm lassen, kein Kaltstart beim nächsten Prompt)
                 await _stopLiveKitPublisher(roomName, stopSession: true);
               }

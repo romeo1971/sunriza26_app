@@ -104,7 +104,7 @@ class UserMessageBubble extends StatelessWidget {
     return GestureDetector(
       onLongPress: isMultiDeleteMode ? null : () => _showIconPicker(context),
       onTap: isMultiDeleteMode ? () {
-        if (onSelectionToggle != null) onSelectionToggle!(message.messageId);
+        if (onSelectionToggle != null) onSelectionToggle!(message.id);
       } : null,
       child: Padding(
         padding: const EdgeInsets.only(
@@ -124,17 +124,12 @@ class UserMessageBubble extends StatelessWidget {
                 width: 24,
                 height: 24,
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(6),
+                  shape: BoxShape.circle,
                   border: Border.all(
-                    color: isSelected ? Colors.transparent : Colors.grey,
+                    color: isSelected ? Colors.green : Colors.grey,
                     width: 2,
                   ),
-                  gradient: isSelected ? const LinearGradient(
-                    colors: [
-                      Color(0xFFFF2EC8), // Magenta
-                      Color(0xFF8AB4F8), // LightBlue
-                    ],
-                  ) : null,
+                  color: isSelected ? Colors.green : Colors.transparent,
                 ),
                 child: isSelected
                   ? const Icon(Icons.check, size: 16, color: Colors.white)

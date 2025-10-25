@@ -543,7 +543,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
     if (lastStarted != null) {
       final age = now.difference(lastStarted);
-      if (age.inSeconds < 30) {
+      if (age.inSeconds < 240) {
         // Session noch aktiv (< 4 Min) → SKIP!
         debugPrint(
           '⏭️ MuseTalk session bereits aktiv für room=$room (age: ${age.inSeconds}s) - SKIP!',
@@ -780,14 +780,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           _publisherIdleTimer = null;
         } else if (roomName != null && roomName.isNotEmpty) {
           _publisherIdleTimer?.cancel();
-          _publisherIdleTimer = Timer(const Duration(seconds: 3), () async {
+          _publisherIdleTimer = Timer(const Duration(seconds: 5), () async {
             try {
               if (!mounted) return;
               // Nur stoppen, wenn weiterhin inaktiv
               if (!_isStreamingSpeaking) {
-                debugPrint('⏹️ Auto-stop publisher only (idle 3s)');
+                debugPrint('⏹️ Auto-stop publisher only (idle 5s)');
                 // Nur Publisher stoppen (Session warm lassen, kein Kaltstart beim nächsten Prompt)
-                await _stopLiveKitPublisher(roomName, stopSession: true);
+                await _stopLiveKitPublisher(roomName, stopSession: false);
               }
             } catch (_) {}
           });
@@ -1366,6 +1366,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+            // Multi-Delete-Bar (WhatsApp-Style)
+            if (_isMultiDeleteMode) _buildMultiDeleteBar(),
+
                       // Chat-Nachrichten
                       SizedBox(height: 200, child: _buildChatMessages()),
 
@@ -1921,7 +1924,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             isMultiDeleteMode: _isMultiDeleteMode,
             isSelected: _selectedMessageIds.contains(message.messageId),
             onSelectionToggle: _toggleMessageSelection,
-            onMultiDeleteStart: _startMultiDeleteMode,
           )
         : AvatarMessageBubble(
             message: message,
@@ -1931,7 +1933,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             isMultiDeleteMode: _isMultiDeleteMode,
             isSelected: _selectedMessageIds.contains(message.messageId),
             onSelectionToggle: _toggleMessageSelection,
-            onMultiDeleteStart: _startMultiDeleteMode,
           );
   }
 
@@ -2024,39 +2025,29 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     }
 
     _cancelMultiDelete();
-
-    // Status neu prüfen nach Multi-Delete
-    if (_messages.isEmpty) {
-      setState(() {
-        _historyLoaded = false;
-        _hasMoreMessages = true; // Reset
-      });
-      _loadInitialMessages(); // Neu prüfen ob Messages in Firebase
-    }  }
+  }
 
   Future<void> _deleteMessageById(ChatMessage message) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || _avatarData == null) return;
+    if (_avatarData == null) return;
 
     try {
-      // 1) Lokal entfernen (sofort)
-      setState(() {
-        _messages.removeWhere((m) => m.messageId == message.messageId);
-      });
-
-      // 2) Firestore löschen (richtiger Pfad!)
-      final chatId = '${uid}_${_avatarData!.id}';
+      // Firestore löschen
       await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(_avatarData!.id)
           .collection('avatarUserChats')
-          .doc(chatId)
+          .doc(FirebaseAuth.instance.currentUser?.uid)
           .collection('messages')
           .doc(message.messageId)
           .delete()
           .timeout(const Duration(seconds: 5));
-      
-      debugPrint('✅ Multi-Delete: Message gelöscht: ${message.messageId}');
+
+      // Lokal entfernen
+      setState(() {
+        _messages.removeWhere((m) => m.messageId == message.messageId);
+      });
     } catch (e) {
-      debugPrint('❌ Multi-Delete Error: $e');
+      debugPrint('Error deleting message: $e');
     }
   }
 
@@ -2122,11 +2113,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
 
   Widget _buildMultiDeleteBar() {
-    final isEmpty = _selectedMessageIds.isEmpty;
     return Container(
-      height: 48,
-      color: Colors.black,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.orange.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+      ),
       child: Row(
         children: [
           // Selection count
@@ -2134,65 +2126,31 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             child: Text(
               '${_selectedMessageIds.length} ${_selectedMessageIds.length == 1 ? "Nachricht" : "Nachrichten"} ausgewählt',
               style: const TextStyle(
-                color: Colors.white,
+                color: Colors.black87,
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
             ),
           ),
           // Abbrechen Button
-          MouseRegion(
-            cursor: SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: _cancelMultiDelete,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                ),
-                child: const Text(
-                  'Abbrechen',
-                  style: TextStyle(
-                    color: Colors.grey,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+          TextButton(
+            onPressed: _cancelMultiDelete,
+            style: TextButton.styleFrom(
+              foregroundColor: Colors.black54,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
             ),
+            child: const Text('Abbrechen'),
           ),
-          const SizedBox(width: 8),
-          // Löschen Button (WHITE BG + GMBC TEXT)
-          Opacity(
-            opacity: isEmpty ? 0.4 : 1.0,
-            child: MouseRegion(
-              cursor: isEmpty ? SystemMouseCursors.basic : SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: isEmpty ? null : _confirmMultiDelete,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                  ),
-                  child: ShaderMask(
-                    shaderCallback: (bounds) => const LinearGradient(
-                      colors: [
-                        Color(0xFFFF2EC8), // Magenta
-                        Color(0xFF8AB4F8), // LightBlue
-                      ],
-                    ).createShader(bounds),
-                    child: const Text(
-                      'Löschen',
-                      style: TextStyle(
-                        color: Colors.white, // Wird durch ShaderMask ersetzt
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
+          const SizedBox(width: 4),
+          // Löschen Button
+          ElevatedButton(
+            onPressed: _selectedMessageIds.isEmpty ? null : _confirmMultiDelete,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
             ),
+            child: const Text('Löschen'),
           ),
         ],
       ),
@@ -2202,10 +2160,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     return SafeArea(
       top: false,
       bottom: true,
-      child: Stack(
-        children: [
-          // Input Field Container
-          Container(
+      child: Container(
         padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
         decoration: BoxDecoration(
           // gesamte Leiste leicht weiß, ohne Farbstich
@@ -2214,6 +2169,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Multi-Delete-Bar (WhatsApp-Style)
+            if (_isMultiDeleteMode) _buildMultiDeleteBar(),
+
             ValueListenableBuilder<TextEditingValue>(
           valueListenable: _messageController,
           builder: (context, value, _) {
@@ -2342,16 +2300,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             _buildMtRoomFooter(),
           ],
         ),
-      ),
-          // Multi-Delete-Bar Overlay
-          if (_isMultiDeleteMode)
-            Positioned(
-              left: 0,
-              right: 0,
-              top: 0,
-              child: _buildMultiDeleteBar(),
-            ),
-        ],
       ),
     );
   }
@@ -3207,7 +3155,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('📥 Query: Start vom Anfang (1. Load)');
       }
       
-      final snapshot = await query.limit(20).get().timeout(const Duration(seconds: 10));
+      final snapshot = await query.limit(50).get().timeout(const Duration(seconds: 10));
 
       debugPrint('📥 Gefunden: ${snapshot.docs.length} Messages');
 
@@ -3241,7 +3189,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       setState(() {
         _messages.insertAll(0, messages.reversed); // Älteste zuerst
         _lastMessageDoc = snapshot.docs.isNotEmpty ? snapshot.docs.last : null;
-        _hasMoreMessages = snapshot.docs.length == 20;
+        _hasMoreMessages = snapshot.docs.length == 50;
         _isLoadingMore = false;
       });
       
