@@ -7,6 +7,7 @@ class AppColors {
   // Basistöne
   static const Color black = Color(0xFF000000);
   static const Color darkSurface = Color(0xFF0A0A0A);
+  static const Color darkGrey = Color(0xFF2E2E2E); // dunkelgrau
   static const Color darkGreen = Color(0xFF0C1F17); // sehr dunkles Grün
   static const Color primaryGreen = Color(0xFF00FF94); // CI Grün
   static const Color magenta = Color(0xFFFF2EC8); // CI Magenta
@@ -52,13 +53,13 @@ class AppGradients extends ThemeExtension<AppGradients> {
       buttonPrimary: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [AppColors.accentGreenDark, AppColors.greenBlue],
+        colors: [AppColors.magenta, AppColors.lightBlue],
       ),
       // Sekundärbutton: Grün → Grün‑Blau
       buttonSecondary: LinearGradient(
         begin: Alignment.topLeft,
         end: Alignment.bottomRight,
-        colors: [AppColors.primaryGreen, AppColors.greenBlue],
+        colors: [AppColors.magenta, AppColors.lightBlue],
       ),
       // GMBC: Magenta → LightBlue (CI-konform)
       magentaBlue: LinearGradient(

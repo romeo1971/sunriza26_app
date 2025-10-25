@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 
 /// Icon-Picker Dialog für Hero Chat Highlights
 /// Wird AN der Chat-Blase positioniert beim Tap
-class HeroChatIconPicker extends StatelessWidget {
+class HeroChatIconPicker extends StatefulWidget {
   final String? selectedIcon;
   final Function(String) onIconSelected;
   final VoidCallback onClose;
   final bool alignRight; // true = User (rechts), false = Avatar (links)
+  final VoidCallback? onDelete; // Nachricht löschen
 
   const HeroChatIconPicker({
     super.key,
@@ -14,13 +15,11 @@ class HeroChatIconPicker extends StatelessWidget {
     required this.onIconSelected,
     required this.onClose,
     required this.alignRight,
+    this.onDelete,
   });
 
-  static const List<String> icons = [
-    '🐣', '🔥', '🍻', '🌈', '🍀', '❤️', '😂', '😱', '💪', '👍',
-    '🥰', '🥳', '😘', '🖖', '😢', '😡', '🤯', '🤮', '🫶', '🙌',
-    '👏', '😎', '🤪', '🤓',
-  ];
+  @override
+  State<HeroChatIconPicker> createState() => _HeroChatIconPickerState();
 
   /// Zeigt den Icon-Picker Dialog AN der Blase
   static void showAtPosition(
@@ -30,6 +29,7 @@ class HeroChatIconPicker extends StatelessWidget {
     String? selectedIcon,
     required Function(String) onIconSelected,
     required VoidCallback onRemove,
+    VoidCallback? onDelete,
   }) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
@@ -64,6 +64,10 @@ class HeroChatIconPicker extends StatelessWidget {
                   }
                   entry.remove();
                 },
+                onDelete: onDelete != null ? () {
+                  onDelete();
+                  entry.remove();
+                } : null,
               ),
             ),
           ),
@@ -81,6 +85,7 @@ class HeroChatIconPicker extends StatelessWidget {
     String? selectedIcon,
     required Function(String) onIconSelected,
     required VoidCallback onRemove,
+    VoidCallback? onDelete,
   }) {
     final overlay = Overlay.of(context);
     late OverlayEntry entry;
@@ -113,6 +118,10 @@ class HeroChatIconPicker extends StatelessWidget {
                     }
                     entry.remove();
                   },
+                  onDelete: onDelete != null ? () {
+                    onDelete();
+                    entry.remove();
+                  } : null,
                 ),
               ),
             ),
@@ -123,6 +132,16 @@ class HeroChatIconPicker extends StatelessWidget {
 
     overlay.insert(entry);
   }
+}
+
+class _HeroChatIconPickerState extends State<HeroChatIconPicker> {
+  bool _showDeleteConfirm = false;
+
+  static const List<String> _icons = [
+    '🐣', '🔥', '🍻', '🌈', '🍀', '❤️', '😂', '😱', '💪', '👍',
+    '🥰', '🥳', '😘', '🖖', '😢', '😡', '🤯', '🤮', '🫶', '🙌',
+    '👏', '😎', '🤪', '🤓',
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -144,30 +163,100 @@ class HeroChatIconPicker extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Icons Grid (kompakter)
-          Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            alignment: WrapAlignment.center,
-            children: icons.map((icon) => _buildIconButton(icon)).toList(),
-          ),
-          // Remove Button (wenn Icon bereits gesetzt)
-          if (selectedIcon != null) ...[
-            const SizedBox(height: 6),
-            _buildRemoveButton(),
-          ],
+      child: _showDeleteConfirm ? _buildDeleteConfirm() : _buildIconPicker(),
+    );
+  }
+
+  Widget _buildIconPicker() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Icons Grid (kompakter)
+        Wrap(
+          spacing: 4,
+          runSpacing: 4,
+          alignment: WrapAlignment.center,
+          children: _icons.map((icon) => _buildIconButton(icon)).toList(),
+        ),
+        // Remove Button (wenn Icon bereits gesetzt)
+        if (widget.selectedIcon != null) ...[
+          const SizedBox(height: 6),
+          _buildRemoveButton(),
         ],
-      ),
+        // Delete Button (Nachricht löschen)
+        if (widget.onDelete != null) ...[
+          const SizedBox(height: 6),
+          _buildDeleteButton(),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildDeleteConfirm() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text(
+          'Nachricht löschen?',
+          style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Diese Nachricht wird dauerhaft gelöscht.',
+          style: TextStyle(color: Colors.white70, fontSize: 12),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: GestureDetector(
+                onTap: () => setState(() => _showDeleteConfirm = false),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    'Abbrechen',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: GestureDetector(
+                onTap: () {
+                  if (widget.onDelete != null) widget.onDelete!();
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.3),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: Colors.red.withValues(alpha: 0.6)),
+                  ),
+                  child: const Text(
+                    'Löschen',
+                    style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w600),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
   Widget _buildIconButton(String icon) {
-    final isSelected = selectedIcon == icon;
+    final isSelected = widget.selectedIcon == icon;
     return GestureDetector(
-      onTap: () => onIconSelected(icon),
+      onTap: () => widget.onIconSelected(icon),
       child: Container(
         width: 34,
         height: 34,
@@ -195,7 +284,7 @@ class HeroChatIconPicker extends StatelessWidget {
 
   Widget _buildRemoveButton() {
     return GestureDetector(
-      onTap: onClose,
+      onTap: widget.onClose,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
@@ -215,6 +304,40 @@ class HeroChatIconPicker extends StatelessWidget {
             const SizedBox(width: 4),
             const Text(
               'Auswahl aufheben',
+              style: TextStyle(
+                color: Colors.red,
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDeleteButton() {
+    return GestureDetector(
+      onTap: () => setState(() => _showDeleteConfirm = true),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+        decoration: BoxDecoration(
+          color: Colors.red.withValues(alpha: 0.3),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            color: Colors.red.withValues(alpha: 0.6),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.delete_outline, color: Colors.red, size: 14),
+            const SizedBox(width: 4),
+            const Text(
+              'Nachricht löschen',
               style: TextStyle(
                 color: Colors.red,
                 fontSize: 11,

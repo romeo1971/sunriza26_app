@@ -246,10 +246,10 @@ class SunrizaApp extends StatelessWidget {
           theme: ThemeData(
             useMaterial3: true,
             colorScheme: const ColorScheme.dark(
-              primary: AppColors.primaryGreen,
-              onPrimary: Colors.black,
-              secondary: AppColors.accentGreenDark,
-              onSecondary: Colors.black,
+              primary: AppColors.black,
+              onPrimary: Colors.white,
+              secondary: AppColors.black,
+              onSecondary: Colors.white,
               surface: AppColors.darkSurface,
               onSurface: Colors.white,
             ),
@@ -324,8 +324,8 @@ class SunrizaApp extends StatelessWidget {
             ),
             elevatedButtonTheme: ElevatedButtonThemeData(
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accentGreenDark,
-                foregroundColor: Colors.black,
+                backgroundColor: AppColors.magenta,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
                   vertical: 14,
@@ -339,9 +339,9 @@ class SunrizaApp extends StatelessWidget {
             ),
             outlinedButtonTheme: OutlinedButtonThemeData(
               style: OutlinedButton.styleFrom(
-                foregroundColor: AppColors.accentGreenDark,
+                foregroundColor: AppColors.magenta,
                 side: const BorderSide(
-                  color: AppColors.accentGreenDark,
+                  color: AppColors.magenta,
                   width: 1.5,
                 ),
                 padding: const EdgeInsets.symmetric(
@@ -355,40 +355,40 @@ class SunrizaApp extends StatelessWidget {
             ),
             textButtonTheme: TextButtonThemeData(
               style: TextButton.styleFrom(
-                foregroundColor: AppColors.accentGreenDark,
+                foregroundColor: AppColors.magenta,
                 textStyle: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
             floatingActionButtonTheme: const FloatingActionButtonThemeData(
-              backgroundColor: AppColors.accentGreenDark,
-              foregroundColor: Colors.black,
+              backgroundColor: AppColors.magenta,
+              foregroundColor: Colors.white,
             ),
             chipTheme: const ChipThemeData(
-              backgroundColor: Color(0x1400DFA8),
-              selectedColor: AppColors.accentGreenDark,
+              backgroundColor: Color(0x14FF2EC8),
+              selectedColor: AppColors.magenta,
               labelStyle: TextStyle(color: Colors.white),
-              secondaryLabelStyle: TextStyle(color: Colors.black),
-              side: BorderSide(color: AppColors.accentGreenDark),
+              secondaryLabelStyle: TextStyle(color: Colors.white),
+              side: BorderSide(color: AppColors.magenta),
               shape: StadiumBorder(),
             ),
             switchTheme: const SwitchThemeData(
-              thumbColor: WidgetStatePropertyAll(AppColors.accentGreenDark),
-              trackColor: WidgetStatePropertyAll(Color(0x3300DFA8)),
+              thumbColor: WidgetStatePropertyAll(AppColors.magenta),
+              trackColor: WidgetStatePropertyAll(Color(0x33FF2EC8)),
             ),
             sliderTheme: const SliderThemeData(
-              activeTrackColor: AppColors.accentGreenDark,
-              inactiveTrackColor: Color(0x3300DFA8),
-              thumbColor: AppColors.accentGreenDark,
-              overlayColor: Color(0x2200DFA8),
+              activeTrackColor: AppColors.magenta,
+              inactiveTrackColor: Color(0x33FF2EC8),
+              thumbColor: AppColors.magenta,
+              overlayColor: Color(0x22FF2EC8),
             ),
             iconButtonTheme: IconButtonThemeData(
               style: IconButton.styleFrom(
-                foregroundColor: AppColors.accentGreenDark,
+                foregroundColor: AppColors.magenta,
               ),
             ),
             inputDecorationTheme: InputDecorationTheme(
               filled: true,
-              fillColor: const Color(0x1400FF94), // dezentes Grün-Overlay
+              fillColor: const Color(0x00000020), // dezentes BLACK-Overlay
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: const BorderSide(color: Colors.white24),

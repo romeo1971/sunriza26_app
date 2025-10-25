@@ -28,7 +28,7 @@ class UserMessageBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            // Message Container
+            // Message Container (White + GMBC gradient 0.2 opacity)
             Container(
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.75,
@@ -38,7 +38,12 @@ class UserMessageBubble extends StatelessWidget {
                 vertical: 6,
               ),
               decoration: BoxDecoration(
-                color: const Color(0xFF005C4B), // WhatsApp Dark Green
+                gradient: const LinearGradient(
+                  colors: [
+                    Color(0xFFFFD5F4), // White + 20% Magenta
+                    Color(0xFFE8F0FE), // White + 20% LightBlue
+                  ],
+                ),
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(8),
                   topRight: Radius.circular(8),
@@ -53,45 +58,32 @@ class UserMessageBubble extends StatelessWidget {
                   ),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
+              child: Stack(
                 children: [
                   // Message Text
-                  Text(
-                    message.text,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 14.5,
-                      height: 1.35,
+                  Padding(
+                    padding: const EdgeInsets.only(right: 50),
+                    child: Text(
+                      message.text,
+                      style: const TextStyle(
+                        color: Color(0xFF2E2E2E), // dark grey
+                        fontSize: 14.5,
+                        height: 1.35,
+                      ),
                     ),
                   ),
                   
-                  const SizedBox(height: 4),
-                  
-                  // Bottom Row: Delete (links) + Zeit (rechts)
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Delete Button (klein, links)
-                      GestureDetector(
-                        onTap: () => _showDeleteConfirm(context),
-                        child: Icon(
-                          Icons.close,
-                          size: 10,
-                          color: Colors.white.withValues(alpha: 0.4),
-                        ),
+                  // Timestamp (rechts unten, halbe Höhe letzte Zeile)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Text(
+                      _formatTime(message.timestamp),
+                      style: TextStyle(
+                        color: Colors.black.withValues(alpha: 0.4),
+                        fontSize: 10,
                       ),
-                      
-                      // Timestamp (rechts)
-                      Text(
-                        _formatTime(message.timestamp),
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.5),
-                          fontSize: 10,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ],
               ),
@@ -117,34 +109,6 @@ class UserMessageBubble extends StatelessWidget {
     return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _showDeleteConfirm(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF0A0A0A),
-        title: const Text('Nachricht löschen?', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Diese Nachricht wird dauerhaft gelöscht.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Abbrechen', style: TextStyle(color: Colors.white70)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Löschen', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-    
-    if (confirmed == true && onDelete != null) {
-      onDelete!(message);
-    }
-  }
-
   void _showIconPicker(BuildContext context) {
     final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
     if (renderBox == null) return;
@@ -155,6 +119,7 @@ class UserMessageBubble extends StatelessWidget {
       selectedIcon: message.highlightIcon,
       onIconSelected: (icon) => onIconChanged(message, icon),
       onRemove: () => onIconChanged(message, null),
+      onDelete: onDelete != null ? () => onDelete!(message) : null,
     );
   }
 }

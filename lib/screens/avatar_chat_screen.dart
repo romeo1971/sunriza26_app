@@ -1217,8 +1217,27 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           ),
           actions: [
             IconButton(
+              tooltip: 'Chat neu laden',
+              icon: const Icon(Icons.refresh, color: Colors.white, size: 24),
+              onPressed: () {
+                if (_avatarData == null) return;
+                // Chat-Screen neu starten
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => AvatarChatScreen(
+                      avatarId: _avatarData!.id,
+                      onClose: widget.onClose,
+                    ),
+                    settings: RouteSettings(arguments: _avatarData),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(width: 4),
+            IconButton(
               tooltip: 'Hero Chat',
-              icon: const Icon(Icons.bookmark, color: Colors.white),
+              icon: const Icon(Icons.bookmark, color: Colors.white, size: 24),
               onPressed: () {
                 if (_avatarData == null) return;
                 Navigator.push(
@@ -1240,6 +1259,25 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         body: SizedBox.expand(
           child: Stack(
             children: [
+              // Black transparent overlay für AppBar-Bereich
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                height: 100,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.6),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
               // Hero-Animation für nahtlosen Übergang vom Explorer!
               // Positioned MUSS außen sein, Hero innen!
               Positioned.fill(
@@ -1780,10 +1818,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     return Container(
       decoration: const BoxDecoration(
         color: Color(0x20000000),
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
+        // borderRadius: BorderRadius.only(
+        //   topLeft: Radius.circular(20),
+        //   topRight: Radius.circular(20),
+        // ),
       ),
       child: Column(
         children: [
@@ -2011,10 +2049,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                     constraints: const BoxConstraints(minHeight: 36),
                     child: AnimatedContainer(
                       decoration: BoxDecoration(
-                        // Weiß-transparenter Feld-Background (kein Grünstich)
+                        // Weiß-transparenter Feld-Background
                         color: _inputFocused
-                            ? Colors.white.withOpacity(0.4)
-                            : Colors.white.withOpacity(0.3),
+                            ? Colors.white.withValues(alpha: 0.4)
+                            : Colors.white.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(color: Colors.white54), // light grey
                       ),
@@ -3789,29 +3827,35 @@ class _ChatInputField extends StatelessWidget {
       data: Theme.of(context).copyWith(
         textSelectionTheme: const TextSelectionThemeData(
           selectionColor:
-              Colors.transparent, // kein grüner Selektionshintergrund
+              Colors.transparent,
           selectionHandleColor: AppColors.magenta,
           cursorColor: AppColors.magenta,
         ),
       ),
       child: Focus(
         onFocusChange: (hasFocus) {
-          state.setState(() => state._inputFocused = hasFocus);
+          state!.setState(() => state._inputFocused = hasFocus);
         },
         child: TextField(
           controller: controller,
           cursorColor: AppColors.magenta,
           keyboardType: TextInputType.multiline,
-          textInputAction: TextInputAction.newline,
+          textInputAction: TextInputAction.send,
           textAlignVertical: TextAlignVertical.center,
           // Saubere vertikale Zentrierung und feste Zeilenhöhe
           strutStyle: const StrutStyle(height: 1.2, forceStrutHeight: true),
           minLines: 1,
           maxLines: null, // wächst bei Bedarf weiter
+          onSubmitted: (text) {
+            if (text.trim().isNotEmpty) {
+              state!._sendMessage();
+              controller.clear();
+            }
+          },
           decoration: InputDecoration(
             hintText: 'Nachricht eingeben...',
             hintStyle: TextStyle(
-              color: AppColors.magenta.withValues(alpha: 0.7), // GMBC 0.7
+              color: AppColors.darkGrey.withValues(alpha: 0.7), // GMBC 0.7
               fontSize: 14,
               height: 1.0,
             ),
@@ -3835,7 +3879,7 @@ class _ChatInputField extends StatelessWidget {
             fontSize: 14,
             height: 1.0,
           ),
-          // Return fügt Zeile ein; Senden über Icon
+          // Return sendet; Shift+Return fügt Zeile ein
         ),
       ),
     );

@@ -14,6 +14,7 @@ from openai import OpenAI
 from google.cloud import texttospeech
 import base64, requests, json, tempfile, subprocess, threading
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
 try:
     # Für saubere Fehlererkennung bei Firestore-Indexproblemen
@@ -2284,7 +2285,8 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
         except Exception:
             pass
     threading.Thread(target=_run_daily_summary, daemon=True).start()
-    # 3) RAG: relevante Schnipsel holen
+    
+    # 3) RAG Query + Sprach-Klassifizierung PARALLEL ausführen (spart 1-2s)
     try:
         client_ip = "?"
         try:
@@ -2296,13 +2298,26 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
         )
     except Exception:
         pass
+    
     _tk = max(10, min(int(payload.top_k or 5), 20))
-    qres = memory_query(QueryRequest(
-        user_id=payload.user_id,
-        avatar_id=payload.avatar_id,
-        query=payload.message,
-        top_k=_tk,
-    ))
+    
+    # Parallel: RAG Query + Sprach-Klassifizierung
+    def _run_rag_query():
+        return memory_query(QueryRequest(
+            user_id=payload.user_id,
+            avatar_id=payload.avatar_id,
+            query=payload.message,
+            top_k=_tk,
+        ))
+    
+    def _run_language_classification():
+        return _classify_language(payload.message, payload.target_language)
+    
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        rag_future = executor.submit(_run_rag_query)
+        lang_future = executor.submit(_run_language_classification)
+        qres = rag_future.result()
+        cls_result = lang_future.result()
     context_items = qres.results
     context_texts = []
     for it in context_items:
@@ -2359,7 +2374,6 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
     # Ziel-Sprache entscheiden
     reply_lang = None
     # Schneller Hard-Hit: Arabisch sofort erkennen (Unicode-Bereiche)
-    reply_lang = None
     _txt_all = payload.message or ""
     try:
         if any('\u0600' <= ch <= '\u06FF' for ch in _txt_all) or \
@@ -2370,7 +2384,8 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
         pass
 
     try:
-        cls = _classify_language(payload.message, payload.target_language) if reply_lang is None else {"lang": reply_lang, "is_mixed": False}
+        # Nutze bereits parallel berechnetes Ergebnis
+        cls = {"lang": reply_lang, "is_mixed": False} if reply_lang == 'ar' else cls_result
         user_lang = (payload.target_language or "").strip().lower()
         detected = (cls.get("lang") or "").strip().lower()
         is_mixed = bool(cls.get("is_mixed"))
