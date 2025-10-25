@@ -27,7 +27,9 @@ import '../services/playlist_service.dart';
 import '../services/media_service.dart';
 import '../services/shared_moments_service.dart';
 import '../services/moments_service.dart';
+import '../services/media_purchase_service.dart';
 import '../models/media_models.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../widgets/liveportrait_canvas.dart';
 import '../widgets/chat_bubbles/user_message_bubble.dart';
 import '../widgets/chat_bubbles/avatar_message_bubble.dart';
@@ -4081,6 +4083,17 @@ class _TimelinePurchaseDialog extends StatefulWidget {
 class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
   bool _isProcessing = false;
   final _momentsService = MomentsService();
+  final _purchaseService = MediaPurchaseService();
+  String _paymentMethod = 'credits'; // 'credits' oder 'stripe'
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-select: Stripe wenn >= 2€, sonst Credits
+    if (!widget.isFree && widget.price >= 2.0) {
+      _paymentMethod = 'stripe';
+    }
+  }
 
   Future<void> _handlePurchase() async {
     if (_isProcessing) return;
@@ -4111,18 +4124,87 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
           ),
         );
       } else {
-        // Für kostenpflichtige Items: Stripe Checkout oder Credits
-        // TODO: Implement Stripe/Credits Integration
-        if (!mounted) return;
-        
-        Navigator.pop(context);
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('💳 Bezahlsystem wird noch implementiert...'),
-            backgroundColor: AppColors.magenta,
-          ),
-        );
+        // Für kostenpflichtige Items: Credits oder Stripe
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid == null) {
+          throw Exception('Nicht angemeldet');
+        }
+
+        if (_paymentMethod == 'credits') {
+          // Credits-basierter Kauf
+          final requiredCredits = (widget.price / 0.1).round();
+          
+          // Prüfe ob genug Credits vorhanden
+          final hasCredits = await _purchaseService.hasEnoughCredits(uid, requiredCredits);
+          if (!hasCredits) {
+            if (!mounted) return;
+            Navigator.pop(context);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('❌ Nicht genug Credits! Benötigt: $requiredCredits'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            return;
+          }
+
+          // Kaufe mit Credits
+          final success = await _purchaseService.purchaseMediaWithCredits(
+            userId: uid,
+            media: widget.media,
+          );
+
+          if (!success) {
+            throw Exception('Credits-Kauf fehlgeschlagen');
+          }
+
+          // Speichere in Moments
+          await _momentsService.saveMoment(
+            media: widget.media,
+            price: widget.price,
+            paymentMethod: 'credits',
+          );
+
+          if (!mounted) return;
+          Navigator.pop(context);
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '✅ ${widget.media.originalFileName ?? 'Item'} gekauft! ($requiredCredits Credits)',
+              ),
+              backgroundColor: AppColors.lightBlue,
+            ),
+          );
+        } else {
+          // Stripe Checkout
+          final checkoutUrl = await _purchaseService.purchaseMediaWithStripe(
+            userId: uid,
+            media: widget.media,
+          );
+
+          if (checkoutUrl == null) {
+            throw Exception('Stripe Checkout URL nicht verfügbar');
+          }
+
+          if (!mounted) return;
+          Navigator.pop(context);
+
+          // Öffne Stripe Checkout URL
+          final uri = Uri.parse(checkoutUrl);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('💳 Stripe Checkout geöffnet...'),
+                backgroundColor: AppColors.magenta,
+              ),
+            );
+          } else {
+            throw Exception('Checkout URL konnte nicht geöffnet werden');
+          }
+        }
       }
     } catch (e) {
       debugPrint('❌ Purchase error: $e');
@@ -4138,6 +4220,79 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
+  }
+
+  Widget _buildPaymentMethodTile({
+    required String method,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required bool enabled,
+  }) {
+    final isSelected = _paymentMethod == method;
+    
+    return Opacity(
+      opacity: enabled ? 1.0 : 0.5,
+      child: GestureDetector(
+        onTap: enabled ? () {
+          setState(() => _paymentMethod = method);
+        } : null,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isSelected 
+                ? AppColors.magenta.withValues(alpha: 0.2)
+                : Colors.white.withValues(alpha: 0.05),
+            border: Border.all(
+              color: isSelected 
+                  ? AppColors.magenta
+                  : Colors.white.withValues(alpha: 0.2),
+              width: 2,
+            ),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? AppColors.magenta : Colors.white70,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: isSelected ? Colors.white : Colors.white70,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.6),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (isSelected)
+                const Icon(
+                  Icons.check_circle,
+                  color: AppColors.magenta,
+                  size: 24,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -4221,6 +4376,42 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
             ),
             textAlign: TextAlign.center,
           ),
+          
+          // Payment Method Selection (nur für kostenpflichtige Items)
+          if (!widget.isFree) ...[
+            const SizedBox(height: 20),
+            const Divider(color: Colors.white24),
+            const SizedBox(height: 12),
+            Text(
+              'Zahlungsmethode',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 12),
+            
+            // Credits Option
+            _buildPaymentMethodTile(
+              method: 'credits',
+              icon: Icons.monetization_on,
+              title: 'Credits',
+              subtitle: '${(widget.price / 0.1).round()} Credits (1 Credit = 0,10 €)',
+              enabled: widget.price < 2.0 || _paymentMethod == 'credits',
+            ),
+            
+            const SizedBox(height: 8),
+            
+            // Stripe Option
+            _buildPaymentMethodTile(
+              method: 'stripe',
+              icon: Icons.credit_card,
+              title: 'Kreditkarte (Stripe)',
+              subtitle: 'Mindestbetrag: 2,00 €',
+              enabled: widget.price >= 2.0,
+            ),
+          ],
         ],
       ),
       actions: [
