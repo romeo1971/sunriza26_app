@@ -60,6 +60,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   Timer? _publisherIdleTimer; // Stoppt MuseTalk bei Inaktivität (Kostenbremse)
   bool _isRecording = false;
   bool _isTyping = false;
+  double _chatHeight = 200.0; // Resizable Chat-Höhe
   bool _isStreamingSpeaking = false; // steuert LivePortrait Canvas
   bool _isFileSpeaking = false; // steuert Datei‑Replay
   // ignore: unused_field
@@ -100,7 +101,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   String? _pendingFullName;
   String? _pendingLooseName;
   bool _awaitingNameConfirm = false;
-  bool _pendingIsKnownPartner = false;
+  final bool _pendingIsKnownPartner = false;
   bool _isKnownPartner = false;
   String? _partnerPetName;
   String? _partnerRole;
@@ -931,10 +932,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             await _maybeJoinLiveKit();
           }
           
-          if (!mounted) return; // Nochmal prüfen vor Greeting
+          if (!mounted) return; // Screen disposed? → STOP
           
-          debugPrint('🎙️ Auto‑Greeting');
-          unawaited(_botSay(greet));
+          // WICHTIG: Prüfe nochmal ob _avatarData noch gesetzt ist!
+          if (_avatarData == null) {
+            debugPrint('❌ FEHLER: _avatarData ist null beim Greeting!');
+            return;
+          }
+          
+          debugPrint('🎙️ Auto‑Greeting START (_avatarData.id=${_avatarData!.id})');
+          await _botSay(greet); // AWAIT damit Message garantiert gespeichert wird!
+          debugPrint('🎙️ Auto‑Greeting DONE');
         });
       }
     });
@@ -1273,7 +1281,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.black.withOpacity(0.6),
+                        Colors.black.withValues(alpha: 0.6),
                         Colors.transparent,
                       ],
                     ),
@@ -1366,8 +1374,34 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Chat-Nachrichten
-                      SizedBox(height: 200, child: _buildChatMessages()),
+                      // Resize-Handle
+                      MouseRegion(
+                        cursor: SystemMouseCursors.resizeUpDown,
+                        child: GestureDetector(
+                          onVerticalDragUpdate: (details) {
+                            setState(() {
+                              _chatHeight = (_chatHeight - details.delta.dy).clamp(150.0, 600.0);
+                            });
+                          },
+                          child: Container(
+                            height: 12,
+                            color: Colors.transparent,
+                            child: Center(
+                              child: Container(
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.3),
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      
+                      // Chat-Nachrichten (resizable)
+                      SizedBox(height: _chatHeight, child: _buildChatMessages()),
 
                       // Input-Bereich
                       _buildInputArea(),
@@ -1580,22 +1614,23 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   // ignore: unused_element
   Widget _buildAppBar() {
-    // Prüfe ob von "Meine Avatare" gekommen (onClose == null = normale Navigation)
-    final showBackButton = widget.onClose == null;
-
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(color: Colors.transparent),
       child: Row(
         children: [
-          // Zurück-Pfeil nur wenn von "Meine Avatare" (nicht von Home/Explore)
-          if (showBackButton)
-            IconButton(
+          // Zurück-Pfeil IMMER anzeigen (zu Explorer)
+          IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
-              onPressed: () => Navigator.pop(context),
-            )
-          else
-            const SizedBox(width: 48),
+              onPressed: () {
+                // IMMER zu Explorer (Avatar-List)
+                Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  '/avatar-list',
+                  (route) => false,
+                );
+              },
+            ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) {
@@ -1884,7 +1919,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.15),
+              color: Colors.white.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
@@ -1936,24 +1971,35 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   }
 
   void _handleIconChanged(ChatMessage message, String? icon) {
+    debugPrint('🎯 _handleIconChanged CALLED: messageId=${message.messageId}, text="${message.text.substring(0, message.text.length > 20 ? 20 : message.text.length)}", icon=$icon');
+    
     // WICHTIG: Finde Message in lokaler Liste über messageId
     final localMessage = _messages.firstWhere(
       (m) => m.messageId == message.messageId,
-      orElse: () => message, // Fallback: Original-Message verwenden
+      orElse: () {
+        debugPrint('⚠️ Message nicht in _messages gefunden! Verwende Original.');
+        return message;
+      },
     );
+    
+    debugPrint('🎯 localMessage.messageId=${localMessage.messageId}');
     
     setState(() {
       if (icon != null) {
         // Icon setzen (neu markiert)
         localMessage.highlightIcon = icon;
+        debugPrint('🎯 State updated: Icon = $icon');
       } else {
         // Icon entfernen (aus Hero-Screen gelöscht)
         localMessage.highlightIcon = null;
+        debugPrint('🎯 State updated: Icon entfernt');
       }
     });
     
     // Firebase: Update highlightIcon Feld direkt in avatarUserChats/messages
-    _updateMessageIcon(localMessage.messageId, icon);
+    debugPrint('🎯 Calling _updateMessageIcon with AWAIT...');
+    _updateMessageIcon(localMessage.messageId, icon); // Fire-and-forget OK (nicht blockieren)
+    debugPrint('🎯 _updateMessageIcon triggered (async)');
   }
 
   // Multi-Delete-Modus (WhatsApp-Style)
@@ -2063,33 +2109,49 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   // Update highlightIcon direkt in avatarUserChats/messages
   Future<void> _updateMessageIcon(String messageId, String? icon) async {
+    debugPrint('🔧 _updateMessageIcon CALLED: messageId=$messageId, icon=$icon');
+    
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null || _avatarData == null) return;
+    if (uid == null) {
+      debugPrint('❌ _updateMessageIcon: uid is null!');
+      return;
+    }
+    if (_avatarData == null) {
+      debugPrint('❌ _updateMessageIcon: _avatarData is null!');
+      return;
+    }
 
     try {
       final chatId = '${uid}_${_avatarData!.id}';
+      debugPrint('🔧 chatId=$chatId');
+      debugPrint('🔧 Firebase path: avatarUserChats/$chatId/messages/$messageId');
       
       if (icon != null) {
-        // Icon setzen
+        debugPrint('🔧 Setze Icon: $icon');
+        // Icon setzen (set mit merge: true statt update!)
         await FirebaseFirestore.instance
             .collection('avatarUserChats')
             .doc(chatId)
             .collection('messages')
             .doc(messageId)
-            .update({'highlightIcon': icon});
-        debugPrint('✅ Icon gesetzt: $messageId → $icon');
+            .set({'highlightIcon': icon}, SetOptions(merge: true))
+            .timeout(const Duration(seconds: 5));
+        debugPrint('✅ Icon ERFOLGREICH gesetzt: $messageId → $icon');
       } else {
+        debugPrint('🔧 Entferne Icon');
         // Icon entfernen
         await FirebaseFirestore.instance
             .collection('avatarUserChats')
             .doc(chatId)
             .collection('messages')
             .doc(messageId)
-            .update({'highlightIcon': FieldValue.delete()});
-        debugPrint('✅ Icon entfernt: $messageId');
+            .set({'highlightIcon': FieldValue.delete()}, SetOptions(merge: true))
+            .timeout(const Duration(seconds: 5));
+        debugPrint('✅ Icon ERFOLGREICH entfernt: $messageId');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ Icon Update fehlgeschlagen: $e');
+      debugPrint('❌ StackTrace: $stackTrace');
     }
   }
 
@@ -2209,7 +2271,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         padding: const EdgeInsets.fromLTRB(8, 6, 8, 6),
         decoration: BoxDecoration(
           // gesamte Leiste leicht weiß, ohne Farbstich
-          color: Colors.white.withOpacity(0.3),
+          color: Colors.white.withValues(alpha: 0.3),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -2627,11 +2689,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         final first = _shortFirstName(_partnerName ?? '');
         final suffix = _affectionateSuffix();
         await _botSay('Klar – du bist $first${suffix.replaceFirst(',', '')}');
-        _addMessage(text, true);
+        await _addMessage(text, true);
         _messageController.clear();
         return;
       }
-      _addMessage(text, true);
+      await _addMessage(text, true, skipPersist: false); // Backend speichert User + Avatar Message!
       _messageController.clear();
       // Falls wir gerade auf Bestätigung warten
       if (_awaitingNameConfirm) {
@@ -2710,7 +2772,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     if (_lipsync.visemeStream != null &&
         _cachedVoiceId != null &&
         _cachedVoiceId!.isNotEmpty) {
-      _addMessage(text, false);
+      await _addMessage(text, false);
       debugPrint('🚀 _botSay: Using STREAMING (cached voiceId)');
       try {
         await _lipsync.speak(text, _cachedVoiceId!);
@@ -2736,7 +2798,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       }
       final base = EnvService.memoryApiBaseUrl();
       if (base.isEmpty) {
-        _addMessage(text, false);
+        await _addMessage(text, false);
         return;
       }
       final uri = Uri.parse('$base/avatar/tts');
@@ -2797,7 +2859,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     } catch (e) {
       debugPrint('TTS-Fehler: $e');
     }
-    _addMessage(text, false, audioPath: path);
+    await _addMessage(text, false, audioPath: path);
     if (path != null) {
       await _playAudioAtPath(path);
     }
@@ -2922,7 +2984,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     }
   }
 
-  void _addMessage(String text, bool isUser, {String? audioPath}) {
+  Future<void> _addMessage(String text, bool isUser, {String? audioPath, bool skipPersist = false}) async {
+    debugPrint('💬 _addMessage: isUser=$isUser, skipPersist=$skipPersist, text="${text.substring(0, text.length > 30 ? 30 : text.length)}..."');
     if (!mounted) return;
     
     // Generate messageId
@@ -2930,6 +2993,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final messageId = 'msg-$timestamp-${uid?.substring(0, 6) ?? 'anon'}';
     
+    // IMMER hinzufügen (kein Dedupe!)
     setState(() {
       _messages.add(
         ChatMessage(
@@ -2941,10 +3005,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       );
     });
     _scrollToBottom();
-    _persistMessage(messageId: messageId, text: text, isUser: isUser);
+    
+    // WICHTIG: await damit Message in Firebase ist bevor Icon gesetzt werden kann
+    await _persistMessage(messageId: messageId, text: text, isUser: isUser, skipPersist: skipPersist);
   }
 
   Future<void> _chatWithBackend(String userText) async {
+    debugPrint('🔥 _chatWithBackend CALLED with: "$userText"');
     if (_avatarData == null) return;
     setState(() => _isTyping = true);
     try {
@@ -3010,7 +3077,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (answer == null || answer.isEmpty) {
         _showSystemSnack('Chat nicht verfügbar (keine Antwort)');
       } else {
-        _addMessage(answer, false);
+        await _addMessage(answer, false, skipPersist: false); // Backend hat schon gespeichert!
 
         // DEBUG: Check Streaming Conditions
         debugPrint(
@@ -3089,20 +3156,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     required String messageId,
     required String text,
     required bool isUser,
+    bool skipPersist = false, // Wenn true: Backend hat schon gespeichert
   }) async {
+    if (skipPersist) {
+      debugPrint('⏭️ Skip persist: Backend hat diese Message schon gespeichert');
+      return;
+    }
+    
     try {
-      // 1) Greeting-Dedupe: Speichere nicht, wenn letzte Bot-Message gleich ist
-      if (!isUser && _messages.isNotEmpty) {
-        final last = _messages.lastWhere(
-          (m) => !m.isUser,
-          orElse: () => ChatMessage(messageId: '', text: '', isUser: false),
-        );
-        if (last.text.trim() == text.trim() && text.trim().isNotEmpty) {
-          debugPrint('⚠️ Skip persist: duplicate greeting');
-          return;
-        }
-      }
-
       if (_avatarData == null) {
         debugPrint('⚠️ Cannot persist: _avatarData is null');
         return;
@@ -3116,7 +3177,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       final chatId = '${uid}_${_avatarData!.id}';
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       
-      debugPrint('💾 Speichere Message: avatarUserChats/$chatId/messages/$messageId');
+      debugPrint('💾 Speichere ${isUser ? "USER" : "AVATAR"} Message: avatarUserChats/$chatId/messages/$messageId');
       
       // Backend-kompatibles Format + highlightIcon
       await fs
@@ -3131,10 +3192,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             'timestamp': timestamp,
             'avatar_id': _avatarData!.id,
             'user_id': uid,
-            // highlightIcon wird später via update() gesetzt
+            'isUser': isUser,
+            // highlightIcon wird später via set(merge: true) gesetzt
           });
       
-      debugPrint('✅ Message gespeichert: "${text.substring(0, text.length > 30 ? 30 : text.length)}..."');
+      debugPrint('✅ ${isUser ? "USER" : "AVATAR"} Message gespeichert: "${text.substring(0, text.length > 30 ? 30 : text.length)}..."');
     } catch (e) {
       debugPrint('❌ _persistMessage Fehler: $e');
     }
@@ -3161,7 +3223,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           .doc(chatId)
           .collection('messages')
           .orderBy('timestamp', descending: true)
-          .limit(1) // Nur prüfen ob Messages existieren
+          .limit(1) // NUR PRÜFEN ob Messages existieren (KEIN LADEN!)
           .get()
           .timeout(const Duration(seconds: 5));
 
@@ -3169,7 +3231,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
       if (!mounted) return;
 
-      // NUR Flag setzen, KEINE Messages laden
+      // NUR FLAG setzen für "Ältere Nachrichten" Link, KEINE Messages laden!
         setState(() {
         _hasMoreMessages = snapshot.docs.isNotEmpty; // Link zeigen wenn Messages da
         _historyLoaded = true;
@@ -3178,6 +3240,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       debugPrint('✅ Link aktiv: $_hasMoreMessages');
     } catch (e) {
       debugPrint('❌ Messages prüfen fehlgeschlagen: $e');
+      setState(() => _historyLoaded = true);
     }
   }
 
@@ -4042,7 +4105,7 @@ class _ChatInputField extends StatelessWidget {
       ),
       child: Focus(
         onFocusChange: (hasFocus) {
-          state!.setState(() => state._inputFocused = hasFocus);
+          state.setState(() => state._inputFocused = hasFocus);
         },
         child: TextField(
           controller: controller,
@@ -4056,7 +4119,7 @@ class _ChatInputField extends StatelessWidget {
           maxLines: null, // wächst bei Bedarf weiter
           onSubmitted: (text) {
             if (text.trim().isNotEmpty) {
-              state!._sendMessage();
+              state._sendMessage();
               controller.clear();
             }
           },

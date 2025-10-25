@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../widgets/hero_chat_icon_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../screens/avatar_chat_screen.dart';
@@ -96,12 +95,8 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
           ..clear()
           ..addAll(allIcons);
         _lastDoc = snap.docs.isNotEmpty ? snap.docs.last : null;
-        _hasMore = snap.docs.length >= 20; // Link zeigen, wenn volle 20 geladen wurden
+        _hasMore = snap.docs.length == 20; // Link zeigen, wenn volle 20 geladen wurden
         _isLoading = false;
-        // Initial "Alle" setzen wenn alle Filter aktiv
-        if (_activeFilters.length == _allUsedIcons.length && _filterUser && _filterAvatar) {
-          _showAllIcons = true;
-        }
       });
     } catch (_) {
       if (mounted) setState(() => _isLoading = false);
@@ -159,12 +154,8 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
       setState(() {
         _messages.insertAll(0, more.reversed); // ältere oben ergänzen
         _lastDoc = snap.docs.isNotEmpty ? snap.docs.last : _lastDoc;
-        _hasMore = snap.docs.length >= 20; // Weiter laden, wenn volle 20 geladen wurden
+        _hasMore = snap.docs.length == 20; // Weiter laden, wenn volle 20 geladen wurden
         _isLoading = false;
-        // "Alle" prüfen nach Laden
-        if (_activeFilters.length == _allUsedIcons.length && _filterUser && _filterAvatar) {
-          _showAllIcons = true;
-        }
       });
       
       debugPrint('✅ Hero: ${more.length} weitere geladen. Total: ${_messages.length}');
@@ -198,49 +189,6 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
     final heroImageUrl = widget.avatarData.avatarImageUrl;
     
     return Scaffold(
-      backgroundColor: Colors.black,
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        centerTitle: true,
-        toolbarHeight: 56,
-        titleSpacing: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Transform.translate(
-          offset: const Offset(0, 3),
-          child: const Text(
-            'Hero Chat',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w300,
-              height: 1.0,
-              shadows: [Shadow(color: Colors.black87, blurRadius: 8)],
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(
-              child: Text(
-                '${_filteredMessages.length} Highlights',
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.7),
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
       body: GestureDetector(
         onHorizontalDragEnd: (details) {
           // Wischen nach links = zurück
@@ -256,7 +204,7 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
                 child: Image.network(
                   heroImageUrl,
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stack) => Container(color: Colors.black),
+                  errorBuilder: (_, __, ___) => Container(color: Colors.black),
                 ),
               ),
             
@@ -266,78 +214,13 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
                 color: Colors.black.withValues(alpha: 0.6),
               ),
             ),
-            
-            // Black transparent overlay für AppBar-Bereich (wie Chat Screen)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              height: 100,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      Colors.black.withValues(alpha: 0.6),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              ),
-            ),
 
             // Content
             SafeArea(
               child: Column(
                 children: [
-                  // Icon Filters + Sender Toggle (unter AppBar)
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                    child: Column(
-                      children: [
-                        // Icon Filters
-                        _buildIconFilters(),
-                        const SizedBox(height: 8),
-                        // Sender-Filter
-                        Row(
-                          children: [
-                            _buildSenderToggle(
-                              active: _filterUser,
-                              label: 'User',
-                              imageUrl: FirebaseAuth.instance.currentUser?.photoURL,
-                              fallbackIcon: Icons.person,
-                              onTap: () => setState(() {
-                                _filterUser = !_filterUser;
-                                // "Alle" nur wenn User + Avatar + alle Icons aktiv
-                                if (_filterUser && _filterAvatar && _activeFilters.length == _allUsedIcons.length) {
-                                  _showAllIcons = true;
-                                } else {
-                                  _showAllIcons = false;
-                                }
-                              }),
-                            ),
-                            const SizedBox(width: 8),
-                            _buildSenderToggle(
-                              active: _filterAvatar,
-                              label: 'Avatar',
-                              imageUrl: widget.avatarData.avatarImageUrl,
-                              fallbackIcon: Icons.smart_toy_outlined,
-                              onTap: () => setState(() {
-                                _filterAvatar = !_filterAvatar;
-                                // "Alle" nur wenn User + Avatar + alle Icons aktiv
-                                if (_filterUser && _filterAvatar && _activeFilters.length == _allUsedIcons.length) {
-                                  _showAllIcons = true;
-                                } else {
-                                  _showAllIcons = false;
-                                }
-                              }),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
+                  // Header mit Icon-Filtern
+                  _buildHeader(),
                   
                   // Load more link
                   if (_hasMore)
@@ -371,6 +254,87 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
     );
   }
 
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.7),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // Title + Close
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.arrow_back, color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Hero Chat',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Text(
+                '${_filteredMessages.length} Highlights',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.7),
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Icon Filters
+          _buildIconFilters(),
+
+          const SizedBox(height: 8),
+
+          // Sender-Filter (User / Avatar)
+          Row(
+            children: [
+              _buildSenderToggle(
+                active: _filterUser,
+                label: 'User',
+                imageUrl: FirebaseAuth.instance.currentUser?.photoURL,
+                fallbackIcon: Icons.person,
+                onTap: () => setState(() => _filterUser = !_filterUser),
+              ),
+              const SizedBox(width: 8),
+              _buildSenderToggle(
+                active: _filterAvatar,
+                label: 'Avatar',
+                imageUrl: widget.avatarData.avatarImageUrl,
+                fallbackIcon: Icons.smart_toy_outlined,
+                onTap: () => setState(() => _filterAvatar = !_filterAvatar),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildSenderToggle({
     required bool active,
@@ -384,18 +348,10 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
         decoration: BoxDecoration(
-          gradient: active
-              ? LinearGradient(
-                  colors: [
-                    const Color(0xFFFF2EC8).withValues(alpha: 0.2), // Magenta
-                    const Color(0xFF00D9FF).withValues(alpha: 0.2), // LightBlue
-                  ],
-                )
-              : null,
-          color: active ? null : Colors.white.withValues(alpha: 0.05),
+          color: active ? Colors.white.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: active ? Colors.white.withValues(alpha: 0.8) : Colors.white.withValues(alpha: 0.2),
+            color: active ? Colors.white.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.2),
           ),
         ),
         child: Row(
@@ -441,21 +397,13 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
               ),
             ),
             const SizedBox(width: 8),
-            MouseRegion(
-              cursor: _showAllIcons ? SystemMouseCursors.basic : SystemMouseCursors.click,
-              child: GestureDetector(
-                onTap: _showAllIcons ? null : () {
-                  setState(() {
-                    _showAllIcons = true;
-                    // Alle Icons aktivieren
-                    _activeFilters.clear();
-                    _activeFilters.addAll(_allUsedIcons);
-                    // Alle Sender aktivieren
-                    _filterUser = true;
-                    _filterAvatar = true;
-                  });
-                },
-                child: Container(
+            GestureDetector(
+              onTap: () {
+                setState(() {
+                  _showAllIcons = !_showAllIcons;
+                });
+              },
+              child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
                   color: _showAllIcons
@@ -471,7 +419,6 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
                 child: Text(
                   _showAllIcons ? 'Alle' : 'Gefiltert',
                   style: const TextStyle(color: Colors.white, fontSize: 12),
-                ),
                 ),
               ),
             ),
@@ -491,14 +438,8 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
   }
 
   Widget _buildIconToggle(String icon) {
-    final isActive = _showAllIcons || _activeFilters.contains(icon);
-    // Count: Nur Messages mit diesem Icon (unabhängig von Sender-Filter)
+    final isActive = _activeFilters.contains(icon);
     final count = _messages.where((m) => m.highlightIcon == icon).length;
-    // OPTIONAL: Wenn Sender-Filter berücksichtigt werden soll:
-    // final count = _messages.where((m) => 
-    //   m.highlightIcon == icon && 
-    //   ((_filterUser && m.isUser) || (_filterAvatar && !m.isUser))
-    // ).length;
 
     return GestureDetector(
       onTap: () {
@@ -508,10 +449,6 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
             _showAllIcons = false;
           } else {
             _activeFilters.add(icon);
-            // Prüfe ob ALLE Filter aktiv: Icons + User + Avatar
-            if (_activeFilters.length == _allUsedIcons.length && _filterUser && _filterAvatar) {
-              _showAllIcons = true;
-            }
           }
         });
       },
@@ -680,22 +617,27 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Message Text
-          Text(
-            message.text,
-            style: const TextStyle(
-              color: Color(0xFF2E2E2E), // dark grey
-              fontSize: 13,
-              height: 1.35,
-            ),
+          // Icon + Text
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (message.highlightIcon != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 6),
+                  child: Text(message.highlightIcon!, style: const TextStyle(fontSize: 18)),
+                ),
+              Expanded(
+                child: Text(
+                  message.text,
+                  style: const TextStyle(
+                    color: Color(0xFF2E2E2E), // dark grey (wie in Chat)
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+            ],
           ),
-          
-          // Icon (wenn vorhanden) UNTER dem Text
-          if (message.highlightIcon != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 6),
-              child: Text(message.highlightIcon!, style: const TextStyle(fontSize: 18)),
-            ),
           
           const SizedBox(height: 4),
           
@@ -717,12 +659,6 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
       ),
     );
 
-    // Wrapper mit LongPress für Icon-Änderung
-    final interactiveBubble = GestureDetector(
-      onLongPress: () => _showIconPickerForMessage(message),
-      child: bubble,
-    );
-
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -730,45 +666,13 @@ class _HeroChatScreenState extends State<HeroChatScreen> {
         children: message.isUser
             ? [
                 const Spacer(),
-                Flexible(child: interactiveBubble),
+                Flexible(child: bubble),
               ]
             : [
-                Flexible(child: interactiveBubble),
+                Flexible(child: bubble),
                 const Spacer(),
               ],
       ),
-    );
-  }
-  
-  // Icon Picker für Message öffnen
-  void _showIconPickerForMessage(ChatMessage message) {
-    debugPrint('🏆 Hero: _showIconPickerForMessage called');
-    debugPrint('🏆 Hero: messageId=${message.messageId}');
-    debugPrint('🏆 Hero: text="${message.text.substring(0, message.text.length > 20 ? 20 : message.text.length)}"');
-    debugPrint('🏆 Hero: current icon=${message.highlightIcon}');
-    
-    HeroChatIconPicker.showCentered(
-      context,
-      alignRight: message.isUser,
-      selectedIcon: message.highlightIcon,
-      onIconSelected: (icon) {
-        debugPrint('🏆 Hero: onIconSelected called with icon=$icon');
-        setState(() {
-          message.highlightIcon = icon;
-        });
-        debugPrint('🏆 Hero: Calling widget.onIconChanged...');
-        widget.onIconChanged(message, icon);
-        // Picker schließt sich selbst über onClose
-      },
-      onRemove: () {
-        debugPrint('🏆 Hero: onRemove called');
-        setState(() {
-          message.highlightIcon = null;
-        });
-        debugPrint('🏆 Hero: Calling widget.onIconChanged (remove)...');
-        widget.onIconChanged(message, null);
-        // Picker schließt sich selbst über onClose
-      },
     );
   }
 

@@ -853,6 +853,7 @@ def _store_chat_message(user_id: str, avatar_id: str, sender: str, content: str)
             "timestamp": timestamp,
             "avatar_id": avatar_id,
             "user_id": user_id,
+            "isUser": sender == "user",  # Konsistent mit Frontend!
         }
 
         # Speichere in Firebase: avatarUserChats/{chat_id}/messages/{message_id}
@@ -2562,9 +2563,7 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
         fact_candidates: list[Dict[str, Any]] = []
         chat_id = None
         try:
-            user_msg_id = _store_chat_message(payload.user_id, payload.avatar_id, "user", payload.message)
-            avatar_msg_id = _store_chat_message(payload.user_id, payload.avatar_id, "avatar", answer)
-
+            # Frontend speichert Messages! Backend speichert NUR Facts/Pinecone
             chat_id = f"{payload.user_id}_{payload.avatar_id}"
 
             # Fakten-Extraktion asynchron (blockiert Chat nicht)

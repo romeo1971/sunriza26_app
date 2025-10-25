@@ -62,7 +62,7 @@ image = (
 @app.function(
     image=image,
     gpu="T4",
-    timeout=600,
+    timeout=30,  # 30s idle → shutdown
     min_containers=0,  # scale-to-zero!
     scaledown_window=20,  # 20s statt 60s → schneller shutdown = weniger idle costs!
     secrets=[modal.Secret.from_name("firebase-credentials")],

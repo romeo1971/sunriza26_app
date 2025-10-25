@@ -28,7 +28,7 @@ app = modal.App("lipsync-orchestrator", image=image)
     ],
     min_containers=0,            # scale-to-zero
     scaledown_window=15,         # schnellere Skalierung nach Inaktivität
-    timeout=1800,                # Sitzung max. 30 Min.
+    timeout=30,                  # 30s idle → shutdown
 )
 @modal.asgi_app()
 def asgi():

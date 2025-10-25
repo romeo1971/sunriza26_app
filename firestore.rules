@@ -242,10 +242,12 @@ service cloud.firestore {
       allow get, list: if signedIn() && chatId.split('_')[0] == request.auth.uid;
       allow create: if signedIn() 
         && chatId.split('_')[0] == request.auth.uid
-        && request.resource.data.keys().hasOnly(['message_id', 'sender', 'content', 'timestamp', 'avatar_id', 'user_id'])
+        && request.resource.data.keys().hasOnly(['message_id', 'sender', 'content', 'timestamp', 'avatar_id', 'user_id', 'isUser', 'highlightIcon'])
         && request.resource.data.sender in ['user', 'avatar']
         && request.resource.data.content is string
-        && request.resource.data.timestamp is int;
+        && request.resource.data.timestamp is int
+        && (!('isUser' in request.resource.data) || request.resource.data.isUser is bool)
+        && (!('highlightIcon' in request.resource.data) || request.resource.data.highlightIcon is string);
       allow update: if signedIn() && chatId.split('_')[0] == request.auth.uid;
       allow delete: if signedIn() && chatId.split('_')[0] == request.auth.uid;
     }

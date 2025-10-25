@@ -37,7 +37,7 @@ image = (
 app = modal.App("liveportrait-ws", image=image)
 
 
-@app.function(timeout=3600, min_containers=0, scaledown_window=15)
+@app.function(timeout=30, min_containers=0, scaledown_window=15)  # 30s idle → shutdown!
 @modal.asgi_app()
 def asgi():
     # Import zur Laufzeit (Code liegt unter /app)

@@ -75,7 +75,7 @@ app = modal.App("musetalk-lipsync", image=image)
 
 @app.function(
     gpu="T4",  # Tesla T4 für 30 FPS
-    timeout=3600,
+    timeout=30,  # 30s idle → dann shutdown
     min_containers=0,  # scale-to-zero!
     scaledown_window=30,  # 30s statt 180s → schneller shutdown = weniger idle costs!
     secrets=[

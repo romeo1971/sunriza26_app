@@ -34,8 +34,8 @@ class UserMessageBubble extends StatelessWidget {
             maxWidth: MediaQuery.of(context).size.width * 0.75,
           ),
           padding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 6,
+            horizontal: 8,
+            vertical: 5,
           ),
           decoration: BoxDecoration(
             gradient: const LinearGradient(
@@ -67,7 +67,7 @@ class UserMessageBubble extends StatelessWidget {
                   message.text,
                   style: const TextStyle(
                     color: Color(0xFF2E2E2E), // dark grey
-                    fontSize: 14.5,
+                    fontSize: 13,
                     height: 1.35,
                   ),
                 ),
