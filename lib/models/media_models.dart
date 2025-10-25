@@ -1,5 +1,38 @@
 enum AvatarMediaType { image, video, audio, document }
 
+/// Audio Cover Image (max 5 pro Audio Asset)
+class AudioCoverImage {
+  final String url;          // Full-size Cover URL
+  final String thumbUrl;     // Thumbnail URL
+  final double aspectRatio;  // 9:16 oder 16:9
+  final int index;           // Position (0-4)
+
+  const AudioCoverImage({
+    required this.url,
+    required this.thumbUrl,
+    required this.aspectRatio,
+    required this.index,
+  });
+
+  factory AudioCoverImage.fromMap(Map<String, dynamic> map) {
+    return AudioCoverImage(
+      url: (map['url'] as String?) ?? '',
+      thumbUrl: (map['thumbUrl'] as String?) ?? '',
+      aspectRatio: (map['aspectRatio'] as num?)?.toDouble() ?? 1.0,
+      index: (map['index'] as int?) ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'url': url,
+      'thumbUrl': thumbUrl,
+      'aspectRatio': aspectRatio,
+      'index': index,
+    };
+  }
+}
+
 class AvatarMedia {
   final String id;
   final String avatarId;
@@ -17,6 +50,7 @@ class AvatarMedia {
   final String? currency; // Währung (€ oder $), Default: €
   final double? platformFeePercent; // Platform-Provision (0-100), Default: 20%
   final bool? voiceClone; // true = Voice Clone Audio für ElevenLabs
+  final List<AudioCoverImage>? coverImages; // Audio Cover Images (max 5), nur für Audio
 
   const AvatarMedia({
     required this.id,
@@ -34,6 +68,7 @@ class AvatarMedia {
     this.currency,
     this.platformFeePercent,
     this.voiceClone,
+    this.coverImages,
   });
 
   bool get isPortrait => aspectRatio != null && aspectRatio! < 1.0;
@@ -116,6 +151,9 @@ class AvatarMedia {
       currency: map['currency'] as String?,
       platformFeePercent: (map['platformFeePercent'] as num?)?.toDouble(),
       voiceClone: map['voiceClone'] as bool?,
+      coverImages: (map['coverImages'] as List<dynamic>?)
+          ?.map((e) => AudioCoverImage.fromMap(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -152,6 +190,8 @@ class AvatarMedia {
       if (currency != null) 'currency': currency,
       if (platformFeePercent != null) 'platformFeePercent': platformFeePercent,
       if (voiceClone != null) 'voiceClone': voiceClone,
+      if (coverImages != null && coverImages!.isNotEmpty)
+        'coverImages': coverImages!.map((e) => e.toMap()).toList(),
     };
   }
 }

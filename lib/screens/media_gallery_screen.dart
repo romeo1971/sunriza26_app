@@ -37,6 +37,8 @@ import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/gmbc_buttons.dart';
+import '../widgets/media/audio_cover_icon_stack.dart';
+import '../widgets/media/audio_cover_images_overlay.dart';
 
 // Custom SnackBar Helper
 SnackBar buildSuccessSnackBar(String message) {
@@ -1284,6 +1286,22 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Zeigt Audio Cover Images Overlay
+  Future<void> _showAudioCoverImagesOverlay(AvatarMedia audioMedia) async {
+    await showDialog(
+      context: context,
+      builder: (ctx) => AudioCoverImagesOverlay(
+        audioMedia: audioMedia,
+        onImagesChanged: (updatedImages) async {
+          // TODO: Speichere Cover Images in Firestore
+          debugPrint('🎨 Cover Images updated: ${updatedImages.length}');
+          // Refresh State
+          if (mounted) setState(() {});
+        },
       ),
     );
   }
@@ -7460,16 +7478,29 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      fileName,
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
+                    // FileName + Cover Icon Stack
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            fileName,
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w400,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        AudioCoverIconStack(
+                          coverCount: it.coverImages?.length ?? 0,
+                          onTap: () => _showAudioCoverImagesOverlay(it),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
