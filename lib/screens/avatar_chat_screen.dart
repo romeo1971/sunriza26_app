@@ -545,16 +545,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
     if (lastStarted != null) {
       final age = now.difference(lastStarted);
-      if (age.inSeconds < 30) {
-        // Session noch aktiv (< 4 Min) → SKIP!
+      if (age.inSeconds < 3) {
+        // Session gerade gestartet (< 3s) → SKIP Doppelstart!
         debugPrint(
-          '⏭️ MuseTalk session bereits aktiv für room=$room (age: ${age.inSeconds}s) - SKIP!',
+          '⏭️ MuseTalk session gerade gestartet für room=$room (age: ${age.inSeconds}s) - SKIP!',
         );
         return;
       } else {
-        // Session abgelaufen → Guard resetten
+        // Session älter als 3s → Kann neu starten
         debugPrint(
-          '🔄 MuseTalk session timeout (${age.inSeconds}s) - reset guard',
+          '🔄 MuseTalk Guard abgelaufen (${age.inSeconds}s) - Neustart erlaubt',
         );
         _globalActiveMuseTalkRooms.remove(room);
       }
@@ -782,15 +782,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           _publisherIdleTimer = null;
         } else if (roomName != null && roomName.isNotEmpty) {
           _publisherIdleTimer?.cancel();
-          _publisherIdleTimer = Timer(const Duration(seconds: 3), () async {
+          _publisherIdleTimer = Timer(const Duration(seconds: 1), () async {
             try {
               if (!mounted) return;
-              // Nur stoppen, wenn weiterhin inaktiv
-              if (!_isStreamingSpeaking) {
-                debugPrint('⏹️ Auto-stop publisher only (idle 3s)');
-                // Nur Publisher stoppen (Session warm lassen, kein Kaltstart beim nächsten Prompt)
-                await _stopLiveKitPublisher(roomName, stopSession: true);
-              }
+              debugPrint('⏹️ Auto-stop publisher+session (idle 1s) → Modal.com Kosten sparen');
+              await _stopLiveKitPublisher(roomName, stopSession: true);
             } catch (_) {}
           });
         }
@@ -1181,19 +1177,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           leading: IconButton(
             icon: const Icon(Icons.arrow_back, color: Colors.white),
             onPressed: () {
-              if (widget.onClose != null) {
-                widget.onClose!();
-                return;
-              }
-              if (Navigator.canPop(context)) {
-                Navigator.pop(context);
-              } else {
-                Navigator.pushNamedAndRemoveUntil(
-                  context,
-                  '/avatar-list',
-                  (route) => false,
-                );
-              }
+              // IMMER zu Explorer (Avatar-List)
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                '/avatar-list',
+                (route) => false,
+              );
             },
           ),
           title: Transform.translate(
