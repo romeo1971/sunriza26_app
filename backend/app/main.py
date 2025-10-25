@@ -553,6 +553,7 @@ def _build_day_summary_with_llm(messages: list[dict], lang_hint: str | None = No
             ],
             temperature=0.2,
             max_tokens=300,
+            timeout=10,
         )
         raw = (comp.choices[0].message.content or "").strip()
         try:
@@ -791,6 +792,7 @@ def _maybe_rolling_summary(index_name: str, namespace: str, new_texts: list[str]
             ],
             temperature=0.2,
             max_tokens=220,
+            timeout=10,
         )
         summary = (comp.choices[0].message.content or "").strip()
         if not summary:
@@ -997,6 +999,7 @@ def _extract_chat_facts(
             messages=messages,
             temperature=0,
             max_tokens=180,
+            timeout=8,
         )
         raw = (comp.choices[0].message.content or "").strip()
         data = None
@@ -2238,6 +2241,7 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
                 ],
                 temperature=0,
                 max_tokens=60,
+                timeout=8,
             )
             raw = (comp.choices[0].message.content or "").strip()
             data = json.loads(raw)
@@ -2273,11 +2277,13 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
         _maybe_update_user_name(payload.user_id, payload.avatar_id, payload.message)
     except Exception:
         pass
-    # 2) Daily Summary (gestern) ggf. generieren
-    try:
-        _maybe_generate_yesterday_summary(payload.user_id, payload.avatar_id, payload.target_language)
-    except Exception:
-        pass
+    # 2) Daily Summary (gestern) ggf. generieren (asynchron, blockiert Chat nicht)
+    def _run_daily_summary():
+        try:
+            _maybe_generate_yesterday_summary(payload.user_id, payload.avatar_id, payload.target_language)
+        except Exception:
+            pass
+    threading.Thread(target=_run_daily_summary, daemon=True).start()
     # 3) RAG: relevante Schnipsel holen
     try:
         client_ip = "?"
@@ -2470,6 +2476,7 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
             ],
             temperature=0.2,
             max_tokens=120,
+            timeout=12,
         )
         answer = comp.choices[0].message.content.strip()  # type: ignore
         # Nachbearbeitung: konsequent Ich‑Form erzwingen (ersetzt Avatar‑Name → Ich)
@@ -2545,42 +2552,50 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
 
             chat_id = f"{payload.user_id}_{payload.avatar_id}"
 
+            # Fakten-Extraktion asynchron (blockiert Chat nicht)
             if os.getenv("CHAT_FACT_SCANNER", "1") == "1":
-                try:
-                    extracted = _extract_chat_facts(
-                        user_id=payload.user_id,
-                        avatar_id=payload.avatar_id,
-                        source_message_id=avatar_msg_id,
-                        user_text=payload.message,
-                        avatar_text=answer,
-                    )
-                    for fact in extracted:
-                        if not _should_store_fact(fact):
-                            logger.info("CHAT_FACT_SKIP text='%s'", fact.get('fact_text'))
-                            continue
-                        stored = _store_chat_fact(
+                def _run_fact_extraction():
+                    try:
+                        extracted = _extract_chat_facts(
                             user_id=payload.user_id,
                             avatar_id=payload.avatar_id,
-                            source_message_id=fact.get("source_message_id") or avatar_msg_id,
-                            fact_text=fact.get("fact_text", ""),
-                            confidence=float(fact.get("confidence", 0.6)),
-                            scope=str(fact.get("scope", "avatar")),
+                            source_message_id=avatar_msg_id,
+                            user_text=payload.message,
+                            avatar_text=answer,
                         )
-                        if stored:
-                            fact_candidates.append(stored)
-                            logger.info(
-                                "CHAT_FACT_FOUND uid='%s' avatar='%s' fact_id='%s' text='%s' conf=%.2f",
-                                payload.user_id,
-                                payload.avatar_id,
-                                stored.get("fact_id"),
-                                stored.get("fact_text"),
-                                stored.get("confidence", 0.0),
+                        for fact in extracted:
+                            if not _should_store_fact(fact):
+                                logger.info("CHAT_FACT_SKIP text='%s'", fact.get('fact_text'))
+                                continue
+                            stored = _store_chat_fact(
+                                user_id=payload.user_id,
+                                avatar_id=payload.avatar_id,
+                                source_message_id=fact.get("source_message_id") or avatar_msg_id,
+                                fact_text=fact.get("fact_text", ""),
+                                confidence=float(fact.get("confidence", 0.6)),
+                                scope=str(fact.get("scope", "avatar")),
                             )
-                except Exception as _fe:
-                    logger.warning(f"CHAT_FACT_SCANNER Fehler: {_fe}")
+                            if stored:
+                                logger.info(
+                                    "CHAT_FACT_FOUND uid='%s' avatar='%s' fact_id='%s' text='%s' conf=%.2f",
+                                    payload.user_id,
+                                    payload.avatar_id,
+                                    stored.get("fact_id"),
+                                    stored.get("fact_text"),
+                                    stored.get("confidence", 0.0),
+                                )
+                    except Exception as _fe:
+                        logger.warning(f"CHAT_FACT_SCANNER Fehler: {_fe}")
+                threading.Thread(target=_run_fact_extraction, daemon=True).start()
 
+            # Chat-Storage in Pinecone asynchron (optional, blockiert nicht)
             if os.getenv("STORE_CHAT_IN_PINECONE", "0") == "1":
-                _store_chat_in_pinecone(payload.user_id, payload.avatar_id, payload.message, answer)
+                def _run_pinecone_storage():
+                    try:
+                        _store_chat_in_pinecone(payload.user_id, payload.avatar_id, payload.message, answer)
+                    except Exception as e:
+                        logger.warning(f"Chat Pinecone Storage Fehler: {e}")
+                threading.Thread(target=_run_pinecone_storage, daemon=True).start()
 
         except Exception as e:
             logger.warning(f"Chat-Storage Fehler: {e}")

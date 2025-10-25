@@ -143,7 +143,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       final doc = await FirebaseFirestore.instance
           .collection('avatars')
           .doc(avatarId)
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 5));
       if (!doc.exists || doc.data() == null) return;
 
       final data = doc.data()!;
@@ -568,7 +569,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         final doc = await FirebaseFirestore.instance
             .collection('avatars')
             .doc(_avatarData!.id)
-            .get();
+            .get()
+            .timeout(const Duration(seconds: 5));
 
         if (doc.exists) {
           final data = doc.data();
@@ -606,7 +608,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           'avatar_id': avatarId,
           'idle_video_url': idleVideoUrl,
         }),
-      );
+      ).timeout(const Duration(seconds: 10));
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
         debugPrint('✅ MuseTalk publisher started');
@@ -629,7 +631,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           Uri.parse(mtUrl),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode(payload),
-        );
+        ).timeout(const Duration(seconds: 10));
         debugPrint('✅ MuseTalk session started (room=$room)');
       } catch (e) {
         debugPrint('⚠️ MuseTalk session start failed: $e');
@@ -675,7 +677,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'room': room}),
-      );
+      ).timeout(const Duration(seconds: 5));
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
         debugPrint('✅ LiveKit publisher stopped');
@@ -691,7 +693,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             Uri.parse(mtUrl),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'room': room}),
-          );
+          ).timeout(const Duration(seconds: 5));
           _globalActiveMuseTalkRooms.remove(room); // Reset GLOBAL Guard!
           debugPrint('✅ MuseTalk session stopped (room=$room)');
         } catch (e) {
@@ -749,7 +751,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
     // Einmaliger Warmup-Ping vor erster Eingabe (kein permanentes Warmhalten)
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _lipsync.warmUp();
+      try {
+        _lipsync.warmUp();
+      } catch (e) {
+        debugPrint('⚠️ Lipsync warmUp error: $e');
+      }
     });
 
     // Callback für Streaming Playback Status
@@ -802,23 +808,33 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     // Viseme-Stream → LivePortrait (sofort verdrahten)
     if (_lipsync.visemeStream != null) {
       debugPrint('✅ Viseme Stream verfügbar (für LivePortrait)');
-      _visemeSub = _lipsync.visemeStream!.listen((ev) {
-        // Während Sprechen Canvas sichtbar halten
-        if (mounted && !_isStreamingSpeaking) {
-          setState(() => _isStreamingSpeaking = true);
-        }
-        debugPrint('👄 Viseme: ${ev.viseme} @ ${ev.ptsMs}ms');
-        // Viseme an LivePortrait-Canvas weiterleiten (falls vorhanden)
-        _lpKey.currentState?.sendViseme(ev.viseme, ev.ptsMs, ev.durationMs);
-      });
+      _visemeSub = _lipsync.visemeStream!.listen(
+        (ev) {
+          // Während Sprechen Canvas sichtbar halten
+          if (mounted && !_isStreamingSpeaking) {
+            setState(() => _isStreamingSpeaking = true);
+          }
+          debugPrint('👄 Viseme: ${ev.viseme} @ ${ev.ptsMs}ms');
+          // Viseme an LivePortrait-Canvas weiterleiten (falls vorhanden)
+          _lpKey.currentState?.sendViseme(ev.viseme, ev.ptsMs, ev.durationMs);
+        },
+        onError: (e) {
+          debugPrint('⚠️ Viseme stream error: $e');
+        },
+      );
     }
 
     // PCM-Stream → LivePortrait (Audio-Treiber)
     if (_lipsync.pcmStream != null) {
-      _pcmSub = _lipsync.pcmStream!.listen((chunk) {
-        final bytes = Uint8List.fromList(chunk.bytes);
-        _lpKey.currentState?.sendAudioChunk(bytes, chunk.ptsMs);
-      });
+      _pcmSub = _lipsync.pcmStream!.listen(
+        (chunk) {
+          final bytes = Uint8List.fromList(chunk.bytes);
+          _lpKey.currentState?.sendAudioChunk(bytes, chunk.ptsMs);
+        },
+        onError: (e) {
+          debugPrint('⚠️ PCM stream error: $e');
+        },
+      );
     }
     // Scroll Listener für Infinite Scroll (oben = ältere Messages)
     _scrollController.addListener(_onScroll);
@@ -833,7 +849,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         final doc = await FirebaseFirestore.instance
             .collection('avatars')
             .doc(args.id)
-            .get();
+            .get()
+            .timeout(const Duration(seconds: 5));
         if (doc.exists && mounted) {
           setState(() {
             _avatarData = AvatarData.fromMap(doc.data()!);
@@ -848,7 +865,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         final doc = await FirebaseFirestore.instance
             .collection('avatars')
             .doc(widget.avatarId)
-            .get();
+            .get()
+            .timeout(const Duration(seconds: 5));
         if (doc.exists && mounted) {
           setState(() {
             _avatarData = AvatarData.fromMap(doc.data()!);
@@ -2313,7 +2331,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             contentType: MediaType('audio', 'wav'),
           ),
         );
-      final resp = await req.send();
+      final resp = await req.send().timeout(const Duration(seconds: 30));
       final body = await resp.stream.bytesToString();
       if (resp.statusCode >= 200 && resp.statusCode < 300) {
         final data = jsonDecode(body) as Map<String, dynamic>;
@@ -2412,72 +2430,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         }
       }
 
-      // Name-Erkennung: explizit -> sofort merken; sonst lose Heuristik mit optionaler Nachfrage
-      if ((_partnerName == null || _partnerName!.isEmpty)) {
-        final explicit = _extractNameExplicit(text);
-        if (explicit != null && explicit.isNotEmpty) {
-          _isKnownPartner = true;
-          _savePartnerName(explicit);
-          _botSay(_friendlyGreet(_shortFirstName(_partnerName ?? explicit)));
-          return;
-        }
-        final loose = _extractNameLoose(text);
-        if (loose != null && loose.isNotEmpty) {
-          final authName = FirebaseAuth.instance.currentUser?.displayName;
-          if (authName != null && authName.isNotEmpty) {
-            final ln = loose.toLowerCase();
-            final an = authName.toLowerCase();
-            final starts =
-                an.startsWith("$ln ") || an.startsWith("$ln-") || an == ln;
-            if (starts && authName.length > loose.length) {
-              _pendingLooseName = _capitalize(loose);
-              _pendingFullName = authName;
-              _pendingIsKnownPartner = true;
-              _awaitingNameConfirm = true;
-              _botSay(_friendlyConfirmPendingName(_pendingFullName ?? ''));
-              return;
-            }
-          }
-          // kein bekannter Vollname → direkt übernehmen
-          _isKnownPartner = true;
-          _savePartnerName(loose);
-          _botSay(_friendlyGreet(_shortFirstName(_partnerName ?? loose)));
-          return;
-        }
-        // Sonderfall: mögliche Namenseingabe mit Leerzeichen/Typo (z. B. "Ha ja")
-        final splitName = _extractNameFromSplitTypos(text);
-        if (splitName != null && splitName.isNotEmpty) {
-          _pendingLooseName = splitName;
-          _pendingFullName = null;
-          _pendingIsKnownPartner = true;
-          _awaitingNameConfirm = true;
-          await _botSay('Ach, das ist interessant – heißt du "$splitName"?');
-          return;
-        }
-        // Ultimativer Fallback: Ein-Wort-Name direkt übernehmen
-        final onlyWord = RegExp(r'^[A-Za-zÄÖÜäöüß\-]{2,24}$');
-        if (onlyWord.hasMatch(text)) {
-          final nm = _capitalize(
-            text.replaceAll(RegExp(r'[^A-Za-zÄÖÜäöüß\-]'), ''),
-          );
-          if (nm.isNotEmpty) {
-            _isKnownPartner = true;
-            _savePartnerName(nm);
-            _botSay(_friendlyGreet(_shortFirstName(nm)));
-            return;
-          }
-        }
-      }
-
-      // Kosenamen-Erkennung: ohne Nachfrage speichern
-      final pet = _extractPetName(text);
-      if (pet != null && pet.isNotEmpty) {
-        _savePartnerPetName(pet);
-        _botSay("Alles klar – ich nenne dich ab jetzt '$pet'.");
-        return;
-      }
-
-      // Nur wenn ein echter User-Text vorhanden ist
+      // ALLES direkt zu Backend → Pinecone/OpenAI entscheidet
       if (text.isNotEmpty) {
         _chatWithBackend(text);
       }
@@ -2514,7 +2467,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         _cachedVoiceId!.isNotEmpty) {
       _addMessage(text, false);
       debugPrint('🚀 _botSay: Using STREAMING (cached voiceId)');
-      await _lipsync.speak(text, _cachedVoiceId!);
+      try {
+        await _lipsync.speak(text, _cachedVoiceId!);
+      } catch (e) {
+        debugPrint('⚠️ Lipsync speak error: $e');
+      }
       return; // ← KEIN Backend-MP3!
     }
 
@@ -2654,7 +2611,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
-      );
+      ).timeout(const Duration(seconds: 15));
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final Map<String, dynamic> j =
             jsonDecode(res.body) as Map<String, dynamic>;
@@ -2689,7 +2646,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           .doc(uid)
           .collection('avatars')
           .doc(_avatarData?.id ?? '')
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 5));
       final data = doc.data();
       if (data == null) return null;
       final training = data['training'] as Map<String, dynamic>?;
@@ -2774,7 +2732,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           final doc = await FirebaseFirestore.instance
               .collection('users')
               .doc(uid)
-              .get();
+              .get()
+              .timeout(const Duration(seconds: 3));
           lang = (doc.data()?['language'] as String?)?.trim();
         } catch (_) {}
         final res = await http
@@ -2818,7 +2777,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             _cachedVoiceId != null &&
             _cachedVoiceId!.isNotEmpty) {
           debugPrint('🚀 Chat: Using STREAMING audio');
-          unawaited(_lipsync.speak(answer, _cachedVoiceId!));
+          try {
+            unawaited(_lipsync.speak(answer, _cachedVoiceId!));
+          } catch (e) {
+            debugPrint('⚠️ Lipsync speak error: $e');
+          }
           // KEIN return! finally muss ausgeführt werden!
         } else {
           // FALLBACK: Backend-MP3 (langsam, ~3 Sekunden)
@@ -2954,7 +2917,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           .collection('messages')
           .orderBy('timestamp', descending: true)
           .limit(1) // Nur prüfen ob Messages existieren
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 5));
 
       debugPrint('📥 Messages vorhanden: ${snapshot.docs.isNotEmpty}');
 
@@ -2998,7 +2962,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('📥 Query: Start vom Anfang (1. Load)');
       }
       
-      final snapshot = await query.limit(50).get();
+      final snapshot = await query.limit(50).get().timeout(const Duration(seconds: 10));
 
       debugPrint('📥 Gefunden: ${snapshot.docs.length} Messages');
 
@@ -3056,7 +3020,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           .doc(uid)
           .collection('avatars')
           .doc(_avatarData?.id ?? '')
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 5));
       final data = doc.data();
       if (data != null && data['partnerName'] is String) {
         _partnerName = (data['partnerName'] as String).trim();
@@ -3079,7 +3044,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             .doc(uid)
             .collection('profile')
             .doc('global')
-            .get();
+            .get()
+            .timeout(const Duration(seconds: 5));
         final pd = profile.data();
         if (pd != null) {
           if ((_partnerName == null || _partnerName!.isEmpty) &&
@@ -3096,6 +3062,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             _isKnownPartner =
                 role.contains('ehemann') || role.contains('partner');
           }
+        }
+      }
+      
+      // Letzter Fallback: user.displayName (Anzeigename aus Firebase Auth)
+      if (_partnerName == null || _partnerName!.isEmpty) {
+        final displayName = FirebaseAuth.instance.currentUser?.displayName;
+        if (displayName != null && displayName.trim().isNotEmpty) {
+          _partnerName = displayName.trim();
         }
       }
     } catch (_) {}
@@ -3244,6 +3218,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     return _capitalize(first.trim());
   }
 
+  // Heuristik: Ist der Text eine Frage?
+  bool _looksLikeQuestion(String text) {
+    final s = text.trim().toLowerCase();
+    if (s.contains('?')) return true;
+    return RegExp(r'\b(wie|was|wer|wo|warum|wann|wieviel|wieviele|bist|hast|kannst|soll|darf|möchtest|magst|nun|sonst|weiter|noch)\b',
+            caseSensitive: false)
+        .hasMatch(s);
+  }
+
   // Extrahiert Kosenamen aus der Eingabe
   String? _extractPetName(String input) {
     final patterns = [
@@ -3341,7 +3324,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         uri,
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(payload),
-      );
+      ).timeout(const Duration(seconds: 10));
       if (res.statusCode < 200 || res.statusCode >= 300) {
         _showSystemSnack('Memory insert fehlgeschlagen: ${res.statusCode}');
       }
@@ -3549,7 +3532,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _lipsync.stop().catchError((e) {
       debugPrint('⚠️ Lipsync stop error: $e');
     });
-    _lipsync.dispose();
+    try {
+      _lipsync.dispose();
+    } catch (e) {
+      debugPrint('⚠️ Lipsync dispose error: $e');
+    }
 
     // LiveKit disconnecten (spart ~1€/Monat bei 2.500 Min idle!)
     final roomName = LiveKitService().roomName;
