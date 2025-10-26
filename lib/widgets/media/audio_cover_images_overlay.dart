@@ -467,7 +467,7 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.magenta,
             ),
-            child: const Text('Fertig'),
+            child: const Text('Sichern'),
           ),
         ],
       ),
