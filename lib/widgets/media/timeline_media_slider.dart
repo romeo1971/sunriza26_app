@@ -57,7 +57,7 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
 
     // Oszillation: Mitte → +100px (oben) → Mitte → -100px (unten) → Mitte (loop)
     _oscController = AnimationController(
-      duration: const Duration(seconds: 8), // Langsamer, ruhiger Lauf
+      duration: const Duration(seconds: 80), // 4 Phasen × 20s
       vsync: this,
     )..repeat();
     _oscAnimation = TweenSequence<double>([
@@ -115,20 +115,11 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
     return AnimatedBuilder(
       animation: Listenable.merge([_slideController, _oscController]),
       builder: (context, child) {
-        // Position links, vertikal um Bildschirmmitte mit ±100px oszillieren
-        final centerTop = (screenHeight - panelHeight) / 2;
-        final double topPosition = ((centerTop + _oscAnimation.value)
-                .clamp(0.0, math.max(0.0, screenHeight - panelHeight))
-            as num)
-            .toDouble();
-
-        return Positioned(
-          left: 0,
-          top: topPosition,
-          width: panelWidth,
-          height: panelHeight,
-          child: Padding(
-            padding: const EdgeInsets.all(8),
+        // Exakt links an den Rand, vertikal um Mitte oszillieren
+        return Align(
+          alignment: Alignment.centerLeft,
+          child: Transform.translate(
+            offset: Offset(0, _oscAnimation.value),
             child: SizedBox(
               width: panelWidth,
               height: panelHeight,

@@ -4230,7 +4230,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       _timelineSliderVisible = false;
       _activeTimelineItem = null;
       _removeTimelineOverlay();
-      _timelineCurrentIndex = (_activeTimelineIndex ?? _timelineCurrentIndex) + 1;
+      // Nächstes Item oder Loop/Ende
+      final nextIndex = (_activeTimelineIndex ?? _timelineCurrentIndex) + 1;
+      if (nextIndex >= _timelineItems.length) {
+        if (_timelineLoop) {
+          _timelineCurrentIndex = 0;
+          _activeTimelineIndex = 0;
+          // Sofort nächstes erstes Item gemäß Startzeiten erneut planen
+          // Zur Sicherheit auch Anzeige sofort starten
+          _showCurrentTimelineItem();
+        } else {
+          _timelineCurrentIndex = _timelineItems.length; // Ende markieren
+        }
+      } else {
+        _timelineCurrentIndex = nextIndex;
+      }
     });
   }
 
