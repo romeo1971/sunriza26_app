@@ -375,34 +375,7 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     print(f"✅ Final (All‑I, stumm): {final_output}")
     print(f"📊 Final: {final_size} bytes ({final_size / 1024 / 1024:.2f} MB)")
     
-    # DEBUG: Speichere ALLE Zwischenschritte + LivePortrait Outputs!
-    print(f"🔍 DEBUG: Speichere ALLE Debug-Dateien nach brain/hilfeLP/...")
-    
-    # 1. LivePortrait Raw Output (mit Download-Token für klickbaren Link)
-    lp_raw_debug = bucket.blob(f"brain/hilfeLP/{avatar_id}/01_liveportrait_raw.mp4")
-    lp_raw_token = str(uuid.uuid4())
-    lp_raw_debug.metadata = {'firebaseStorageDownloadTokens': lp_raw_token}
-    lp_raw_debug.upload_from_filename(lp_output, content_type='video/mp4')
-    lp_raw_debug.patch()  # stellt sicher, dass Token in Console erscheint
-    lp_raw_size = os.path.getsize(lp_output)
-    lp_raw_url = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{lp_raw_debug.name.replace('/', '%2F')}?alt=media&token={lp_raw_token}"
-    print(f"  📁 01_liveportrait_raw.mp4: VOR Upload: {lp_raw_size / 1024 / 1024:.2f} MB")
-    lp_raw_debug.reload()
-    print(f"     NACH Upload zu Firebase: {lp_raw_debug.size / 1024 / 1024:.2f} MB")
-    print(f"     🌐 URL: {lp_raw_url}")
-    
-    # 2. Final (idle.mp4 Basis) – mit Download-Token
-    final_debug = bucket.blob(f"brain/hilfeLP/{avatar_id}/02_final_idle.mp4")
-    final_token = str(uuid.uuid4())
-    final_debug.metadata = {'firebaseStorageDownloadTokens': final_token}
-    final_debug.upload_from_filename(final_output, content_type='video/mp4')
-    final_debug.patch()
-    final_size_dbg = os.path.getsize(final_output)
-    final_url_dbg = f"https://firebasestorage.googleapis.com/v0/b/{bucket.name}/o/{final_debug.name.replace('/', '%2F')}?alt=media&token={final_token}"
-    print(f"  📁 02_final_idle.mp4: VOR Upload: {final_size_dbg / 1024 / 1024:.2f} MB")
-    final_debug.reload()
-    print(f"     NACH Upload zu Firebase: {final_debug.size / 1024 / 1024:.2f} MB")
-    print(f"     🌐 URL: {final_url_dbg}")
+    # Debug-Uploads in Firebase Storage (brain/hilfeLP/...) entfernt – Produktion ohne Zusatzdateien
     
     # 8. (OBSOLET) Atlas/Mask/ROI – deaktiviert
     print("🎨 Atlas/Mask/ROI: übersprungen (LivePortrait-Overlay nicht mehr genutzt)")
