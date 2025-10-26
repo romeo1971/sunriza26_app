@@ -3,6 +3,8 @@ import '../../models/media_models.dart';
 import '../../theme/app_theme.dart';
 import 'blur_pixelation_filter.dart';
 import 'audio_cover_rotation_widget.dart';
+import 'dart:math' as math;
+import '../../services/audio_cover_service.dart';
 
 /// Universal Timeline Media Slider - zeigt alle Media-Typen slidend von unten nach oben
 /// Unterstützt: Image, Video, Audio, Document
@@ -13,6 +15,7 @@ class TimelineMediaSlider extends StatefulWidget {
   final Duration slidingDuration; // 1-3 Minuten
   final bool isBlurred; // true = noch nicht gekauft
   final VoidCallback? onTap;
+  final String? avatarId; // benötigt, um Audio-Cover ggf. lazy zu laden
 
   const TimelineMediaSlider({
     super.key,
@@ -20,6 +23,7 @@ class TimelineMediaSlider extends StatefulWidget {
     required this.slidingDuration,
     this.isBlurred = false,
     this.onTap,
+    this.avatarId,
   });
 
   @override
@@ -27,32 +31,51 @@ class TimelineMediaSlider extends StatefulWidget {
 }
 
 class _TimelineMediaSliderState extends State<TimelineMediaSlider>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   late AnimationController _slideController;
-  late Animation<double> _slideAnimation;
+  late Animation<double> _slideAnimation; // 0..1: Slide-In binnen 600ms
+  late AnimationController _driftController; // 0..1 über gesamte Displaydauer
+  late Animation<double> _driftAnimation;
+  List<AudioCoverImage>? _covers; // lazy-geladene Cover für Audio
+  bool _loadingCovers = false;
 
   @override
   void initState() {
     super.initState();
     
-    // Slide Animation Setup
+    // Schnelles Slide-In (600ms), dann stehen bleiben bis Overlay entfernt wird
     _slideController = AnimationController(
+      duration: const Duration(milliseconds: 600),
+      vsync: this,
+    );
+    _slideAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _slideController, curve: Curves.easeOut),
+    );
+    _slideController.forward();
+
+    // Drift Animation über gesamte Displaydauer (linear von unten nach oben)
+    _driftController = AnimationController(
       duration: widget.slidingDuration,
       vsync: this,
     );
-
-    // 3 Phasen: Slide In (0-20%) → Display (20-80%) → Slide Out (80-100%)
-    _slideAnimation = Tween<double>(begin: -1.0, end: 2.0).animate(
-      CurvedAnimation(parent: _slideController, curve: Curves.easeInOut),
+    _driftAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _driftController, curve: Curves.linear),
     );
+    _driftController.forward();
 
-    // Start Animation
-    _slideController.forward();
+    // Audio-Cover ggf. lazy laden
+    if (widget.media.type == AvatarMediaType.audio) {
+      _covers = widget.media.coverImages;
+      if ((_covers == null || _covers!.isEmpty) && widget.avatarId != null) {
+        _loadCovers();
+      }
+    }
   }
 
   @override
   void dispose() {
     _slideController.dispose();
+    _driftController.dispose();
     super.dispose();
   }
 
@@ -61,31 +84,44 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     
+    // Feste Breite: 125px (laut Anforderung)
+    final double panelWidth = 125.0;
+    
+    // Ziel-Aspect je Typ bestimmen
+    double targetAspectRatio;
+    switch (widget.media.type) {
+      case AvatarMediaType.image:
+      case AvatarMediaType.video:
+        targetAspectRatio = (widget.media.aspectRatio ?? (9 / 16)).clamp(0.25, 4.0);
+        break;
+      case AvatarMediaType.audio:
+        final coverAR = (widget.media.coverImages != null && widget.media.coverImages!.isNotEmpty)
+            ? widget.media.coverImages!.first.aspectRatio
+            : (9 / 16);
+        targetAspectRatio = coverAR.clamp(0.25, 4.0);
+        break;
+      case AvatarMediaType.document:
+        targetAspectRatio = (widget.media.aspectRatio ?? (9 / 16)).clamp(0.25, 4.0);
+        break;
+    }
+    // Panelhöhe ausschließlich aus Breite/AR
+    final double panelHeight = panelWidth / targetAspectRatio;
+    
     return AnimatedBuilder(
-      animation: _slideAnimation,
+      animation: Listenable.merge([_slideController, _driftController]),
       builder: (context, child) {
-        // Berechne Position basierend auf Animation Progress
-        final progress = _slideAnimation.value;
-        double bottomPosition;
-        
-        if (progress < 0) {
-          // Phase 1: Slide In (von unten)
-          bottomPosition = progress * screenHeight; // -1.0 → 0.0 = -screenHeight → 0
-        } else if (progress < 1.0) {
-          // Phase 2: Display (sichtbar)
-          bottomPosition = 0;
-        } else {
-          // Phase 3: Slide Out (nach oben)
-          bottomPosition = (progress - 1.0) * screenHeight; // 1.0 → 2.0 = 0 → screenHeight
-        }
+        // Position: Slide-In (600ms) + kontinuierlicher Drift über gesamte Dauer nach oben
+        final slideIn = -panelHeight + (_slideAnimation.value * panelHeight);
+        final drift = _driftAnimation.value * (screenHeight - panelHeight);
+        final bottomPosition = slideIn + drift;
 
         return Positioned(
           left: 0,
           bottom: bottomPosition,
-          width: screenWidth * 0.2,
-          height: screenHeight * 0.4, // 40% der Bildschirmhöhe
+          width: panelWidth,
+          height: panelHeight,
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(8),
             child: _buildMediaContent(),
           ),
         );
@@ -112,13 +148,8 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
         break;
     }
 
-    // Wrap mit Blur Filter wenn nicht gekauft
-    final filteredContent = BlurPixelationFilter(
-      isBlurred: widget.isBlurred,
-      blurAmount: 15.0,
-      showLockIcon: true,
-      child: content,
-    );
+    // Kein Blur/Schloss mehr anzeigen
+    final filteredContent = content;
 
     // Wrap mit GestureDetector für Tap
     return GestureDetector(
@@ -167,8 +198,6 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
           },
         ),
         
-        // Price Badge
-        _buildPriceBadge(),
       ],
     );
   }
@@ -200,26 +229,22 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
           ),
         ),
         
-        // Price Badge
-        _buildPriceBadge(),
       ],
     );
   }
 
   Widget _buildAudioContent() {
-    // Audio mit Cover Images Rotation
-    if (widget.media.coverImages != null && widget.media.coverImages!.isNotEmpty) {
+    // Audio mit Cover Images Rotation (alle 3s)
+    final effectiveCovers = _covers ?? widget.media.coverImages;
+    if (effectiveCovers != null && effectiveCovers.isNotEmpty) {
       return Stack(
         fit: StackFit.expand,
         children: [
           AudioCoverRotationWidget(
-            coverImages: widget.media.coverImages!,
-            displayDuration: widget.slidingDuration,
+            coverImages: effectiveCovers,
+            displayDuration: const Duration(seconds: 3),
             onTap: widget.onTap,
           ),
-          
-          // Price Badge
-          _buildPriceBadge(),
         ],
       );
     }
@@ -229,7 +254,6 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
       fit: StackFit.expand,
       children: [
         _buildFallbackIcon(Icons.music_note),
-        _buildPriceBadge(),
       ],
     );
   }
@@ -248,8 +272,6 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
         else
           _buildFallbackIcon(Icons.description),
         
-        // Price Badge
-        _buildPriceBadge(),
       ],
     );
   }
@@ -301,6 +323,23 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
         ),
       ),
     );
+  }
+
+  Future<void> _loadCovers() async {
+    if (_loadingCovers || widget.avatarId == null) return;
+    _loadingCovers = true;
+    try {
+      final svc = AudioCoverService();
+      final list = await svc.getCoverImages(
+        avatarId: widget.avatarId!,
+        audioId: widget.media.id,
+        audioUrl: widget.media.url,
+      );
+      if (list.isNotEmpty && mounted) {
+        setState(() => _covers = list);
+      }
+    } catch (_) {}
+    _loadingCovers = false;
   }
 }
 

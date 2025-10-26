@@ -19,6 +19,8 @@ import 'dart:io';
 import 'dart:typed_data';
 import '../services/firebase_storage_service.dart';
 import 'package:image/image.dart' as img;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 
 class PlaylistListScreen extends StatefulWidget {
   final String avatarId;
@@ -37,6 +39,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   final _svc = PlaylistService();
   List<Playlist> _items = [];
   bool _loading = true;
+  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
 
   @override
   void initState() {
@@ -45,6 +48,21 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _load();
     });
+    // Live-Listener: aktualisiert Liste sofort bei Änderungen (Auto‑Save etc.)
+    _sub = FirebaseFirestore.instance
+        .collection('avatars')
+        .doc(widget.avatarId)
+        .collection('playlists')
+        .snapshots()
+        .listen((_) {
+      if (mounted) _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _sub?.cancel();
+    super.dispose();
   }
 
   Future<void> _confirmDeletePlaylist(Playlist p) async {

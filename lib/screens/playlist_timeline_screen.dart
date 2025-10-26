@@ -520,56 +520,37 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
     try {
-      final list = await _mediaSvc.list(widget.playlist.avatarId);
-      // Audio-Cover aus Storage nachladen und in die Media-Liste mergen
-      final coverSvc = AudioCoverService();
-      final List<AvatarMedia> enriched = [];
-      for (final m in list) {
-        if (m.type == AvatarMediaType.audio) {
-          final covers = await coverSvc.getCoverImages(
-            avatarId: m.avatarId,
-            audioId: m.id,
-            audioUrl: m.url,
-          );
-          enriched.add(AvatarMedia(
-            id: m.id,
-            avatarId: m.avatarId,
-            type: m.type,
-            url: m.url,
-            thumbUrl: m.thumbUrl,
-            createdAt: m.createdAt,
-            durationMs: m.durationMs,
-            aspectRatio: m.aspectRatio,
-            tags: m.tags,
-            originalFileName: m.originalFileName,
-            isFree: m.isFree,
-            price: m.price,
-            currency: m.currency,
-            platformFeePercent: m.platformFeePercent,
-            voiceClone: m.voiceClone,
-            coverImages: covers.isNotEmpty ? covers : null,
-          ));
-        } else {
-          enriched.add(m);
-        }
-      }
-      _allMedia = enriched;
-      // gespeichertes Split-Verhältnis anwenden, falls vorhanden
-      // (alt) horizontale Split-Ratio wird nicht mehr genutzt
-      // Inkonstistenzen bereinigen (Items ohne Assets, Assets ohne Media)
-      await _playlistSvc.pruneTimelineData(
-        widget.playlist.avatarId,
-        widget.playlist.id,
-      );
-      // Nach dem Prune neu laden
-      final assets2 = await _playlistSvc.listAssets(
-        widget.playlist.avatarId,
-        widget.playlist.id,
-      );
-      final items2 = await _playlistSvc.listTimelineItems(
-        widget.playlist.avatarId,
-        widget.playlist.id,
-      );
+      final avatarId = widget.playlist.avatarId;
+      final playlistId = widget.playlist.id;
+
+      // 1) Lade Medienliste sofort
+      final mediaFuture = _mediaSvc.list(avatarId);
+
+      // 2) Lade Assets, Timeline-Items und Playlist-Dokument parallel
+      final assetsFuture = _playlistSvc.listAssets(avatarId, playlistId);
+      final itemsFuture = _playlistSvc.listTimelineItems(avatarId, playlistId);
+      final docFuture = FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(avatarId)
+          .collection('playlists')
+          .doc(playlistId)
+          .get();
+
+      // Warte nur auf die Medienliste, um sofort rendern zu können
+      final mediaList = await mediaFuture;
+      _allMedia = mediaList;
+      if (mounted) setState(() {}); // Erste Anzeige (ohne Covers)
+
+      // 3) Warte auf die restlichen Daten parallel und baue UI
+      final results = await Future.wait([assetsFuture, itemsFuture, docFuture]);
+      final assets2 = results[0] as List<Map<String, dynamic>>;
+      final items2 = results[1] as List<Map<String, dynamic>>;
+      final doc = results[2] as DocumentSnapshot<Map<String, dynamic>>;
+
+      // (Optional) Prune im Hintergrund (nicht blockierend)
+      // ignore: discarded_futures
+      _playlistSvc.pruneTimelineData(avatarId, playlistId);
+
       // Asset-Resolution: wir nehmen als Asset-ID die media.id (gleiches id-Feld)
       final mediaById = {for (final m in _allMedia) m.id: m};
       _assets
@@ -589,12 +570,10 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
             return (aid != null) ? mediaById[aid] : null;
           }).whereType<AvatarMedia>(),
         );
-      // EntryIds aus Firestore übernehmen (Doc-IDs)
       _timelineEntryIds
         ..clear()
         ..addAll(items2.map((it) => (it['id'] as String?) ?? ''));
-      
-      // DelaySec und Activity aus Firestore in Maps laden
+
       _itemDelaySec.clear();
       _itemEnabled.clear();
       for (final it in items2) {
@@ -604,31 +583,140 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
           _itemEnabled[entryId] = it['activity'] as bool? ?? true;
         }
       }
-      
       _timelineKeys
         ..clear()
         ..addAll(List.generate(_timeline.length, (_) => UniqueKey()));
-      
-      // Loop/Enabled Status aus Firestore laden
-      final doc = await FirebaseFirestore.instance
-          .collection('avatars')
-          .doc(widget.playlist.avatarId)
-          .collection('playlists')
-          .doc(widget.playlist.id)
-          .get();
-      
+
       if (doc.exists) {
         final data = doc.data();
         _timelineLoop = data?['timelineLoop'] as bool? ?? true;
         _timelineEnabled = data?['timelineEnabled'] as bool? ?? true;
       }
-      
+
       if (mounted) setState(() {});
+
+      // 4) Cover-Images asynchron nachladen – zuerst für sichtbare Timeline-Audios, dann Assets/Rest
+      unawaited(_preloadAudioCoversSequential());
     } catch (_) {}
     if (mounted) {
       setState(() {
         _loading = false;
         _firstLoadDone = true;
+      });
+    }
+  }
+
+  Future<void> _preloadAudioCoversSequential() async {
+    final coverSvc = AudioCoverService();
+
+    // a) Zuerst Timeline-Audios
+    final timelineAudios = _timeline.where((m) => m.type == AvatarMediaType.audio).toList();
+    await _fetchAndApplyCovers(coverSvc, timelineAudios);
+
+    // b) Dann Asset-Audios
+    final assetAudios = _assets.where((m) => m.type == AvatarMediaType.audio).toList();
+    await _fetchAndApplyCovers(coverSvc, assetAudios);
+
+    // c) Schließlich restliche Audios
+    final allAudio = _allMedia.where((m) => m.type == AvatarMediaType.audio).toList();
+    await _fetchAndApplyCovers(coverSvc, allAudio);
+  }
+
+  Future<void> _fetchAndApplyCovers(
+    AudioCoverService coverSvc,
+    List<AvatarMedia> medias,
+  ) async {
+    if (medias.isEmpty) return;
+    // In Batches parallelisieren, um UI nicht zu blockieren
+    const int batchSize = 6;
+    for (int i = 0; i < medias.length; i += batchSize) {
+      final batch = medias.sublist(i, (i + batchSize).clamp(0, medias.length));
+      final futures = batch.map((m) async {
+        final covers = await coverSvc.getCoverImages(
+          avatarId: m.avatarId,
+          audioId: m.id,
+          audioUrl: m.url,
+        );
+        return MapEntry(m.id, covers);
+      }).toList();
+      final results = await Future.wait(futures);
+      if (!mounted) return;
+      setState(() {
+        final byId = {for (final e in results) e.key: e.value};
+        // Update _allMedia
+        for (int k = 0; k < _allMedia.length; k++) {
+          final m = _allMedia[k];
+          final covers = byId[m.id];
+          if (covers != null) {
+            _allMedia[k] = AvatarMedia(
+              id: m.id,
+              avatarId: m.avatarId,
+              type: m.type,
+              url: m.url,
+              thumbUrl: m.thumbUrl,
+              createdAt: m.createdAt,
+              durationMs: m.durationMs,
+              aspectRatio: m.aspectRatio,
+              tags: m.tags,
+              originalFileName: m.originalFileName,
+              isFree: m.isFree,
+              price: m.price,
+              currency: m.currency,
+              platformFeePercent: m.platformFeePercent,
+              voiceClone: m.voiceClone,
+              coverImages: covers.isNotEmpty ? covers : null,
+            );
+          }
+        }
+        // Update _timeline und _assets Referenzen
+        for (int k = 0; k < _timeline.length; k++) {
+          final m = _timeline[k];
+          final covers = byId[m.id];
+          if (covers != null) {
+            _timeline[k] = AvatarMedia(
+              id: m.id,
+              avatarId: m.avatarId,
+              type: m.type,
+              url: m.url,
+              thumbUrl: m.thumbUrl,
+              createdAt: m.createdAt,
+              durationMs: m.durationMs,
+              aspectRatio: m.aspectRatio,
+              tags: m.tags,
+              originalFileName: m.originalFileName,
+              isFree: m.isFree,
+              price: m.price,
+              currency: m.currency,
+              platformFeePercent: m.platformFeePercent,
+              voiceClone: m.voiceClone,
+              coverImages: covers.isNotEmpty ? covers : null,
+            );
+          }
+        }
+        for (int k = 0; k < _assets.length; k++) {
+          final m = _assets[k];
+          final covers = byId[m.id];
+          if (covers != null) {
+            _assets[k] = AvatarMedia(
+              id: m.id,
+              avatarId: m.avatarId,
+              type: m.type,
+              url: m.url,
+              thumbUrl: m.thumbUrl,
+              createdAt: m.createdAt,
+              durationMs: m.durationMs,
+              aspectRatio: m.aspectRatio,
+              tags: m.tags,
+              originalFileName: m.originalFileName,
+              isFree: m.isFree,
+              price: m.price,
+              currency: m.currency,
+              platformFeePercent: m.platformFeePercent,
+              voiceClone: m.voiceClone,
+              coverImages: covers.isNotEmpty ? covers : null,
+            );
+          }
+        }
       });
     }
   }

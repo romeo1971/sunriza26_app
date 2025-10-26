@@ -4217,6 +4217,64 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         try {
           await _mediaSvc.delete(widget.avatarId, mediaId, media.type);
         } catch (_) {}
+        // Konsistenz: Entferne Referenzen in allen Playlists (Assets + Items)
+        try {
+          final pls = await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(widget.avatarId)
+              .collection('playlists')
+              .get();
+          for (final p in pls.docs) {
+            final pid = p.id;
+            // 1) timelineAssets mit mediaId == mediaId löschen und zugehörige timelineItems entfernen
+            final assetsQs = await FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(widget.avatarId)
+                .collection('playlists')
+                .doc(pid)
+                .collection('timelineAssets')
+                .where('mediaId', isEqualTo: mediaId)
+                .get();
+            if (assetsQs.docs.isNotEmpty) {
+              final batch = FirebaseFirestore.instance.batch();
+              for (final a in assetsQs.docs) {
+                // zugehörige timelineItems mit assetId == a.id
+                final itemsQs = await FirebaseFirestore.instance
+                    .collection('avatars')
+                    .doc(widget.avatarId)
+                    .collection('playlists')
+                    .doc(pid)
+                    .collection('timelineItems')
+                    .where('assetId', isEqualTo: a.id)
+                    .get();
+                for (final it in itemsQs.docs) {
+                  batch.delete(it.reference);
+                }
+                batch.delete(a.reference);
+              }
+              await batch.commit();
+            }
+            // 2) Direkte timelineItems mit mediaId == mediaId (falls vorhanden)
+            final directItems = await FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(widget.avatarId)
+                .collection('playlists')
+                .doc(pid)
+                .collection('timelineItems')
+                .where('mediaId', isEqualTo: mediaId)
+                .get();
+            if (directItems.docs.isNotEmpty) {
+              final batch = FirebaseFirestore.instance.batch();
+              for (final d in directItems.docs) {
+                batch.delete(d.reference);
+              }
+              await batch.commit();
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Playlist-Referenz-Löschung Fehler: $e');
+        }
+
         // Lokalen Zustand sofort aktualisieren (kein Full-Reload)
         _items.removeWhere((m) => m.id == mediaId);
         _mediaToPlaylists.remove(mediaId);

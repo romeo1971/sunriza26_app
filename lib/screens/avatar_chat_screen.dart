@@ -87,6 +87,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   int _timelineCurrentIndex = 0; // Aktueller Index
   final Stopwatch _chatStopwatch = Stopwatch(); // Chat-Zeit (00:00 bei Start)
   bool _timelineLoop = false; // Loop am Ende?
+  OverlayEntry? _timelineOverlay; // Overlay für Timeline-Slider (immer top-most)
+  List<int> _timelineStartAtSec = []; // Startzeiten je Item (ab Chat-Start)
+  List<bool> _timelineShown = []; // bereits angezeigt
+  int? _activeTimelineIndex; // aktuell sichtbarer Index
+  Timer? _timelineScheduleTicker; // 1s-Ticker für Startzeiten
+  Timer? _timelineHideTimer; // Timeout je Item
   
   StreamSubscription<PlayerState>? _playerStateSub;
   StreamSubscription<Duration>? _playerPositionSub;
@@ -316,6 +322,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   Timer? _teaserTimer;
   AvatarMedia? _pendingTeaserMedia;
   OverlayEntry? _teaserEntry;
+  Timer? _chatTicker; // UI-Ticker für Chatzeit
 
   Future<void> _maybeJoinLiveKit() async {
     try {
@@ -865,6 +872,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     }
     // Scroll Listener für Infinite Scroll (oben = ältere Messages)
     _scrollController.addListener(_onScroll);
+    // UI-Ticker für Chatzeit: jede Sekunde neu zeichnen
+    _chatTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      setState(() {});
+    });
     
     // Empfange AvatarData SOFORT (synchron) von der vorherigen Seite
     WidgetsBinding.instance.addPostFrameCallback((_) async {
@@ -989,11 +1001,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       final dynamics = _avatarData!.dynamics;
       final basicDynamics = dynamics?['basic'] as Map<String, dynamic>?;
 
-      if (!dynamicsEnabled ||
-          basicDynamics == null ||
-          basicDynamics['status'] != 'ready') {
+      // URLs RAW vorab lesen, damit wir nicht fälschlich am Status scheitern
+      final String rawIdle = (basicDynamics?['idleVideoUrl'] as String?)?.trim() ?? '';
+      final String rawC1 = (basicDynamics?['idleChunk1Url'] as String?)?.trim() ?? '';
+      final String rawC2 = (basicDynamics?['idleChunk2Url'] as String?)?.trim() ?? '';
+      final String rawC3 = (basicDynamics?['idleChunk3Url'] as String?)?.trim() ?? '';
+      final bool hasIdleUrl = rawIdle.isNotEmpty;
+      final bool hasAllChunks = rawC1.isNotEmpty && rawC2.isNotEmpty && rawC3.isNotEmpty;
+
+      // Gate: Nur wenn Dynamics global AUS oder KEIN idle vorhanden → Fallback
+      if (!dynamicsEnabled || basicDynamics == null || !hasIdleUrl) {
         debugPrint(
-          '⚠️ Dynamics-Video: deaktiviert oder kein "basic" Dynamics für $avatarId\n'
+          '⚠️ Dynamics-Video deaktiviert ODER kein idleVideoUrl für $avatarId\n'
           '→ Fallback: Nur Hero-Image wird angezeigt',
         );
         if (!mounted) return;
@@ -1010,40 +1029,20 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         return;
       }
 
-      // URLs DIREKT aus _avatarData (INSTANT - 0ms!)
-      debugPrint('⚡ Lade Videos INSTANT aus _avatarData.dynamics (0ms)!');
-      final idleUrl = _addCacheBuster(basicDynamics['idleVideoUrl'] as String?);
-      final chunk1Url = _addCacheBuster(
-        basicDynamics['idleChunk1Url'] as String?,
-      );
-      final chunk2Url = _addCacheBuster(
-        basicDynamics['idleChunk2Url'] as String?,
-      );
-      final chunk3Url = _addCacheBuster(
-        basicDynamics['idleChunk3Url'] as String?,
-      );
+      // URLs mit Cache-Buster vorbereiten (Status wird NICHT mehr erzwungen)
+      debugPrint('⚡ Lade Videos INSTANT aus _avatarData.dynamics (0ms)! URLs vorhanden, Status ignoriert.');
+      final idleUrl = _addCacheBuster(rawIdle);
+      final chunk1Url = _addCacheBuster(rawC1);
+      final chunk2Url = _addCacheBuster(rawC2);
+      final chunk3Url = _addCacheBuster(rawC3);
 
       // Cache für sync Zugriff in build()
       _cachedHeroChunkUrl = _addCacheBuster(
         basicDynamics['heroImageChunkUrl'] as String?,
       );
 
-      // idle.mp4 existiert!
       if (!mounted) return;
       setState(() => _hasIdleDynamics = true);
-
-      if (idleUrl.isEmpty) {
-        debugPrint(
-          '⚠️ Dynamics-Video: Keine idleVideoUrl\n'
-          '→ Fallback: Nur Hero-Image wird angezeigt',
-        );
-        if (!mounted) return;
-        setState(() {
-          _liveAvatarEnabled = false;
-          _hasIdleDynamics = false;
-        });
-        return;
-      }
 
       // Nur neu laden, wenn sich die URL geändert hat – vermeidet Black‑Flash
       if (_idleVideoUrl == idleUrl && _idleController != null) {
@@ -1053,20 +1052,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       }
 
       // CHUNKED LOADING: Sofortiger Start mit Chunk1 (2s), dann Chunk2, Chunk3, dann idle.mp4 Loop!
-      final hasChunks =
-          chunk1Url.isNotEmpty && chunk2Url.isNotEmpty && chunk3Url.isNotEmpty;
-
-      if (hasChunks) {
-        debugPrint(
-          '⚡ Sequential Chunked Loading: Chunk1 → Chunk2 → Chunk3 → idle.mp4',
-        );
+      if (hasAllChunks) {
+        debugPrint('⚡ Sequential Chunked Loading: Chunk1 → Chunk2 → Chunk3 → idle.mp4');
 
         // 1. Chunk1 SOFORT starten (ohne await - lädt während Playback!)
-        final chunk1Ctrl = VideoPlayerController.networkUrl(
-          Uri.parse(chunk1Url),
-        );
-
-        // Initialize + Play ASYNC (non-blocking!)
+        final chunk1Ctrl = VideoPlayerController.networkUrl(Uri.parse(chunk1Url));
         chunk1Ctrl.initialize().then((_) {
           if (!mounted) return;
           chunk1Ctrl.play();
@@ -1078,16 +1068,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         _chunk1Url = chunk1Url;
         _currentChunk = 1;
 
-        // SOFORT sichtbar machen (Video lädt im Hintergrund)
         if (!mounted) return;
         setState(() => _liveAvatarEnabled = true);
-        debugPrint(
-          '⚡ Chunk1 startet (lädt parallel)! Preload Chunk2+3+idle.mp4...',
-        );
+        debugPrint('⚡ Chunk1 startet (lädt parallel)! Preload Chunk2+3+idle.mp4...');
 
-        // 2. PARALLEL im Hintergrund: Chunk2, Chunk3, idle.mp4 laden –
-        //    aber erst nach LiveKit-Join starten (oder Fallback nach 2s),
-        //    damit Netzwerk/Thread nicht den Join verzögern.
         if (LiveKitService().connected.value) {
           unawaited(_preloadChunks(chunk2Url, chunk3Url, idleUrl));
         } else {
@@ -1099,27 +1083,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             }
           };
           LiveKitService().connected.addListener(onLkJoin);
-          // Fallback: spätestens nach 2s trotzdem starten
           Future.delayed(const Duration(seconds: 2), () {
-            try {
-              LiveKitService().connected.removeListener(onLkJoin!);
-            } catch (_) {}
+            try { LiveKitService().connected.removeListener(onLkJoin!); } catch (_) {}
             unawaited(_preloadChunks(chunk2Url, chunk3Url, idleUrl));
           });
         }
 
-        // 3. Sequential Playback: Chunk1 → Chunk2 → Chunk3 → idle.mp4
-        // WICHTIG: Listener muss sich nach erstem Trigger selbst entfernen!
         void Function()? chunk1Listener;
         chunk1Listener = () {
           if (!mounted) return;
           final pos = chunk1Ctrl.value.position;
           final dur = chunk1Ctrl.value.duration;
-
-          // Trigger kurz VOR Ende (100ms Buffer)
-          if (_currentChunk == 1 &&
-              pos.inMilliseconds >= (dur.inMilliseconds - 100) &&
-              pos.inMilliseconds > 0) {
+          if (_currentChunk == 1 && pos.inMilliseconds >= (dur.inMilliseconds - 100) && pos.inMilliseconds > 0) {
             debugPrint('🔄 Chunk1 fast fertig → Switch zu Chunk2');
             chunk1Ctrl.removeListener(chunk1Listener!);
             _playChunk2();
@@ -1127,8 +1102,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         };
         chunk1Ctrl.addListener(chunk1Listener);
       } else {
-        // FALLBACK: Keine Chunks → Direkt idle.mp4 laden (alte Logik)
-        debugPrint('⚠️ Keine Chunks vorhanden → Lade idle.mp4 direkt');
+        // FALLBACK: Keine vollständigen Chunks → Direkt idle.mp4 laden
+        debugPrint('⚠️ Chunks unvollständig → Lade idle.mp4 direkt');
         final newCtrl = VideoPlayerController.networkUrl(Uri.parse(idleUrl));
         await newCtrl.initialize();
         await newCtrl.seekTo(Duration.zero);
@@ -1138,7 +1113,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         final old = _idleController;
         _idleController = newCtrl;
         _idleVideoUrl = idleUrl;
-        _currentChunk = 4; // WICHTIG: Für build() switch statement!
+        _currentChunk = 4; // Für build()
         old?.dispose();
 
         if (!mounted) return;
@@ -1149,15 +1124,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       // Optionales Prestarten deaktiviert (Kostenbremse)
       if (_kPrestartMuseTalk) {
         final roomName = LiveKitService().roomName;
-        if (roomName != null &&
-            roomName.isNotEmpty &&
-            _avatarData?.id != null &&
-            _cachedVoiceId != null &&
-            !_globalActiveMuseTalkRooms.containsKey(roomName)) {
+        if (roomName != null && roomName.isNotEmpty && _avatarData?.id != null && _cachedVoiceId != null && !_globalActiveMuseTalkRooms.containsKey(roomName)) {
           debugPrint('🎬 Preparing MuseTalk session (once) for room=$roomName');
-          unawaited(
-            _startLiveKitPublisher(roomName, _avatarData!.id, _cachedVoiceId!),
-          );
+          unawaited(_startLiveKitPublisher(roomName, _avatarData!.id, _cachedVoiceId!));
         }
       }
     } catch (e) {
@@ -1521,6 +1490,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                   ),
                 ),
               ),
+
+              // Slider wird nun via OverlayEntry gerendert (immer ganz oben)
             ],
           ),
         ),
@@ -1723,7 +1694,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             TimelineMediaSlider(
               media: _activeTimelineItem!,
               slidingDuration: const Duration(minutes: 2),
-              isBlurred: !_isTimelineItemPurchased(), // Blur wenn nicht gekauft
+              isBlurred: false,
               onTap: _onTimelineItemTap,
             ),
           const SizedBox(width: 8),
@@ -2464,16 +2435,32 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       children: [
         Tooltip(
           message: room == null || room.isEmpty ? 'Room: -' : 'Room: $room',
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: const Color(0xFF7E57C2), // GMBC
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Text(
-              'mt-room',
-              style: TextStyle(color: Colors.white, fontSize: 11),
-            ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF7E57C2), // GMBC
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'mt-room',
+                  style: TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  _formatStopwatch(_chatStopwatch.elapsed),
+                  style: const TextStyle(color: Colors.white, fontSize: 11),
+                ),
+              ),
+            ],
           ),
         ),
         ValueListenableBuilder<bool>(
@@ -2702,6 +2689,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     return p.startsWith('file://') ? p.replaceFirst('file://', '') : p;
   }
 
+  String _formatStopwatch(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final h = d.inHours;
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
   Future<void> _sendMessage() async {
     final raw = _messageController.text;
     // Verhindere Kosten: Nur senden, wenn echter Inhalt vorhanden ist
@@ -2841,6 +2835,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         return;
       }
       final uri = Uri.parse('$base/avatar/tts');
+      String? idToken;
+      try { idToken = await FirebaseAuth.instance.currentUser?.getIdToken(); } catch (_) {}
       final payload = <String, dynamic>{'text': text};
       if (voiceId != null) payload['voice_id'] = voiceId;
       final double? stability = (_avatarData?.training != null)
@@ -2868,13 +2864,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (similarity != null) payload['similarity'] = similarity;
       if (tempo != null) payload['speed'] = tempo;
       if (dialect != null && dialect.isNotEmpty) payload['dialect'] = dialect;
+      final headers = {
+        'Content-Type': 'application/json',
+        if (idToken != null && idToken.isNotEmpty) 'Authorization': 'Bearer $idToken',
+      };
       final res = await http
           .post(
             uri,
-            headers: {'Content-Type': 'application/json'},
+            headers: headers,
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(seconds: 30));
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final Map<String, dynamic> j =
             jsonDecode(res.body) as Map<String, dynamic>;
@@ -2923,6 +2923,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         return null;
       }
       final uri = Uri.parse('$base2/avatar/tts');
+      String? idToken;
+      try { idToken = await FirebaseAuth.instance.currentUser?.getIdToken(); } catch (_) {}
       String? voiceId = (_avatarData?.training != null)
           ? (_avatarData?.training?['voice'] != null
                 ? (_avatarData?.training?['voice']?['elevenVoiceId'] as String?)
@@ -2953,11 +2955,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           : null;
       if (stability != null) payload['stability'] = stability;
       if (similarity != null) payload['similarity'] = similarity;
+      final headers = {
+        'Content-Type': 'application/json',
+        if (idToken != null && idToken.isNotEmpty) 'Authorization': 'Bearer $idToken',
+      };
       final res = await http.post(
         uri,
-        headers: {'Content-Type': 'application/json'},
+        headers: headers,
         body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 15));
+      ).timeout(const Duration(seconds: 30));
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final Map<String, dynamic> j =
             jsonDecode(res.body) as Map<String, dynamic>;
@@ -3087,10 +3093,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               .timeout(const Duration(seconds: 3));
           lang = (doc.data()?['language'] as String?)?.trim();
         } catch (_) {}
+        final replyLang = (lang == null || lang.isEmpty) ? 'de' : lang;
+        String? idToken;
+        try { idToken = await FirebaseAuth.instance.currentUser?.getIdToken(); } catch (_) {}
+        final headers = {
+          'Content-Type': 'application/json',
+          if (idToken != null && idToken.isNotEmpty) 'Authorization': 'Bearer $idToken',
+        };
         final res = await http
             .post(
               uri,
-              headers: {'Content-Type': 'application/json'},
+              headers: headers,
               body: jsonEncode({
                 'user_id': uid,
                 'avatar_id': _avatarData?.id ?? '',
@@ -3100,10 +3113,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                     ? voiceId
                     : null,
                 'avatar_name': _avatarData?.displayName,
-                'target_language': lang,
+                'target_language': replyLang,
+                'force_reply_lang': replyLang,
               }),
             )
-            .timeout(const Duration(seconds: 15));
+            .timeout(const Duration(seconds: 60));
         if (res.statusCode >= 200 && res.statusCode < 300) {
           return jsonDecode(res.body) as Map<String, dynamic>;
         }
@@ -3852,8 +3866,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     // Teaser aufräumen
     _teaserTimer?.cancel();
     _teaserEntry?.remove();
+    _chatTicker?.cancel();
     // Image Timeline aufräumen
     _imageTimer?.cancel();
+    // Timeline sofort beenden/aufräumen
+    _timelineScheduleTicker?.cancel();
+    _timelineHideTimer?.cancel();
+    _timelineTimer?.cancel();
+    _removeTimelineOverlay();
+    _timelineSliderVisible = false;
+    _activeTimelineItem = null;
     // Audio/Player stoppen (ohne setState!)
     try {
       _player.stop();
@@ -3982,12 +4004,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             .collection('playlists')
             .doc(playlistId)
             .collection('timelineItems')
-            .where('activity', isEqualTo: true)
             .orderBy('order')
             .get();
 
         for (final itemDoc in timelineItems.docs) {
           final itemData = itemDoc.data();
+          // In-Memory Filter: activity fehlt → als aktiv behandeln
+          final isActive = (itemData['activity'] as bool?) ?? true;
+          if (!isActive) continue;
           itemData['id'] = itemDoc.id;
           itemData['playlistId'] = playlistId;
           allItems.add(itemData);
@@ -4006,7 +4030,29 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         return aOrder.compareTo(bOrder);
       });
 
-      // 5. Konvertiere zu AvatarMedia und speichere
+      // 5. Lade Confirmed-Set für aktuellen Nutzer je Playlist
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final confirmedIds = <String>{};
+      if (uid != null) {
+        try {
+          for (final p in playlistsSnapshot.docs) {
+            final confSnap = await FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(_avatarData!.id)
+                .collection('playlists')
+                .doc(p.id)
+                .collection('confirmedItems')
+                .where('userId', isEqualTo: uid)
+                .get();
+            for (final d in confSnap.docs) {
+              final mid = d.data()['mediaId'] as String?;
+              if (mid != null && mid.isNotEmpty) confirmedIds.add(mid);
+            }
+          }
+        } catch (_) {}
+      }
+
+      // 6. Konvertiere zu AvatarMedia und speichere (gefiltert: unbestätigt)
       final List<AvatarMedia> mediaItems = [];
       final List<Map<String, dynamic>> itemMetadata = [];
 
@@ -4014,18 +4060,48 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         final assetId = item['assetId'] as String?;
         if (assetId == null) continue;
 
-        // Lade Media Asset
-        final mediaDoc = await FirebaseFirestore.instance
-            .collection('avatars')
-            .doc(_avatarData!.id)
-            .collection('media')
-            .doc(assetId)
-            .get();
+        // 1) Asset auflösen → mediaId (kompatibel zu älteren Daten)
+        String mediaIdFromAsset = assetId;
+        try {
+          final assetSnap = await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(_avatarData!.id)
+              .collection('playlists')
+              .doc(item['playlistId'] as String)
+              .collection('timelineAssets')
+              .doc(assetId)
+              .get();
+          final assetData = assetSnap.data();
+          final mid = assetData != null ? (assetData['mediaId'] as String?) : null;
+          if (mid != null && mid.isNotEmpty) mediaIdFromAsset = mid;
+        } catch (_) {}
 
-        if (mediaDoc.exists) {
-          final media = AvatarMedia.fromMap(mediaDoc.data()!);
-          mediaItems.add(media);
-          itemMetadata.add(item);
+        // 2) Media Asset laden (neue Struktur)
+        Future<DocumentSnapshot<Map<String, dynamic>>> _get(String col) =>
+            FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(_avatarData!.id)
+                .collection(col)
+                .doc(mediaIdFromAsset)
+                .get();
+
+        DocumentSnapshot<Map<String, dynamic>> snap;
+        Map<String, dynamic>? data;
+        for (final col in const ['images', 'videos', 'audios', 'documents']) {
+          snap = await _get(col);
+          if (snap.exists) {
+            data = snap.data();
+            break;
+          }
+        }
+
+        if (data != null) {
+          final map = {'id': mediaIdFromAsset, ...data};
+          final media = AvatarMedia.fromMap(map);
+          if (!confirmedIds.contains(media.id)) {
+            mediaItems.add(media);
+            itemMetadata.add(item);
+          }
         }
       }
 
@@ -4044,59 +4120,53 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           _timelineItemsMetadata = itemMetadata;
           _timelineCurrentIndex = 0;
           _timelineLoop = loopEnabled;
+          // Startzeiten exakt aus minDropdown kumulativ berechnen (Sekunden ab Chat-Start)
+          _timelineStartAtSec = [];
+          int accMin = 0;
+          for (final m in _timelineItemsMetadata) {
+            final minutes = (m['minDropdown'] as int?) ?? 1;
+            accMin += minutes; // Startzeit = Ende der vorherigen Wartezeit
+            _timelineStartAtSec.add(accMin * 60);
+          }
+          _timelineShown = List<bool>.filled(_timelineItems.length, false);
         });
-        
-        // Starte Timeline mit erstem Item
-        _scheduleNextTimelineItem();
+        // Polling jede Sekunde: zeige fällige Items exakt am Startzeitpunkt
+        _timelineScheduleTicker?.cancel();
+        _timelineScheduleTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+          if (!mounted) return;
+          final t = _chatStopwatch.elapsed.inSeconds;
+          for (int i = 0; i < _timelineItems.length; i++) {
+            if (_timelineShown[i]) continue;
+            if (t >= _timelineStartAtSec[i]) {
+              _activeTimelineIndex = i;
+              _showCurrentTimelineItem();
+              break;
+            }
+          }
+        });
       }
     } catch (e) {
       debugPrint('❌ Error loading timeline: $e');
     }
   }
 
-  /// Plant das nächste Timeline Item basierend auf Chat-Zeit
-  void _scheduleNextTimelineItem() {
-    if (_timelineItems.isEmpty || _timelineItemsMetadata.isEmpty) return;
-    
-    // Check ob Loop oder Ende
-    if (_timelineCurrentIndex >= _timelineItems.length) {
-      if (_timelineLoop) {
-        debugPrint('📅 Timeline Loop: Restarting from beginning');
-        _timelineCurrentIndex = 0;
-      } else {
-        debugPrint('📅 Timeline ended (no loop)');
-        return;
-      }
-    }
-
-    final metadata = _timelineItemsMetadata[_timelineCurrentIndex];
-    final waitMinutes = metadata['minDropdown'] as int? ?? 1;
-    
-    // Warte X Minuten (Chat-Zeit)
-    final waitDuration = Duration(minutes: waitMinutes);
-    
-    debugPrint('📅 Scheduling item ${_timelineCurrentIndex + 1}/${_timelineItems.length} in ${waitMinutes}min (Chat-Zeit)');
-    
-    _timelineTimer = Timer(waitDuration, () {
-      if (!mounted) return;
-      _showCurrentTimelineItem();
-    });
-  }
+  // Altes Scheduling entfernt – ersetzt durch Sekundenticker
 
   /// Zeigt das aktuelle Timeline Item
   void _showCurrentTimelineItem() {
     if (_timelineItems.isEmpty || _timelineItemsMetadata.isEmpty) return;
-    if (_timelineCurrentIndex >= _timelineItems.length) return;
+    final idx = _activeTimelineIndex ?? _timelineCurrentIndex;
+    if (idx < 0 || idx >= _timelineItems.length) return;
 
-    final item = _timelineItems[_timelineCurrentIndex];
-    final metadata = _timelineItemsMetadata[_timelineCurrentIndex];
+    final item = _timelineItems[idx];
+    final metadata = _timelineItemsMetadata[idx];
     
     // Berechne Anzeigedauer
     int displayMinutes = 3; // Default: 3 Minuten
     
-    if (_timelineCurrentIndex + 1 < _timelineItemsMetadata.length) {
+    if (idx + 1 < _timelineItemsMetadata.length) {
       // Es gibt ein nächstes Item
-      final nextMetadata = _timelineItemsMetadata[_timelineCurrentIndex + 1];
+      final nextMetadata = _timelineItemsMetadata[idx + 1];
       final nextMinutes = nextMetadata['minDropdown'] as int? ?? 1;
       
       // Anzeigedauer = min(3, nextMinutes)
@@ -4106,9 +4176,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
     final displayDuration = Duration(minutes: displayMinutes);
     
-    debugPrint('📅 Showing item ${_timelineCurrentIndex + 1}/${_timelineItems.length}: ${item.originalFileName} (${displayMinutes}min display)');
+    debugPrint('📅 Showing item ${idx + 1}/${_timelineItems.length}: ${item.originalFileName} (${displayMinutes}min display)');
     
     _showTimelineItemWithAnimation(item, displayDuration);
+    _timelineShown[idx] = true;
   }
 
   /// Zeigt Timeline Item mit Slider-Animation
@@ -4121,28 +4192,24 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     
     if (!mounted) return;
     
-    setState(() {
-      _timelineSliderVisible = true;
-    });
+    _timelineSliderVisible = true;
+    _showTimelineOverlay(media, displayDuration);
 
-    // Nach displayDuration ausblenden
-    _timelineTimer = Timer(displayDuration, () {
+    // Nach displayDuration ausblenden (eigener Hide-Timer, unabhängig vom Schedule-Ticker)
+    _timelineHideTimer?.cancel();
+    _timelineHideTimer = Timer(displayDuration, () {
       if (!mounted) return;
-      
-      setState(() {
-        _timelineSliderVisible = false;
-        _activeTimelineItem = null;
-      });
-
-      // Nächstes Item planen
-      _timelineCurrentIndex++;
-      _scheduleNextTimelineItem();
+      _timelineSliderVisible = false;
+      _activeTimelineItem = null;
+      _removeTimelineOverlay();
+      _timelineCurrentIndex = (_activeTimelineIndex ?? _timelineCurrentIndex) + 1;
     });
   }
 
   /// Pausiert Timeline (bei Overlay/Purchase)
   void _pauseTimeline() {
     _timelineTimer?.cancel();
+    _removeTimelineOverlay();
     debugPrint('⏸️ Timeline paused');
   }
 
@@ -4153,9 +4220,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       // Vereinfacht: Lasse Timer weiterlaufen
       debugPrint('▶️ Timeline resumed (item continues)');
     } else {
-      // Timeline war in Wartezeit - plane nächstes Item neu
-      _scheduleNextTimelineItem();
-      debugPrint('▶️ Timeline resumed (scheduling next)');
+      // Timeline war in Wartezeit – Sekundenticker übernimmt Scheduling
+      debugPrint('▶️ Timeline resumed (ticker scheduling)');
     }
   }
 
@@ -4170,9 +4236,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return false;
     
-    // Kostenlose Items sind immer "gekauft" (kein Blur)
+    // Kostenlose Items gelten als gekauft → kein Blur
     final price = _activeTimelineItem!.price ?? 0.0;
-    if (price == 0.0) return false; // Blur zeigen für "Annehmen" Flow
+    if (price == 0.0) return true;
     
     // Cache prüfen
     if (_purchaseStatusCache.containsKey(mediaId)) {
@@ -4204,9 +4270,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     
     final mediaId = _activeTimelineItem!.id;
     
-    // Kostenlose Items
+    // Kostenlose Items gelten als gekauft
     final price = _activeTimelineItem!.price ?? 0.0;
-    if (price == 0.0) return false;
+    if (price == 0.0) return true;
     
     // Nutze Cache
     return _purchaseStatusCache[mediaId] ?? false;
@@ -4224,7 +4290,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       barrierDismissible: true,
       builder: (ctx) => TimelineMediaOverlay(
         media: _activeTimelineItem!,
-        isPurchased: _isTimelineItemPurchased(),
+        isPurchased: false,
         onPurchase: () {
           // Schließe Overlay
           Navigator.pop(ctx);
@@ -4260,6 +4326,52 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   @override
   bool get wantKeepAlive => true;
+
+  Future<void> _applyAvatar(AvatarData data) async {
+    if (!mounted) return;
+    setState(() => _avatarData = data);
+
+    // Auto‑Join LiveKit: nur wenn Lipsync am Avatar aktiviert ist
+    final lipsyncEnabled = (data.training?['lipsyncEnabled'] as bool?) ?? true;
+    if (lipsyncEnabled) {
+      // nicht blockierend, UI bleibt responsiv
+      unawaited(_maybeJoinLiveKit());
+    }
+
+    // restliche Initialisierung (bestehend)
+    await _initLiveAvatar(data.id);
+    await _loadAndStartImageTimeline(data.id);
+  }
+
+  void _removeTimelineOverlay() {
+    try {
+      _timelineOverlay?.remove();
+    } catch (_) {}
+    _timelineOverlay = null;
+  }
+
+  void _showTimelineOverlay(AvatarMedia media, Duration displayDuration) {
+    _removeTimelineOverlay();
+    final entry = OverlayEntry(
+      builder: (ctx) => Positioned.fill(
+        child: IgnorePointer(ignoring: false,
+          child: Stack(
+            children: [
+              TimelineMediaSlider(
+                media: media,
+                slidingDuration: displayDuration,
+                isBlurred: false,
+                onTap: _onTimelineItemTap,
+                avatarId: _avatarData?.id,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context).insert(entry);
+    _timelineOverlay = entry;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -4302,13 +4414,36 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
     setState(() => _isProcessing = true);
 
     try {
-      // Für kostenlose Items: Direkt speichern
+        // Für kostenlose Items: Direkt speichern und als bestätigt markieren
       if (widget.isFree) {
         await _momentsService.saveMoment(
           media: widget.media,
           price: 0.0,
           paymentMethod: 'free',
         );
+
+          // Markiere als confirmed für diesen Nutzer
+          try {
+            final uid = FirebaseAuth.instance.currentUser?.uid;
+            final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+            final avatarId = chatState?._avatarData?.id;
+            final playlistId = chatState?._timelineItemsMetadata.isNotEmpty == true
+                ? (chatState!._timelineItemsMetadata[chatState._timelineCurrentIndex]['playlistId'] as String?)
+                : null;
+            if (uid != null && avatarId != null && playlistId != null) {
+              await FirebaseFirestore.instance
+                  .collection('avatars')
+                  .doc(avatarId)
+                  .collection('playlists')
+                  .doc(playlistId)
+                  .collection('confirmedItems')
+                  .add({
+                'userId': uid,
+                'mediaId': widget.media.id,
+                'confirmedAt': FieldValue.serverTimestamp(),
+              });
+            }
+          } catch (_) {}
 
         // Update Purchase Status Cache
         if (context.mounted) {
@@ -4368,12 +4503,35 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
             throw Exception('Credits-Kauf fehlgeschlagen');
           }
 
-          // Speichere in Moments
+          // Speichere in Moments und markiere als bestätigt
           await _momentsService.saveMoment(
             media: widget.media,
             price: widget.price,
             paymentMethod: 'credits',
           );
+
+          // Markiere als confirmed für diesen Nutzer
+          try {
+            final uid = FirebaseAuth.instance.currentUser?.uid;
+            final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+            final avatarId = chatState?._avatarData?.id;
+            final playlistId = chatState?._timelineItemsMetadata.isNotEmpty == true
+                ? (chatState!._timelineItemsMetadata[chatState._timelineCurrentIndex]['playlistId'] as String?)
+                : null;
+            if (uid != null && avatarId != null && playlistId != null) {
+              await FirebaseFirestore.instance
+                  .collection('avatars')
+                  .doc(avatarId)
+                  .collection('playlists')
+                  .doc(playlistId)
+                  .collection('confirmedItems')
+                  .add({
+                'userId': uid,
+                'mediaId': widget.media.id,
+                'confirmedAt': FieldValue.serverTimestamp(),
+              });
+            }
+          } catch (_) {}
 
           // Update Purchase Status Cache
           if (context.mounted) {
@@ -4396,7 +4554,7 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
             ),
           );
         } else {
-          // Stripe Checkout
+          // Stripe Checkout (nach Erfolg als bestätigt markieren)
           final checkoutUrl = await _purchaseService.purchaseMediaWithStripe(
             userId: uid,
             media: widget.media,
@@ -4420,6 +4578,9 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
                 backgroundColor: AppColors.magenta,
               ),
             );
+            // Hinweis: Nach Redirect zurück kann der Erfolg nicht hier erkannt werden.
+            // Wir markieren daher NICHT sofort confirmed; der Erfolg wird im
+            // Webhook/Backend in Moments gespeichert. Optional später listener-basiert filtern.
           } else {
             throw Exception('Checkout URL konnte nicht geöffnet werden');
           }

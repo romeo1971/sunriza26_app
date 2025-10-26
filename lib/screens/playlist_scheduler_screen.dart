@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'dart:async';
 import '../models/playlist_models.dart';
 import '../services/playlist_service.dart';
 import '../services/media_service.dart';
@@ -38,6 +39,9 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
 
   // Dirty State (für Save-Button Anzeige)
   bool _isDirty = false;
+  
+  // Auto-Save Debounce
+  Timer? _autoSaveTimer;
 
   // Weekly Schedule State: Map<Weekday, Set<TimeSlot>>
   final Map<int, Set<TimeSlot>> _weeklySchedule = {};
@@ -689,6 +693,54 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
       if (mounted) setState(() => _saving = false);
     }
   }
+  
+  // Auto-Save nur für Scheduler-Änderungen (ohne Screen zu schließen)
+  void _scheduleAutoSave() {
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(const Duration(milliseconds: 600), _autoSaveNow);
+  }
+  
+  Future<void> _autoSaveNow() async {
+    try {
+      final weeklySchedules = _weeklySchedule.entries
+          .where((e) => e.value.isNotEmpty)
+          .map((e) {
+            final sorted = e.value.toList()
+              ..sort((a, b) => a.index.compareTo(b.index));
+            return WeeklySchedule(weekday: e.key, timeSlots: sorted);
+          })
+          .toList();
+      final ssOut = _normalizeSpecials(_specialSchedules);
+      final p = Playlist(
+        id: widget.playlist.id,
+        avatarId: widget.playlist.avatarId,
+        name: _name.text.trim(),
+        showAfterSec: widget.playlist.showAfterSec,
+        highlightTag: _highlightTag.text.trim().isNotEmpty
+            ? _highlightTag.text.trim()
+            : null,
+        coverImageUrl: _coverImageUrl,
+        coverOriginalFileName: _coverOriginalFileName,
+        weeklySchedules: weeklySchedules,
+        specialSchedules: ssOut,
+        targeting: widget.playlist.targeting,
+        priority: widget.playlist.priority,
+        scheduleMode: _playlistType,
+        createdAt: widget.playlist.createdAt,
+        updatedAt: DateTime.now().millisecondsSinceEpoch,
+      );
+      await _svc.update(p);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Scheduler gespeichert')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Auto-Save fehlgeschlagen: $e')),
+      );
+    }
+  }
 
   void _toggleTimeSlot(int weekday, TimeSlot slot) {
     setState(() {
@@ -703,6 +755,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
       }
       _isDirty = true;
     });
+    _scheduleAutoSave();
   }
 
   String _timeSlotLabel(TimeSlot slot) {
@@ -942,6 +995,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
                           _playlistType = value;
                           _isDirty = true;
                         });
+                        _scheduleAutoSave();
                       }
                     },
                   ),
@@ -1216,6 +1270,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
                         _weeklySchedule.remove(_selectedWeekday);
                         _selectedWeekday = null;
                       });
+                      _scheduleAutoSave();
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red.shade700,
@@ -1317,6 +1372,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
                         );
                       }
                     });
+                    _scheduleAutoSave();
                   },
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -1402,6 +1458,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
               child: ElevatedButton(
                 onPressed: () async {
                   await _showHighlightTagDialog();
+                  _scheduleAutoSave();
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.transparent,
@@ -1496,6 +1553,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
                           _specialEndDate = picked;
                         }
                       });
+                      _scheduleAutoSave();
                     }
                   },
                   child: Row(
@@ -1538,6 +1596,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
                       setState(() {
                         _specialEndDate = picked;
                       });
+                      _scheduleAutoSave();
                     }
                   },
                   child: Row(
@@ -1799,6 +1858,7 @@ class _PlaylistSchedulerScreenState extends State<PlaylistSchedulerScreen> {
                       }
                       _selectedSpecialWeekday = null;
                     });
+                    _scheduleAutoSave();
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.red.shade700,

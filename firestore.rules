@@ -179,11 +179,7 @@ service cloud.firestore {
       allow create, update: if ownsAvatar(avatarId) && validMediaPricing(request.resource.data);
       allow delete: if ownsAvatar(avatarId);
     }
-    // Legacy: alte media-Collection (falls noch vorhanden)
-    match /avatars/{avatarId}/media/{mediaId} {
-      allow get, list: if ownsAvatar(avatarId);
-      allow delete: if ownsAvatar(avatarId); // nur löschen erlaubt, kein create mehr
-    }
+    // Legacy-Pfad entfernt: /avatars/{avatarId}/media/** ist obsolet
 
     // Playlists
     match /avatars/{avatarId}/playlists/{playlistId} {
