@@ -2,6 +2,8 @@
 /// Stand: 04.09.2025 - Basierend auf struppi-Implementation
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
@@ -26,14 +28,28 @@ class _AuthScreenState extends State<AuthScreen> {
   var _enteredEmail = '';
   var _enteredPassword = '';
   var _isLoading = false;
+  var _isAuthenticating = false; // Flag: Verhindert Dialog nach Login
 
   // GoogleSignIn wird über AuthService genutzt
   final AuthService _authService = AuthService();
+  StreamSubscription<User?>? _authSubscription;
 
   @override
   void initState() {
     super.initState();
     _initializeLanguage();
+    // Schließt jedes offene Auth-Dialog-Fenster sofort, sobald ein User eingeloggt ist
+    _authSubscription =
+        FirebaseAuth.instance.authStateChanges().listen((User? user) {
+      if (!mounted) return;
+      if (user != null) {
+        // Alle offenen Dialoge schließen und Auth-UI blockieren
+        while (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+        setState(() => _isAuthenticating = true);
+      }
+    });
   }
 
   // Device-Locale als Startsprache setzen (falls noch keine gesetzt)
@@ -136,6 +152,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
   // Auth-Dialog (Login/Registrierung in einem)
   void _showAuthDialog({bool isLogin = true}) {
+    // NICHT öffnen wenn bereits eingeloggt!
+    if (FirebaseAuth.instance.currentUser != null || _isAuthenticating) {
+      return;
+    }
+    
     final gradients = Theme.of(context).extension<AppGradients>()!;
     final loc = Provider.of<LocalizationService>(context, listen: false);
     final formKey = GlobalKey<FormState>();
@@ -311,9 +332,9 @@ class _AuthScreenState extends State<AuthScreen> {
                                                         enteredPassword;
                                                   });
                                                   if (currentIsLogin) {
-                                                    _submitLogin();
+                                                    _submitLogin(dialogContext);
                                                   } else {
-                                                    _submitRegistration();
+                                                    _submitRegistration(dialogContext);
                                                   }
                                                 }
                                               }
@@ -454,7 +475,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                           ),
                                           onPressed: _isLoading
                                               ? null
-                                              : _handleGoogleSignIn,
+                                              : () => _handleGoogleSignIn(dialogContext),
                                           style: ElevatedButton.styleFrom(
                                             backgroundColor: Colors.transparent,
                                             shadowColor: Colors.transparent,
@@ -498,7 +519,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                     ),
                   ),
-                  // Close Button oben rechts - ÜBER allem anderen im Stack
+                  // Close Button oben rechts
                   Positioned(
                     top: 0,
                     right: 0,
@@ -537,7 +558,7 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  void _submitLogin() async {
+  void _submitLogin(BuildContext dialogContext) async {
     setState(() {
       _isLoading = true;
     });
@@ -548,9 +569,13 @@ class _AuthScreenState extends State<AuthScreen> {
         password: _enteredPassword,
       );
 
-      // Erfolgreiche Anmeldung - Dialog schließen
+      // Dialog schließen nach erfolgreichem Login
       if (mounted) {
-        Navigator.of(context).pop();
+        // Schließe ALLE offenen Dialoge
+        while (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+        setState(() => _isAuthenticating = true);
       }
     } on FirebaseAuthException catch (error) {
       if (mounted) {
@@ -603,7 +628,7 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  void _submitRegistration() async {
+  void _submitRegistration(BuildContext dialogContext) async {
     setState(() {
       _isLoading = true;
     });
@@ -616,7 +641,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
       if (mounted) {
         final loc = Provider.of<LocalizationService>(context, listen: false);
-        Navigator.of(context).pop(); // Dialog schließen
+        // Schließe ALLE offenen Dialoge
+        while (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+        setState(() => _isAuthenticating = true); // Flag NACH Dialog schließen
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(loc.t('auth.registerSuccess')),
@@ -629,7 +658,7 @@ class _AuthScreenState extends State<AuthScreen> {
           _emailController.clear();
           _passwordController.clear();
         });
-        await _authService.signOut();
+        // User bleibt eingeloggt → AuthGate leitet zu Home/Explorer weiter
         return;
       }
     } on FirebaseAuthException catch (error) {
@@ -692,7 +721,7 @@ class _AuthScreenState extends State<AuthScreen> {
     }
   }
 
-  void _handleGoogleSignIn() async {
+  void _handleGoogleSignIn(BuildContext dialogContext) async {
     setState(() {
       _isLoading = true;
     });
@@ -702,7 +731,11 @@ class _AuthScreenState extends State<AuthScreen> {
         // Web: Firebase Popup-Flow (kein google_sign_in Plugin nötig)
         final provider = GoogleAuthProvider();
         provider.setCustomParameters({'prompt': 'select_account'});
-        await FirebaseAuth.instance.signInWithPopup(provider);
+        final result = await FirebaseAuth.instance.signInWithPopup(provider);
+        // User-Profil in Firestore anlegen (wie bei Mobile)
+        if (result.user != null) {
+          await _authService.createUserProfile(result.user!);
+        }
       } else {
         // Mobile: zentral über AuthService (legt User-Dokument in Firestore an)
         await _authService.signInWithGoogle();
@@ -710,7 +743,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
       if (mounted) {
         final loc = Provider.of<LocalizationService>(context, listen: false);
-        Navigator.of(context).pop(); // Dialog schließen
+        // Schließe ALLE offenen Dialoge
+        while (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        }
+        setState(() => _isAuthenticating = true); // Flag NACH Dialog schließen
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(loc.t('auth.googleSignInSuccess')),
@@ -785,6 +822,27 @@ class _AuthScreenState extends State<AuthScreen> {
     final loc = context.watch<LocalizationService>();
     final currentFlag = _getFlagEmoji(languageService.languageCode);
 
+    // Wenn gerade eingeloggt wird, zeige Loading
+    if (_isAuthenticating) {
+      return Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFF000000), Color(0xFF111111)],
+          ),
+        ),
+        child: const Scaffold(
+          backgroundColor: Colors.transparent,
+          body: Center(
+            child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF00FF94)),
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF000000),
       body: Container(
@@ -827,7 +885,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     const SizedBox(width: 12),
                     // Textlinks für Login/Register - größere Touch-Bereiche
                     TextButton(
-                      onPressed: () => _showAuthDialog(isLogin: true),
+                      onPressed: _isAuthenticating ? null : () => _showAuthDialog(isLogin: true),
                       style: TextButton.styleFrom(
                         overlayColor: Colors.transparent,
                         padding: const EdgeInsets.symmetric(
@@ -850,7 +908,7 @@ class _AuthScreenState extends State<AuthScreen> {
                       style: TextStyle(color: Color(0xFF444444), fontSize: 16),
                     ),
                     TextButton(
-                      onPressed: () => _showAuthDialog(isLogin: false),
+                      onPressed: _isAuthenticating ? null : () => _showAuthDialog(isLogin: false),
                       style: TextButton.styleFrom(
                         overlayColor: Colors.transparent,
                         padding: const EdgeInsets.symmetric(
@@ -1163,6 +1221,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   void dispose() {
+    _authSubscription?.cancel();
     _emailController.dispose();
     _passwordController.dispose();
     super.dispose();

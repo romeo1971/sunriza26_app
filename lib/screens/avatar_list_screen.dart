@@ -272,21 +272,31 @@ class _AvatarListScreenState extends State<AvatarListScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                color: const Color(0x1400DFA8),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: AppColors.accentGreenDark.withValues(alpha: 0.5),
-                  width: 2,
+            MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: _createNewAvatar,
+                child: Container(
+                  width: 120,
+                  height: 120,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFFE91E63),
+                        AppColors.lightBlue,
+                        Color(0xFF00E5FF),
+                      ],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                  ),
+                  child: const Icon(
+                    Icons.person_add,
+                    size: 60,
+                    color: Colors.white,
+                  ),
                 ),
-              ),
-              child: Icon(
-                Icons.person_add,
-                size: 60,
-                color: AppColors.accentGreenDark,
               ),
             ),
             const SizedBox(height: 24),
@@ -303,23 +313,6 @@ class _AvatarListScreenState extends State<AvatarListScreen>
               loc.t('avatars.emptySubtitle'),
               style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
               textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed: _createNewAvatar,
-              icon: const Icon(Icons.add),
-              label: Text(loc.t('avatars.emptyCta')),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.accentGreenDark,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 12,
-                ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(25),
-                ),
-              ),
             ),
           ],
         ),

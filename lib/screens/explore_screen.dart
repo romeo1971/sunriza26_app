@@ -352,18 +352,44 @@ class ExploreScreenState extends State<ExploreScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
-                    Icons.explore_off,
-                    size: 64,
-                    color: Colors.white.withValues(alpha: 0.3),
+                  Image.asset(
+                    'assets/logo/logo_hauau.png',
+                    width: 240,
+                    height: 240,
+                    fit: BoxFit.contain,
+                  ),
+                  const SizedBox(height: 32),
+                  Text(
+                    'Dein Avatar in 2 Minuten',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 16),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 48),
+                    child: Text(
+                      'Upload Dein Foto und Deine Stimmprobe und los geht\'s',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.6),
+                        fontSize: 16,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
                   Text(
                     'Noch keine öffentlichen Avatare',
                     style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.6),
-                      fontSize: 16,
+                      color: Colors.white.withValues(alpha: 0.4),
+                      fontSize: 14,
+                      fontStyle: FontStyle.italic,
                     ),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),

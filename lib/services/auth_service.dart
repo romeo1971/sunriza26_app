@@ -57,7 +57,7 @@ class AuthService {
         );
       }
       // Sicherstellen, dass ein User-Dokument existiert (Backfill für Alt-Accounts)
-      await _createUserProfile(userCredential.user!);
+      await createUserProfile(userCredential.user!);
       return userCredential;
     } on FirebaseAuthException {
       rethrow;
@@ -79,7 +79,7 @@ class AuthService {
       await userCredential.user?.sendEmailVerification();
 
       // User-Daten in Firestore speichern
-      await _createUserProfile(userCredential.user!);
+      await createUserProfile(userCredential.user!);
 
       return userCredential;
     } on FirebaseAuthException {
@@ -105,7 +105,7 @@ class AuthService {
       final userCredential = await _auth.signInWithCredential(credential);
 
       // User-Daten in Firestore speichern/aktualisieren
-      await _createUserProfile(userCredential.user!);
+      await createUserProfile(userCredential.user!);
 
       return userCredential;
     } on FirebaseAuthException {
@@ -142,7 +142,7 @@ class AuthService {
   }
 
   /// User-Profil in Firestore erstellen/aktualisieren (Struppi-System)
-  Future<void> _createUserProfile(User user) async {
+  Future<void> createUserProfile(User user) async {
     try {
       final userDoc = _firestore.collection('users').doc(user.uid);
       final now = DateTime.now().millisecondsSinceEpoch;

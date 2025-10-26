@@ -78,7 +78,10 @@ exports.createCreditsCheckoutSession = functions
         throw new functions.https.HttpsError('invalid-argument', 'Währung muss eur oder usd sein');
     }
     try {
+        console.log('Creating Credits Checkout Session for user:', userId);
+        console.log('Credits:', credits, 'Amount:', amount, 'Currency:', currency);
         const stripe = getStripe();
+        console.log('Stripe initialized successfully');
         // Checkout Session erstellen
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
@@ -99,8 +102,8 @@ exports.createCreditsCheckoutSession = functions
                 },
             ],
             mode: 'payment',
-            success_url: `${((_a = functions.config().app) === null || _a === void 0 ? void 0 : _a.url) || 'http://localhost:4202'}/credits-success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${((_b = functions.config().app) === null || _b === void 0 ? void 0 : _b.url) || 'http://localhost:4202'}/credits-shop`,
+            success_url: `${((_a = functions.config().app) === null || _a === void 0 ? void 0 : _a.url) || 'http://localhost:4202'}/credits-shop?success=true&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${((_b = functions.config().app) === null || _b === void 0 ? void 0 : _b.url) || 'http://localhost:4202'}/credits-shop?cancelled=true`,
             client_reference_id: userId,
             metadata: {
                 userId,
@@ -110,14 +113,25 @@ exports.createCreditsCheckoutSession = functions
                 type: 'credits_purchase',
             },
         });
+        console.log('Checkout Session created:', session.id);
         return {
             sessionId: session.id,
             url: session.url,
         };
     }
     catch (error) {
-        console.error('Stripe Checkout Error:', error);
-        throw new functions.https.HttpsError('internal', `Stripe Error: ${error.message}`);
+        console.error('❌ Stripe Checkout Error:', error);
+        console.error('Error details:', {
+            message: error.message,
+            type: error.type,
+            code: error.code,
+            stack: error.stack,
+        });
+        // Spezifische Fehler
+        if (error.type === 'StripeAuthenticationError') {
+            throw new functions.https.HttpsError('failed-precondition', 'Stripe API Key ungültig oder nicht konfiguriert');
+        }
+        throw new functions.https.HttpsError('internal', `Stripe Error: ${error.message || 'Unbekannter Fehler'}`);
     }
 });
 /**

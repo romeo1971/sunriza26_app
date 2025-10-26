@@ -23,6 +23,18 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
   void initState() {
     super.initState();
     _fetchExchangeRate();
+    
+    // Check für Success/Cancel Parameter (nach Stripe Redirect)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkStripeResult();
+    });
+  }
+
+  /// Prüft ob Stripe Success/Cancel Parameter vorhanden sind
+  void _checkStripeResult() {
+    // HINWEIS: In Flutter Web würde man hier die URL-Parameter auslesen
+    // In Flutter Mobile App ist das nicht relevant, da externe URL
+    // Vorerst: Zeige Info-Message dass User Credits manuell prüfen soll
   }
 
   /// Holt aktuellen EUR/USD Wechselkurs
@@ -582,10 +594,29 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
         throw Exception('Keine Checkout-URL erhalten');
       }
 
-      // Stripe Checkout öffnen
+      // Stripe Checkout öffnen (External Browser)
       final uri = Uri.parse(checkoutUrl);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
+        
+        // Info für User
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              '💳 Stripe Checkout geöffnet...\n\n'
+              'Nach erfolgreicher Zahlung werden deine Credits automatisch gutgeschrieben. '
+              'Kehre danach zur App zurück!',
+            ),
+            backgroundColor: AppColors.lightBlue,
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
       } else {
         throw Exception('Kann Checkout-URL nicht öffnen');
       }

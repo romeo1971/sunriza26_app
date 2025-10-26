@@ -59,7 +59,11 @@ export const createCreditsCheckoutSession = functions
     }
 
     try {
+      console.log('Creating Credits Checkout Session for user:', userId);
+      console.log('Credits:', credits, 'Amount:', amount, 'Currency:', currency);
+      
       const stripe = getStripe();
+      console.log('Stripe initialized successfully');
       
       // Checkout Session erstellen
       const session = await stripe.checkout.sessions.create({
@@ -81,8 +85,8 @@ export const createCreditsCheckoutSession = functions
           },
         ],
         mode: 'payment',
-        success_url: `${functions.config().app?.url || 'http://localhost:4202'}/credits-success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${functions.config().app?.url || 'http://localhost:4202'}/credits-shop`,
+        success_url: `${functions.config().app?.url || 'http://localhost:4202'}/credits-shop?success=true&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${functions.config().app?.url || 'http://localhost:4202'}/credits-shop?cancelled=true`,
         client_reference_id: userId,
         metadata: {
           userId,
@@ -93,15 +97,32 @@ export const createCreditsCheckoutSession = functions
         },
       });
 
+      console.log('Checkout Session created:', session.id);
+      
       return {
         sessionId: session.id,
         url: session.url,
       };
     } catch (error: any) {
-      console.error('Stripe Checkout Error:', error);
+      console.error('❌ Stripe Checkout Error:', error);
+      console.error('Error details:', {
+        message: error.message,
+        type: error.type,
+        code: error.code,
+        stack: error.stack,
+      });
+      
+      // Spezifische Fehler
+      if (error.type === 'StripeAuthenticationError') {
+        throw new functions.https.HttpsError(
+          'failed-precondition',
+          'Stripe API Key ungültig oder nicht konfiguriert',
+        );
+      }
+      
       throw new functions.https.HttpsError(
         'internal',
-        `Stripe Error: ${error.message}`,
+        `Stripe Error: ${error.message || 'Unbekannter Fehler'}`,
       );
     }
   });

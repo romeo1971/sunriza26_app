@@ -26,7 +26,11 @@ class AppDrawer extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [AppColors.accentGreenDark, AppColors.greenBlue],
+                colors: [
+                  Color(0xFFE91E63), // Magenta
+                  AppColors.lightBlue, // Blue
+                  Color(0xFF00E5FF), // Cyan
+                ],
               ),
             ),
             child: Column(
@@ -167,23 +171,41 @@ class AppDrawer extends StatelessWidget {
               border: Border(top: BorderSide(color: Colors.grey.shade800)),
             ),
             child: ListTile(
-              leading: const Icon(
-                Icons.logout,
-                color: AppColors.accentGreenDark,
+              leading: ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  colors: [
+                    Color(0xFFE91E63),
+                    AppColors.lightBlue,
+                    Color(0xFF00E5FF),
+                  ],
+                ).createShader(bounds),
+                child: const Icon(
+                  Icons.logout,
+                  color: Colors.white,
+                ),
               ),
-              title: Text(
-                context.read<LocalizationService>().t('logout'),
-                style: const TextStyle(
-                  color: AppColors.accentGreenDark,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
+              title: ShaderMask(
+                shaderCallback: (bounds) => const LinearGradient(
+                  colors: [
+                    Color(0xFFE91E63),
+                    AppColors.lightBlue,
+                    Color(0xFF00E5FF),
+                  ],
+                ).createShader(bounds),
+                child: Text(
+                  context.read<LocalizationService>().t('logout'),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
               onTap: () async {
                 Navigator.pop(context);
                 await authService.signOut();
               },
-              hoverColor: AppColors.accentGreenDark.withValues(alpha: 0.1),
+              hoverColor: Colors.white.withValues(alpha: 0.1),
             ),
           ),
         ],
