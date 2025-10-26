@@ -57,7 +57,7 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
 
     // Oszillation: Mitte → +100px (oben) → Mitte → -100px (unten) → Mitte (loop)
     _oscController = AnimationController(
-      duration: const Duration(seconds: 80), // 4 Phasen × 20s
+      duration: const Duration(seconds: 160), // 4 Phasen × 40s
       vsync: this,
     )..repeat();
     _oscAnimation = TweenSequence<double>([
