@@ -1300,7 +1300,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         else
           DetailsVideoMediaSection(
             // Videos
-            videoUrls: _videoUrls,
+            videoUrls: (() {
+              final heroUrl = _getHeroVideoUrl();
+              final list = List<String>.from(_videoUrls);
+              if (heroUrl != null && heroUrl.isNotEmpty && !list.contains(heroUrl)) {
+                list.insert(0, heroUrl);
+              }
+              return list;
+            })(),
             inlineVideoController: _inlineVideoController,
             // Audio State
             videoAudioEnabled: _videoAudioEnabled,
@@ -3963,10 +3970,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       await _clearInlinePlayer();
       return;
     }
-    // Falls URL bereits aktiv, nichts tun
-    if (_currentInlineUrl == hero && _inlineVideoController != null) {
-      return;
-    }
+    // Immer neu initialisieren (nach Reload kann Controller null sein)
     // Frische Download-URL sichern (kann ablaufen)
     final fresh = await _refreshDownloadUrl(hero) ?? hero;
     debugPrint('🎬 _initInlineFromHero fresh=$fresh');
