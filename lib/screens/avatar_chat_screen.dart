@@ -4281,10 +4281,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   /// Öffnet Fullsize Overlay für Timeline Item
   void _onTimelineItemTap() {
     if (_activeTimelineItem == null) return;
-    
-    // Timeline pausieren
-    _pauseTimeline();
-    
+    // Nicht pausieren: Item läuft weiter; nur Overlay oben drauf
     showDialog(
       context: context,
       barrierDismissible: true,
@@ -4298,10 +4295,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           _showTimelinePurchaseDialog(_activeTimelineItem!);
         },
       ),
-    ).then((_) {
-      // Timeline fortsetzen nach Overlay-Schließen
-      _resumeTimeline();
-    });
+    );
   }
 
   /// Zeigt Kauf/Annahme Dialog

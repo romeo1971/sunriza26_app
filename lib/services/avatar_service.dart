@@ -1,9 +1,12 @@
 import 'dart:io';
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import '../models/avatar_data.dart';
 import 'firebase_storage_service.dart';
+import '../services/env_service.dart';
 
 class AvatarService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -343,10 +346,16 @@ class AvatarService {
       final avatar = await getAvatar(avatarId);
       if (avatar == null || avatar.userId != user.uid) return false;
 
-      // Lösche alle Dateien aus Storage
+      // 1) Dateien aus Storage entfernen
       await _deleteAvatarFiles(avatar);
 
-      // Lösche Avatar aus Firestore
+      // 2) Verknüpfte Firestore-Daten entfernen (media_gallery, playlists, timeline)
+      await _deleteAvatarFirestoreData(avatarId);
+
+      // 3) Pinecone/Knowledge löschen (nicht-blockierend, best-effort)
+      unawaited(_deletePineconeEntries(avatarId, user.uid));
+
+      // 4) Avatar-Dokument löschen
       await _avatarsCollection.doc(avatarId).delete();
       return true;
     } catch (e) {
@@ -379,6 +388,56 @@ class AvatarService {
       }
     } catch (e) {
       debugPrint('Fehler beim Löschen der Avatar-Dateien: $e');
+    }
+  }
+
+  /// Löscht alle Firestore-Daten unterhalb von avatars/{avatarId}
+  Future<void> _deleteAvatarFirestoreData(String avatarId) async {
+    try {
+      final root = _avatarsCollection.doc(avatarId);
+
+      // Medien-Kollektionen
+      for (final col in const ['images', 'videos', 'audios', 'documents']) {
+        final snap = await root.collection(col).get();
+        for (final d in snap.docs) {
+          await d.reference.delete();
+        }
+      }
+
+      // Playlists inkl. timelineAssets + timelineItems
+      final playlists = await root.collection('playlists').get();
+      for (final p in playlists.docs) {
+        final assets = await p.reference.collection('timelineAssets').get();
+        for (final a in assets.docs) {
+          await a.reference.delete();
+        }
+        final items = await p.reference.collection('timelineItems').get();
+        for (final it in items.docs) {
+          await it.reference.delete();
+        }
+        await p.reference.delete();
+      }
+    } catch (e) {
+      debugPrint('Fehler beim Löschen der Firestore-Daten: $e');
+    }
+  }
+
+  /// Löscht Pinecone/Knowledge-Einträge für diesen Avatar (Best Effort)
+  Future<void> _deletePineconeEntries(String avatarId, String userId) async {
+    try {
+      final base = EnvService.memoryApiBaseUrl();
+      if (base.isEmpty) return;
+      final uri = Uri.parse('$base/avatar/memory/delete/by-avatar');
+      await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: '{"user_id":"$userId","avatar_id":"$avatarId"}',
+          )
+          .timeout(const Duration(seconds: 10));
+    } catch (e) {
+      // still weiter; UI nicht blockieren
+      debugPrint('Fehler beim Löschen der Pinecone-Einträge: $e');
     }
   }
 

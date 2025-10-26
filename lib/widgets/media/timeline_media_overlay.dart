@@ -104,8 +104,10 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
         break;
     }
 
-    // Blur Filter wenn nicht gekauft
-    if (!widget.isPurchased) {
+    // Kostenlos: niemals blurren; kostenpflichtig nur blurren, wenn nicht gekauft
+    final price = widget.media.price ?? 0.0;
+    final isFree = price == 0.0;
+    if (!widget.isPurchased && !isFree) {
       content = BlurPixelationFilter(
         isBlurred: true,
         blurAmount: 20.0,

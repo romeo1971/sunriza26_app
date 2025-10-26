@@ -651,7 +651,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final seconds = totalSeconds % 60;
     return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
-
   // Explorer-Info-Dialog anzeigen
   Future<void> _showExplorerInfoDialog({bool forceShow = false}) async {
     final prefs = await SharedPreferences.getInstance();
@@ -1425,7 +1424,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ],
     );
   }
-
   // Tab-Button für Hero-Navigation - ERSETZT durch MediaTabButton Widget
   /* AUSKOMMENTIERT - Widget wird nun verwendet
   */
@@ -2191,7 +2189,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ],
     );
   }
-
   Widget _buildAudioFilesList() {
     final List<Widget> tiles = [];
 
@@ -2905,7 +2902,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       );
     }
   }
-
   Future<void> _onCloneVoice() async {
     if (_avatarData == null) return;
     if (_isSaving) {
@@ -3582,7 +3578,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ),
     );
   }
-
   // Hero-Image Thumbnail mit GMBC Border 2px nur für Hero-Image
   Widget _buildHeroImageThumbNetwork(String url, bool isHero) {
     final selected = _selectedRemoteImages.contains(url);
@@ -4359,7 +4354,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   // _thumbnailForLocal ungenutzt entfernt
-
   // _bigMediaButton entfällt im neuen Layout
 
   Future<File?> _cropToPortrait916(File input) async {
@@ -5116,7 +5110,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       ),
     );
   }
-
   Widget _buildInputFields() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -5587,6 +5580,91 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     return PersonDataExpansionTile(inputFieldsWidget: _buildInputFields());
   }
 
+  Widget _buildDeleteAvatarTile() {
+    return ExpansionTile(
+      initiallyExpanded: false,
+      leading: const Icon(Icons.delete_forever, color: Colors.red),
+      title: const Text('Avatar löschen', style: TextStyle(color: Colors.red)),
+      subtitle: const Text(
+        'Den Avatar vollständig löschen – inklusive aller Verknüpfungen.',
+        style: TextStyle(color: Colors.white70),
+      ),
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              'Achtung: Dieser Vorgang entfernt alle Avatardaten, Medien, Playlists und Timeline‑Einträge. Deine gespeicherten Momente bleiben erhalten.',
+              style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 16, bottom: 12),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _confirmDeleteAvatar,
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.red),
+                    foregroundColor: Colors.red,
+                  ),
+                  child: const Text('Avatar endgültig löschen'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _confirmDeleteAvatar() async {
+    final ok1 = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Avatar löschen?'),
+        content: const Text('Willst du diesen Avatar wirklich vollständig löschen?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Ja, löschen')),
+        ],
+      ),
+    );
+    if (ok1 != true) return;
+
+    final ok2 = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Wirklich endgültig löschen?'),
+        content: const Text('Dieser Vorgang kann nicht rückgängig gemacht werden.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Endgültig löschen', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (ok2 != true) return;
+
+    try {
+      final id = _avatarData?.id;
+      if (id == null) return;
+      final success = await AvatarService().deleteAvatar(id);
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Avatar gelöscht')));
+        Navigator.pushNamedAndRemoveUntil(context, '/avatar-list', (r) => false);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Löschen fehlgeschlagen')));
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+    }
+  }
+
   Widget _buildAgeDisplay() {
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 16),
@@ -5624,7 +5702,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   String _formatDate(DateTime date) {
     return '${date.day.toString().padLeft(2, '0')}.${date.month.toString().padLeft(2, '0')}.${date.year}';
   }
-
   void _saveAvatarDetails() {
     if (!_formKey.currentState!.validate() || _avatarData == null) return;
     if (_isSaving) return;
@@ -6205,7 +6282,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       // Fehler beim Löschen ignorieren (lokal schon entfernt)
     }
   }
-
   Future<void> _confirmDeleteSelectedImages() async {
     final total =
         _selectedRemoteImages.length +
@@ -6575,6 +6651,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                       const SizedBox(height: 6),
                       _buildPersonDataTile(),
                       const SizedBox(height: 6),
+                      _buildDeleteAvatarTile(),
                     ],
                   ),
                 ),
@@ -6994,7 +7071,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       hint: loc.t('avatars.details.countryDropdownHint'),
     );
   }
-
   // Liefert den exakten Optionsnamen aus _countryOptions für Eingaben wie
   // ISO-Code (DE), englischen Namen (Germany) oder deutsche Bezeichnung (Deutschland)
   String? _resolveCountryOptionName(String raw) {
@@ -7701,7 +7777,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
     }
   }
-
   Future<void> _generateDynamics(String dynamicsId) async {
     if (_avatarData == null) return;
 
