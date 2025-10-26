@@ -1297,9 +1297,29 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       builder: (ctx) => AudioCoverImagesOverlay(
         audioMedia: audioMedia,
         onImagesChanged: (updatedImages) async {
-          // TODO: Speichere Cover Images in Firestore
-          debugPrint('🎨 Cover Images updated: ${updatedImages.length}');
-          // Refresh State
+          // Persistiere die geänderten Cover sofort lokal im Item und refreshe die Liste
+          final idx = _items.indexWhere((m) => m.id == audioMedia.id);
+          if (idx != -1) {
+            final current = _items[idx];
+            _items[idx] = AvatarMedia(
+              id: current.id,
+              avatarId: current.avatarId,
+              type: current.type,
+              url: current.url,
+              thumbUrl: current.thumbUrl,
+              createdAt: current.createdAt,
+              durationMs: current.durationMs,
+              aspectRatio: current.aspectRatio,
+              tags: current.tags,
+              originalFileName: current.originalFileName,
+              isFree: current.isFree,
+              price: current.price,
+              currency: current.currency,
+              platformFeePercent: current.platformFeePercent,
+              voiceClone: current.voiceClone,
+              coverImages: updatedImages,
+            );
+          }
           if (mounted) setState(() {});
         },
       ),

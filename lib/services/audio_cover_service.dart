@@ -40,9 +40,10 @@ class AudioCoverService {
     final thumbFile = File(thumbPath);
     await thumbFile.writeAsBytes(thumbBytes, flush: true);
 
-    // 3. Storage Paths
-    final storagePath = 'avatars/$avatarId/audio/$audioId/coverImages/cover_$index.jpg';
-    final thumbStoragePath = 'avatars/$avatarId/audio/$audioId/coverImages/cover_${index}_thumb.jpg';
+    // 3. Storage Paths (neues Schema)
+    final oneBased = index + 1; // 1..5
+    final storagePath = 'avatars/$avatarId/audio/$audioId/coverImages/image$oneBased.jpg';
+    final thumbStoragePath = 'avatars/$avatarId/audio/$audioId/coverImages/thumbs/thumb$oneBased.jpg';
 
     // 4. Upload Full Image
     final ref = _storage.ref().child(storagePath);
@@ -50,7 +51,7 @@ class AudioCoverService {
       tempFile,
       SettableMetadata(
         contentType: 'image/jpeg',
-        contentDisposition: 'attachment; filename="cover_$index.jpg"',
+        contentDisposition: 'attachment; filename="image$oneBased.jpg"',
       ),
     );
     final url = await ref.getDownloadURL();
@@ -61,7 +62,7 @@ class AudioCoverService {
       thumbFile,
       SettableMetadata(
         contentType: 'image/jpeg',
-        contentDisposition: 'attachment; filename="cover_${index}_thumb.jpg"',
+        contentDisposition: 'attachment; filename="thumb$oneBased.jpg"',
       ),
     );
     final thumbUrl = await thumbRef.getDownloadURL();
@@ -106,25 +107,20 @@ class AudioCoverService {
     required String audioId,
     required int index,
   }) async {
-    // Delete Full Image
-    final storagePath = 'avatars/$avatarId/audio/$audioId/coverImages/cover_$index.jpg';
+    // Delete Full Image (nach neuem Schema, fallback inkl. altem Pfad)
+    final oneBased = index + 1;
+    final storagePath = 'avatars/$avatarId/audio/$audioId/coverImages/image$oneBased.jpg';
     final ref = _storage.ref().child(storagePath);
     try {
       await ref.delete();
-    } catch (e) {
-      // Ignore if file doesn't exist
-      debugPrint('Failed to delete cover image: $e');
-    }
+    } catch (e) {}
 
     // Delete Thumbnail
-    final thumbStoragePath = 'avatars/$avatarId/audio/$audioId/coverImages/cover_${index}_thumb.jpg';
+    final thumbStoragePath = 'avatars/$avatarId/audio/$audioId/coverImages/thumbs/thumb$oneBased.jpg';
     final thumbRef = _storage.ref().child(thumbStoragePath);
     try {
       await thumbRef.delete();
-    } catch (e) {
-      // Ignore if file doesn't exist
-      debugPrint('Failed to delete cover thumbnail: $e');
-    }
+    } catch (e) {}
   }
 
   /// Update Audio Media mit Cover Images Array

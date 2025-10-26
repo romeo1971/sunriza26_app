@@ -142,12 +142,13 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
   }
 
   Widget _buildCoverGrid() {
+    // Kompakte Darstellung: 5 kleine Slots in einer Rasteransicht
     return GridView.builder(
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 0.8,
+        crossAxisCount: 5,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 9 / 16, // zeigt grob das spätere Seitenverhältnis
       ),
       itemCount: 5,
       itemBuilder: (context, index) => _buildCoverPlaceholder(index),
@@ -182,47 +183,43 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
   }
 
   Widget _buildEmptyPlaceholder(int index) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(
-          Icons.add_photo_alternate_outlined,
-          color: Colors.white.withValues(alpha: 0.4),
-          size: 48,
+    // Nur kleiner Upload-Button (Icon), keine Texte
+    return Center(
+      child: Container(
+        width: 36,
+        height: 36,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.white24),
         ),
-        const SizedBox(height: 8),
-        Text(
-          'Cover ${index + 1}',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.4),
-            fontSize: 12,
-          ),
+        child: const Icon(
+          Icons.add,
+          color: Colors.white70,
+          size: 20,
         ),
-        const SizedBox(height: 4),
-        Text(
-          'Hinzufügen',
-          style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.3),
-            fontSize: 10,
-          ),
-        ),
-      ],
+      ),
     );
   }
 
   Widget _buildCoverPreview(AudioCoverImage coverImage) {
+    final isPortrait = coverImage.aspectRatio < 1.0;
+    final sizeText = isPortrait ? '200×300' : '300×200';
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Cover Image Thumbnail
+        // Cover Image Thumbnail mit richtiger Orientierung
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
-          child: Image.network(
-            coverImage.thumbUrl,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stack) => Container(
-              color: Colors.grey.shade800,
-              child: const Icon(Icons.broken_image, color: Colors.white54),
+          child: AspectRatio(
+            aspectRatio: isPortrait ? 9 / 16 : 16 / 9,
+            child: Image.network(
+              coverImage.thumbUrl,
+              fit: BoxFit.cover,
+              errorBuilder: (context, error, stack) => Container(
+                color: Colors.grey.shade800,
+                child: const Icon(Icons.broken_image, color: Colors.white54),
+              ),
             ),
           ),
         ),
@@ -248,7 +245,7 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
           ),
         ),
         
-        // Index Badge
+        // Index Badge + Maße
         Positioned(
           top: 8,
           left: 8,
@@ -270,6 +267,36 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 8,
+          left: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              isPortrait ? '9:16' : '16:9',
+              style: const TextStyle(color: Colors.white, fontSize: 10),
+            ),
+          ),
+        ),
+        Positioned(
+          bottom: 8,
+          right: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.6),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: Text(
+              sizeText,
+              style: const TextStyle(color: Colors.white, fontSize: 10),
             ),
           ),
         ),
@@ -333,7 +360,7 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
 
   /// Crop Dialog (9:16 oder 16:9)
   Future<void> _openCropDialog(Uint8List imageBytes, int index) async {
-    double currentAspect = 9 / 16; // Default: Portrait
+    double currentAspect = 16 / 9; // Start standardmäßig mit 16:9
     final cropController = cyi.CropController();
     bool isCropping = false;
 
@@ -394,6 +421,7 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
                   // Crop Area
                   Expanded(
                     child: cyi.Crop(
+                      key: ValueKey(currentAspect), // Force rebuild on aspect change
                       image: imageBytes,
                       controller: cropController,
                       aspectRatio: currentAspect,
