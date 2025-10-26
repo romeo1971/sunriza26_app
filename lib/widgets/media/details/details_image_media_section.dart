@@ -684,44 +684,7 @@ class DetailsImageMediaSection extends StatelessWidget {
                                                 size: 64,
                                               ),
                                             )),
-                              ),
-                              if (profileImageUrl != null)
-                                Positioned(
-                                  left: 0,
-                                  right: 0,
-                                  bottom: 12,
-                                  child: Center(
-                                    child: ElevatedButton(
-                                      onPressed: () async {
-                                        if (avatarData == null ||
-                                            isGeneratingAvatar) {
-                                          return;
-                                        }
-                                        await onGenerateAvatar();
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        backgroundColor: Colors.black,
-                                        foregroundColor: Colors.white,
-                                        padding: const EdgeInsets.symmetric(
-                                          vertical: 12,
-                                          horizontal: 16,
-                                        ),
-                                        minimumSize: Size.zero,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
-                                          ),
-                                        ),
-                                      ),
-                                      child: Text(
-                                        context.read<LocalizationService>().t(
-                                          'avatars.refreshTooltip',
-                                        ),
-                                        style: const TextStyle(fontSize: 11),
-                                      ),
-                                    ),
-                                  ),
-                                ),
+                              ),                              
                             ],
                           ),
                         ),

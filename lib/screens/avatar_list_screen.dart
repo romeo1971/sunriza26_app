@@ -477,7 +477,7 @@ class _AvatarListScreenState extends State<AvatarListScreen>
                                               _buildDefaultAvatar(),
                                     )
                                   : Container(
-                                      color: const Color(0x1400DFA8),
+                                      color: const Color(0x14FFFFFF),
                                       child: _buildDefaultAvatar(),
                                     ),
                             ),
@@ -721,7 +721,11 @@ class _AvatarListScreenState extends State<AvatarListScreen>
   }
 
   Widget _buildDefaultAvatar() {
-    return const Icon(Icons.person, size: 30, color: AppColors.accentGreenDark);
+    return const Icon(
+      Icons.person,
+      size: 30,
+      color: Color(0xFF9E9E9E), // neutral grey
+    );
   }
 
   // Entfernt: Zeitstempelanzeige wird aktuell nicht verwendet
