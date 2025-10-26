@@ -27,28 +27,18 @@ class AudioCoverService {
       throw ArgumentError('Index must be between 0 and 4');
     }
 
-    // 1. Temp-Datei erstellen
-    final dir = await getTemporaryDirectory();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final tempPath = p.join(dir.path, 'audio_cover_${timestamp}_$index.jpg');
-    final tempFile = File(tempPath);
-    await tempFile.writeAsBytes(imageBytes, flush: true);
-
-    // 2. Thumbnail generieren (200x300 für 9:16 oder 300x200 für 16:9)
+    // 1. Thumbnail generieren (200x300 für 9:16 oder 300x200 für 16:9)
     final thumbBytes = await _generateThumbnail(imageBytes, aspectRatio);
-    final thumbPath = p.join(dir.path, 'audio_cover_${timestamp}_${index}_thumb.jpg');
-    final thumbFile = File(thumbPath);
-    await thumbFile.writeAsBytes(thumbBytes, flush: true);
 
-    // 3. Storage Paths (neues Schema)
+    // 2. Storage Paths (neues Schema)
     final oneBased = index + 1; // 1..5
     final storagePath = 'avatars/$avatarId/audio/$audioId/coverImages/image$oneBased.jpg';
     final thumbStoragePath = 'avatars/$avatarId/audio/$audioId/coverImages/thumbs/thumb$oneBased.jpg';
 
-    // 4. Upload Full Image
+    // 3. Upload Full Image (direkt aus Bytes)
     final ref = _storage.ref().child(storagePath);
-    await ref.putFile(
-      tempFile,
+    await ref.putData(
+      imageBytes,
       SettableMetadata(
         contentType: 'image/jpeg',
         contentDisposition: 'attachment; filename="image$oneBased.jpg"',
@@ -59,10 +49,10 @@ class AudioCoverService {
     );
     final url = await ref.getDownloadURL();
 
-    // 5. Upload Thumbnail
+    // 4. Upload Thumbnail (direkt aus Bytes)
     final thumbRef = _storage.ref().child(thumbStoragePath);
-    await thumbRef.putFile(
-      thumbFile,
+    await thumbRef.putData(
+      thumbBytes,
       SettableMetadata(
         contentType: 'image/jpeg',
         contentDisposition: 'attachment; filename="thumb$oneBased.jpg"',
@@ -73,13 +63,7 @@ class AudioCoverService {
     );
     final thumbUrl = await thumbRef.getDownloadURL();
 
-    // 6. Cleanup Temp Files
-    try {
-      await tempFile.delete();
-      await thumbFile.delete();
-    } catch (_) {}
-
-    // 7. Return AudioCoverImage Object
+    // 5. Return AudioCoverImage Object
     return AudioCoverImage(
       url: url,
       thumbUrl: thumbUrl,
@@ -112,21 +96,37 @@ class AudioCoverService {
     required String avatarId,
     required String audioId,
     required int index,
+    String? audioUrl, // optional für Timestamp-Pfad
   }) async {
-    // Delete Full Image (nach neuem Schema, fallback inkl. altem Pfad)
     final oneBased = index + 1;
-    final storagePath = 'avatars/$avatarId/audio/$audioId/coverImages/image$oneBased.jpg';
-    final ref = _storage.ref().child(storagePath);
-    try {
-      await ref.delete();
-    } catch (e) {}
 
-    // Delete Thumbnail
-    final thumbStoragePath = 'avatars/$avatarId/audio/$audioId/coverImages/thumbs/thumb$oneBased.jpg';
-    final thumbRef = _storage.ref().child(thumbStoragePath);
-    try {
-      await thumbRef.delete();
-    } catch (e) {}
+    // Versuche in drei Varianten zu löschen: Timestamp, audioId, Old-Path
+    // 1) Timestamp (aus URL extrahieren)
+    String? timestamp;
+    if (audioUrl != null) {
+      final m = RegExp(r'/audio/(\d+)').firstMatch(audioUrl);
+      if (m != null) timestamp = m.group(1);
+    }
+
+    Future<void> _tryDelete(String path) async {
+      final ref = _storage.ref().child(path);
+      try {
+        await ref.delete();
+      } catch (_) {}
+    }
+
+    if (timestamp != null) {
+      await _tryDelete('avatars/$avatarId/audio/$timestamp/coverImages/image$oneBased.jpg');
+      await _tryDelete('avatars/$avatarId/audio/$timestamp/coverImages/thumbs/thumb$oneBased.jpg');
+    }
+
+    // 2) Neuer Pfad (audioId)
+    await _tryDelete('avatars/$avatarId/audio/$audioId/coverImages/image$oneBased.jpg');
+    await _tryDelete('avatars/$avatarId/audio/$audioId/coverImages/thumbs/thumb$oneBased.jpg');
+
+    // 3) Alter Pfad ohne avatarId
+    await _tryDelete('audio/$audioId/coverImages/image$oneBased.jpg');
+    await _tryDelete('audio/$audioId/coverImages/thumbs/thumb$oneBased.jpg');
   }
 
   /// Lädt Cover Images aus Firebase Storage

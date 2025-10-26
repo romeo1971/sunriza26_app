@@ -722,21 +722,28 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
       final avatarId = widget.audioMedia.avatarId;
       final audioId = widget.audioMedia.id;
 
-      // Delete from Storage + Firestore
-      await _coverService.removeCoverImage(
+      // 1) Nur den konkreten Slot im Storage löschen (KEIN Reindex)
+      await _coverService.deleteCoverImage(
         avatarId: avatarId,
         audioId: audioId,
-        audioMedia: widget.audioMedia,
         index: index,
+        audioUrl: widget.audioMedia.url,
       );
 
-      // Update local state
+      // 2) Lokalen State SOFORT aktualisieren (UI reagiert direkt)
       setState(() {
         _coverImages[index] = null;
       });
 
-      // Callback
+      // 3) Firestore-Liste ohne Reindex schreiben
       final updatedImages = _coverImages.whereType<AudioCoverImage>().toList();
+      await _coverService.updateAudioCoverImages(
+        avatarId: avatarId,
+        audioId: audioId,
+        coverImages: updatedImages,
+      );
+
+      // 4) Callback an Parent (MediaGallery) für Icon-Update
       widget.onImagesChanged(updatedImages);
 
       if (mounted) {
