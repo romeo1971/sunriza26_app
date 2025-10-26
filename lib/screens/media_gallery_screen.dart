@@ -115,7 +115,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   bool _portrait = true; // Portrait/Landscape Toggle
   String _searchTerm = '';
   int _currentPage = 0;
-  static const int _itemsPerPage = 9;
+  static const int _itemsPerPage = 20;
   bool _isDeleteMode = false;
   final Set<String> _selectedMediaIds = {};
   bool _showSearch = false;
@@ -782,7 +782,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       },
     );
   }
-
   Widget _buildGlobalPriceRow({
     required String label,
     required bool enabled,
@@ -1576,7 +1575,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       ),
     );
   } */
-
   /// Startet Batch-Cropping für alle Bilder (derzeit ungenutzt)
   /* Future<void> _startBatchCropping(List<AvatarMedia> images) async {
     for (int i = 0; i < images.length; i++) {
@@ -2355,7 +2353,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
     }
   }
-
   @override
   Widget build(BuildContext context) {
     final loc = context.read<LocalizationService>();
@@ -3105,7 +3102,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       ),
     );
   }
-
   // NEU: Dokumente-Upload (atomic placeholder)
   Future<void> _showDocumentSourceDialog() async {
     // Minimal: FilePicker für gängige Dokumente (pdf, txt, docx, pptx)
@@ -3841,7 +3837,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       ),
     );
   }
-
   Future<void> _showPlaylistsDialog(
     AvatarMedia media,
     List<Playlist> playlists,
@@ -4356,7 +4351,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
     }
   }
-
   /// Neue gekapselte Delete-Funktion für Bilder und Videos (wie in details_screen)
   /// - Zeigt Media-Vorschau im Dialog
   /// - Löscht Thumbnails aus Storage
@@ -5055,7 +5049,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       return url;
     }
   }
-
   Future<void> _reopenCrop(AvatarMedia media) async {
     try {
       // Quelle beschaffen: Für Dokumente das generierte Preview-Bild verwenden
@@ -5678,7 +5671,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // Standard: Landscape (wenn keine Info verfügbar)
     return false;
   }
-
   /// Preis-Setup Container: Klickbar, zeigt Input-Ansicht
   Widget _buildPriceSetupContainer(AvatarMedia media) {
     final isEditing = _editingPriceMediaIds.contains(media.id);
@@ -6149,7 +6141,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       ),
     );
   }
-
   /// Öffnet Pricing-Dialog für Bild/Video
   Future<void> _openMediaPricingDialog(AvatarMedia media) async {
     // Edit-Mode State
@@ -6940,7 +6931,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     return tags;
   }
-
   /// Zeigt Dialog zum Anzeigen und Bearbeiten der Tags
   Future<void> _showTagsDialog(AvatarMedia media) async {
     // Ursprüngliche Tags (falls vorhanden) oder intelligente Vorschläge
@@ -6995,7 +6985,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     decoration: BoxDecoration(
                       color:
                           Theme.of(context).dialogTheme.backgroundColor ??
-                          Theme.of(context).cardColor,
+                              Theme.of(context).cardColor,
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: SingleChildScrollView(
@@ -7652,7 +7642,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       ),
     );
   }
-
   /// Kompakte Waveform für Audio-Cards
   Widget _buildCompactWaveform({
     required double availableWidth,
@@ -8392,7 +8381,6 @@ class _VideoThumbnailSelectorDialog extends StatefulWidget {
   State<_VideoThumbnailSelectorDialog> createState() =>
       _VideoThumbnailSelectorDialogState();
 }
-
 class _VideoThumbnailSelectorDialogState
     extends State<_VideoThumbnailSelectorDialog> {
   VideoPlayerController? _controller;
