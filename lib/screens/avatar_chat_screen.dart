@@ -2689,6 +2689,41 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     return p.startsWith('file://') ? p.replaceFirst('file://', '') : p;
   }
 
+  Future<http.Response> _postWithAuthRetry(
+    Uri uri,
+    Map<String, String> baseHeaders,
+    String body, {
+    int timeoutSeconds = 30,
+  }) async {
+    String? token = await FirebaseAuth.instance.currentUser?.getIdToken();
+    Map<String, String> headers = {
+      ...baseHeaders,
+      if (token != null && token.isNotEmpty) 'Authorization': 'Bearer $token',
+    };
+    try {
+      var res = await http
+          .post(uri, headers: headers, body: body)
+          .timeout(Duration(seconds: timeoutSeconds));
+      if (res.statusCode == 401) {
+        // Force refresh token und einmal wiederholen
+        try {
+          token = await FirebaseAuth.instance.currentUser?.getIdToken(true);
+        } catch (_) {}
+        headers = {
+          ...baseHeaders,
+          if (token != null && token.isNotEmpty)
+            'Authorization': 'Bearer $token',
+        };
+        res = await http
+            .post(uri, headers: headers, body: body)
+            .timeout(Duration(seconds: timeoutSeconds));
+      }
+      return res;
+    } catch (e) {
+      rethrow;
+    }
+  }
+
   String _formatStopwatch(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -2835,8 +2870,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         return;
       }
       final uri = Uri.parse('$base/avatar/tts');
-      String? idToken;
-      try { idToken = await FirebaseAuth.instance.currentUser?.getIdToken(); } catch (_) {}
       final payload = <String, dynamic>{'text': text};
       if (voiceId != null) payload['voice_id'] = voiceId;
       final double? stability = (_avatarData?.training != null)
@@ -2864,17 +2897,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (similarity != null) payload['similarity'] = similarity;
       if (tempo != null) payload['speed'] = tempo;
       if (dialect != null && dialect.isNotEmpty) payload['dialect'] = dialect;
-      final headers = {
-        'Content-Type': 'application/json',
-        if (idToken != null && idToken.isNotEmpty) 'Authorization': 'Bearer $idToken',
-      };
-      final res = await http
-          .post(
-            uri,
-            headers: headers,
-            body: jsonEncode(payload),
-          )
-          .timeout(const Duration(seconds: 30));
+      final res = await _postWithAuthRetry(
+        uri,
+        {'Content-Type': 'application/json'},
+        jsonEncode(payload),
+        timeoutSeconds: 30,
+      );
       if (res.statusCode >= 200 && res.statusCode < 300) {
         final Map<String, dynamic> j =
             jsonDecode(res.body) as Map<String, dynamic>;
@@ -4348,18 +4376,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _removeTimelineOverlay();
     final entry = OverlayEntry(
       builder: (ctx) => Positioned.fill(
-        child: IgnorePointer(ignoring: false,
-          child: Stack(
-            children: [
-              TimelineMediaSlider(
+        child: Stack(
+          children: [
+            // Slider-Layer (unter Popup)
+            IgnorePointer(ignoring: false,
+              child: TimelineMediaSlider(
                 media: media,
                 slidingDuration: displayDuration,
                 isBlurred: false,
                 onTap: _onTimelineItemTap,
                 avatarId: _avatarData?.id,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

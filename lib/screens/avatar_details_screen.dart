@@ -5577,11 +5577,25 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   Widget _buildPersonDataTile() {
-    return PersonDataExpansionTile(inputFieldsWidget: _buildInputFields());
+    return PersonDataExpansionTile(
+      inputFieldsWidget: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildInputFields(),
+          const SizedBox(height: 12),
+          _buildDeleteAvatarTile(),
+        ],
+      ),
+    );
   }
 
   Widget _buildDeleteAvatarTile() {
-    return ExpansionTile(
+    return Theme(
+      data: Theme.of(context).copyWith(
+        dividerColor: Colors.white24,
+        listTileTheme: const ListTileThemeData(iconColor: AppColors.magenta),
+      ),
+      child: ExpansionTile(
       initiallyExpanded: false,
       leading: const Icon(Icons.delete_forever, color: Colors.red),
       title: const Text('Avatar löschen', style: TextStyle(color: Colors.red)),
@@ -5618,6 +5632,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ),
         ),
       ],
+    ),
     );
   }
 
@@ -6650,8 +6665,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                       _buildMediaContent(),
                       const SizedBox(height: 6),
                       _buildPersonDataTile(),
-                      const SizedBox(height: 6),
-                      _buildDeleteAvatarTile(),
                     ],
                   ),
                 ),

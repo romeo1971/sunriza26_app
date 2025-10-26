@@ -34,8 +34,10 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
     with TickerProviderStateMixin {
   late AnimationController _slideController;
   late Animation<double> _slideAnimation; // 0..1: Slide-In binnen 600ms
-  late AnimationController _driftController; // 0..1 über gesamte Displaydauer
+  late AnimationController _driftController; // ungenutzt (alt)
   late Animation<double> _driftAnimation;
+  late AnimationController _oscController; // Oszillation um die Mitte
+  late Animation<double> _oscAnimation; // -100 → 0 → +100 → 0 (px)
   List<AudioCoverImage>? _covers; // lazy-geladene Cover für Audio
   bool _loadingCovers = false;
 
@@ -53,15 +55,17 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
     );
     _slideController.forward();
 
-    // Drift Animation über gesamte Displaydauer (linear von unten nach oben)
-    _driftController = AnimationController(
-      duration: widget.slidingDuration,
+    // Oszillation: Mitte → +100px (oben) → Mitte → -100px (unten) → Mitte (loop)
+    _oscController = AnimationController(
+      duration: const Duration(seconds: 8), // Langsamer, ruhiger Lauf
       vsync: this,
-    );
-    _driftAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _driftController, curve: Curves.linear),
-    );
-    _driftController.forward();
+    )..repeat();
+    _oscAnimation = TweenSequence<double>([
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: -100.0).chain(CurveTween(curve: Curves.easeInOut)), weight: 1), // Mitte → oben
+      TweenSequenceItem(tween: Tween(begin: -100.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOut)), weight: 1),  // oben → Mitte
+      TweenSequenceItem(tween: Tween(begin: 0.0, end: 100.0).chain(CurveTween(curve: Curves.easeInOut)), weight: 1),   // Mitte → unten
+      TweenSequenceItem(tween: Tween(begin: 100.0, end: 0.0).chain(CurveTween(curve: Curves.easeInOut)), weight: 1),   // unten → Mitte
+    ]).animate(_oscController);
 
     // Audio-Cover ggf. lazy laden
     if (widget.media.type == AvatarMediaType.audio) {
@@ -75,7 +79,8 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
   @override
   void dispose() {
     _slideController.dispose();
-    _driftController.dispose();
+    try { _driftController.dispose(); } catch (_) {}
+    _oscController.dispose();
     super.dispose();
   }
 
@@ -84,8 +89,8 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     
-    // Feste Breite: 125px (laut Anforderung)
-    final double panelWidth = 125.0;
+    // Feste Breite: 80px
+    final double panelWidth = 80.0;
     
     // Ziel-Aspect je Typ bestimmen
     double targetAspectRatio;
@@ -108,21 +113,27 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
     final double panelHeight = panelWidth / targetAspectRatio;
     
     return AnimatedBuilder(
-      animation: Listenable.merge([_slideController, _driftController]),
+      animation: Listenable.merge([_slideController, _oscController]),
       builder: (context, child) {
-        // Position: Slide-In (600ms) + kontinuierlicher Drift über gesamte Dauer nach oben
-        final slideIn = -panelHeight + (_slideAnimation.value * panelHeight);
-        final drift = _driftAnimation.value * (screenHeight - panelHeight);
-        final bottomPosition = slideIn + drift;
+        // Position links, vertikal um Bildschirmmitte mit ±100px oszillieren
+        final centerTop = (screenHeight - panelHeight) / 2;
+        final double topPosition = ((centerTop + _oscAnimation.value)
+                .clamp(0.0, math.max(0.0, screenHeight - panelHeight))
+            as num)
+            .toDouble();
 
         return Positioned(
           left: 0,
-          bottom: bottomPosition,
+          top: topPosition,
           width: panelWidth,
           height: panelHeight,
           child: Padding(
             padding: const EdgeInsets.all(8),
-            child: _buildMediaContent(),
+            child: SizedBox(
+              width: panelWidth,
+              height: panelHeight,
+              child: _buildMediaContent(),
+            ),
           ),
         );
       },

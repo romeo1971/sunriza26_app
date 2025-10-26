@@ -144,7 +144,13 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
   }
 
   Widget _buildVideoContent() {
-    return _VideoPlayerWidget(url: widget.media.url);
+    return Column(
+      children: [
+        Expanded(child: _VideoPlayerWidget(url: widget.media.url)),
+        const SizedBox(height: 8),
+        _buildControlsRow(isVideo: true),
+      ],
+    );
   }
 
   Widget _buildAudioContent() {
@@ -192,8 +198,33 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
                 fontSize: 14,
               ),
             ),
+
+          const SizedBox(height: 12),
+          _buildControlsRow(isVideo: false),
         ],
       ),
+    );
+  }
+
+  Widget _buildControlsRow({required bool isVideo}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.replay, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(), // simple close+resume
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.pause, color: Colors.white),
+          onPressed: () {},
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.play_arrow, color: Colors.white),
+          onPressed: () {},
+        ),
+      ],
     );
   }
 
@@ -312,27 +343,26 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
       ),
       child: Column(
         children: [
-          // Preis
-          if (!widget.isPurchased)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  isFree ? Icons.card_giftcard : Icons.euro,
+          // Preis immer anzeigen
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                isFree ? Icons.card_giftcard : Icons.euro,
+                color: isFree ? AppColors.lightBlue : AppColors.magenta,
+                size: 28,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                isFree ? 'KOSTENLOS' : '${price.toStringAsFixed(2)} €',
+                style: TextStyle(
                   color: isFree ? AppColors.lightBlue : AppColors.magenta,
-                  size: 28,
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
                 ),
-                const SizedBox(width: 8),
-                Text(
-                  isFree ? 'KOSTENLOS' : '${price.toStringAsFixed(2)} €',
-                  style: TextStyle(
-                    color: isFree ? AppColors.lightBlue : AppColors.magenta,
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
+          ),
           
           const SizedBox(height: 16),
           
