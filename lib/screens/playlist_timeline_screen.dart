@@ -10,6 +10,7 @@ import 'playlist_media_assets_screen.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import '../services/doc_thumb_service.dart';
+import '../services/audio_cover_service.dart';
 
 class PlaylistTimelineScreen extends StatefulWidget {
   final Playlist playlist;
@@ -520,7 +521,39 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
     if (mounted) setState(() => _loading = true);
     try {
       final list = await _mediaSvc.list(widget.playlist.avatarId);
-      _allMedia = list;
+      // Audio-Cover aus Storage nachladen und in die Media-Liste mergen
+      final coverSvc = AudioCoverService();
+      final List<AvatarMedia> enriched = [];
+      for (final m in list) {
+        if (m.type == AvatarMediaType.audio) {
+          final covers = await coverSvc.getCoverImages(
+            avatarId: m.avatarId,
+            audioId: m.id,
+            audioUrl: m.url,
+          );
+          enriched.add(AvatarMedia(
+            id: m.id,
+            avatarId: m.avatarId,
+            type: m.type,
+            url: m.url,
+            thumbUrl: m.thumbUrl,
+            createdAt: m.createdAt,
+            durationMs: m.durationMs,
+            aspectRatio: m.aspectRatio,
+            tags: m.tags,
+            originalFileName: m.originalFileName,
+            isFree: m.isFree,
+            price: m.price,
+            currency: m.currency,
+            platformFeePercent: m.platformFeePercent,
+            voiceClone: m.voiceClone,
+            coverImages: covers.isNotEmpty ? covers : null,
+          ));
+        } else {
+          enriched.add(m);
+        }
+      }
+      _allMedia = enriched;
       // gespeichertes Split-Verhältnis anwenden, falls vorhanden
       // (alt) horizontale Split-Ratio wird nicht mehr genutzt
       // Inkonstistenzen bereinigen (Items ohne Assets, Assets ohne Media)
@@ -1286,7 +1319,32 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
         );
       }
     } else {
-      // Audio: nur Name + Zeit (keine Icons IN der Kachel wie in media_assets)
+      // Audio: erstes CoverImage zeigen, sonst Default-Icon/Info
+      final firstCover = (m.coverImages != null && m.coverImages!.isNotEmpty)
+          ? m.coverImages!.first
+          : null;
+      if (firstCover != null) {
+        // Nutze Thumb wenn vorhanden, sonst Full-Image
+        final imgUrl = (firstCover.thumbUrl.isNotEmpty)
+            ? firstCover.thumbUrl
+            : firstCover.url;
+        final coverAR = firstCover.aspectRatio;
+        final coverWidget = Image.network(
+          imgUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => const Center(
+            child: Icon(Icons.audiotrack, color: Colors.white70),
+          ),
+        );
+        // Überschreibe AR für Darstellung, falls vorhanden
+        final aspectWrapped = AspectRatio(
+          aspectRatio: coverAR,
+          child: coverWidget,
+        );
+        if (size != null) return SizedBox(width: size, child: aspectWrapped);
+        return aspectWrapped;
+      }
+      // Fallback: Default Audio Darstellung
       if (size != null) {
         content = const Center(
           child: Icon(Icons.audiotrack, color: Colors.white70),
