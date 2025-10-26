@@ -25,6 +25,8 @@ class AudioCoverImagesOverlay extends StatefulWidget {
 
 class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
   late List<AudioCoverImage?> _coverImages;
+  late List<AudioCoverImage?> _originalCoverImages; // Original state für Abbrechen
+  final Set<int> _pendingDeletes = {}; // Slots die gelöscht werden sollen
   final _picker = ImagePicker();
   final _coverService = AudioCoverService();
   bool _isUploading = false;
@@ -72,6 +74,9 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
         }
       });
     }
+    
+    // Original-State sichern
+    _originalCoverImages = List.from(_coverImages);
   }
 
   @override
@@ -80,36 +85,54 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
     
     return Dialog(
       backgroundColor: Colors.transparent,
-      child: Container(
-        width: MediaQuery.of(context).size.width * 0.8,
-        height: MediaQuery.of(context).size.height * 0.7,
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.5),
-              blurRadius: 20,
+      child: Stack(
+        children: [
+          Container(
+            width: MediaQuery.of(context).size.width * 0.8,
+            height: MediaQuery.of(context).size.height * 0.7,
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E1E1E),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.5),
+                  blurRadius: 20,
+                ),
+              ],
             ),
-          ],
-        ),
-        child: Column(
-          children: [
-            // Header
-            _buildHeader(coverCount),
-            
-            // Grid mit 5 Platzhaltern
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: _buildCoverGrid(),
+            child: Column(
+              children: [
+                // Header
+                _buildHeader(coverCount),
+                
+                // Grid mit 5 Platzhaltern
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: _buildCoverGrid(),
+                  ),
+                ),
+                
+                // Footer Buttons
+                _buildFooter(),
+              ],
+            ),
+          ),
+          if (_isUploading)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(AppColors.magenta),
+                  ),
+                ),
               ),
             ),
-            
-            // Footer Buttons
-            _buildFooter(),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -198,7 +221,7 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
     final isEmpty = coverImage == null;
     
     // Portrait (9:16): halbe Breite, Landscape (16:9): volle Breite
-    final bool isPortrait = isEmpty || coverImage!.aspectRatio < 1.0;
+    final bool isPortrait = isEmpty || (coverImage?.aspectRatio ?? 0.5625) < 1.0;
     
     if (isPortrait) {
       // Portrait: halbe Breite, AspectRatio 9:16
@@ -335,7 +358,7 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
         children: [
           // Cover Image Thumbnail mit korrekter Orientierung (9:16 oder 16:9)
           Image.network(
-            coverImage.thumbUrl,
+            coverImage.url, // Full image für hohe Qualität
             fit: BoxFit.cover,
             errorBuilder: (context, error, stack) => Container(
               color: Colors.grey.shade800,
@@ -431,14 +454,82 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
             ),
           ),
           
-          // Close Button
+          // Abbrechen
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: _onCancel,
+            child: const Text('Abbrechen'),
+          ),
+          const SizedBox(width: 12),
+          
+          // Fertig
+          ElevatedButton(
+            onPressed: _onFinish,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.magenta,
+            ),
             child: const Text('Fertig'),
           ),
         ],
       ),
     );
+  }
+  
+  /// Abbrechen: Restore original state
+  void _onCancel() {
+    setState(() {
+      _coverImages = List.from(_originalCoverImages);
+      _pendingDeletes.clear();
+    });
+    Navigator.pop(context);
+  }
+  
+  /// Fertig: Commit pending deletes
+  Future<void> _onFinish() async {
+    if (_pendingDeletes.isEmpty) {
+      Navigator.pop(context);
+      return;
+    }
+    
+    setState(() => _isUploading = true);
+    
+    try {
+      final avatarId = widget.audioMedia.avatarId;
+      final audioId = widget.audioMedia.id;
+      
+      // 1) Lösche alle markierten Slots in Storage
+      for (final index in _pendingDeletes) {
+        await _coverService.deleteCoverImage(
+          avatarId: avatarId,
+          audioId: audioId,
+          index: index,
+          audioUrl: widget.audioMedia.url,
+        );
+      }
+      
+      // 2) Firestore updaten
+      final updatedImages = _coverImages.whereType<AudioCoverImage>().toList();
+      await _coverService.updateAudioCoverImages(
+        avatarId: avatarId,
+        audioId: audioId,
+        coverImages: updatedImages,
+      );
+      
+      // 3) Callback → Icon update
+      widget.onImagesChanged(updatedImages);
+      
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      debugPrint('Error committing deletes: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fehler beim Löschen: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
   }
 
   /// Add Cover Image: Image Picker → Crop → Upload
@@ -694,14 +785,18 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              _deleteCoverImage(index);
+              // Nur UI-Update: Markiere als gelöscht
+              setState(() {
+                _pendingDeletes.add(index);
+                _coverImages[index] = null;
+              });
             },
             child: const Text('Löschen', style: TextStyle(color: Colors.red)),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              _addCoverImage(index); // Replace = Delete + Add
+              _addCoverImage(index); // Replace = direkter Upload
             },
             child: const Text('Ersetzen'),
           ),
@@ -715,52 +810,6 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
   }
 
   /// Delete Cover Image
-  Future<void> _deleteCoverImage(int index) async {
-    setState(() => _isUploading = true);
-
-    try {
-      final avatarId = widget.audioMedia.avatarId;
-      final audioId = widget.audioMedia.id;
-
-      // 1) Nur den konkreten Slot im Storage löschen (KEIN Reindex)
-      await _coverService.deleteCoverImage(
-        avatarId: avatarId,
-        audioId: audioId,
-        index: index,
-        audioUrl: widget.audioMedia.url,
-      );
-
-      // 2) Lokalen State SOFORT aktualisieren (UI reagiert direkt)
-      setState(() {
-        _coverImages[index] = null;
-      });
-
-      // 3) Firestore-Liste ohne Reindex schreiben
-      final updatedImages = _coverImages.whereType<AudioCoverImage>().toList();
-      await _coverService.updateAudioCoverImages(
-        avatarId: avatarId,
-        audioId: audioId,
-        coverImages: updatedImages,
-      );
-
-      // 4) Callback an Parent (MediaGallery) für Icon-Update
-      widget.onImagesChanged(updatedImages);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Cover Image gelöscht!')),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error deleting cover: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler beim Löschen: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isUploading = false);
-    }
-  }
+  // Diese Methode wird nicht mehr direkt aufgerufen, da Deletes erst bei "Fertig" committet werden
 }
 
