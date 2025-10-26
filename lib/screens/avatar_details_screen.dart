@@ -1341,6 +1341,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             },
             // Video Controller Helper
             videoControllerForThumb: _videoControllerForThumb,
+            // Original-Dateiname Resolver
+            fileNameFromUrl: _fileNameFromUrl,
             // Trim Hero-Video
             onTrimHeroVideo: _showTrimDialogForHeroVideo,
             // Trim beliebiges Video
@@ -6412,6 +6414,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
     }
     // Remote löschen (Videos) + Thumbs und Media-Dokumente
+    bool heroDeleted = false;
+    final String? currentHeroAtStart = _getHeroVideoUrl();
     for (final url in _selectedRemoteVideos) {
       try {
         debugPrint('🗑️ Lösche Video: $url');
@@ -6448,39 +6452,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         debugPrint('❌ Fehler beim Löschen des Videos: $e');
       }
       final removed = _videoUrls.remove(url);
+      if (currentHeroAtStart != null && url == currentHeroAtStart) {
+        heroDeleted = true;
+      }
       debugPrint(
         '🗑️ Video aus Liste entfernt: $removed (verbleibend: ${_videoUrls.length})',
       );
     }
-    // Hero-Video sicherstellen: Nach jeder Video-Deletion prüfen (NUR lokal!)
-    String? newHeroVideoUrl;
-    try {
-      final currentHero = _getHeroVideoUrl();
-      debugPrint(
-        '🎬 Hero-Video-Check: currentHero=$currentHero, videoUrls=${_videoUrls.length}',
-      );
-
-      // Prüfe ob Hero noch existiert
-      final heroExists =
-          currentHero != null && _videoUrls.contains(currentHero);
-
-      if (!heroExists) {
-        if (_videoUrls.isNotEmpty) {
-          // Hero fehlt, aber Videos da → erstes Video als neues Hero merken
-          newHeroVideoUrl = _videoUrls.first;
-          debugPrint('🎬 Neues Hero-Video wird gesetzt: $newHeroVideoUrl');
-        } else {
-          // Keine Videos mehr → heroVideoUrl wird gelöscht (null)
-          newHeroVideoUrl = null;
-          debugPrint('🎬 HeroVideoUrl wird gelöscht (keine Videos mehr)');
-        }
-      } else {
-        // Hero existiert noch → behalten
-        newHeroVideoUrl = currentHero;
-      }
-    } catch (e) {
-      debugPrint('❌ Fehler bei Hero-Video-Check: $e');
-    }
+    // Hero-Video-Status nach Delete: Wenn das gelöschte Video das Hero war → Firestore-Feld leeren
     // Local entfernen (Bilder)
     _newImageFiles.removeWhere((f) => _selectedLocalImages.contains(f.path));
     // Local entfernen (Videos)
@@ -6492,15 +6471,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // Persistiere Änderungen sofort (Storage + Firestore)
     // WICHTIG: imageUrls, videoUrls, heroVideoUrl UND textFileUrls müssen aktualisiert werden!
     final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
-    // WICHTIG: heroVideoUrl NIEMALS beim Speichern löschen!
-    final currentHeroVideo = _getHeroVideoUrl();
-    if (newHeroVideoUrl != null && newHeroVideoUrl.isNotEmpty) {
-      tr['heroVideoUrl'] = newHeroVideoUrl;
-      debugPrint('🎬 Training: heroVideoUrl wird gesetzt auf $newHeroVideoUrl');
-    } else if (currentHeroVideo != null && currentHeroVideo.isNotEmpty) {
-      // Behalte bestehenden Wert unangetastet
-      tr['heroVideoUrl'] = currentHeroVideo;
-      debugPrint('🎬 Training: heroVideoUrl unverändert belassen');
+    if (heroDeleted) {
+      tr['heroVideoUrl'] = null;
+      debugPrint('🎬 Training: heroVideoUrl auf null gesetzt (Hero gelöscht)');
+    } else {
+      // Hero nicht betroffen → Wert beibehalten
+      final currentHeroVideo = _getHeroVideoUrl();
+      if (currentHeroVideo != null && currentHeroVideo.isNotEmpty) {
+        tr['heroVideoUrl'] = currentHeroVideo;
+      }
     }
 
     final updated = _avatarData!.copyWith(
@@ -6516,7 +6495,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (success) {
       _applyAvatar(updated);
       debugPrint(
-        '✅ Avatar nach Delete aktualisiert: ${_videoUrls.length} Videos, heroVideoUrl=$newHeroVideoUrl',
+        '✅ Avatar nach Delete aktualisiert: ${_videoUrls.length} Videos, heroVideoUrl=${(_avatarData!.training?['heroVideoUrl'])}',
       );
       // Timeline-Daten persistieren (imageDurations, imageActive, imageExplorerVisible)
       await _saveTimelineData();

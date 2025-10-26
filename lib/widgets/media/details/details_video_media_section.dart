@@ -56,6 +56,8 @@ class DetailsVideoMediaSection extends StatelessWidget {
   final Future<Uint8List?> Function(String url) thumbnailForRemote;
   final ValueChanged<String> toggleVideoAudio;
   final ValueChanged<String> setHeroVideo;
+  // Original-Dateiname Resolver
+  final String Function(String url) fileNameFromUrl;
   final VoidCallback onDeleteModeCancel;
   final VoidCallback onDeleteConfirm;
   final ValueChanged<String> onTrashIconTap; // (url) => { setState... }
@@ -85,6 +87,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
     required this.onDeleteConfirm,
     required this.onTrashIconTap,
     required this.videoControllerForThumb,
+    required this.fileNameFromUrl,
     this.onTrimHeroVideo,
     this.onTrimVideo,
   });
@@ -351,13 +354,10 @@ class DetailsVideoMediaSection extends StatelessWidget {
                               final double tileWidth =
                                   tileImageHeight * (9 / 16);
 
-                              // Dateiname extrahieren (wie bei Images)
-                              String videoName = url.split('/').last;
-                              if (videoName.contains('?')) {
-                                videoName = videoName.split('?').first;
-                              }
-                              if (videoName.length > 20) {
-                                videoName = '${videoName.substring(0, 17)}...';
+                              // Original-Dateiname anzeigen (Fallback: URL‑Name)
+                              String videoName = fileNameFromUrl(url);
+                              if (videoName.length > 28) {
+                                videoName = '${videoName.substring(0, 25)}...';
                               }
 
                               return Container(
