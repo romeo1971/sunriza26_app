@@ -694,11 +694,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           : '$orchUrl/publisher/stop';
       debugPrint('🛑 Stopping LiveKit publisher: $url');
 
-      final res = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'room': room}),
-      ).timeout(const Duration(seconds: 5));
+      final res = await http
+          .post(
+            Uri.parse(url),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'room': room}),
+          )
+          .timeout(const Duration(seconds: 20), onTimeout: () {
+        debugPrint('⚠️ publisher/stop timeout (room=$room) – fahre fort.');
+        return http.Response('', 204); // best-effort success
+      });
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
         debugPrint('✅ LiveKit publisher stopped');
@@ -710,11 +715,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           final mtUrl = AppConfig.museTalkHttpUrl.endsWith('/')
               ? '${AppConfig.museTalkHttpUrl}session/stop'
               : '${AppConfig.museTalkHttpUrl}/session/stop';
-          await http.post(
-            Uri.parse(mtUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'room': room}),
-          ).timeout(const Duration(seconds: 5));
+          await http
+              .post(
+                Uri.parse(mtUrl),
+                headers: {'Content-Type': 'application/json'},
+                body: jsonEncode({'room': room}),
+              )
+              .timeout(const Duration(seconds: 20), onTimeout: () {
+            debugPrint('⚠️ musetalk session/stop timeout (room=$room)');
+            return http.Response('', 204);
+          });
           _globalActiveMuseTalkRooms.remove(room); // Reset GLOBAL Guard!
           debugPrint('✅ MuseTalk session stopped (room=$room)');
         } catch (e) {

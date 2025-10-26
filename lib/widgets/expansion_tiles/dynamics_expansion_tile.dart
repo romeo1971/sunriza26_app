@@ -276,6 +276,9 @@ class DynamicsExpansionTile extends StatelessWidget {
             ],
           ),
         ),
+        // Manuelles Reload (falls Listener verpasst):
+        // Hinweis: "Neu laden" Button wird weiter unten im DynamicsItemTile-Kontext angezeigt,
+        // damit er näher an den Controls ist.
         // const SizedBox(height: 4),
         // Info Text: Kein Hero-Video
         if (!hasHeroVideo)

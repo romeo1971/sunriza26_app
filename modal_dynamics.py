@@ -62,9 +62,9 @@ image = (
 @app.function(
     image=image,
     gpu="T4",
-    timeout=30,  # 30s idle → shutdown
-    min_containers=0,  # scale-to-zero!
-    scaledown_window=20,  # 20s statt 60s → schneller shutdown = weniger idle costs!
+    timeout=900,  # bis zu 15 Minuten für Cold Start + LP-Run
+    min_containers=0,  # scale-to-zero (keine Fixkosten)
+    scaledown_window=20,  # schneller Shutdown spart Kosten
     secrets=[modal.Secret.from_name("firebase-credentials")],
     volumes={"/tensorrt_cache": tensorrt_cache},  # TensorRT Cache persistent mounten
 )
@@ -641,9 +641,17 @@ def api_generate_dynamics():
         
         if not avatar_id:
             raise HTTPException(status_code=400, detail="avatar_id required")
-        
-        result = generate_dynamics.remote(avatar_id, dynamics_id, parameters)
-        return result
+
+        # Job asynchron starten (Cold Start erlaubt). Sofort antworten.
+        generate_dynamics.spawn(avatar_id, dynamics_id, parameters)
+        # Client zeigt Countdown und pollt Firestore auf Fertigstellung
+        return {
+            "status": "generating",
+            "avatar_id": avatar_id,
+            "dynamics_id": dynamics_id,
+            "estimated_seconds": 120,
+            "message": "Dynamics-Generierung gestartet"
+        }
     
     return web_app
 

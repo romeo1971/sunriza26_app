@@ -173,6 +173,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   // Live Avatar State
   bool _isGeneratingLiveAvatar = false;
   String? _liveAvatarAgentId;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
+      _avatarDocSubscription;
 
   // Timeline-Daten in Firebase speichern
   Future<void> _saveTimelineData() async {
@@ -1123,6 +1125,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     await _loadTimelineData(data.id);
     // 🎭 Dynamics-Daten laden ✨
     await _loadDynamicsData(data.id);
+    // Starte Realtime-Listener für Dynamics-Status
+    _startDynamicsListener(data.id);
     // 🚀 Live Avatar Agent ID laden
     await _loadLiveAvatarData(data.id);
     // 🎬 Hero-Video Dauer prüfen (Max 10 Sek für Dynamics)
@@ -6597,6 +6601,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   @override
   void dispose() {
+    _avatarDocSubscription?.cancel();
     _firstNameController.dispose();
     _nicknameController.dispose();
     _lastNameController.dispose();
@@ -7789,13 +7794,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           )
           .timeout(const Duration(minutes: 10));
 
-      // Stoppe Timer
-      _dynamicsTimers[dynamicsId]?.cancel();
-
+      // Backend antwortet jetzt asynchron mit {status: "generating"}
+      // → Timer NICHT stoppen; wir warten auf Firestore-Update
       if (response.statusCode == 200) {
         final responseData = jsonDecode(response.body);
 
         if (responseData['status'] == 'success') {
+          // Seltener Fall (Synchron-Erfolg)
+          _dynamicsTimers[dynamicsId]?.cancel();
           debugPrint('✅ Dynamics Video erstellt');
 
           // Fertig! Entferne aus generierenden
@@ -7820,6 +7826,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               ),
             );
           }
+        } else if (responseData['status'] == 'generating') {
+          // Normalfall: Job läuft im Hintergrund – Timer weiterlaufen lassen
+          if (mounted) {
+            final dynamicsName =
+                (_dynamicsData[dynamicsId]?['name'] as String?) ??
+                (dynamicsId == 'basic' ? 'Basic' : dynamicsId);
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  '🚀 Dynamics "$dynamicsName" gestartet. Ich melde mich, sobald es fertig ist.',
+                ),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+          return; // Timer zählt weiter bis Firestore ready meldet
         } else {
           throw Exception('Fehler: ${responseData['error']}');
         }
@@ -8074,6 +8097,37 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       debugPrint('❌ Fehler beim Laden der Dynamics-Daten: $e');
     }
   }
+
+  // Hinweis: initState existiert bereits weiter oben und setzt alles auf.
+  // Zusätzliche Initialisierung erfolgt in _applyAvatar(), wo wir den Listener starten.
+
+  void _startDynamicsListener(String avatarId) {
+    _avatarDocSubscription?.cancel();
+    _avatarDocSubscription = FirebaseFirestore.instance
+        .collection('avatars')
+        .doc(avatarId)
+        .snapshots()
+        .listen((snap) {
+      final data = snap.data();
+      if (data == null) return;
+      final dynamics = data['dynamics'] as Map<String, dynamic>?;
+      if (dynamics == null) return;
+      final basic = dynamics['basic'] as Map<String, dynamic>?;
+      if (basic == null) return;
+
+      final status = basic['status'] as String?;
+      if (status == 'ready') {
+        // Stoppe eventuell laufenden Timer und entferne aus Set
+        _dynamicsTimers['basic']?.cancel();
+        _generatingDynamics.remove('basic');
+        // Lade Daten neu, damit URLs/Chunks im UI erscheinen
+        _loadDynamicsData(avatarId);
+        setState(() {});
+      }
+    });
+  }
+
+  
 
   // Alias für Widget-Callback (Hero-Video)
   void _showTrimDialogForHeroVideo() {
