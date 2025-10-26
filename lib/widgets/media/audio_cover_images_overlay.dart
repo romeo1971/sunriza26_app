@@ -142,84 +142,150 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
   }
 
   Widget _buildCoverGrid() {
-    // Kompakte Darstellung: 5 kleine Slots in einer Rasteransicht
-    return GridView.builder(
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 5,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-        childAspectRatio: 9 / 16, // zeigt grob das spätere Seitenverhältnis
-      ),
-      itemCount: 5,
-      itemBuilder: (context, index) => _buildCoverPlaceholder(index),
+    // Vertikales Scrolling, 2 Portrait nebeneinander, Landscape volle Breite
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final availableWidth = constraints.maxWidth;
+        
+        return ListView.builder(
+          itemCount: 5,
+          itemBuilder: (context, index) {
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: index == 4 ? 0 : 16,
+              ),
+              child: _buildCoverPlaceholder(index, availableWidth),
+            );
+          },
+        );
+      },
     );
   }
 
-  Widget _buildCoverPlaceholder(int index) {
+  Widget _buildCoverPlaceholder(int index, double availableWidth) {
     final coverImage = _coverImages[index];
     final isEmpty = coverImage == null;
-
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => isEmpty ? _addCoverImage(index) : _showImageOptions(index),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isEmpty
-                  ? Colors.white.withValues(alpha: 0.2)
-                  : AppColors.magenta.withValues(alpha: 0.5),
-              width: 2,
+    
+    // Portrait (9:16): halbe Breite (damit 2 nebeneinander passen), Landscape (16:9): volle Breite
+    final bool isPortrait = isEmpty || coverImage!.aspectRatio < 1.0;
+    
+    // Portrait: halbe Breite minus Padding (12px gap zwischen den beiden)
+    final double portraitWidth = (availableWidth - 12) / 2;
+    final double portraitHeight = portraitWidth * (16 / 9); // 9:16 Verhältnis
+    
+    // Landscape: volle Breite
+    final double landscapeHeight = availableWidth * (9 / 16); // 16:9 Verhältnis
+    
+    final double width = isPortrait ? portraitWidth : availableWidth;
+    final double height = isPortrait ? portraitHeight : landscapeHeight;
+    
+    return Center(
+      child: MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(
+          onTap: () => isEmpty ? _addCoverImage(index) : _showImageOptions(index),
+          child: Container(
+            width: width,
+            height: height,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: isEmpty
+                    ? Colors.white.withValues(alpha: 0.2)
+                    : AppColors.magenta.withValues(alpha: 0.5),
+                width: 2,
+              ),
             ),
+            child: isEmpty
+                ? _buildEmptyPlaceholder(index)
+                : _buildCoverPreview(coverImage),
           ),
-          child: isEmpty
-              ? _buildEmptyPlaceholder(index)
-              : _buildCoverPreview(coverImage),
         ),
       ),
     );
   }
 
   Widget _buildEmptyPlaceholder(int index) {
-    // Nur kleiner Upload-Button (Icon), keine Texte
-    return Center(
-      child: Container(
-        width: 36,
-        height: 36,
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: Colors.white24),
+    // Default Upload Layout: Icon + "Cover X" + "Hinzufügen"
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // Icon mit "+"
+        Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Stack(
+            children: [
+              const Center(
+                child: Icon(
+                  Icons.image_outlined,
+                  color: Colors.white54,
+                  size: 32,
+                ),
+              ),
+              Positioned(
+                right: 4,
+                top: 4,
+                child: Container(
+                  width: 20,
+                  height: 20,
+                  decoration: BoxDecoration(
+                    color: AppColors.magenta,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.5),
+                  ),
+                  child: const Icon(
+                    Icons.add,
+                    color: Colors.white,
+                    size: 12,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        child: const Icon(
-          Icons.add,
-          color: Colors.white70,
-          size: 20,
+        const SizedBox(height: 12),
+        // "Cover X"
+        Text(
+          'Cover ${index + 1}',
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-      ),
+        const SizedBox(height: 4),
+        // "Hinzufügen"
+        Text(
+          'Hinzufügen',
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.5),
+            fontSize: 13,
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildCoverPreview(AudioCoverImage coverImage) {
     final isPortrait = coverImage.aspectRatio < 1.0;
-    final sizeText = isPortrait ? '200×300' : '300×200';
     return Stack(
       fit: StackFit.expand,
       children: [
-        // Cover Image Thumbnail mit richtiger Orientierung
+        // Cover Image Thumbnail mit korrekter Orientierung (9:16 oder 16:9)
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
-          child: AspectRatio(
-            aspectRatio: isPortrait ? 9 / 16 : 16 / 9,
-            child: Image.network(
-              coverImage.thumbUrl,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stack) => Container(
-                color: Colors.grey.shade800,
-                child: const Icon(Icons.broken_image, color: Colors.white54),
-              ),
+          child: Image.network(
+            coverImage.thumbUrl,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stack) => Container(
+              color: Colors.grey.shade800,
+              child: const Icon(Icons.broken_image, color: Colors.white54),
             ),
           ),
         ),
@@ -270,6 +336,7 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
             ),
           ),
         ),
+        // Aspect Ratio Badge unten links
         Positioned(
           bottom: 8,
           left: 8,
@@ -281,21 +348,6 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
             ),
             child: Text(
               isPortrait ? '9:16' : '16:9',
-              style: const TextStyle(color: Colors.white, fontSize: 10),
-            ),
-          ),
-        ),
-        Positioned(
-          bottom: 8,
-          right: 8,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              sizeText,
               style: const TextStyle(color: Colors.white, fontSize: 10),
             ),
           ),
