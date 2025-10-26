@@ -1102,19 +1102,27 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         try {
           final cloneId = (voice['cloneVoiceId'] as String?)?.trim();
           final elevenId = (voice['elevenVoiceId'] as String?)?.trim();
+          final useOwnVoiceFlag = (voice['useOwnVoice'] as bool?) ?? null;
 
-          // Prüfe: Ist elevenVoiceId == cloneVoiceId? → Eigene Stimme aktiv
-          if (cloneId != null && cloneId.isNotEmpty && elevenId == cloneId) {
+          // Harte Benutzerwahl hat Vorrang
+          if (useOwnVoiceFlag == true) {
             _useOwnVoice = true;
-            _selectedVoiceId = null; // Dropdown nicht relevant
+            _selectedVoiceId = null;
           } else {
-            // Externe Stimme aktiv (oder keine Stimme)
-            _useOwnVoice = false;
-            _selectedVoiceId = elevenId; // kann auch null sein
+            // Prüfe: Ist elevenVoiceId == cloneVoiceId? → Eigene Stimme aktiv
+            final computedOwn =
+                (cloneId != null && cloneId.isNotEmpty && elevenId == cloneId);
+            // Behalte Benutzerzustand, wenn keine externe Stimme gesetzt ist
+            if (_useOwnVoice && (elevenId == null || elevenId.isEmpty)) {
+              _useOwnVoice = true;
+              _selectedVoiceId = null;
+            } else {
+              _useOwnVoice = computedOwn;
+              _selectedVoiceId = computedOwn ? null : elevenId;
+            }
           }
         } catch (_) {
-          _useOwnVoice = false;
-          _selectedVoiceId = null;
+          // Bei Parsing-Problemen Benutzerzustand nicht überschreiben
         }
       }
       _isDirty = false;
@@ -1797,6 +1805,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (cloneId.isNotEmpty) {
           voice['elevenVoiceId'] = cloneId;
         }
+        voice['useOwnVoice'] = true; // Benutzerwahl PERSISTIEREN
       } else {
         // Externe Stimme: erste Stimme vorauswählen, falls nichts gewählt
         if (_selectedVoiceId == null || _selectedVoiceId!.isEmpty) {
@@ -1814,6 +1823,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         } else {
           voice['elevenVoiceId'] = _selectedVoiceId;
         }
+        voice['useOwnVoice'] = false; // Benutzerwahl PERSISTIEREN
       }
 
       existing['voice'] = voice;
