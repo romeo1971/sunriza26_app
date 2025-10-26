@@ -202,12 +202,13 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
     
     // Portrait: halbe Breite minus Padding (12px gap zwischen den beiden)
     final double portraitWidth = (availableWidth - 12) / 2;
-    final double portraitHeight = portraitWidth * (16 / 9); // 9:16 Verhältnis
+    final double portraitHeight = portraitWidth * (16 / 9); // Höhe = Breite × (16/9) für 9:16 Format
     
     // Landscape: volle Breite
-    final double landscapeHeight = availableWidth * (9 / 16); // 16:9 Verhältnis
+    final double landscapeWidth = availableWidth;
+    final double landscapeHeight = landscapeWidth * (9 / 16); // Höhe = Breite × (9/16) für 16:9 Format
     
-    final double width = isPortrait ? portraitWidth : availableWidth;
+    final double width = isPortrait ? portraitWidth : landscapeWidth;
     final double height = isPortrait ? portraitHeight : landscapeHeight;
     
     return Center(

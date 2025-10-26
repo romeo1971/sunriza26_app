@@ -39,6 +39,7 @@ import '../widgets/custom_text_field.dart';
 import '../widgets/gmbc_buttons.dart';
 import '../widgets/media/audio_cover_icon_stack.dart';
 import '../widgets/media/audio_cover_images_overlay.dart';
+import '../services/audio_cover_service.dart';
 
 // Custom SnackBar Helper
 SnackBar buildSuccessSnackBar(String message) {
@@ -1104,9 +1105,42 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         }
       }
 
+      // Lade Cover Images für Audio-Dateien
+      final coverService = AudioCoverService();
+      final itemsWithCovers = <AvatarMedia>[];
+      for (final item in filtered) {
+        if (item.type == AvatarMediaType.audio) {
+          final covers = await coverService.getCoverImages(
+            avatarId: item.avatarId,
+            audioId: item.id,
+            audioUrl: item.url,
+          );
+          itemsWithCovers.add(AvatarMedia(
+            id: item.id,
+            avatarId: item.avatarId,
+            type: item.type,
+            url: item.url,
+            thumbUrl: item.thumbUrl,
+            createdAt: item.createdAt,
+            durationMs: item.durationMs,
+            aspectRatio: item.aspectRatio,
+            tags: item.tags,
+            originalFileName: item.originalFileName,
+            isFree: item.isFree,
+            price: item.price,
+            currency: item.currency,
+            platformFeePercent: item.platformFeePercent,
+            voiceClone: item.voiceClone,
+            coverImages: covers.isNotEmpty ? covers : null,
+          ));
+        } else {
+          itemsWithCovers.add(item);
+        }
+      }
+
       if (!mounted) return;
       setState(() {
-        _items = filtered;
+        _items = itemsWithCovers;
         _mediaToPlaylists = mediaToPlaylists;
       });
     } catch (e) {
@@ -1337,6 +1371,40 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         },
       ),
     );
+    
+    // Nach Dialog-Schließen: Cover Images aus Storage laden und in audioMedia aktualisieren
+    final coverService = AudioCoverService();
+    final freshCovers = await coverService.getCoverImages(
+      avatarId: audioMedia.avatarId,
+      audioId: audioMedia.id,
+      audioUrl: audioMedia.url,
+    );
+    
+    if (freshCovers.isNotEmpty) {
+      final idx = _items.indexWhere((m) => m.id == audioMedia.id);
+      if (idx != -1) {
+        final current = _items[idx];
+        _items[idx] = AvatarMedia(
+          id: current.id,
+          avatarId: current.avatarId,
+          type: current.type,
+          url: current.url,
+          thumbUrl: current.thumbUrl,
+          createdAt: current.createdAt,
+          durationMs: current.durationMs,
+          aspectRatio: current.aspectRatio,
+          tags: current.tags,
+          originalFileName: current.originalFileName,
+          isFree: current.isFree,
+          price: current.price,
+          currency: current.currency,
+          platformFeePercent: current.platformFeePercent,
+          voiceClone: current.voiceClone,
+          coverImages: freshCovers,
+        );
+        if (mounted) setState(() {});
+      }
+    }
   }
 
   /// Multi-Upload: Mehrere Bilder auf einmal auswählen
