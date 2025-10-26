@@ -4,17 +4,19 @@ import '../../theme/app_theme.dart';
 /// Audio Cover Icon Stack - 5 Icons wie Spielkarten überlappt
 /// Farben: white, magenta, white, lightblue, white
 class AudioCoverIconStack extends StatelessWidget {
-  final int coverCount; // 0-5
+  final List<bool> coverSlots; // 5 Bools: true = Bild vorhanden, false = leer
   final VoidCallback onTap;
 
   const AudioCoverIconStack({
     super.key,
-    required this.coverCount,
+    required this.coverSlots,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    final coverCount = coverSlots.where((e) => e).length;
+    
     return Tooltip(
       message: 'Cover Images ($coverCount/5)',
       child: MouseRegion(
@@ -51,7 +53,7 @@ class AudioCoverIconStack extends StatelessWidget {
     ];
     
     final color = colors[index];
-    final hasImage = index < coverCount;
+    final hasImage = index < coverSlots.length && coverSlots[index];
     
     return Container(
       width: 16,

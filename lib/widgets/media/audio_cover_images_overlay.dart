@@ -32,14 +32,45 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
   @override
   void initState() {
     super.initState();
-    // Initialisiere mit vorhandenen Cover Images (max 5 Platzhalter)
+    _loadCoverImages();
+  }
+
+  /// Lädt Cover Images aus Firestore
+  Future<void> _loadCoverImages() async {
     _coverImages = List.filled(5, null);
+    
+    // 1. Erst aus audioMedia laden (falls vorhanden)
     if (widget.audioMedia.coverImages != null) {
+      debugPrint('📸 Loading ${widget.audioMedia.coverImages!.length} covers from audioMedia');
       for (var img in widget.audioMedia.coverImages!) {
         if (img.index >= 0 && img.index < 5) {
           _coverImages[img.index] = img;
+          debugPrint('  ✓ Slot ${img.index}: ${img.thumbUrl}');
         }
       }
+    } else {
+      debugPrint('📸 No covers in audioMedia');
+    }
+    
+    // 2. Dann aus Storage nachladen (aktuellster Stand)
+    debugPrint('📸 Fetching fresh covers from Storage...');
+    final freshImages = await _coverService.getCoverImages(
+      avatarId: widget.audioMedia.avatarId,
+      audioId: widget.audioMedia.id,
+      audioUrl: widget.audioMedia.url, // URL für Timestamp-Extraktion
+    );
+    
+    debugPrint('📸 Loaded ${freshImages.length} fresh covers from Firestore');
+    
+    if (freshImages.isNotEmpty && mounted) {
+      setState(() {
+        for (var img in freshImages) {
+          if (img.index >= 0 && img.index < 5) {
+            _coverImages[img.index] = img;
+            debugPrint('  ✓ Slot ${img.index}: ${img.thumbUrl}');
+          }
+        }
+      });
     }
   }
 

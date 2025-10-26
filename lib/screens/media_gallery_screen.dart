@@ -1290,6 +1290,19 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     );
   }
 
+  /// Bestimmt, welche Cover Slots belegt sind (für Icon-Stack)
+  List<bool> _getCoverSlots(AvatarMedia media) {
+    final slots = List.filled(5, false);
+    if (media.coverImages != null) {
+      for (var img in media.coverImages!) {
+        if (img.index >= 0 && img.index < 5) {
+          slots[img.index] = true;
+        }
+      }
+    }
+    return slots;
+  }
+
   /// Zeigt Audio Cover Images Overlay
   Future<void> _showAudioCoverImagesOverlay(AvatarMedia audioMedia) async {
     await showDialog(
@@ -7517,7 +7530,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         ),
                         const SizedBox(width: 8),
                         AudioCoverIconStack(
-                          coverCount: it.coverImages?.length ?? 0,
+                          coverSlots: _getCoverSlots(it),
                           onTap: () => _showAudioCoverImagesOverlay(it),
                         ),
                       ],

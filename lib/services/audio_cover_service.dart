@@ -123,6 +123,119 @@ class AudioCoverService {
     } catch (e) {}
   }
 
+  /// Lädt Cover Images aus Firebase Storage
+  /// Sucht in mehreren möglichen Pfaden (neues Schema, altes Schema, timestamp-basiert)
+  Future<List<AudioCoverImage>> getCoverImages({
+    required String avatarId,
+    required String audioId,
+    String? audioUrl, // Optional: Audio-URL um Timestamp zu extrahieren
+  }) async {
+    final List<AudioCoverImage> coverImages = [];
+    
+    try {
+      debugPrint('🔍 getCoverImages from Storage: avatarId=$avatarId, audioId=$audioId');
+      if (audioUrl != null) debugPrint('🔍 audioUrl: $audioUrl');
+      
+      // Extrahiere Timestamp aus Audio-URL (falls vorhanden)
+      String? timestamp;
+      if (audioUrl != null) {
+        final match = RegExp(r'/audio/(\d+)').firstMatch(audioUrl);
+        if (match != null) {
+          timestamp = match.group(1);
+          debugPrint('🔍 Extracted timestamp from audioUrl: $timestamp');
+        }
+      }
+      
+      // Prüfe alle 5 möglichen Slots (1-5)
+      for (int i = 1; i <= 5; i++) {
+        try {
+          String? imageUrl;
+          String? thumbUrl;
+          Reference? imageRef;
+          
+          // Versuch 1: Timestamp-basierter Pfad (aus audioUrl extrahiert)
+          if (timestamp != null) {
+            try {
+              final imagePath = 'avatars/$avatarId/audio/$timestamp/coverImages/image$i.jpg';
+              final thumbPath = 'avatars/$avatarId/audio/$timestamp/coverImages/thumbs/thumb$i.jpg';
+              
+              imageRef = _storage.ref().child(imagePath);
+              final thumbRef = _storage.ref().child(thumbPath);
+              
+              imageUrl = await imageRef.getDownloadURL();
+              thumbUrl = await thumbRef.getDownloadURL();
+              debugPrint('✅ Found at TIMESTAMP path: $imagePath');
+            } catch (e) {
+              debugPrint('⚠️ Not found at timestamp path ($timestamp)');
+            }
+          }
+          
+          // Versuch 2: Neuer Pfad mit audioId
+          if (imageUrl == null) {
+            try {
+              final imagePath = 'avatars/$avatarId/audio/$audioId/coverImages/image$i.jpg';
+              final thumbPath = 'avatars/$avatarId/audio/$audioId/coverImages/thumbs/thumb$i.jpg';
+              
+              imageRef = _storage.ref().child(imagePath);
+              final thumbRef = _storage.ref().child(thumbPath);
+              
+              imageUrl = await imageRef.getDownloadURL();
+              thumbUrl = await thumbRef.getDownloadURL();
+              debugPrint('✅ Found at AUDIO_ID path: $imagePath');
+            } catch (e) {
+              debugPrint('⚠️ Not found at audioId path');
+            }
+          }
+          
+          // Versuch 3: Alter Pfad ohne avatarId
+          if (imageUrl == null) {
+            try {
+              final imagePath = 'audio/$audioId/coverImages/image$i.jpg';
+              final thumbPath = 'audio/$audioId/coverImages/thumbs/thumb$i.jpg';
+              
+              imageRef = _storage.ref().child(imagePath);
+              final thumbRef = _storage.ref().child(thumbPath);
+              
+              imageUrl = await imageRef.getDownloadURL();
+              thumbUrl = await thumbRef.getDownloadURL();
+              debugPrint('✅ Found at OLD path: $imagePath');
+            } catch (e) {
+              debugPrint('⚪ Not found at any path for slot $i');
+            }
+          }
+          
+          // Wenn gefunden, füge zur Liste hinzu
+          if (imageUrl != null && thumbUrl != null && imageRef != null) {
+            // Hole Metadata für Aspect Ratio (falls gespeichert)
+            final metadata = await imageRef.getMetadata();
+            double aspectRatio = 16 / 9; // Default
+            
+            if (metadata.customMetadata != null && metadata.customMetadata!.containsKey('aspectRatio')) {
+              aspectRatio = double.tryParse(metadata.customMetadata!['aspectRatio'] ?? '1.777') ?? 16 / 9;
+            }
+            
+            coverImages.add(AudioCoverImage(
+              url: imageUrl,
+              thumbUrl: thumbUrl,
+              aspectRatio: aspectRatio,
+              index: i - 1, // 0-based index
+            ));
+            
+            debugPrint('✅ Loaded cover image at slot $i (index ${i - 1})');
+          }
+        } catch (e) {
+          debugPrint('❌ Error loading slot $i: $e');
+        }
+      }
+      
+      debugPrint('📸 Loaded ${coverImages.length} cover images from Storage');
+      return coverImages;
+    } catch (e) {
+      debugPrint('❌ Error loading cover images from Storage: $e');
+      return [];
+    }
+  }
+
   /// Update Audio Media mit Cover Images Array
   Future<void> updateAudioCoverImages({
     required String avatarId,
