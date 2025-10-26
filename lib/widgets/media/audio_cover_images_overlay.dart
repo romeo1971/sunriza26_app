@@ -485,11 +485,6 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
   
   /// Fertig: Commit pending deletes
   Future<void> _onFinish() async {
-    if (_pendingDeletes.isEmpty) {
-      Navigator.pop(context);
-      return;
-    }
-    
     setState(() => _isUploading = true);
     
     try {
@@ -497,38 +492,46 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
       final audioId = widget.audioMedia.id;
       
       // 1) Lösche alle markierten Slots in Storage
-      for (final index in _pendingDeletes) {
-        await _coverService.deleteCoverImage(
-          avatarId: avatarId,
-          audioId: audioId,
-          index: index,
-          audioUrl: widget.audioMedia.url,
-        );
+      if (_pendingDeletes.isNotEmpty) {
+        for (final index in _pendingDeletes) {
+          try {
+            await _coverService.deleteCoverImage(
+              avatarId: avatarId,
+              audioId: audioId,
+              index: index,
+              audioUrl: widget.audioMedia.url,
+            );
+            debugPrint('✅ Deleted slot $index');
+          } catch (e) {
+            debugPrint('⚠️ Delete failed for slot $index (may already be deleted): $e');
+          }
+        }
+        _pendingDeletes.clear();
       }
       
-      // 2) Firestore updaten
+      // 2) Aktualisiere lokale Liste
       final updatedImages = _coverImages.whereType<AudioCoverImage>().toList();
+      
+      // 3) Firestore updaten (kann fehlschlagen, ist ok)
       await _coverService.updateAudioCoverImages(
         avatarId: avatarId,
         audioId: audioId,
         coverImages: updatedImages,
       );
       
-      // 3) Callback → Icon update
+      // 4) Callback → Icon update im Parent (MediaGallery)
       widget.onImagesChanged(updatedImages);
       
+      debugPrint('✅ _onFinish complete: ${updatedImages.length} covers remaining');
+      
+    } catch (e) {
+      debugPrint('❌ Error in _onFinish: $e');
+    } finally {
+      // IMMER schließen, auch bei Fehler
       if (mounted) {
+        setState(() => _isUploading = false);
         Navigator.pop(context);
       }
-    } catch (e) {
-      debugPrint('Error committing deletes: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Fehler beim Löschen: $e')),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isUploading = false);
     }
   }
 

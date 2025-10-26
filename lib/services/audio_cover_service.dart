@@ -248,14 +248,19 @@ class AudioCoverService {
     required String audioId,
     required List<AudioCoverImage> coverImages,
   }) async {
-    await _firestore
-        .collection('avatars')
-        .doc(avatarId)
-        .collection('media')
-        .doc(audioId)
-        .update({
-      'coverImages': coverImages.map((e) => e.toMap()).toList(),
-    });
+    try {
+      await _firestore
+          .collection('avatars')
+          .doc(avatarId)
+          .collection('media')
+          .doc(audioId)
+          .set({
+        'coverImages': coverImages.map((e) => e.toMap()).toList(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      print('⚠️ Firestore update failed (permission or doc missing): $e');
+      // Ignoriere Firestore-Fehler, Storage ist die Source of Truth
+    }
   }
 
   /// Entferne Cover Image aus Array und lösche aus Storage

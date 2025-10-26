@@ -1345,6 +1345,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         audioMedia: audioMedia,
         onImagesChanged: (updatedImages) async {
           // Persistiere die geänderten Cover sofort lokal im Item und refreshe die Liste
+          debugPrint('📸 onImagesChanged callback: ${updatedImages.length} covers');
           final idx = _items.indexWhere((m) => m.id == audioMedia.id);
           if (idx != -1) {
             final current = _items[idx];
@@ -1364,8 +1365,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               currency: current.currency,
               platformFeePercent: current.platformFeePercent,
               voiceClone: current.voiceClone,
-              coverImages: updatedImages,
+              coverImages: updatedImages.isNotEmpty ? updatedImages : null, // null wenn leer
             );
+            debugPrint('📸 Updated item at index $idx: coverImages=${updatedImages.length}');
           }
           if (mounted) setState(() {});
         },
