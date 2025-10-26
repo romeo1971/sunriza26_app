@@ -52,6 +52,9 @@ class AudioCoverService {
       SettableMetadata(
         contentType: 'image/jpeg',
         contentDisposition: 'attachment; filename="image$oneBased.jpg"',
+        customMetadata: {
+          'aspectRatio': aspectRatio.toString(),
+        },
       ),
     );
     final url = await ref.getDownloadURL();
@@ -63,6 +66,9 @@ class AudioCoverService {
       SettableMetadata(
         contentType: 'image/jpeg',
         contentDisposition: 'attachment; filename="thumb$oneBased.jpg"',
+        customMetadata: {
+          'aspectRatio': aspectRatio.toString(),
+        },
       ),
     );
     final thumbUrl = await thumbRef.getDownloadURL();

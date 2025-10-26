@@ -197,45 +197,67 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
     final coverImage = _coverImages[index];
     final isEmpty = coverImage == null;
     
-    // Portrait (9:16): halbe Breite (damit 2 nebeneinander passen), Landscape (16:9): volle Breite
+    // Portrait (9:16): halbe Breite, Landscape (16:9): volle Breite
     final bool isPortrait = isEmpty || coverImage!.aspectRatio < 1.0;
     
-    // Portrait: halbe Breite minus Padding (12px gap zwischen den beiden)
-    final double portraitWidth = (availableWidth - 12) / 2;
-    final double portraitHeight = portraitWidth * (16 / 9); // Höhe = Breite × (16/9) für 9:16 Format
-    
-    // Landscape: volle Breite
-    final double landscapeWidth = availableWidth;
-    final double landscapeHeight = landscapeWidth * (9 / 16); // Höhe = Breite × (9/16) für 16:9 Format
-    
-    final double width = isPortrait ? portraitWidth : landscapeWidth;
-    final double height = isPortrait ? portraitHeight : landscapeHeight;
-    
-    return Center(
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: () => isEmpty ? _addCoverImage(index) : _showImageOptions(index),
-          child: Container(
-            width: width,
-            height: height,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.05),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isEmpty
-                    ? Colors.white.withValues(alpha: 0.2)
-                    : AppColors.magenta.withValues(alpha: 0.5),
-                width: 2,
+    if (isPortrait) {
+      // Portrait: halbe Breite, AspectRatio 9:16
+      return Center(
+        child: SizedBox(
+          width: availableWidth / 2,
+          child: AspectRatio(
+            aspectRatio: 9 / 16,
+            child: MouseRegion(
+              cursor: SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: () => isEmpty ? _addCoverImage(index) : _showImageOptions(index),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isEmpty
+                          ? Colors.white.withValues(alpha: 0.2)
+                          : AppColors.magenta.withValues(alpha: 0.5),
+                      width: 2,
+                    ),
+                  ),
+                  child: isEmpty
+                      ? _buildEmptyPlaceholder(index)
+                      : _buildCoverPreview(coverImage),
+                ),
               ),
             ),
-            child: isEmpty
-                ? _buildEmptyPlaceholder(index)
-                : _buildCoverPreview(coverImage),
           ),
         ),
-      ),
-    );
+      );
+    } else {
+      // Landscape: volle Breite, AspectRatio 16:9
+      return AspectRatio(
+        aspectRatio: 16 / 9,
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => isEmpty ? _addCoverImage(index) : _showImageOptions(index),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: isEmpty
+                      ? Colors.white.withValues(alpha: 0.2)
+                      : AppColors.magenta.withValues(alpha: 0.5),
+                  width: 2,
+                ),
+              ),
+              child: isEmpty
+                  ? _buildEmptyPlaceholder(index)
+                  : _buildCoverPreview(coverImage),
+            ),
+          ),
+        ),
+      );
+    }
   }
 
   Widget _buildEmptyPlaceholder(int index) {
@@ -306,13 +328,13 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
 
   Widget _buildCoverPreview(AudioCoverImage coverImage) {
     final isPortrait = coverImage.aspectRatio < 1.0;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // Cover Image Thumbnail mit korrekter Orientierung (9:16 oder 16:9)
-        ClipRRect(
-          borderRadius: BorderRadius.circular(10),
-          child: Image.network(
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Cover Image Thumbnail mit korrekter Orientierung (9:16 oder 16:9)
+          Image.network(
             coverImage.thumbUrl,
             fit: BoxFit.cover,
             errorBuilder: (context, error, stack) => Container(
@@ -320,7 +342,6 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
               child: const Icon(Icons.broken_image, color: Colors.white54),
             ),
           ),
-        ),
         
         // Aspect Ratio Badge
         Positioned(
@@ -368,23 +389,24 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
             ),
           ),
         ),
-        // Aspect Ratio Badge unten links
-        Positioned(
-          bottom: 8,
-          left: 8,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: Text(
-              isPortrait ? '9:16' : '16:9',
-              style: const TextStyle(color: Colors.white, fontSize: 10),
+          // Aspect Ratio Badge unten links
+          Positioned(
+            bottom: 8,
+            left: 8,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.6),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                isPortrait ? '9:16' : '16:9',
+                style: const TextStyle(color: Colors.white, fontSize: 10),
+              ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
