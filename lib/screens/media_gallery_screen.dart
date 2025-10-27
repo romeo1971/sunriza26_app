@@ -5823,6 +5823,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           isFree: media.isFree,
                           price: null,
                           currency: null,
+                          platformFeePercent: media.platformFeePercent,
+                          voiceClone: media.voiceClone,
+                          coverImages: media.coverImages,
                         );
                       }
 
@@ -5945,6 +5948,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             isFree: media.isFree,
                             price: newPrice,
                             currency: newCurrency,
+                            platformFeePercent: media.platformFeePercent,
+                            voiceClone: media.voiceClone,
+                            coverImages: media.coverImages,
                           );
                         }
 
@@ -6062,6 +6068,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         isFree: newIsFree,
                         price: media.price,
                         currency: media.currency,
+                        platformFeePercent: media.platformFeePercent,
+                        voiceClone: media.voiceClone,
+                        coverImages: media.coverImages,
                       );
                     }
                     setState(() {});
@@ -6444,6 +6453,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               isFree: newIsFree,
                               price: currentMedia.price,
                               currency: currentMedia.currency,
+                              platformFeePercent: currentMedia.platformFeePercent,
+                              voiceClone: currentMedia.voiceClone,
+                              coverImages: currentMedia.coverImages,
                             );
                           }
                           setState(() {});
@@ -6532,6 +6544,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               isFree: currentMedia.isFree,
                               price: newPrice,
                               currency: newCurrency,
+                              platformFeePercent: currentMedia.platformFeePercent,
+                              voiceClone: currentMedia.voiceClone,
+                              coverImages: currentMedia.coverImages,
                             );
                           }
 
@@ -6623,6 +6638,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               isFree: currentMedia.isFree,
                               price: null,
                               currency: null,
+                              platformFeePercent: currentMedia.platformFeePercent,
+                              voiceClone: currentMedia.voiceClone,
+                              coverImages: currentMedia.coverImages,
                             );
                           }
 
