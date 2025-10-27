@@ -311,77 +311,107 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
 
         const SizedBox(height: 16),
 
-        // Waveform + Controls overlay
+        // Waveform + Controls overlay (1:1 wie media_gallery)
         SizedBox(
-          height: 90,
-          child: Stack(
-            children: [
-              Container(
-                margin: const EdgeInsets.symmetric(horizontal: 12),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      AppColors.magenta.withValues(alpha: 0.25),
-                      AppColors.lightBlue.withValues(alpha: 0.25),
+          height: 120,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final totalW = constraints.maxWidth * 0.9;
+              final totalH = constraints.maxHeight * 0.7;
+              final progress = _duration.inMilliseconds == 0
+                  ? 0.0
+                  : _position.inMilliseconds / _duration.inMilliseconds;
+
+              return Center(
+                child: SizedBox(
+                  width: totalW,
+                  height: totalH,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Waveform Hintergrund
+                      CustomPaint(
+                        size: Size(totalW, totalH),
+                        painter: _StaticWaveformPainter(),
+                      ),
+                      // Controls über Waveform
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          // Play/Pause Button
+                          GestureDetector(
+                            onTap: () async {
+                              await _ensureAudio();
+                              if (_isPlaying) {
+                                await _audioPlayer?.pause();
+                              } else {
+                                if (_hasCompleted) {
+                                  await _audioPlayer?.seek(Duration.zero);
+                                  setState(() => _hasCompleted = false);
+                                }
+                                await _audioPlayer?.resume();
+                              }
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                gradient: const LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Color(0xFFE91E63),
+                                    AppColors.lightBlue,
+                                    Color(0xFF00E5FF),
+                                  ],
+                                  stops: [0.0, 0.5, 1.0],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.5),
+                                    blurRadius: 8,
+                                    spreadRadius: 2,
+                                  ),
+                                ],
+                              ),
+                              child: Icon(
+                                _isPlaying ? Icons.pause : Icons.play_arrow,
+                                size: 32,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          // Reload Button
+                          if (progress > 0.0 || _isPlaying) ...[
+                            const SizedBox(width: 12),
+                            GestureDetector(
+                              onTap: () async {
+                                await _ensureAudio();
+                                await _audioPlayer?.seek(Duration.zero);
+                                setState(() => _hasCompleted = false);
+                                await _audioPlayer?.play(UrlSource(widget.media.url));
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(12),
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.black.withValues(alpha: 0.6),
+                                  border: Border.all(
+                                    color: Colors.white.withValues(alpha: 0.3),
+                                    width: 2,
+                                  ),
+                                ),
+                                child: const Icon(Icons.replay, size: 20, color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ],
                   ),
                 ),
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final totalW = constraints.maxWidth;
-                    final progress = _duration.inMilliseconds == 0
-                        ? 0.0
-                        : _position.inMilliseconds / _duration.inMilliseconds;
-                    return _buildCompactWaveformOverlay(
-                      availableWidth: totalW,
-                      progress: progress.clamp(0.0, 1.0),
-                    );
-                  },
-                ),
-              ),
-              // Controls AUF der Waveform
-              Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.replay, color: Colors.white, size: 32),
-                      onPressed: () async {
-                        await _ensureAudio();
-                        await _audioPlayer?.seek(Duration.zero);
-                        _hasCompleted = false;
-                        await _audioPlayer?.play(UrlSource(widget.media.url));
-                      },
-                    ),
-                    const SizedBox(width: 16),
-                    IconButton(
-                      icon: Icon(
-                        _isPlaying ? Icons.pause : Icons.play_arrow,
-                        color: Colors.white,
-                        size: 40,
-                      ),
-                      onPressed: () async {
-                        await _ensureAudio();
-                        if (_isPlaying) {
-                          await _audioPlayer?.pause();
-                        } else {
-                          if (_hasCompleted || (_duration > Duration.zero && _position >= _duration)) {
-                            await _audioPlayer?.seek(Duration.zero);
-                            _hasCompleted = false;
-                          }
-                          await _audioPlayer?.play(UrlSource(widget.media.url));
-                        }
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ],
+              );
+            },
           ),
         ),
 
