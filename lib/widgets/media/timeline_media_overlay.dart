@@ -73,11 +73,22 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
     super.dispose();
   }
 
+  // Stabil bei Hot‑Reload/Save (reassemble wird nur im Debug aufgerufen)
+  @override
+  void reassemble() {
+    // Stoppe laufenden Audio‑Player und Slideshow‑Timer, um Crashes zu vermeiden
+    try { _audioPlayer?.stop(); } catch (_) {}
+    _coverTimer?.cancel();
+    // Slideshow danach neu anstoßen
+    _maybeStartCoverSlideshow();
+    super.reassemble();
+  }
+
   void _maybeStartCoverSlideshow() {
     _coverTimer?.cancel();
     final list = _covers;
     if (list != null && list.length > 1) {
-      _coverTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _coverTimer = Timer.periodic(const Duration(seconds: 10), (_) {
         if (!mounted) return;
         _coverIndex = (_coverIndex + 1) % list.length;
         _coverController.animateToPage(
@@ -122,30 +133,44 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
   }
 
   Widget _buildHeader() {
+    // Titel + Künstler aus originalFileName extrahieren
+    final fileName = widget.media.originalFileName ?? _getMediaTypeLabel();
+    final parts = fileName.split(' - ');
+    final title = parts.length > 1 ? parts[1].replaceAll('.mp3', '').replaceAll('.wav', '') : fileName;
+    final artist = parts.isNotEmpty ? parts[0] : '';
+    
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.black.withValues(alpha: 0.3),
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Text(
-              widget.media.originalFileName ?? _getMediaTypeLabel(),
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          if (artist.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              artist,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
               ),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, color: Colors.white),
-            onPressed: () => Navigator.pop(context),
-          ),
+          ],
         ],
       ),
     );
@@ -286,42 +311,86 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
 
         const SizedBox(height: 16),
 
-        // Kompakte Waveform-Leiste wie Galerie
+        // Waveform + Controls overlay
         SizedBox(
           height: 90,
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 12),
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(16),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppColors.magenta.withValues(alpha: 0.25),
-                  AppColors.lightBlue.withValues(alpha: 0.25),
-                ],
+          child: Stack(
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      AppColors.magenta.withValues(alpha: 0.25),
+                      AppColors.lightBlue.withValues(alpha: 0.25),
+                    ],
+                  ),
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final totalW = constraints.maxWidth;
+                    final progress = _duration.inMilliseconds == 0
+                        ? 0.0
+                        : _position.inMilliseconds / _duration.inMilliseconds;
+                    return _buildCompactWaveformOverlay(
+                      availableWidth: totalW,
+                      progress: progress.clamp(0.0, 1.0),
+                    );
+                  },
+                ),
               ),
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final totalW = constraints.maxWidth;
-                final progress = _duration.inMilliseconds == 0
-                    ? 0.0
-                    : _position.inMilliseconds / _duration.inMilliseconds;
-                return _buildCompactWaveformOverlay(
-                  availableWidth: totalW,
-                  progress: progress.clamp(0.0, 1.0),
-                );
-              },
-            ),
+              // Controls AUF der Waveform
+              Center(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.replay, color: Colors.white, size: 32),
+                      onPressed: () async {
+                        await _ensureAudio();
+                        await _audioPlayer?.seek(Duration.zero);
+                        _hasCompleted = false;
+                        await _audioPlayer?.play(UrlSource(widget.media.url));
+                      },
+                    ),
+                    const SizedBox(width: 16),
+                    IconButton(
+                      icon: Icon(
+                        _isPlaying ? Icons.pause : Icons.play_arrow,
+                        color: Colors.white,
+                        size: 40,
+                      ),
+                      onPressed: () async {
+                        await _ensureAudio();
+                        if (_isPlaying) {
+                          await _audioPlayer?.pause();
+                        } else {
+                          if (_hasCompleted || (_duration > Duration.zero && _position >= _duration)) {
+                            await _audioPlayer?.seek(Duration.zero);
+                            _hasCompleted = false;
+                          }
+                          await _audioPlayer?.play(UrlSource(widget.media.url));
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
 
-        const SizedBox(height: 16),
-
-        // Controls (ohne Stop)
-        _buildAudioControls(),
+        const SizedBox(height: 8),
+        // Zeit-Anzeige
+        Text(
+          '${_formatTime(_position)} / ${_formatTime(_duration)}',
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
         const SizedBox(height: 8),
       ],
     );
@@ -349,42 +418,10 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
     );
   }
 
-  Widget _buildAudioControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        IconButton(
-          icon: const Icon(Icons.replay, color: Colors.white),
-          onPressed: () async {
-            await _ensureAudio();
-            await _audioPlayer?.seek(Duration.zero);
-            _hasCompleted = false;
-            await _audioPlayer?.play(UrlSource(widget.media.url));
-          },
-        ),
-        const SizedBox(width: 8),
-        IconButton(
-          icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
-          onPressed: () async {
-            await _ensureAudio();
-            if (_isPlaying) {
-              await _audioPlayer?.pause();
-            } else {
-              // Nach kompletter Wiedergabe neu starten
-              if (_hasCompleted || (_duration > Duration.zero && _position >= _duration)) {
-                await _audioPlayer?.seek(Duration.zero);
-                _hasCompleted = false;
-                await _audioPlayer?.play(UrlSource(widget.media.url));
-              } else if (_position == Duration.zero) {
-                await _audioPlayer?.play(UrlSource(widget.media.url));
-              } else {
-                await _audioPlayer?.resume();
-              }
-            }
-          },
-        ),
-      ],
-    );
+  String _formatTime(Duration d) {
+    final m = d.inMinutes.toString().padLeft(2, '0');
+    final s = (d.inSeconds % 60).toString().padLeft(2, '0');
+    return '$m:$s';
   }
 
   Future<void> _ensureAudio() async {
@@ -399,7 +436,7 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
       setState(() {
         _hasCompleted = true;
         _isPlaying = false;
-        _position = _duration;
+        _position = Duration.zero;
       });
     });
     await p.play(UrlSource(widget.media.url));
@@ -566,57 +603,50 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
       ),
       child: Column(
         children: [
-          // Preis immer anzeigen
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                isFree ? Icons.card_giftcard : Icons.euro,
-                color: isFree ? AppColors.lightBlue : AppColors.magenta,
-                size: 28,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                isFree ? 'KOSTENLOS' : '${price.toStringAsFixed(2)} €',
-                style: TextStyle(
-                  color: isFree ? AppColors.lightBlue : AppColors.magenta,
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+          // Preis dezent ohne Icon
+          Text(
+            isFree ? 'KOSTENLOS' : '${price.toStringAsFixed(2)} €',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
           
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           
           // Buttons
           Row(
             children: [
-              // Abbrechen
-              Expanded(
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Abbrechen'),
-                ),
+              // X Button
+              IconButton(
+                icon: const Icon(Icons.close, color: Colors.white, size: 28),
+                onPressed: () => Navigator.pop(context),
               ),
               
-              const SizedBox(width: 12),
+              const Spacer(),
               
-              // Kaufen/Annehmen
+              // Annehmen mit GMBC Gradient Text
               if (!widget.isPurchased)
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton(
-                    onPressed: widget.onPurchase,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: isFree ? AppColors.lightBlue : AppColors.magenta,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                ElevatedButton(
+                  onPressed: widget.onPurchase,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 32),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
                     ),
+                  ),
+                  child: ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [AppColors.magenta, AppColors.lightBlue],
+                    ).createShader(bounds),
                     child: Text(
                       isFree ? 'Annehmen' : 'Kaufen',
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
                     ),
                   ),

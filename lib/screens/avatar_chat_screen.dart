@@ -37,6 +37,7 @@ import '../widgets/hero_chat_fab_button.dart';
 import '../widgets/media/timeline_media_slider.dart';
 import '../widgets/media/timeline_media_overlay.dart';
 import 'hero_chat_screen.dart';
+import '../services/audio_cover_service.dart';
 
 // GLOBAL Guard: verhindert mehrfache /publisher/start Calls über Widget-Lifecycle hinweg!
 final Map<String, DateTime> _globalActiveMuseTalkRooms = {};
@@ -90,6 +91,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   bool _timelineShowAsDuration = false; // Anzeige: Dauer/Position
   OverlayEntry? _timelineOverlay; // Overlay für Timeline-Slider (immer top-most)
   List<int> _timelineStartAtSec = []; // Startzeiten je Item (ab Chat-Start)
+  List<int> _timelineItemsScheduledStartSeconds = []; // Absolute Startzeiten (Chat-Zeit)
   List<bool> _timelineShown = []; // bereits angezeigt
   int? _activeTimelineIndex; // aktuell sichtbarer Index
   Timer? _timelineScheduleTicker; // 1s-Ticker für Startzeiten
@@ -2725,6 +2727,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     }
   }
 
+  // TTS global abschaltbar: Wenn TTS_ENABLED in .env auf '0'/'false'/'off' steht → nur Text
+  bool _isTtsEnabled() {
+    final v = (dotenv.env['TTS_ENABLED'] ?? '').trim().toLowerCase();
+    if (v == '0' || v == 'false' || v == 'off') return false;
+    return true; // Default: an
+  }
+
   String _formatStopwatch(Duration d) {
     final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -2837,6 +2846,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       return;
     }
 
+    // Wenn TTS deaktiviert → nur Text hinzufügen und zurück
+    if (!_isTtsEnabled()) {
+      await _addMessage(text, false);
+      debugPrint('📝 TTS disabled → text-only response');
+      return;
+    }
+
     // PRIORITÄT: Streaming (schnell!)
     if (_lipsync.visemeStream != null &&
         _cachedVoiceId != null &&
@@ -2856,6 +2872,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     );
 
     String? path;
+    if (!_isTtsEnabled()) {
+      await _addMessage(text, false);
+      return;
+    }
     try {
       String? voiceId = (_avatarData?.training != null)
           ? (_avatarData?.training?['voice'] != null
@@ -3166,8 +3186,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           '💬 Chat Response: stream=${_lipsync.visemeStream != null}, voiceId=${_cachedVoiceId != null ? _cachedVoiceId!.substring(0, 8) : "NULL"}',
         );
 
-        // PRIORITÄT: Streaming (schnell, < 500ms)
-        if (_lipsync.visemeStream != null &&
+        // Wenn TTS deaktiviert → nur Text (kein Streaming/MP3)
+        if (!_isTtsEnabled()) {
+          debugPrint('📝 TTS disabled → text-only (skip audio)');
+        } else if (_lipsync.visemeStream != null &&
             _cachedVoiceId != null &&
             _cachedVoiceId!.isNotEmpty) {
           debugPrint('🚀 Chat: Using STREAMING audio');
@@ -3179,20 +3201,22 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           // KEIN return! finally muss ausgeführt werden!
         } else {
           // FALLBACK: Backend-MP3 (langsam, ~3 Sekunden)
-          debugPrint('⚠️ Chat: Fallback to Backend MP3');
-          final tts = res?['tts_audio_b64'] as String?;
-          if (tts != null && tts.isNotEmpty) {
-            try {
-              await _stopPlayback();
-              final bytes = base64Decode(tts);
-              final dir = await getTemporaryDirectory();
-              final file = File(
-                '${dir.path}/avatar_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
-              );
-              await file.writeAsBytes(bytes, flush: true);
-              _lastRecordingPath = file.path;
-              unawaited(_playAudioAtPath(file.path));
-            } catch (_) {}
+          if (_isTtsEnabled()) {
+            debugPrint('⚠️ Chat: Fallback to Backend MP3');
+            final tts = res?['tts_audio_b64'] as String?;
+            if (tts != null && tts.isNotEmpty) {
+              try {
+                await _stopPlayback();
+                final bytes = base64Decode(tts);
+                final dir = await getTemporaryDirectory();
+                final file = File(
+                  '${dir.path}/avatar_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
+                );
+                await file.writeAsBytes(bytes, flush: true);
+                _lastRecordingPath = file.path;
+                unawaited(_playAudioAtPath(file.path));
+              } catch (_) {}
+            }
           }
         }
       }
@@ -4128,7 +4152,44 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           final map = {'id': mediaIdFromAsset, ...data};
           final media = AvatarMedia.fromMap(map);
           if (!confirmedIds.contains(media.id)) {
-            mediaItems.add(media);
+            // Für Audio: Cover aus Storage laden
+            if (media.type == AvatarMediaType.audio) {
+              try {
+                final covers = await AudioCoverService().getCoverImages(
+                  avatarId: _avatarData!.id,
+                  audioId: media.id,
+                  audioUrl: media.url,
+                );
+                if (covers.isNotEmpty) {
+                  // Media mit Covers neu erstellen
+                  final mediaWithCovers = AvatarMedia(
+                    id: media.id,
+                    avatarId: media.avatarId,
+                    type: media.type,
+                    url: media.url,
+                    thumbUrl: media.thumbUrl,
+                    createdAt: media.createdAt,
+                    durationMs: media.durationMs,
+                    aspectRatio: media.aspectRatio,
+                    tags: media.tags,
+                    originalFileName: media.originalFileName,
+                    isFree: media.isFree,
+                    price: media.price,
+                    currency: media.currency,
+                    platformFeePercent: media.platformFeePercent,
+                    voiceClone: media.voiceClone,
+                    coverImages: covers,
+                  );
+                  mediaItems.add(mediaWithCovers);
+                } else {
+                  mediaItems.add(media);
+                }
+              } catch (_) {
+                mediaItems.add(media);
+              }
+            } else {
+              mediaItems.add(media);
+            }
             itemMetadata.add(item);
           }
         }
@@ -4249,12 +4310,17 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       final nextIndex = (_activeTimelineIndex ?? _timelineCurrentIndex) + 1;
       if (nextIndex >= _timelineItems.length) {
         if (_timelineLoop) {
+          debugPrint('🔄 Timeline LOOP: Restart from item 1');
           _timelineCurrentIndex = 0;
           _activeTimelineIndex = 0;
-          // Sofort nächstes erstes Item gemäß Startzeiten erneut planen
-          // Zur Sicherheit auch Anzeige sofort starten
-          _showCurrentTimelineItem();
+          // Startzeiten neu berechnen ab jetzigem Chat-Stopwatch
+          final currentChatSec = _chatStopwatch.elapsed.inSeconds;
+          _timelineItemsScheduledStartSeconds = List.generate(
+            _timelineItems.length,
+            (i) => currentChatSec + _timelineStartAtSec[i],
+          );
         } else {
+          debugPrint('⏹️ Timeline ENDE: Kein Loop');
           _timelineCurrentIndex = _timelineItems.length; // Ende markieren
         }
       } else {
@@ -4389,7 +4455,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   /// Zeigt Kauf/Annahme Dialog
   Future<void> _showTimelinePurchaseDialog(AvatarMedia media) async {
-    // Timeline bleibt pausiert während Purchase Dialog
+    // Slider ausblenden
+    final wasVisible = _timelineSliderVisible;
+    if (wasVisible) {
+      setState(() => _timelineSliderVisible = false);
+      _removeTimelineOverlay();
+    }
+    
     final price = media.price ?? 0.0;
     final isFree = price == 0.0;
 
@@ -4403,7 +4475,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       ),
     );
     
-    // Timeline fortsetzen nach Purchase Dialog
+    // Slider wieder anzeigen wenn war sichtbar
+    if (wasVisible && _activeTimelineItem != null && mounted) {
+      setState(() => _timelineSliderVisible = true);
+      _showTimelineOverlay(_activeTimelineItem!, const Duration(seconds: 1));
+    }
+    
+    // Timeline fortsetzen
     _resumeTimeline();
   }
 
@@ -4479,9 +4557,11 @@ class _TimelinePurchaseDialog extends StatefulWidget {
 
 class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
   bool _isProcessing = false;
+  bool _isLoadingCovers = false;
   final _momentsService = MomentsService();
   final _purchaseService = MediaPurchaseService();
   String _paymentMethod = 'credits'; // 'credits' oder 'stripe'
+  List<AudioCoverImage>? _covers; // Lazy geladene Cover
 
   @override
   void initState() {
@@ -4489,6 +4569,57 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
     // Auto-select: Stripe wenn >= 2€, sonst Credits
     if (!widget.isFree && widget.price >= 2.0) {
       _paymentMethod = 'stripe';
+    }
+    // Cover direkt aus Media oder Firestore
+    if (widget.media.type == AvatarMediaType.audio) {
+      _covers = widget.media.coverImages;
+      debugPrint('🖼️ Purchase Dialog: widget.media.coverImages = ${_covers?.length ?? 0}');
+      if (_covers == null || _covers!.isEmpty) {
+        debugPrint('🔄 Loading covers from Firestore...');
+        _loadCoversFromFirestore();
+      }
+    }
+  }
+
+  Future<void> _loadCoversFromFirestore() async {
+    setState(() => _isLoadingCovers = true);
+    try {
+      final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+      final avatarId = chatState?._avatarData?.id;
+      debugPrint('🔍 avatarId = $avatarId, mediaId = ${widget.media.id}');
+      if (avatarId == null) {
+        debugPrint('❌ avatarId is null!');
+        setState(() => _isLoadingCovers = false);
+        return;
+      }
+      
+      final snap = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(avatarId)
+          .collection('audios')
+          .doc(widget.media.id)
+          .get();
+      
+      if (!mounted) return;
+      
+      debugPrint('📄 Firestore doc exists: ${snap.exists}');
+      final data = snap.data();
+      final arr = (data?['coverImages'] as List?)?.cast<Map<String, dynamic>>();
+      debugPrint('📋 coverImages array length: ${arr?.length ?? 0}');
+      if (arr != null && arr.isNotEmpty) {
+        debugPrint('✅ Found ${arr.length} covers in Firestore');
+        final parsed = arr.map((m) => AudioCoverImage.fromMap(m)).toList();
+        setState(() {
+          _covers = parsed;
+          _isLoadingCovers = false;
+        });
+      } else {
+        debugPrint('⚠️ No covers in Firestore');
+        setState(() => _isLoadingCovers = false);
+      }
+    } catch (e) {
+      debugPrint('❌ Cover load error: $e');
+      if (mounted) setState(() => _isLoadingCovers = false);
     }
   }
 
@@ -4761,17 +4892,44 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // Titel + Künstler aus originalFileName extrahieren
+    final fileName = widget.media.originalFileName ?? 'Audio';
+    final parts = fileName.split(' - ');
+    final title = parts.length > 1 ? parts[1].replaceAll('.mp3', '').replaceAll('.wav', '') : fileName;
+    final artist = parts.isNotEmpty ? parts[0] : '';
+    
     return AlertDialog(
       backgroundColor: AppColors.darkSurface,
-      title: Row(
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Expanded(
-            child: Text(
-              widget.isFree ? 'Kostenlos' : '${widget.price.toStringAsFixed(2)} €',
-              style: const TextStyle(color: Colors.white),
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
             ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
           ),
-          if (_isProcessing)
+          if (artist.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              artist,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 14,
+                fontWeight: FontWeight.w400,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ],
+          if (_isProcessing) ...[
+            const SizedBox(height: 8),
             const SizedBox(
               width: 20,
               height: 20,
@@ -4780,17 +4938,29 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
                 color: Colors.white,
               ),
             ),
+          ],
         ],
       ),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Cover Image
-          if (widget.media.coverImages != null && widget.media.coverImages!.isNotEmpty)
+          // Cover Image (erstes verfügbares)
+          if (_isLoadingCovers)
+            Container(
+              height: 200,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: Colors.grey.shade900,
+              ),
+              child: const Center(
+                child: CircularProgressIndicator(color: AppColors.magenta),
+              ),
+            )
+          else if (((_covers ?? widget.media.coverImages)?.isNotEmpty ?? false))
             ClipRRect(
               borderRadius: BorderRadius.circular(8),
               child: Image.network(
-                widget.media.coverImages!.first.url,
+                (_covers ?? widget.media.coverImages)!.first.url,
                 height: 200,
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stack) => Container(
@@ -4815,27 +4985,26 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
               ),
               child: const Icon(Icons.music_note, size: 64, color: Colors.white54),
             ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           
-          // Dateiname
+          // Preis dezent
           Text(
-            widget.media.originalFileName ?? 'Audio File',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 16,
+            widget.isFree ? 'KOSTENLOS' : '${widget.price.toStringAsFixed(2)} €',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 14,
               fontWeight: FontWeight.w500,
             ),
             textAlign: TextAlign.center,
           ),
           
-          // Info Text
           const SizedBox(height: 8),
           Text(
             widget.isFree
                 ? 'Diese Datei wird in Moments gespeichert.'
                 : 'Nach dem Kauf wird die Datei in Moments gespeichert.',
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
+              color: Colors.white.withValues(alpha: 0.6),
               fontSize: 12,
             ),
             textAlign: TextAlign.center,
@@ -4879,25 +5048,46 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: _isProcessing ? null : () => Navigator.pop(context),
-          child: const Text('Abbrechen'),
-        ),
-        ElevatedButton(
-          onPressed: _isProcessing ? null : _handlePurchase,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: widget.isFree ? AppColors.lightBlue : AppColors.magenta,
-          ),
-          child: _isProcessing
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : Text(widget.isFree ? 'Annehmen' : 'Kaufen'),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.close, color: Colors.white, size: 24),
+              onPressed: _isProcessing ? null : () => Navigator.pop(context),
+            ),
+            ElevatedButton(
+              onPressed: _isProcessing ? null : _handlePurchase,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: _isProcessing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.magenta,
+                      ),
+                    )
+                  : ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [AppColors.magenta, AppColors.lightBlue],
+                      ).createShader(bounds),
+                      child: Text(
+                        widget.isFree ? 'Annehmen' : 'Kaufen',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+            ),
+          ],
         ),
       ],
     );
@@ -4925,10 +5115,60 @@ class _MediaDecisionDialog extends StatefulWidget {
 class _MediaDecisionDialogState extends State<_MediaDecisionDialog> {
   bool _accepted = false;
   Timer? _autoHide;
+  List<AudioCoverImage>? _covers; // Lazy geladene Cover (für Audio)
 
   @override
   void initState() {
     super.initState();
+    // Lade ggf. Cover für Audio
+    if (widget.media.type == AvatarMediaType.audio) {
+      final existing = widget.media.coverImages;
+      if (existing != null && existing.isNotEmpty) {
+        _covers = existing;
+      } else {
+        AudioCoverService()
+            .getCoverImages(
+              avatarId: widget.avatarId,
+              audioId: widget.media.id,
+              audioUrl: widget.media.url,
+            )
+            .then((list) async {
+          if (!mounted) return;
+          if (list.isNotEmpty) {
+            setState(() => _covers = list);
+          } else {
+            // Fallback: versuche aus Firestore Feld 'coverImages'
+            try {
+              final snap = await FirebaseFirestore.instance
+                  .collection('avatars')
+                  .doc(widget.avatarId)
+                  .collection('audios')
+                  .doc(widget.media.id)
+                  .get();
+              final data = snap.data();
+              final arr = (data?['coverImages'] as List?)?.cast<Map<String, dynamic>>();
+              if (arr != null && arr.isNotEmpty) {
+                final first = arr.first;
+                final urlStr = first['url'] as String?;
+                final thumbStr = first['thumbUrl'] as String?;
+                if (urlStr != null && urlStr.isNotEmpty && thumbStr != null && thumbStr.isNotEmpty && mounted) {
+                  setState(() {
+                    _covers = [
+                      AudioCoverImage(
+                        url: urlStr,
+                        thumbUrl: thumbStr,
+                        aspectRatio: (first['aspectRatio'] as num?)?.toDouble() ?? (9/16),
+                        index: (first['index'] as num?)?.toInt() ?? 0,
+                      )
+                    ];
+                  });
+                }
+              }
+            } catch (_) {}
+          }
+        }).catchError((_) {});
+      }
+    }
   }
 
   @override
@@ -4948,23 +5188,41 @@ class _MediaDecisionDialogState extends State<_MediaDecisionDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
 
-            AspectRatio(
-              aspectRatio: 9 / 16,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  if (!_accepted)
-                    Container(
-                      color: Colors.black12,
-                      child: _PixelateOverlay(url: widget.media.url),
-                    ),
-                  if (_accepted)
-                    (widget.media.type == AvatarMediaType.video)
-                        ? _VideoPlayerInline(url: widget.media.url)
-                        : Image.network(widget.media.url, fit: BoxFit.cover),
-                ],
-              ),
-            ),
+            Builder(builder: (_) {
+              // Wähle anzuzeigendes Bild/Video je Typ
+              Widget inner;
+              double aspect;
+              if (widget.media.type == AvatarMediaType.video) {
+                aspect = widget.media.aspectRatio ?? (9 / 16);
+                inner = _accepted
+                    ? _VideoPlayerInline(url: widget.media.url)
+                    : _PixelateOverlay(url: widget.media.url);
+              } else if (widget.media.type == AvatarMediaType.audio) {
+                final cover = ((_covers ?? widget.media.coverImages)?.isNotEmpty ?? false)
+                    ? (_covers ?? widget.media.coverImages)!.first
+                    : null;
+                aspect = cover?.aspectRatio ?? (widget.media.aspectRatio ?? (9 / 16));
+                final imageUrl = cover?.thumbUrl ?? cover?.url;
+                inner = (imageUrl != null)
+                    ? Image.network(imageUrl, fit: BoxFit.cover, gaplessPlayback: true, errorBuilder: (_, __, ___) => Container(color: Colors.black26, child: const Icon(Icons.music_note, color: Colors.white54, size: 64)))
+                    : Container(color: Colors.black26, child: const Icon(Icons.music_note, color: Colors.white54, size: 64));
+              } else {
+                aspect = widget.media.aspectRatio ?? (9 / 16);
+                inner = Image.network(widget.media.url, fit: BoxFit.cover);
+              }
+              return AspectRatio(
+                aspectRatio: aspect,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (!_accepted && widget.media.type != AvatarMediaType.audio)
+                      Container(color: Colors.black12, child: inner)
+                    else
+                      inner,
+                  ],
+                ),
+              );
+            }),
             const SizedBox(height: 12),
             Row(
               children: [

@@ -2512,33 +2512,37 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
         answer = _rewrite_avatar_pronouns(answer, name_variants2)
 
         # TTS: bevorzugt ElevenLabs, sonst Google TTS
+        # AUTO-FALLBACK: Bei Fehler/Timeout → skip TTS, return Text sofort
         tts_b64 = None
-        eleven_key = os.getenv("ELEVENLABS_API_KEY")
-        eleven_voice_id = payload.voice_id or os.getenv("ELEVEN_VOICE_ID")  # optional
-        if eleven_key:
-            try:
-                vid = eleven_voice_id or "21m00Tcm4TlvDq8ikWAM"  # Standard‑Stimme
-                r = requests.post(
-                    f"https://api.elevenlabs.io/v1/text-to-speech/{vid}",
-                    headers={
-                        "xi-api-key": eleven_key,
-                        "Content-Type": "application/json",
-                        "Accept": "audio/mpeg",
-                    },
-                    json={
-                        "text": answer,
-                        "model_id": os.getenv("ELEVEN_TTS_MODEL", "eleven_multilingual_v2"),
-                        "voice_settings": {
-                            "stability": float(os.getenv("ELEVEN_STABILITY", "0.5")),
-                            "similarity_boost": float(os.getenv("ELEVEN_SIMILARITY", "0.75")),
+        tts_enabled = os.getenv("TTS_ENABLED", "1").strip().lower() not in ("0", "false", "off")
+        if tts_enabled:
+            eleven_key = os.getenv("ELEVENLABS_API_KEY")
+            eleven_voice_id = payload.voice_id or os.getenv("ELEVEN_VOICE_ID")  # optional
+            if eleven_key:
+                try:
+                    vid = eleven_voice_id or "21m00Tcm4TlvDq8ikWAM"  # Standard‑Stimme
+                    r = requests.post(
+                        f"https://api.elevenlabs.io/v1/text-to-speech/{vid}",
+                        headers={
+                            "xi-api-key": eleven_key,
+                            "Content-Type": "application/json",
+                            "Accept": "audio/mpeg",
                         },
-                    },
-                    timeout=30,
-                )
-                r.raise_for_status()
-                tts_b64 = base64.b64encode(r.content).decode("utf-8")
-            except Exception:
-                tts_b64 = None
+                        json={
+                            "text": answer,
+                            "model_id": os.getenv("ELEVEN_TTS_MODEL", "eleven_multilingual_v2"),
+                            "voice_settings": {
+                                "stability": float(os.getenv("ELEVEN_STABILITY", "0.5")),
+                                "similarity_boost": float(os.getenv("ELEVEN_SIMILARITY", "0.75")),
+                            },
+                        },
+                        timeout=3,  # Reduziert auf 3s → bei Fehler sofort Text
+                    )
+                    r.raise_for_status()
+                    tts_b64 = base64.b64encode(r.content).decode("utf-8")
+                except Exception as e:
+                    logger.warning("ELEVENLABS_TTS_SKIP reason='%s' → text-only response", str(e)[:100])
+                    tts_b64 = None
         if not tts_b64:
             try:
                 tts_client = texttospeech.TextToSpeechClient()
