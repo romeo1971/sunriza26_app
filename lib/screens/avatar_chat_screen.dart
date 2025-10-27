@@ -87,6 +87,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   int _timelineCurrentIndex = 0; // Aktueller Index
   final Stopwatch _chatStopwatch = Stopwatch(); // Chat-Zeit (00:00 bei Start)
   bool _timelineLoop = false; // Loop am Ende?
+  bool _timelineShowAsDuration = false; // Anzeige: Dauer/Position
   OverlayEntry? _timelineOverlay; // Overlay für Timeline-Slider (immer top-most)
   List<int> _timelineStartAtSec = []; // Startzeiten je Item (ab Chat-Start)
   List<bool> _timelineShown = []; // bereits angezeigt
@@ -4136,11 +4137,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (mediaItems.isNotEmpty && mounted) {
         debugPrint('📅 Loaded ${mediaItems.length} timeline items');
         
-        // Check Loop aus Playlist-Config
+        // Check Loop & ShowAsDuration aus Playlist-Config
         bool loopEnabled = false;
+        bool showAsDuration = false;
         if (playlistsSnapshot.docs.isNotEmpty) {
           final firstPlaylist = playlistsSnapshot.docs.first.data();
           loopEnabled = firstPlaylist['timelineLoop'] as bool? ?? false;
+          showAsDuration = firstPlaylist['timelineShowAsDuration'] as bool? ?? false;
         }
         
         setState(() {
@@ -4148,13 +4151,25 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           _timelineItemsMetadata = itemMetadata;
           _timelineCurrentIndex = 0;
           _timelineLoop = loopEnabled;
-          // Startzeiten exakt aus minDropdown kumulativ berechnen (Sekunden ab Chat-Start)
+          _timelineShowAsDuration = showAsDuration;
+          // Startzeiten: abhängig vom Modus
           _timelineStartAtSec = [];
-          int accMin = 0;
-          for (final m in _timelineItemsMetadata) {
-            final minutes = (m['minDropdown'] as int?) ?? 1;
-            accMin += minutes; // Startzeit = Ende der vorherigen Wartezeit
-            _timelineStartAtSec.add(accMin * 60);
+          if (_timelineShowAsDuration) {
+            // Anzeige: Dauer → Startzeiten kumulativ (00:00, dann jeweils +minDropdown)
+            int accMin = 0;
+            for (final m in _timelineItemsMetadata) {
+              _timelineStartAtSec.add(accMin * 60);
+              final minutes = (m['minDropdown'] as int?) ?? 1;
+              accMin += minutes;
+            }
+          } else {
+            // Anzeige: Position (bisherige Logik: Start = kumulierte Wartezeit VOR diesem Item)
+            int accMin = 0;
+            for (final m in _timelineItemsMetadata) {
+              final minutes = (m['minDropdown'] as int?) ?? 1;
+              accMin += minutes; // Startzeit = Ende der vorherigen Wartezeit
+              _timelineStartAtSec.add(accMin * 60);
+            }
           }
           _timelineShown = List<bool>.filled(_timelineItems.length, false);
         });
@@ -4323,13 +4338,22 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   /// Öffnet Fullsize Overlay für Timeline Item
   void _onTimelineItemTap() {
     if (_activeTimelineItem == null) return;
-    // Nicht pausieren: Item läuft weiter; nur Overlay oben drauf
+    // Slider während Popup ausblenden, Timeline läuft weiter
+    final bool wasVisible = _timelineSliderVisible;
+    if (wasVisible) {
+      _timelineSliderVisible = false;
+      _removeTimelineOverlay();
+    }
+    // Timeline anhalten: Stopwatch & Schedule-Ticker pausieren
+    _timelineScheduleTicker?.cancel();
+    _chatStopwatch.stop();
     showDialog(
       context: context,
       barrierDismissible: true,
       builder: (ctx) => TimelineMediaOverlay(
         media: _activeTimelineItem!,
         isPurchased: false,
+        avatarId: _avatarData?.id,
         onPurchase: () {
           // Schließe Overlay
           Navigator.pop(ctx);
@@ -4337,7 +4361,30 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           _showTimelinePurchaseDialog(_activeTimelineItem!);
         },
       ),
-    );
+    ).whenComplete(() {
+      // Popup geschlossen → Slider wieder anzeigen, falls Item noch aktiv
+      if (!mounted) return;
+      // Stopwatch & Schedule-Ticker wieder starten
+      _chatStopwatch.start();
+      _timelineScheduleTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        final t = _chatStopwatch.elapsed.inSeconds;
+        for (int i = 0; i < _timelineItems.length; i++) {
+          if (_timelineShown[i]) continue;
+          if (t >= _timelineStartAtSec[i]) {
+            _activeTimelineIndex = i;
+            _showCurrentTimelineItem();
+            break;
+          }
+        }
+      });
+
+      if (_activeTimelineItem != null && wasVisible) {
+        _timelineSliderVisible = true;
+        // Dauer ist für den Slider visuell irrelevant
+        _showTimelineOverlay(_activeTimelineItem!, const Duration(seconds: 1));
+      }
+    });
   }
 
   /// Zeigt Kauf/Annahme Dialog

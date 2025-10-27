@@ -55,6 +55,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
   // Timeline Playback/Enable Toggles
   bool _timelineLoop = true;
   bool _timelineEnabled = true;
+  bool _timelineShowAsDuration = false; // Anzeige: Dauer vs. Position
 
   String _formatMmSs(int seconds) {
     final m = (seconds ~/ 60).toString().padLeft(2, '0');
@@ -97,17 +98,28 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
 
   // NEUE Methode für Timeline-Dropdown-Anzeige
   int _getTimelineDisplayMinutes(int index) {
-    // Berechne den Anzeigezeitpunkt basierend auf dem Vorgänger
-    if (index == 0) return 1; // Erster Entry startet bei 1 Min
-
-    int startMinutes = 0;
-    for (int k = 0; k < index; k++) {
-      final timelineId = 'timeline_$k';
-      final sec = _itemDelaySec[timelineId] ?? 60;
-      startMinutes += (sec / 60).round();
+    // Berechne Anzeigezeitpunkt abhängig vom Modus
+    if (_timelineShowAsDuration) {
+      // Anzeige: Dauer → Startet bei 00:00, dann kumulativ
+      if (index == 0) return 0; // Erster Entry startet bei 0 Min
+      int startMinutes = 0;
+      for (int k = 0; k < index; k++) {
+        final entryId = _getTimelineEntryId(k);
+        final sec = _itemDelaySec[entryId] ?? 60;
+        startMinutes += (sec / 60).round();
+      }
+      return startMinutes.clamp(0, 999);
+    } else {
+      // Anzeige: Position → Startet nach kumulierter Wartezeit
+      if (index == 0) return 1; // Erster Entry startet bei 1 Min
+      int startMinutes = 0;
+      for (int k = 0; k < index; k++) {
+        final entryId = _getTimelineEntryId(k);
+        final sec = _itemDelaySec[entryId] ?? 60;
+        startMinutes += (sec / 60).round();
+      }
+      return (startMinutes + 1).clamp(1, 30);
     }
-    // Begrenze auf 1-30 für Dropdown
-    return (startMinutes + 1).clamp(1, 30);
   }
 
   Future<void> _setItemMinutes(int index, int minutes) async {
@@ -257,11 +269,23 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
   List<int> _computeTimelineDisplayTimeWithEntryId(int index) {
     // Berechne kumulative Summe NUR für AKTIVE Entries
     int displayTime = 0;
-    for (int k = 0; k <= index; k++) {
-      final entryId = _getTimelineEntryId(k);
-      final isActive = _itemEnabled[entryId] ?? true;
-      if (isActive) {
-        displayTime += (_itemDelaySec[entryId] ?? 60);
+    if (_timelineShowAsDuration) {
+      // Anzeige: Dauer → Item startet ab 00:00, kumuliert nur Vorgänger
+      for (int k = 0; k < index; k++) {
+        final entryId = _getTimelineEntryId(k);
+        final isActive = _itemEnabled[entryId] ?? true;
+        if (isActive) {
+          displayTime += (_itemDelaySec[entryId] ?? 60);
+        }
+      }
+    } else {
+      // Anzeige: Position → Item startet nach kumulierter Wartezeit (inkl. sich selbst)
+      for (int k = 0; k <= index; k++) {
+        final entryId = _getTimelineEntryId(k);
+        final isActive = _itemEnabled[entryId] ?? true;
+        if (isActive) {
+          displayTime += (_itemDelaySec[entryId] ?? 60);
+        }
       }
     }
     return [displayTime, displayTime];
@@ -590,6 +614,7 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
       if (doc.exists) {
         final data = doc.data();
         _timelineLoop = data?['timelineLoop'] as bool? ?? true;
+        _timelineShowAsDuration = data?['timelineShowAsDuration'] as bool? ?? false;
         _timelineEnabled = data?['timelineEnabled'] as bool? ?? true;
       }
 
@@ -981,6 +1006,36 @@ class _PlaylistTimelineScreenState extends State<PlaylistTimelineScreen>
                                           ),
                                         ),
                                       ],
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            // Dauer/Position Toggle (klein, dezent)
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: InkWell(
+                                onTap: () async {
+                                  setState(() => _timelineShowAsDuration = !_timelineShowAsDuration);
+                                  await FirebaseFirestore.instance
+                                      .collection('avatars')
+                                      .doc(widget.playlist.avatarId)
+                                      .collection('playlists')
+                                      .doc(widget.playlist.id)
+                                      .set({'timelineShowAsDuration': _timelineShowAsDuration}, SetOptions(merge: true));
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                                  child: Text(
+                                    _timelineShowAsDuration ? 'Anzeige: Dauer' : 'Anzeige: Position',
+                                    style: TextStyle(
+                                      color: _timelineShowAsDuration ? AppColors.lightBlue : Colors.white.withValues(alpha: 0.6),
+                                      fontSize: 9,
+                                      fontWeight: FontWeight.w400,
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ],

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'package:video_player/video_player.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../../models/media_models.dart';
 import '../../theme/app_theme.dart';
 import 'blur_pixelation_filter.dart';
+import '../../services/audio_cover_service.dart';
 
 /// Fullsize Overlay für Timeline Media Items
 /// Zeigt das Medium in voller Größe mit Kauf-/Annahme-Optionen
@@ -10,12 +13,14 @@ class TimelineMediaOverlay extends StatefulWidget {
   final AvatarMedia media;
   final bool isPurchased; // true = bereits gekauft
   final VoidCallback onPurchase; // Callback für Kauf/Annahme
+  final String? avatarId; // für lazy Cover-Load bei Audio
 
   const TimelineMediaOverlay({
     super.key,
     required this.media,
     required this.isPurchased,
     required this.onPurchase,
+    this.avatarId,
   });
 
   @override
@@ -23,6 +28,66 @@ class TimelineMediaOverlay extends StatefulWidget {
 }
 
 class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
+  AudioPlayer? _audioPlayer;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+  bool _isPlaying = false;
+  List<AudioCoverImage>? _covers;
+  final PageController _coverController = PageController();
+  Timer? _coverTimer;
+  int _coverIndex = 0;
+  bool _hasCompleted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Lazy Cover Load für Audio, falls nötig
+    if (widget.media.type == AvatarMediaType.audio) {
+      final existing = widget.media.coverImages;
+      if ((existing == null || existing.isEmpty) && widget.avatarId != null) {
+        AudioCoverService()
+            .getCoverImages(
+              avatarId: widget.avatarId!,
+              audioId: widget.media.id,
+              audioUrl: widget.media.url,
+            )
+            .then((list) {
+          if (!mounted) return;
+          setState(() => _covers = list);
+          _maybeStartCoverSlideshow();
+        }).catchError((_) {});
+      } else {
+        _covers = existing;
+        _maybeStartCoverSlideshow();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _audioPlayer?.stop();
+    _audioPlayer?.dispose();
+    _audioPlayer = null;
+    _coverTimer?.cancel();
+    _coverController.dispose();
+    super.dispose();
+  }
+
+  void _maybeStartCoverSlideshow() {
+    _coverTimer?.cancel();
+    final list = _covers;
+    if (list != null && list.length > 1) {
+      _coverTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+        if (!mounted) return;
+        _coverIndex = (_coverIndex + 1) % list.length;
+        _coverController.animateToPage(
+          _coverIndex,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+        );
+      });
+    }
+  }
   @override
   Widget build(BuildContext context) {
     return Dialog(
@@ -154,55 +219,111 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
   }
 
   Widget _buildAudioContent() {
-    // Audio Player mit Cover
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          // Cover Image (falls vorhanden)
-          if (widget.media.coverImages != null && widget.media.coverImages!.isNotEmpty)
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Image.network(
-                widget.media.coverImages!.first.url,
-                width: 300,
-                height: 300,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stack) => _buildMusicIcon(),
+    // Audio-Ansicht: große Cover-Slideshow + kompakte Waveform + Controls
+    return Column(
+      children: [
+        // Große Cover‑Slideshow
+        SizedBox(
+          height: 220,
+          child: Stack(
+            children: [
+              PageView.builder(
+                controller: _coverController,
+                itemCount: (_covers ?? widget.media.coverImages)?.length ?? 0,
+                itemBuilder: (context, index) {
+                  final covers = _covers ?? widget.media.coverImages;
+                  final img = covers![index];
+                  final ar = (img.aspectRatio == 0) ? (9 / 16) : img.aspectRatio;
+                  return Center(
+                    child: AspectRatio(
+                      aspectRatio: ar,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.network(
+                          img.url,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                  );
+                },
               ),
-            )
-          else
-            _buildMusicIcon(),
-          
-          const SizedBox(height: 24),
-          
-          // Audio Info
-          Text(
-            widget.media.originalFileName ?? 'Audio File',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
+              if (((_covers ?? widget.media.coverImages)?.length ?? 0) > 1) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: IconButton(
+                    icon: const Icon(Icons.chevron_left, size: 32, color: Colors.white),
+                    onPressed: () {
+                      final total = (_covers ?? widget.media.coverImages)!.length;
+                      _coverIndex = (_coverIndex - 1 + total) % total;
+                      _coverController.animateToPage(
+                        _coverIndex,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                  ),
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: IconButton(
+                    icon: const Icon(Icons.chevron_right, size: 32, color: Colors.white),
+                    onPressed: () {
+                      final total = (_covers ?? widget.media.coverImages)!.length;
+                      _coverIndex = (_coverIndex + 1) % total;
+                      _coverController.animateToPage(
+                        _coverIndex,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ],
           ),
-          
-          const SizedBox(height: 8),
-          
-          // Duration
-          if (widget.media.durationMs != null)
-            Text(
-              _formatDuration(widget.media.durationMs!),
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 14,
+        ),
+
+        const SizedBox(height: 16),
+
+        // Kompakte Waveform-Leiste wie Galerie
+        SizedBox(
+          height: 90,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(16),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppColors.magenta.withValues(alpha: 0.25),
+                  AppColors.lightBlue.withValues(alpha: 0.25),
+                ],
               ),
             ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final totalW = constraints.maxWidth;
+                final progress = _duration.inMilliseconds == 0
+                    ? 0.0
+                    : _position.inMilliseconds / _duration.inMilliseconds;
+                return _buildCompactWaveformOverlay(
+                  availableWidth: totalW,
+                  progress: progress.clamp(0.0, 1.0),
+                );
+              },
+            ),
+          ),
+        ),
 
-          const SizedBox(height: 12),
-          _buildControlsRow(isVideo: false),
-        ],
-      ),
+        const SizedBox(height: 16),
+
+        // Controls (ohne Stop)
+        _buildAudioControls(),
+        const SizedBox(height: 8),
+      ],
     );
   }
 
@@ -225,6 +346,108 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
           onPressed: () {},
         ),
       ],
+    );
+  }
+
+  Widget _buildAudioControls() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        IconButton(
+          icon: const Icon(Icons.replay, color: Colors.white),
+          onPressed: () async {
+            await _ensureAudio();
+            await _audioPlayer?.seek(Duration.zero);
+            _hasCompleted = false;
+            await _audioPlayer?.play(UrlSource(widget.media.url));
+          },
+        ),
+        const SizedBox(width: 8),
+        IconButton(
+          icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, color: Colors.white),
+          onPressed: () async {
+            await _ensureAudio();
+            if (_isPlaying) {
+              await _audioPlayer?.pause();
+            } else {
+              // Nach kompletter Wiedergabe neu starten
+              if (_hasCompleted || (_duration > Duration.zero && _position >= _duration)) {
+                await _audioPlayer?.seek(Duration.zero);
+                _hasCompleted = false;
+                await _audioPlayer?.play(UrlSource(widget.media.url));
+              } else if (_position == Duration.zero) {
+                await _audioPlayer?.play(UrlSource(widget.media.url));
+              } else {
+                await _audioPlayer?.resume();
+              }
+            }
+          },
+        ),
+      ],
+    );
+  }
+
+  Future<void> _ensureAudio() async {
+    if (_audioPlayer != null) return;
+    final p = AudioPlayer();
+    _audioPlayer = p;
+    p.onDurationChanged.listen((d) => setState(() => _duration = d));
+    p.onPositionChanged.listen((pos) => setState(() => _position = pos));
+    p.onPlayerStateChanged.listen((s) => setState(() => _isPlaying = s == PlayerState.playing));
+    p.onPlayerComplete.listen((_) {
+      if (!mounted) return;
+      setState(() {
+        _hasCompleted = true;
+        _isPlaying = false;
+        _position = _duration;
+      });
+    });
+    await p.play(UrlSource(widget.media.url));
+  }
+
+  // 1:1 Waveform wie Galerie
+  Widget _buildCompactWaveformOverlay({
+    required double availableWidth,
+    double progress = 0.0,
+  }) {
+    final barCount = (availableWidth / 1.4).floor().clamp(50, 300);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: List.generate(barCount, (index) {
+        final heights = [
+          0.3, 0.5, 0.7, 0.9, 0.6, 0.4, 0.8, 0.5, 0.7, 0.3, 0.6, 0.8, 0.4,
+          0.9, 0.5, 0.7, 0.3, 0.6, 0.4, 0.8, 0.5, 0.7, 0.6, 0.9, 0.4, 0.8,
+          0.5, 0.6, 0.3, 0.7, 0.4, 0.6, 0.8, 0.5, 0.9, 0.3, 0.7, 0.6, 0.4,
+          0.8, 0.5, 0.7, 0.4, 0.6, 0.9, 0.3, 0.8, 0.5, 0.7, 0.4,
+        ];
+        final height = heights[index % heights.length];
+        final barPosition = index / barCount;
+        final isPlayed = barPosition <= progress;
+        return Container(
+          width: 1.2,
+          height: 54.43 * height,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(0.6),
+            gradient: LinearGradient(
+              begin: Alignment.bottomCenter,
+              end: Alignment.topCenter,
+              colors: isPlayed
+                  ? [
+                      const Color(0xFF00E5FF).withValues(alpha: 0.4),
+                      const Color(0xFF00E5FF).withValues(alpha: 0.7),
+                      const Color(0xFF00E5FF).withValues(alpha: 0.9),
+                    ]
+                  : [
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.transparent,
+                    ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+          ),
+        );
+      }),
     );
   }
 
@@ -473,5 +696,40 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
       ),
     );
   }
+}
+
+// Simple statische Waveform (ähnlich zur Galerie)
+class _StaticWaveformPainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final bg = Paint()
+      ..shader = LinearGradient(
+        colors: [
+          AppColors.magenta.withValues(alpha: 0.25),
+          AppColors.lightBlue.withValues(alpha: 0.25),
+        ],
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+      ).createShader(Offset.zero & size);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(12)),
+      bg,
+    );
+
+    final barPaint = Paint()..color = Colors.white.withValues(alpha: 0.7);
+    final barWidth = 3.0;
+    final gap = 2.0;
+    final maxBars = (size.width / (barWidth + gap)).floor();
+    for (int i = 0; i < maxBars; i++) {
+      final t = (i * 37) % 100 / 100.0; // deterministische Variation
+      final h = (size.height * (0.25 + 0.65 * (t < 0.5 ? t * 2 : (1 - t) * 2))).clamp(8.0, size.height - 8.0);
+      final x = i * (barWidth + gap).toDouble();
+      final rect = Rect.fromLTWH(x, (size.height - h) / 2, barWidth, h);
+      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(2)), barPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 

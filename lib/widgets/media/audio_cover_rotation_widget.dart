@@ -57,7 +57,7 @@ class _AudioCoverRotationWidgetState extends State<AudioCoverRotationWidget>
         (widget.coverImages.length * 2); // 2x durchlaufen
     
     _rotationTimer = Timer.periodic(
-      Duration(milliseconds: rotationInterval.clamp(3000, 8000)), // min 3s, max 8s
+      Duration(milliseconds: rotationInterval.clamp(10000, 20000)), // min 3s, max 8s
       (timer) {
         if (!mounted) return;
         
@@ -153,49 +153,49 @@ class _AudioCoverRotationWidgetState extends State<AudioCoverRotationWidget>
               ),
               
               // Rotation Indicator (nur wenn mehrere Cover)
-              if (widget.coverImages.length > 1)
-                Positioned(
-                  top: 8,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.7),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${_currentIndex + 1}/${widget.coverImages.length}',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
+              // if (widget.coverImages.length > 1)
+              //   Positioned(
+              //     top: 8,
+              //     right: 8,
+              //     child: Container(
+              //       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              //       decoration: BoxDecoration(
+              //         color: Colors.black.withValues(alpha: 0.7),
+              //         borderRadius: BorderRadius.circular(12),
+              //       ),
+              //       child: Text(
+              //         '${_currentIndex + 1}/${widget.coverImages.length}',
+              //         style: const TextStyle(
+              //           color: Colors.white,
+              //           fontSize: 11,
+              //           fontWeight: FontWeight.bold,
+              //         ),
+              //       ),
+              //     ),
+              //   ),
               
               // Aspect Ratio Badge
-              Positioned(
-                bottom: 8,
-                right: 8,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [AppColors.magenta, AppColors.lightBlue],
-                    ),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    currentCover.aspectRatio > 1 ? '16:9' : '9:16',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ),
+              // Positioned(
+              //   bottom: 8,
+              //   right: 8,
+              //   child: Container(
+              //     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+              //     decoration: BoxDecoration(
+              //       gradient: const LinearGradient(
+              //         colors: [AppColors.magenta, AppColors.lightBlue],
+              //       ),
+              //       borderRadius: BorderRadius.circular(4),
+              //     ),
+              //     child: Text(
+              //       currentCover.aspectRatio > 1 ? '16:9' : '9:16',
+              //       style: const TextStyle(
+              //         color: Colors.white,
+              //         fontSize: 10,
+              //         fontWeight: FontWeight.bold,
+              //       ),
+              //     ),
+              //   ),
+              // ),
             ],
           ),
         ),
