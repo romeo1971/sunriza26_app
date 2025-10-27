@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:math';
 import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../../models/media_models.dart';
@@ -37,6 +38,7 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
   Timer? _coverTimer;
   int _coverIndex = 0;
   bool _hasCompleted = false;
+  bool _audioBusy = false;
 
   @override
   void initState() {
@@ -249,7 +251,7 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
       children: [
         // Große Cover‑Slideshow
         SizedBox(
-          height: 220,
+          height: 200,
           child: Stack(
             children: [
               PageView.builder(
@@ -309,11 +311,11 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
           ),
         ),
 
-        const SizedBox(height: 16),
+        const SizedBox(height: 12),
 
-        // Waveform + Controls overlay (1:1 wie media_gallery)
+        // Waveform + Controls overlay (mit Progress-Färbung)
         SizedBox(
-          height: 120,
+          height: 100,
           child: LayoutBuilder(
             builder: (context, constraints) {
               final totalW = constraints.maxWidth * 0.9;
@@ -329,10 +331,10 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
                   child: Stack(
                     alignment: Alignment.center,
                     children: [
-                      // Waveform Hintergrund
+                      // Waveform Hintergrund mit Progress
                       CustomPaint(
                         size: Size(totalW, totalH),
-                        painter: _StaticWaveformPainter(),
+                        painter: _StaticWaveformPainter(progress: progress.clamp(0.0, 1.0)),
                       ),
                       // Controls über Waveform
                       Row(
@@ -341,15 +343,36 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
                           // Play/Pause Button
                           GestureDetector(
                             onTap: () async {
-                              await _ensureAudio();
-                              if (_isPlaying) {
-                                await _audioPlayer?.pause();
-                              } else {
-                                if (_hasCompleted) {
-                                  await _audioPlayer?.seek(Duration.zero);
-                                  setState(() => _hasCompleted = false);
+                              if (_audioBusy) return;
+                              _audioBusy = true;
+                              try {
+                                var player = _audioPlayer;
+                                if (player == null) {
+                                  await _ensureAudio();
+                                  player = _audioPlayer;
+                                  return;
                                 }
-                                await _audioPlayer?.resume();
+
+                                if (_hasCompleted) {
+                                  try {
+                                    await player.stop();
+                                  } catch (_) {}
+                                  setState(() {
+                                    _hasCompleted = false;
+                                    _position = Duration.zero;
+                                  });
+                                  // Frisch starten ohne release/Neuinstanz
+                                  await player.play(UrlSource(widget.media.url));
+                                  return;
+                                }
+
+                                if (_isPlaying) {
+                                  await player.pause();
+                                } else {
+                                  await player.resume();
+                                }
+                              } finally {
+                                _audioBusy = false;
                               }
                             },
                             child: Container(
@@ -386,10 +409,24 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
                             const SizedBox(width: 12),
                             GestureDetector(
                               onTap: () async {
-                                await _ensureAudio();
-                                await _audioPlayer?.seek(Duration.zero);
-                                setState(() => _hasCompleted = false);
-                                await _audioPlayer?.play(UrlSource(widget.media.url));
+                                if (_audioBusy) return;
+                                _audioBusy = true;
+                                try {
+                                  await _ensureAudio();
+                                  final player = _audioPlayer;
+                                  if (player == null) return;
+                                  try {
+                                    await player.stop();
+                                  } catch (_) {}
+                                  setState(() => _hasCompleted = false);
+                                  // Seek to zero, then start cleanly
+                                  try {
+                                    await player.seek(Duration.zero).timeout(const Duration(seconds: 5));
+                                  } catch (_) {}
+                                  await player.play(UrlSource(widget.media.url));
+                                } finally {
+                                  _audioBusy = false;
+                                }
                               },
                               child: Container(
                                 padding: const EdgeInsets.all(12),
@@ -415,13 +452,60 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
           ),
         ),
 
-        const SizedBox(height: 8),
+        // Slider zum Vorspulen
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: SliderTheme(
+            data: SliderThemeData(
+              trackHeight: 2,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+              activeTrackColor: AppColors.lightBlue,
+              inactiveTrackColor: Colors.white.withValues(alpha: 0.3),
+              thumbColor: AppColors.magenta,
+            ),
+            child: Slider(
+              value: () {
+                final durMs = _duration.inMilliseconds;
+                final posMs = _position.inMilliseconds;
+                if (durMs <= 0) return 0.0;
+                return (posMs / durMs).clamp(0.0, 1.0);
+              }(),
+              onChanged: (value) async {
+                final durMs = _duration.inMilliseconds;
+                if (durMs <= 0) return;
+                final player = _audioPlayer;
+                if (player == null) return;
+                
+                setState(() => _hasCompleted = false);
+                final newPos = Duration(milliseconds: (value * durMs).toInt());
+                if (_audioBusy) return;
+                _audioBusy = true;
+                try {
+                  // Seek fehlschläge nicht durchreichen: unawaited mit catchError
+                  unawaited(
+                    player
+                        .seek(newPos)
+                        .timeout(const Duration(seconds: 3))
+                        .catchError((_) {}),
+                  );
+                  if (player.state != PlayerState.playing) {
+                    // Resume unabhängig vom Seek-Ergebnis, um Hänger zu vermeiden
+                    unawaited(player.resume().catchError((_) {}));
+                  }
+                } finally {
+                  _audioBusy = false;
+                }
+              },
+            ),
+          ),
+        ),
         // Zeit-Anzeige
         Text(
           '${_formatTime(_position)} / ${_formatTime(_duration)}',
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
+          style: const TextStyle(color: Colors.white70, fontSize: 11),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
       ],
     );
   }
@@ -458,9 +542,19 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
     if (_audioPlayer != null) return;
     final p = AudioPlayer();
     _audioPlayer = p;
-    p.onDurationChanged.listen((d) => setState(() => _duration = d));
-    p.onPositionChanged.listen((pos) => setState(() => _position = pos));
-    p.onPlayerStateChanged.listen((s) => setState(() => _isPlaying = s == PlayerState.playing));
+    await p.setReleaseMode(ReleaseMode.stop);
+    p.onDurationChanged.listen((d) {
+      if (!mounted) return;
+      setState(() => _duration = d);
+    });
+    p.onPositionChanged.listen((pos) {
+      if (!mounted) return;
+      setState(() => _position = pos);
+    });
+    p.onPlayerStateChanged.listen((s) {
+      if (!mounted) return;
+      setState(() => _isPlaying = s == PlayerState.playing);
+    });
     p.onPlayerComplete.listen((_) {
       if (!mounted) return;
       setState(() {
@@ -758,38 +852,66 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
   }
 }
 
-// Simple statische Waveform (ähnlich zur Galerie)
+// Waveform mit Progress-Färbung (1:1 wie media_gallery)
 class _StaticWaveformPainter extends CustomPainter {
+  final double progress;
+
+  _StaticWaveformPainter({this.progress = 0.0});
+
   @override
   void paint(Canvas canvas, Size size) {
-    final bg = Paint()
-      ..shader = LinearGradient(
-        colors: [
-          AppColors.magenta.withValues(alpha: 0.25),
-          AppColors.lightBlue.withValues(alpha: 0.25),
-        ],
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-      ).createShader(Offset.zero & size);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(Offset.zero & size, const Radius.circular(12)),
-      bg,
-    );
+    final barWidth = 1.0;
+    final spacing = 1.5;
+    final totalBars = (size.width / (barWidth + spacing)).floor();
+    final random = Random(12345);
 
-    final barPaint = Paint()..color = Colors.white.withValues(alpha: 0.7);
-    final barWidth = 3.0;
-    final gap = 2.0;
-    final maxBars = (size.width / (barWidth + gap)).floor();
-    for (int i = 0; i < maxBars; i++) {
-      final t = (i * 37) % 100 / 100.0; // deterministische Variation
-      final h = (size.height * (0.25 + 0.65 * (t < 0.5 ? t * 2 : (1 - t) * 2))).clamp(8.0, size.height - 8.0);
-      final x = i * (barWidth + gap).toDouble();
-      final rect = Rect.fromLTWH(x, (size.height - h) / 2, barWidth, h);
-      canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(2)), barPaint);
+    for (int i = 0; i < totalBars; i++) {
+      final x = i * (barWidth + spacing);
+      final barProgress = i / totalBars;
+
+      // Realistische Höhenverteilung
+      double heightFactor;
+      final randomVal = random.nextDouble();
+      if (randomVal < 0.05) {
+        heightFactor = 0.85 + random.nextDouble() * 0.15;
+      } else if (randomVal < 0.15) {
+        heightFactor = 0.65 + random.nextDouble() * 0.2;
+      } else if (randomVal < 0.40) {
+        heightFactor = 0.4 + random.nextDouble() * 0.25;
+      } else if (randomVal < 0.70) {
+        heightFactor = 0.25 + random.nextDouble() * 0.15;
+      } else {
+        heightFactor = 0.1 + random.nextDouble() * 0.15;
+      }
+
+      final barHeight = size.height * heightFactor;
+      final y1 = (size.height - barHeight) / 2;
+      final y2 = y1 + barHeight;
+
+      // Farbe: GMBC Gradient für abgespielte Bars, grau für Rest
+      final paint = Paint()
+        ..strokeWidth = 1.0
+        ..strokeCap = StrokeCap.square;
+
+      if (barProgress <= progress) {
+        // Abgespielt: GMBC Gradient
+        final gradientProgress = barProgress / (progress == 0 ? 1 : progress);
+        final color = Color.lerp(
+          const Color(0xFFE91E63), // Magenta
+          const Color(0xFF00E5FF), // Cyan
+          gradientProgress,
+        )!;
+        paint.color = color;
+      } else {
+        // Noch nicht abgespielt: dunkelgrau
+        paint.color = Colors.black.withValues(alpha: 0.6);
+      }
+
+      canvas.drawLine(Offset(x, y1), Offset(x, y2), paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(_StaticWaveformPainter oldDelegate) => oldDelegate.progress != progress;
 }
 

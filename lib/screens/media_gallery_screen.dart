@@ -133,6 +133,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   StreamSubscription? _positionSubscription;
   StreamSubscription? _completeSubscription;
   StreamSubscription? _durationSubscription;
+  bool _audioBusy = false; // Busy-Guard für Audio-Operationen
   final Set<String> _editingPriceMediaIds =
       {}; // IDs der Medien mit offenen Price-Inputs
   final Map<String, TextEditingController> _priceControllers =
@@ -2127,6 +2128,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
   /// Audio abspielen / pausieren
   Future<void> _toggleAudioPlayback(AvatarMedia media) async {
+    if (_audioBusy) return;
+    _audioBusy = true;
+    try {
     // Wenn dasselbe Audio bereits spielt → Pause
     if (_playingAudioUrl == media.url && _audioPlayer != null) {
       await _audioPlayer!.pause();
@@ -2163,6 +2167,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
 
     _audioPlayer = AudioPlayer();
+    await _audioPlayer!.setReleaseMode(ReleaseMode.stop);
     _globalAudioPlayer = _audioPlayer;
 
     // Speichere aktuelle URL
@@ -2202,6 +2207,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     });
 
     try {
+      // Wenn vorher komplett abgespielt war → sauber neu starten
+      final ct = _audioCurrentTime[media.url];
+      final tt = _audioTotalTime[media.url];
+      final wasCompleted = ct != null && tt != null && tt.inMilliseconds > 0 && ct.inMilliseconds >= tt.inMilliseconds;
+      if (wasCompleted) {
+        try { await _audioPlayer!.stop(); } catch (_) {}
+      }
       await _audioPlayer!.play(UrlSource(media.url));
       setState(() => _playingAudioUrl = media.url);
     } catch (e) {
@@ -2211,20 +2223,35 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         ).showSnackBar(SnackBar(content: Text('Fehler beim Abspielen: $e')));
       }
     }
+    } finally {
+      _audioBusy = false;
+    }
   }
 
   /// Audio von Anfang an starten
   Future<void> _restartAudio(AvatarMedia media) async {
-    await _audioPlayer?.stop();
-    setState(() {
-      _audioProgress[media.url] = 0.0;
-      _audioCurrentTime[media.url] = Duration.zero;
-      _playingAudioUrl = null;
-      _currentAudioUrl = null;
-    });
-
-    // Neu starten
-    await _toggleAudioPlayback(media);
+    if (_audioBusy) return;
+    _audioBusy = true;
+    try {
+      if (_audioPlayer == null) {
+        await _toggleAudioPlayback(media);
+        return;
+      }
+      try { await _audioPlayer!.stop(); } catch (_) {}
+      setState(() {
+        _audioProgress[media.url] = 0.0;
+        _audioCurrentTime[media.url] = Duration.zero;
+        _playingAudioUrl = null;
+        _currentAudioUrl = media.url;
+      });
+      await _audioPlayer!.seek(Duration.zero).timeout(const Duration(seconds: 5));
+      await _audioPlayer!.play(UrlSource(media.url));
+      if (mounted) setState(() => _playingAudioUrl = media.url);
+    } catch (_) {
+      // Ignorieren; UI bleibt stabil
+    } finally {
+      _audioBusy = false;
+    }
   }
 
   /// Formatiere Duration für Anzeige
@@ -7438,7 +7465,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             ),
                           ),
                         ),
-                      // Progress-Overlay (LIGHTBLUE)
+                      // Waveform mit GMBC-Progress-Färbung (wie Timeline-Overlay)
                       Positioned.fill(
                         left: 8,
                         right: 8,
@@ -7700,7 +7727,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       ),
     );
   }
-  /// Kompakte Waveform für Audio-Cards
+  /// Kompakte Waveform für Audio-Cards (1:1 wie im Timeline-Overlay)
   Widget _buildCompactWaveform({
     required double availableWidth,
     double progress = 0.0,
@@ -7780,14 +7807,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               begin: Alignment.bottomCenter,
               end: Alignment.topCenter,
               colors: isPlayed
-                  ? [
-                      // Hellblau (Cyan) für abgespielte Striche
-                      const Color(0xFF00E5FF).withValues(alpha: 0.4),
-                      const Color(0xFF00E5FF).withValues(alpha: 0.7),
-                      const Color(0xFF00E5FF).withValues(alpha: 0.9),
+                  ? const [
+                      Color(0xFFE91E63), // Magenta
+                      AppColors.lightBlue, // Blue
+                      Color(0xFF00E5FF), // Cyan
                     ]
-                  : [
-                      // Transparent für noch nicht abgespielte Striche
+                  : const [
                       Colors.transparent,
                       Colors.transparent,
                       Colors.transparent,

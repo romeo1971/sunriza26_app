@@ -4029,6 +4029,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
       // 2. Sammle Timeline Items aus allen passenden Playlists
       final List<Map<String, dynamic>> allItems = [];
+      Map<String, dynamic>? activePlaylistConfig;
 
       for (final playlistDoc in playlistsSnapshot.docs) {
         final playlistData = playlistDoc.data();
@@ -4049,6 +4050,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         }
 
         if (!isActiveToday) continue;
+
+        // Erste aktive Playlist → Config merken
+        activePlaylistConfig ??= playlistData;
 
         // 3. Lade timelineItems aus dieser Playlist
         final timelineItems = await FirebaseFirestore.instance
@@ -4198,13 +4202,15 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (mediaItems.isNotEmpty && mounted) {
         debugPrint('📅 Loaded ${mediaItems.length} timeline items');
         
-        // Check Loop & ShowAsDuration aus Playlist-Config
+        // Check Loop & ShowAsDuration aus aktiver Playlist-Config
         bool loopEnabled = false;
         bool showAsDuration = false;
-        if (playlistsSnapshot.docs.isNotEmpty) {
-          final firstPlaylist = playlistsSnapshot.docs.first.data();
-          loopEnabled = firstPlaylist['timelineLoop'] as bool? ?? false;
-          showAsDuration = firstPlaylist['timelineShowAsDuration'] as bool? ?? false;
+        if (activePlaylistConfig != null) {
+          loopEnabled = activePlaylistConfig['timelineLoop'] as bool? ?? false;
+          showAsDuration = activePlaylistConfig['timelineShowAsDuration'] as bool? ?? false;
+          debugPrint('📅 Timeline Config from activePlaylist: LOOP=$loopEnabled, ShowAsDuration=$showAsDuration');
+        } else {
+          debugPrint('⚠️ No activePlaylistConfig found, using defaults');
         }
         
         setState(() {
@@ -4213,6 +4219,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           _timelineCurrentIndex = 0;
           _timelineLoop = loopEnabled;
           _timelineShowAsDuration = showAsDuration;
+          debugPrint('📅 setState: _timelineLoop=$_timelineLoop, _timelineShowAsDuration=$_timelineShowAsDuration');
           // Startzeiten: abhängig vom Modus
           _timelineStartAtSec = [];
           if (_timelineShowAsDuration) {
@@ -4234,6 +4241,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           }
           _timelineShown = List<bool>.filled(_timelineItems.length, false);
         });
+        // Absolut geplante Startzeiten ab jetzigem Zeitpunkt berechnen
+        final baseSec = _chatStopwatch.elapsed.inSeconds;
+        _timelineItemsScheduledStartSeconds = List.generate(
+          _timelineStartAtSec.length,
+          (i) => baseSec + _timelineStartAtSec[i],
+        );
         // Polling jede Sekunde: zeige fällige Items exakt am Startzeitpunkt
         _timelineScheduleTicker?.cancel();
         _timelineScheduleTicker = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -4241,7 +4254,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           final t = _chatStopwatch.elapsed.inSeconds;
           for (int i = 0; i < _timelineItems.length; i++) {
             if (_timelineShown[i]) continue;
-            if (t >= _timelineStartAtSec[i]) {
+            final startAbs = (i < _timelineItemsScheduledStartSeconds.length)
+                ? _timelineItemsScheduledStartSeconds[i]
+                : baseSec + _timelineStartAtSec[i];
+            if (t >= startAbs) {
               _activeTimelineIndex = i;
               _showCurrentTimelineItem();
               break;
@@ -4313,12 +4329,26 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           debugPrint('🔄 Timeline LOOP: Restart from item 1');
           _timelineCurrentIndex = 0;
           _activeTimelineIndex = 0;
-          // Startzeiten neu berechnen ab jetzigem Chat-Stopwatch
-          final currentChatSec = _chatStopwatch.elapsed.inSeconds;
-          _timelineItemsScheduledStartSeconds = List.generate(
-            _timelineItems.length,
-            (i) => currentChatSec + _timelineStartAtSec[i],
-          );
+          // Startzeiten bei Anzeige: Dauer sofort neu ausrollen ab jetzt
+          if (_timelineShowAsDuration) {
+            final nowSec = _chatStopwatch.elapsed.inSeconds;
+            _timelineItemsScheduledStartSeconds = [];
+            int acc = 0;
+            for (final m in _timelineItemsMetadata) {
+              _timelineItemsScheduledStartSeconds.add(nowSec + acc);
+              final minutes = (m['minDropdown'] as int?) ?? 1;
+              acc += minutes * 60;
+            }
+          } else {
+            // Position-Modus: relative Startzeiten ab jetzt
+            final nowSec = _chatStopwatch.elapsed.inSeconds;
+            _timelineItemsScheduledStartSeconds = List.generate(
+              _timelineItems.length,
+              (i) => nowSec + _timelineStartAtSec[i],
+            );
+          }
+          // Sichtbarkeitsstatus zurücksetzen, damit Items wieder gezeigt werden
+          _timelineShown = List<bool>.filled(_timelineItems.length, false);
         } else {
           debugPrint('⏹️ Timeline ENDE: Kein Loop');
           _timelineCurrentIndex = _timelineItems.length; // Ende markieren
@@ -4410,7 +4440,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       _timelineSliderVisible = false;
       _removeTimelineOverlay();
     }
-    // Timeline anhalten: Stopwatch & Schedule-Ticker pausieren
+    // Timeline anhalten: Hide-Timer abbrechen, Stopwatch & Schedule-Ticker pausieren
+    _timelineHideTimer?.cancel();
     _timelineScheduleTicker?.cancel();
     _chatStopwatch.stop();
     showDialog(
@@ -4428,28 +4459,80 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         },
       ),
     ).whenComplete(() {
-      // Popup geschlossen → Slider wieder anzeigen, falls Item noch aktiv
       if (!mounted) return;
-      // Stopwatch & Schedule-Ticker wieder starten
+      
+      // 1. Stopwatch wieder starten
       _chatStopwatch.start();
-      _timelineScheduleTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+      final nowSec = _chatStopwatch.elapsed.inSeconds;
+      
+      // 2. Nächsten Index ermitteln
+      int currentIdx = _activeTimelineIndex ?? _timelineCurrentIndex;
+      if (currentIdx < 0) currentIdx = 0;
+      int nextIdx = currentIdx + 1;
+      
+      // 3. Check: Ende erreicht?
+      debugPrint('📅 Popup whenComplete: nextIdx=$nextIdx, _timelineItems.length=${_timelineItems.length}, _timelineLoop=$_timelineLoop');
+      if (nextIdx >= _timelineItems.length) {
+        if (_timelineLoop) {
+          // LOOP → zurück zu 0
+          debugPrint('🔄 Timeline LOOP nach Popup: zurück zu Item 1');
+          nextIdx = 0;
+          _timelineShown = List<bool>.filled(_timelineItems.length, false);
+        } else {
+          // ENDE → nichts mehr zeigen
+          debugPrint('⏹️ Timeline ENDE nach Popup (LOOP=false)');
+          _timelineCurrentIndex = _timelineItems.length;
+          _activeTimelineIndex = null;
+          return;
+        }
+      } else {
+        // Normaler Fortschritt: vorherige Items als gezeigt markieren
+        for (int i = 0; i <= currentIdx; i++) {
+          _timelineShown[i] = true;
+        }
+      }
+      
+      // 4. Setze Indizes und zeige nächstes Item sofort
+      _timelineCurrentIndex = nextIdx;
+      _activeTimelineIndex = nextIdx;
+      debugPrint('📅 Nach Popup: zeige Item ${nextIdx + 1}/${_timelineItems.length}');
+      _showCurrentTimelineItem();
+      
+      // 5. Startzeiten neu berechnen ab jetzt (für alle restlichen Items)
+      _timelineItemsScheduledStartSeconds = [];
+      if (_timelineShowAsDuration) {
+        int acc = 0;
+        for (int i = 0; i < _timelineItems.length; i++) {
+          _timelineItemsScheduledStartSeconds.add(nowSec + acc);
+          final minutes = (_timelineItemsMetadata[i]['minDropdown'] as int?) ?? 1;
+          acc += minutes * 60;
+        }
+      } else {
+        // Position-Modus: relative Differenzen ab nextIdx
+        final baseStart = (nextIdx < _timelineStartAtSec.length) ? _timelineStartAtSec[nextIdx] : 0;
+        for (int i = 0; i < _timelineItems.length; i++) {
+          final rel = (i < _timelineStartAtSec.length ? _timelineStartAtSec[i] : 0) - baseStart;
+          _timelineItemsScheduledStartSeconds.add(nowSec + (rel < 0 ? 0 : rel));
+        }
+      }
+      
+      // 6. Ticker neu starten
+      _timelineScheduleTicker?.cancel();
+      _timelineScheduleTicker = Timer.periodic(const Duration(seconds: 1), (_) {
         if (!mounted) return;
         final t = _chatStopwatch.elapsed.inSeconds;
         for (int i = 0; i < _timelineItems.length; i++) {
           if (_timelineShown[i]) continue;
-          if (t >= _timelineStartAtSec[i]) {
+          final startAbs = (i < _timelineItemsScheduledStartSeconds.length)
+              ? _timelineItemsScheduledStartSeconds[i]
+              : t;
+          if (t >= startAbs) {
             _activeTimelineIndex = i;
             _showCurrentTimelineItem();
             break;
           }
         }
       });
-
-      if (_activeTimelineItem != null && wasVisible) {
-        _timelineSliderVisible = true;
-        // Dauer ist für den Slider visuell irrelevant
-        _showTimelineOverlay(_activeTimelineItem!, const Duration(seconds: 1));
-      }
     });
   }
 
