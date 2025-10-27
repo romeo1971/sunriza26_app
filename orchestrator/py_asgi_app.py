@@ -78,9 +78,9 @@ current_audio_room: Optional[str] = None
 last_client_room: Optional[str] = None  # Fallback: letzter room aus speak-Request
 _audio48k_buf = bytearray()  # Frames für LiveKit in 20ms Stücken puffern
 
-# --- MuseTalk PCM Forwarder (deaktiviert – wir nutzen pro-Room-Verbindung) ---
-ORCH_FORWARD_TO_MUSETALK = os.getenv("ORCH_FORWARD_TO_MUSETALK", "0").strip() not in ("0", "false", "False")
-MUSETALK_WS_URL = os.getenv("MUSETALK_WS_URL", "wss://romeo1971--musetalk-lipsync-asgi.modal.run/audio").strip()
+# MuseTalk entfernt – keine globalen Forwarder mehr
+ORCH_FORWARD_TO_MUSETALK = False
+MUSETALK_WS_URL = ""
 _musetalk_ws: Optional[Any] = None
 _musetalk_room_sent = False
 
@@ -255,20 +255,16 @@ async def mint_livekit_token_get(room: Optional[str] = None, user_id: Optional[s
     return {"url": LIVEKIT_URL, "room": room, "token": token}
 
 
-# --- MuseTalk Publisher Integration ---
-# Default auf die produktive, konsolidierte App (ohne -v2)
-MUSETALK_URL = os.getenv("MUSETALK_URL", "https://romeo1971--musetalk-lipsync-asgi.modal.run")
-
-# Active audio streams to MuseTalk (room → websocket)
+# MuseTalk entfernt – Publisher Integration deaktiviert
+MUSETALK_URL = ""
 musetalk_audio_streams: dict[str, Any] = {}
-# Last time (epoch seconds) we forwarded PCM for a room
 musetalk_last_pcm_ts: dict[str, float] = {}
 active_publisher_rooms: set[str] = set()
 
 async def _stop_room_internal(room: str):
     """Stoppe alle Streams/Verbindungen für einen Room (automatischer Cleanup)."""
     global current_audio_room, _musetalk_ws, _musetalk_room_sent
-    # 1) MuseTalk WS pro Room schließen
+    # MuseTalk entfernt – nur internen Zustand räumen
     try:
         ws = musetalk_audio_streams.pop(room, None)
         if ws:
@@ -279,24 +275,13 @@ async def _stop_room_internal(room: str):
     except Exception:
         pass
     musetalk_last_pcm_ts.pop(room, None)
-    # 2) MuseTalk Session stoppen (best-effort)
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=10.0) as client:
-            await client.post(f"{MUSETALK_URL}/session/stop", json={"room": room})
-    except Exception:
-        pass
+    # MuseTalk Session Stop entfällt
     # 3) LiveKit Audio Publisher trennen
     try:
         await lk_audio_pub.disconnect()
     except Exception:
         pass
-    # 4) Globale MuseTalk WS schließen (falls verwendet)
-    try:
-        if _musetalk_ws:
-            await _musetalk_ws.close()
-    except Exception:
-        pass
+    # Globale MuseTalk WS entfällt
     _musetalk_ws = None
     _musetalk_room_sent = False
     # 5) Room-Status zurücksetzen
@@ -331,13 +316,13 @@ async def _mt_idle_watcher(room: str, ws: Any, idle_seconds: int = 20):
 
 @app.post("/publisher/start")
 async def publisher_start(req: Request):
-    """Start MuseTalk Real-Time Lipsync"""
+    """Start LiveKit publisher (MuseTalk entfernt)"""
     body = await req.json()
     room = body.get("room")
     if not room:
         raise HTTPException(400, "room required")
-    idle_video_url = body.get("idle_video_url")  # URL to idle.mp4
-    frames_zip_url = body.get("frames_zip_url")  # optional: URL to frames.zip
+    idle_video_url = body.get("idle_video_url")  # legacy, ignoriert
+    frames_zip_url = body.get("frames_zip_url")  # legacy, ignoriert
     
     if not idle_video_url:
         raise HTTPException(status_code=400, detail="idle_video_url required")
@@ -354,119 +339,8 @@ async def publisher_start(req: Request):
         video_b64 = None
         frames_zip_b64 = None
         
-        # Warmup/Healthcheck (Modal kalter Start)
-        try:
-            async with httpx.AsyncClient(timeout=8.0) as client:
-                await client.get(f"{MUSETALK_URL}/health")
-        except Exception:
-            pass
-
-        # Start MuseTalk session (mit Retry/Warmup)
-        print(f"🚀 Starting MuseTalk session for room: {room}")
-        started = False
-        last_exc = None
-        for attempt in range(3):
-            try:
-                async with httpx.AsyncClient(timeout=180.0) as client:
-                    # 1) URL-Modus zuerst versuchen (leichtgewichtig)
-                    payload_url = {"room": room, "connect_livekit": True}
-                    if frames_zip_url:
-                        payload_url["frames_zip_url"] = frames_zip_url
-                    else:
-                        payload_url["idle_video_url"] = idle_video_url
-                    # LiveKit Infos an MuseTalk weitergeben
-                    lk_url = LIVEKIT_URL
-                    lk_key = LIVEKIT_API_KEY
-                    lk_secret = LIVEKIT_API_SECRET
-                    token_url = os.getenv("LIVEKIT_TOKEN_URL", "").strip()
-                    if token_url:
-                        payload_url["livekit_token_url"] = token_url
-                    elif lk_url and lk_key and lk_secret:
-                        payload_url.update({
-                            "livekit_url": lk_url,
-                            "livekit_api_key": lk_key,
-                            "livekit_api_secret": lk_secret,
-                        })
-
-                    resp = await client.post(f"{MUSETALK_URL}/session/start", json=payload_url)
-                    if resp.status_code == 200:
-                        print(f"✅ MuseTalk session started")
-                        started = True
-                        break
-                    else:
-                        # 2) Fallback: Einmalig Base64 versuchen (kompatibel zu älteren Backends)
-                        error_detail = resp.text
-                        print(f"⚠️ MuseTalk URL start failed (try {attempt+1}/3): {resp.status_code} - {error_detail}")
-                        if frames_zip_b64 is None and frames_zip_url:
-                            # nur bei Bedarf herunterladen (Lazy)
-                            try:
-                                print(f"📥 Downloading frames.zip (fallback b64): {frames_zip_url[:100]}...")
-                                z = await client.get(frames_zip_url, timeout=60.0)
-                                z.raise_for_status()
-                                frames_zip_b64 = base64.b64encode(z.content).decode()
-                                print(f"✅ frames.zip downloaded: {len(z.content)} bytes")
-                            except Exception as de:
-                                print(f"⚠️ frames.zip download failed: {de}")
-                        if video_b64 is None and not frames_zip_url:
-                            try:
-                                print(f"📥 Downloading idle video (fallback b64): {idle_video_url[:100]}...")
-                                v = await client.get(idle_video_url, timeout=60.0)
-                                v.raise_for_status()
-                                video_b64 = base64.b64encode(v.content).decode()
-                                print(f"✅ Video downloaded: {len(v.content)} bytes")
-                            except Exception as de:
-                                print(f"⚠️ idle video download failed: {de}")
-
-                        payload_b64 = {"room": room, "connect_livekit": True}
-                        if token_url:
-                            payload_b64["livekit_token_url"] = token_url
-                        elif lk_url and lk_key and lk_secret:
-                            payload_b64.update({
-                                "livekit_url": lk_url,
-                                "livekit_api_key": lk_key,
-                                "livekit_api_secret": lk_secret,
-                            })
-                        if frames_zip_b64:
-                            payload_b64["frames_zip_b64"] = frames_zip_b64
-                        elif video_b64:
-                            payload_b64["video_b64"] = video_b64
-                        else:
-                            last_exc = HTTPException(status_code=500, detail="No media available for MuseTalk start")
-                            continue
-
-                        resp2 = await client.post(f"{MUSETALK_URL}/session/start", json=payload_b64)
-                        if resp2.status_code == 200:
-                            print(f"✅ MuseTalk session started (b64 fallback)")
-                            started = True
-                            break
-                        else:
-                            error_detail = resp2.text
-                            print(f"⚠️ MuseTalk b64 start failed (try {attempt+1}/3): {resp2.status_code} - {error_detail}")
-                            last_exc = HTTPException(status_code=500, detail=f"MuseTalk failed: {error_detail}")
-            except Exception as e:
-                last_exc = e
-                print(f"⚠️ MuseTalk start error (try {attempt+1}/3): {e}")
-            # kleiner Backoff
-            await asyncio.sleep(0.6)
-        if not started:
-            raise HTTPException(status_code=500, detail=str(last_exc))
-        
-        # Open WebSocket for audio streaming
-        print(f"🔌 Opening audio WebSocket...")
-        import websockets
-        ws_url = f"{MUSETALK_URL.replace('https://', 'wss://')}/audio"
-        # Close previous if any for the same room (avoid duplicates)
-        try:
-            old = musetalk_audio_streams.get(room)
-            if old:
-                await old.close()
-        except Exception:
-            pass
-        ws = await websockets.connect(ws_url)
-        await ws.send(room.encode())  # Send room name first
-        musetalk_audio_streams[room] = ws
-        musetalk_last_pcm_ts[room] = time.time()
-        print(f"✅ Audio stream connected")
+        # MuseTalk entfernt – hier nur LiveKit Audio vorbereiten
+        print(f"🚀 Starting LiveKit publisher for room: {room}")
         
         # LiveKit-Audio vorbereiten (optional)
         global current_audio_room
@@ -478,10 +352,6 @@ async def publisher_start(req: Request):
 
         # WICHTIG: HTTP Call SOFORT zurückgeben (verhindert hängende Container!)
         # Idle Watcher startet NACH dem Return (im Event Loop, nicht im Request-Context)
-        def start_bg_watcher():
-            asyncio.create_task(_mt_idle_watcher(room, ws))
-        asyncio.get_event_loop().call_soon(start_bg_watcher)
-        
         return {"status": "started", "room": room}
         
     except Exception as e:
@@ -603,15 +473,6 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
                             "data": msg["audio"],
                             "pts_ms": 0,
                         })
-                        
-                        # Stream audio to MuseTalk (for lipsync)
-                        audio_b64 = msg["audio"]
-                        audio_bytes = base64.b64decode(audio_b64)
-                        # Robust: akzeptiere Float32 und wandle zu int16 LE
-                        audio_bytes = _ensure_int16_le(audio_bytes)
-                        
-                        # Kein globaler MuseTalk-Forwarder mehr – nur pro-Room WS wird genutzt
-                        
                         # Optional: in LiveKit als Audio-Track publizieren (48k mono)
                         # Auto-connect beim ersten PCM, falls noch nicht verbunden
                         room_for_audio = current_audio_room or last_client_room
@@ -620,6 +481,9 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
                                 if not lk_audio_pub._connected_room:
                                     current_audio_room = room_for_audio
                                     await lk_audio_pub.ensure_connected(room_for_audio)
+                                audio_b64 = msg["audio"]
+                                audio_bytes = base64.b64decode(audio_b64)
+                                audio_bytes = _ensure_int16_le(audio_bytes)
                                 up = _upsample_16k_to_48k_int16le(audio_bytes)
                                 # 20ms @ 48kHz mono int16 => 960 samples => 1920 bytes
                                 _audio48k_buf.extend(up)
@@ -630,16 +494,6 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
                                     lk_audio_pub.publish_pcm16_48k_mono(bytes(chunk))
                             except Exception:
                                 pass
-                        
-                        # Send to all active MuseTalk streams
-                        for room, musetalk_ws in list(musetalk_audio_streams.items()):
-                            try:
-                                await musetalk_ws.send(audio_bytes)
-                                musetalk_last_pcm_ts[room] = time.time()
-                            except Exception as e:
-                                print(f"⚠️ MuseTalk stream error: {e}")
-                                # Remove broken connection
-                                del musetalk_audio_streams[room]
                         
                     if msg.get("isFinal"):
                         break
@@ -661,15 +515,7 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
             except Exception:
                 pass
         
-        # MuseTalk WS schließen nach Stream-Ende
-        global _musetalk_ws, _musetalk_room_sent
-        if _musetalk_ws:
-            try:
-                await _musetalk_ws.close()
-                _musetalk_ws = None
-                _musetalk_room_sent = False
-            except Exception:
-                pass
+        # MuseTalk entfernt – keine WS zu schließen
 
 
 @app.get("/tts/stream")
@@ -719,25 +565,7 @@ async def _safe_send(ws: WebSocket, obj: dict):
         pass
 
 
-@app.get("/debug/musetalk")
-async def debug_musetalk():
-    """Proxy: Liefert Debug-Infos vom MuseTalk-Dienst (Assets/Weights/Health)."""
-    try:
-        import httpx
-        async with httpx.AsyncClient(timeout=8.0) as client:
-            # 1) bevorzugt: /debug/assets
-            r = await client.get(f"{MUSETALK_URL}/debug/assets")
-            if r.status_code == 200:
-                return r.json()
-            # 2) fallback: /debug/weights
-            r2 = await client.get(f"{MUSETALK_URL}/debug/weights")
-            if r2.status_code == 200:
-                return r2.json()
-            # 3) health als Minimalinfo
-            r3 = await client.get(f"{MUSETALK_URL}/health")
-            return {"status": r3.status_code, "body": r3.text}
-    except Exception as e:
-        return {"error": str(e)}
+# MuseTalk Debug-Endpoint entfernt
 
 
 @app.get("/debug/audio")

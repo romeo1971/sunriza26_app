@@ -12,10 +12,4 @@ class AppConfig {
   // LivePortrait Streaming WS (Modal)
   static const livePortraitWsUrl =
       'wss://romeo1971--liveportrait-ws-asgi.modal.run/stream';
-
-  // MuseTalk ASGI
-  static const museTalkHttpUrl =
-      'https://romeo1971--musetalk-lipsync-asgi.modal.run';
-  static const museTalkWsUrl =
-      'wss://romeo1971--musetalk-lipsync-asgi.modal.run/audio';
 }

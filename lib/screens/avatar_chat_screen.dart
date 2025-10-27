@@ -39,7 +39,7 @@ import '../widgets/media/timeline_media_overlay.dart';
 import 'hero_chat_screen.dart';
 import '../services/audio_cover_service.dart';
 
-// GLOBAL Guard: verhindert mehrfache /publisher/start Calls über Widget-Lifecycle hinweg!
+// GLOBAL: Legacy MuseTalk Guard entfernt – MuseTalk wurde ausgebaut
 final Map<String, DateTime> _globalActiveMuseTalkRooms = {};
 
 class AvatarChatScreen extends StatefulWidget {
@@ -566,30 +566,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     String avatarId,
     String voiceId,
   ) async {
-    // GLOBAL GUARD: Verhindere doppelte /session/start Calls über Widget-Lifecycle hinweg!
-    final now = DateTime.now();
-    final lastStarted = _globalActiveMuseTalkRooms[room];
-
-    if (lastStarted != null) {
-      final age = now.difference(lastStarted);
-      if (age.inSeconds < 3) {
-        // Session gerade gestartet (< 3s) → SKIP Doppelstart!
-        debugPrint(
-          '⏭️ MuseTalk session gerade gestartet für room=$room (age: ${age.inSeconds}s) - SKIP!',
-        );
-        return;
-      } else {
-        // Session älter als 3s → Kann neu starten
-        debugPrint(
-          '🔄 MuseTalk Guard abgelaufen (${age.inSeconds}s) - Neustart erlaubt',
-        );
-        _globalActiveMuseTalkRooms.remove(room);
-      }
-    }
-
-    // WICHTIG: Guard SOFORT setzen (synchron), BEVOR await kommt!
-    _globalActiveMuseTalkRooms[room] = now;
-    debugPrint('🔒 GLOBAL MuseTalk Guard gesetzt für room=$room');
+    // MuseTalk entfernt: keine Guard-Logik mehr nötig
 
     try {
       // Get idle video URL + frames.zip URL + latents URL from Firestore
@@ -613,10 +590,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         }
       }
 
-      // Ohne idle.mp4 KEIN Lipsync/MuseTalk
+      // Ohne idle.mp4 fahren wir LiveKit-only weiter
       if (idleVideoUrl == null || idleVideoUrl.isEmpty) {
-        debugPrint('🛑 Kein idle.mp4 – Lipsync/MuseTalk deaktiviert');
-        return;
+        debugPrint('ℹ️ Kein idle.mp4 – Lipsync läuft LiveKit-only');
       }
 
       final orchUrl = AppConfig.orchestratorUrl
@@ -625,8 +601,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       final url = orchUrl.endsWith('/')
           ? '${orchUrl}publisher/start'
           : '$orchUrl/publisher/start';
-      debugPrint('🎬 Starting MuseTalk publisher: $url');
-      debugPrint('📹 Idle video: $idleVideoUrl');
+      debugPrint('🎬 Starting LiveKit publisher: $url');
+      if (idleVideoUrl != null && idleVideoUrl.isNotEmpty) {
+        debugPrint('📹 Idle video: $idleVideoUrl');
+      }
       if (framesZipUrl != null && framesZipUrl.isNotEmpty) {
         debugPrint('🖼️ Frames zip: $framesZipUrl');
       }
@@ -637,42 +615,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         body: jsonEncode({
           'room': room,
           'avatar_id': avatarId,
+          // MuseTalk entfernt – idle_video_url wird serverseitig ignoriert
           'idle_video_url': idleVideoUrl,
         }),
       ).timeout(const Duration(seconds: 10));
 
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        debugPrint('✅ MuseTalk publisher started');
+        debugPrint('✅ LiveKit publisher started');
       } else {
         debugPrint('⚠️ Publisher start failed: ${res.statusCode}');
       }
-
-      // Direkt MuseTalk Session im gleichen Room starten (Service-API)
-      try {
-        final mtUrl = AppConfig.museTalkHttpUrl.endsWith('/')
-            ? '${AppConfig.museTalkHttpUrl}session/start'
-            : '${AppConfig.museTalkHttpUrl}/session/start';
-        final payload = <String, dynamic>{
-          'room': room,
-          'connect_livekit': true,
-        };
-        // Nur idle.mp4 erlauben
-        payload['idle_video_url'] = idleVideoUrl;
-        await http.post(
-          Uri.parse(mtUrl),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(payload),
-        ).timeout(const Duration(seconds: 10));
-        debugPrint('✅ MuseTalk session started (room=$room)');
-      } catch (e) {
-        debugPrint('⚠️ MuseTalk session start failed: $e');
-        // Bei Fehler: Guard zurücksetzen, damit Retry möglich ist
-        _globalActiveMuseTalkRooms.remove(room);
-      }
     } catch (e) {
       debugPrint('❌ Publisher start error: $e');
-      // Bei Fehler: Guard zurücksetzen, damit Retry möglich ist
-      _globalActiveMuseTalkRooms.remove(room);
+      // MuseTalk entfernt – keine Guard-Pflege nötig
     }
   }
 
@@ -684,8 +639,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     final lipsyncEnabled =
         (_avatarData?.training?['lipsyncEnabled'] as bool?) ?? true;
     if (!lipsyncEnabled) return;
-    if (_globalActiveMuseTalkRooms.containsKey(roomName)) return;
-    debugPrint('🎬 Lazy-start MuseTalk publisher for room=$roomName');
+    debugPrint('🎬 Lazy-start LiveKit publisher for room=$roomName');
     unawaited(
       _startLiveKitPublisher(roomName, _avatarData!.id, _cachedVoiceId!),
     );
@@ -719,28 +673,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('✅ LiveKit publisher stopped');
       }
 
-      // Optional: MuseTalk Session stoppen (teurer Kaltstart vermeiden → nur bei explizitem Verlassen)
-      if (stopSession) {
-        try {
-          final mtUrl = AppConfig.museTalkHttpUrl.endsWith('/')
-              ? '${AppConfig.museTalkHttpUrl}session/stop'
-              : '${AppConfig.museTalkHttpUrl}/session/stop';
-          await http
-              .post(
-                Uri.parse(mtUrl),
-                headers: {'Content-Type': 'application/json'},
-                body: jsonEncode({'room': room}),
-              )
-              .timeout(const Duration(seconds: 20), onTimeout: () {
-            debugPrint('⚠️ musetalk session/stop timeout (room=$room)');
-            return http.Response('', 204);
-          });
-          _globalActiveMuseTalkRooms.remove(room); // Reset GLOBAL Guard!
-          debugPrint('✅ MuseTalk session stopped (room=$room)');
-        } catch (e) {
-          debugPrint('⚠️ MuseTalk session stop failed: $e');
-        }
-      }
+      // MuseTalk entfernt – keine Session-Stop-Calls mehr
     } catch (e) {
       debugPrint('❌ Publisher stop error: $e');
     }
