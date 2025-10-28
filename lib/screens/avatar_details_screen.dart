@@ -1101,7 +1101,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         try {
           final cloneId = (voice['cloneVoiceId'] as String?)?.trim();
           final elevenId = (voice['elevenVoiceId'] as String?)?.trim();
-          final useOwnVoiceFlag = (voice['useOwnVoice'] as bool?) ?? null;
+          final useOwnVoiceFlag = (voice['useOwnVoice'] as bool?);
 
           // Harte Benutzerwahl hat Vorrang
           if (useOwnVoiceFlag == true) {

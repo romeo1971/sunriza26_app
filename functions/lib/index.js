@@ -42,21 +42,18 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
-var _a;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.generateMissingVideoThumbs = exports.trimVideo = exports.extractVideoFrameAtPosition = exports.backfillVideoDocuments = exports.backfillOriginalFileNames = exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.fixVideoAspectRatios = exports.onMediaCreateSetDocumentThumb = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
 require("dotenv/config");
-const functions = __importStar(require("firebase-functions"));
-// admin ist bereits oben initialisiert
+const functions = __importStar(require("firebase-functions/v1"));
+const admin = __importStar(require("firebase-admin"));
 const cors_1 = __importDefault(require("cors"));
 const textToSpeech_1 = require("./textToSpeech");
 const vertexAI_1 = require("./vertexAI");
 const config_1 = require("./config");
 const rag_service_1 = require("./rag_service");
-// Entfernt: Unbenutzte Importe aus pinecone_service
 const node_fetch_1 = __importDefault(require("node-fetch"));
 const openai_1 = __importDefault(require("openai"));
-const admin = __importStar(require("firebase-admin"));
 const stream_1 = require("stream");
 const ffmpeg_static_1 = __importDefault(require("ffmpeg-static"));
 const fluent_ffmpeg_1 = __importDefault(require("fluent-ffmpeg"));
@@ -65,54 +62,19 @@ const os = __importStar(require("os"));
 const path = __importStar(require("path"));
 const sharp_1 = __importDefault(require("sharp"));
 const functionsStorage = __importStar(require("firebase-functions/v2/storage"));
-// Stripe Checkout für Credits
+// Exports
+__exportStar(require("./avatarChat"), exports);
 __exportStar(require("./stripeCheckout"), exports);
-// eRechnung Generator
 __exportStar(require("./invoiceGenerator"), exports);
-// Media-Kauf (Credits oder Stripe)
 __exportStar(require("./mediaCheckout"), exports);
-// Stripe Connect (Seller Marketplace)
 __exportStar(require("./stripeConnect"), exports);
-// Payment Methods Management (Karten speichern)
 __exportStar(require("./paymentMethods"), exports);
-// Stripe Checkout für Credits
-__exportStar(require("./stripeCheckout"), exports);
-// eRechnung Generator
-__exportStar(require("./invoiceGenerator"), exports);
-// Media-Kauf (Credits oder Stripe)
-__exportStar(require("./mediaCheckout"), exports);
-// Firebase Admin initialisieren: lokal mit expliziten Credentials, in Cloud mit Default
-if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIREBASE_CLIENT_EMAIL) {
-    // Lokale Entwicklung: nutze Service-Account aus .env oder Datei
-    const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT_ID;
-    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-    const privateKey = (_a = process.env.FIREBASE_PRIVATE_KEY) === null || _a === void 0 ? void 0 : _a.replace(/\\n/g, '\n');
-    if (clientEmail && privateKey) {
-        admin.initializeApp({
-            credential: admin.credential.cert({
-                projectId: projectId,
-                clientEmail: clientEmail,
-                privateKey: privateKey,
-            }),
-            projectId: projectId,
-        });
+// Admin init (falls notwendig)
+if (!admin.apps.length) {
+    try {
+        admin.initializeApp();
     }
-    else {
-        // Fallback auf Datei, wenn gesetzt
-        if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-            admin.initializeApp({
-                credential: admin.credential.applicationDefault(),
-                projectId: projectId,
-            });
-        }
-        else {
-            admin.initializeApp();
-        }
-    }
-}
-else {
-    // In Cloud Functions: Default Credentials
-    admin.initializeApp();
+    catch (_) { }
 }
 // CORS für Cross-Origin Requests
 const corsHandler = (0, cors_1.default)({ origin: true });
@@ -1347,6 +1309,7 @@ exports.llm = functions
             };
             let answer = '';
             try {
+                // Priorisiere OpenAI (günstiger laut Vorgabe), Gemini als Fallback
                 answer = await tryOpenAI();
             }
             catch (e) {

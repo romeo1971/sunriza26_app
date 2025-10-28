@@ -573,6 +573,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       String? idleVideoUrl;
       String? framesZipUrl;
       String? latentsUrl;
+      String? agentId;
       if (_avatarData != null) {
         final doc = await FirebaseFirestore.instance
             .collection('avatars')
@@ -580,13 +581,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             .get()
             .timeout(const Duration(seconds: 5));
 
-        if (doc.exists) {
+      if (doc.exists) {
           final data = doc.data();
           final dynamics = data?['dynamics'] as Map<String, dynamic>?;
           final basicDynamics = dynamics?['basic'] as Map<String, dynamic>?;
           idleVideoUrl = basicDynamics?['idleVideoUrl'] as String?;
           framesZipUrl = basicDynamics?['framesZipUrl'] as String?;
           latentsUrl = basicDynamics?['latentsUrl'] as String?;
+        final liveAvatar = data?['liveAvatar'] as Map<String, dynamic>?;
+        final liveAgentId = (liveAvatar?['agentId'] as String?)?.trim();
+        if (liveAgentId != null && liveAgentId.isNotEmpty) {
+          agentId = liveAgentId;
+        }
         }
       }
 
@@ -609,6 +615,23 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('🖼️ Frames zip: $framesZipUrl');
       }
 
+      // BitHuman Agent join lassen (falls agent_id vorhanden)
+      if (agentId != null && agentId.isNotEmpty) {
+        try {
+          final agentUrl = orchUrl.endsWith('/')
+              ? '${orchUrl}agent/join'
+              : '$orchUrl/agent/join';
+          await http.post(
+            Uri.parse(agentUrl),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'room': room, 'agent_id': agentId}),
+          ).timeout(const Duration(seconds: 10));
+          debugPrint('✅ BitHuman Agent join requested');
+        } catch (e) {
+          debugPrint('⚠️ BitHuman Agent join failed: $e');
+        }
+      }
+
       final res = await http.post(
         Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
@@ -617,6 +640,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           'avatar_id': avatarId,
           // MuseTalk entfernt – idle_video_url wird serverseitig ignoriert
           'idle_video_url': idleVideoUrl,
+          if (agentId != null) 'agent_id': agentId,
         }),
       ).timeout(const Duration(seconds: 10));
 
@@ -4067,7 +4091,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         } catch (_) {}
 
         // 2) Media Asset laden (neue Struktur)
-        Future<DocumentSnapshot<Map<String, dynamic>>> _get(String col) =>
+        Future<DocumentSnapshot<Map<String, dynamic>>> get(String col) =>
             FirebaseFirestore.instance
                 .collection('avatars')
                 .doc(_avatarData!.id)
@@ -4078,7 +4102,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         DocumentSnapshot<Map<String, dynamic>> snap;
         Map<String, dynamic>? data;
         for (final col in const ['images', 'videos', 'audios', 'documents']) {
-          snap = await _get(col);
+          snap = await get(col);
           if (snap.exists) {
             data = snap.data();
             break;

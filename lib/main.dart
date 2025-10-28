@@ -43,7 +43,7 @@ import 'package:flutter_localized_locales/flutter_localized_locales.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Deaktiviert jegliche Page-Transitions (kein Slide/Fade) für Navigator-Routen - das ist gut!
+/// Deaktiviert jegliche Page-Transitions (kein Slide/Fade) für Navigator-Routen - das ist gut ok sehr gut!!
 class NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
   const NoAnimationPageTransitionsBuilder();
 

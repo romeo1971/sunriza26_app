@@ -308,6 +308,16 @@ class StreamingStrategy implements LipsyncStrategy {
         await _audioPlayer!.play();
         debugPrint('✅ HTTP Audio PLAYING (300-700ms)');
         onPlaybackStateChanged?.call(true);
+
+        // Zusätzlich Orchestrator /speak triggern (BitHuman Lipsync)
+        try {
+          final speakUrl = httpBase.endsWith('/') ? '${httpBase}speak' : '$httpBase/speak';
+          final String? room = await _awaitRoomName(timeout: const Duration(milliseconds: 500));
+          final payload = <String, dynamic>{'text': text, if (room != null && room.isNotEmpty) 'room': room};
+          // Fire-and-forget
+          // ignore: unawaited_futures
+          http.post(Uri.parse(speakUrl), headers: {'Content-Type': 'application/json'}, body: jsonEncode(payload)).timeout(const Duration(seconds: 2));
+        } catch (_) {}
       } catch (e) {
         debugPrint('❌ HTTP Audio failed: $e');
       }

@@ -221,7 +221,7 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
     final isEmpty = coverImage == null;
     
     // Portrait (9:16): halbe Breite, Landscape (16:9): volle Breite
-    final bool isPortrait = isEmpty || (coverImage?.aspectRatio ?? 0.5625) < 1.0;
+    final bool isPortrait = isEmpty || (coverImage.aspectRatio ?? 0.5625) < 1.0;
     
     if (isPortrait) {
       // Portrait: halbe Breite, AspectRatio 9:16

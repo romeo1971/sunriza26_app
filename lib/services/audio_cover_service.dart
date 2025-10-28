@@ -108,7 +108,7 @@ class AudioCoverService {
       if (m != null) timestamp = m.group(1);
     }
 
-    Future<void> _tryDelete(String path) async {
+    Future<void> tryDelete(String path) async {
       final ref = _storage.ref().child(path);
       try {
         await ref.delete();
@@ -116,17 +116,17 @@ class AudioCoverService {
     }
 
     if (timestamp != null) {
-      await _tryDelete('avatars/$avatarId/audio/$timestamp/coverImages/image$oneBased.jpg');
-      await _tryDelete('avatars/$avatarId/audio/$timestamp/coverImages/thumbs/thumb$oneBased.jpg');
+      await tryDelete('avatars/$avatarId/audio/$timestamp/coverImages/image$oneBased.jpg');
+      await tryDelete('avatars/$avatarId/audio/$timestamp/coverImages/thumbs/thumb$oneBased.jpg');
     }
 
     // 2) Neuer Pfad (audioId)
-    await _tryDelete('avatars/$avatarId/audio/$audioId/coverImages/image$oneBased.jpg');
-    await _tryDelete('avatars/$avatarId/audio/$audioId/coverImages/thumbs/thumb$oneBased.jpg');
+    await tryDelete('avatars/$avatarId/audio/$audioId/coverImages/image$oneBased.jpg');
+    await tryDelete('avatars/$avatarId/audio/$audioId/coverImages/thumbs/thumb$oneBased.jpg');
 
     // 3) Alter Pfad ohne avatarId
-    await _tryDelete('audio/$audioId/coverImages/image$oneBased.jpg');
-    await _tryDelete('audio/$audioId/coverImages/thumbs/thumb$oneBased.jpg');
+    await tryDelete('audio/$audioId/coverImages/image$oneBased.jpg');
+    await tryDelete('audio/$audioId/coverImages/thumbs/thumb$oneBased.jpg');
   }
 
   /// Lädt Cover Images aus Firebase Storage

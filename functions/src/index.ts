@@ -4,17 +4,15 @@
  */
 
 import 'dotenv/config';
-import * as functions from 'firebase-functions';
-// admin ist bereits oben initialisiert
+import * as functions from 'firebase-functions/v1';
+import * as admin from 'firebase-admin';
 import cors from 'cors';
 import { generateSpeech } from './textToSpeech';
 import { generateLipsyncVideo, validateVideoRequest } from './vertexAI';
 import { getConfig } from './config';
 import { RAGService } from './rag_service';
-// Entfernt: Unbenutzte Importe aus pinecone_service
 import fetch from 'node-fetch';
 import OpenAI from 'openai';
-import * as admin from 'firebase-admin';
 import { PassThrough } from 'stream';
 import ffmpegPath from 'ffmpeg-static';
 import ffmpeg from 'fluent-ffmpeg';
@@ -24,60 +22,19 @@ import * as path from 'path';
 import sharp from 'sharp';
 import * as functionsStorage from 'firebase-functions/v2/storage';
 
-// Stripe Checkout für Credits
+// Exports
+export * from './avatarChat';
 export * from './stripeCheckout';
-
-// eRechnung Generator
 export * from './invoiceGenerator';
-
-// Media-Kauf (Credits oder Stripe)
 export * from './mediaCheckout';
-
-// Stripe Connect (Seller Marketplace)
 export * from './stripeConnect';
-
-// Payment Methods Management (Karten speichern)
 export * from './paymentMethods';
 
-// Stripe Checkout für Credits
-export * from './stripeCheckout';
-
-// eRechnung Generator
-export * from './invoiceGenerator';
-
-// Media-Kauf (Credits oder Stripe)
-export * from './mediaCheckout';
-
-// Firebase Admin initialisieren: lokal mit expliziten Credentials, in Cloud mit Default
-if (process.env.GOOGLE_APPLICATION_CREDENTIALS || process.env.FIREBASE_CLIENT_EMAIL) {
-  // Lokale Entwicklung: nutze Service-Account aus .env oder Datei
-  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT_ID;
-  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
-  const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
-
-  if (clientEmail && privateKey) {
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: projectId,
-        clientEmail: clientEmail,
-        privateKey: privateKey,
-      }),
-      projectId: projectId,
-    });
-  } else {
-    // Fallback auf Datei, wenn gesetzt
-    if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
-      admin.initializeApp({
-        credential: admin.credential.applicationDefault(),
-        projectId: projectId,
-      });
-    } else {
-      admin.initializeApp();
-    }
-  }
-} else {
-  // In Cloud Functions: Default Credentials
-  admin.initializeApp();
+// Admin init (falls notwendig)
+if (!admin.apps.length) {
+  try {
+    admin.initializeApp();
+  } catch (_) {}
 }
 
 // CORS für Cross-Origin Requests
@@ -1258,6 +1215,7 @@ export const llm = functions
 
         let answer = '';
         try {
+          // Priorisiere OpenAI (günstiger laut Vorgabe), Gemini als Fallback
           answer = await tryOpenAI();
         } catch (e) {
           console.warn('OpenAI Fehler, fallback auf Gemini:', e);

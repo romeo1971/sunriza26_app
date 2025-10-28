@@ -1,5 +1,8 @@
 {
   "dependencies": {
-    "livekit-server-sdk": "^2.14.0"
+    "firebase-admin": "^13.5.0",
+    "googleapis": "^164.1.0",
+    "livekit-server-sdk": "^2.14.0",
+    "node-fetch": "^2.7.0"
   }
 }

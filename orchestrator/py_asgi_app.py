@@ -77,6 +77,7 @@ ORCH_PUBLISH_AUDIO = os.getenv("ORCH_PUBLISH_AUDIO", "1").strip() not in ("0", "
 current_audio_room: Optional[str] = None
 last_client_room: Optional[str] = None  # Fallback: letzter room aus speak-Request
 _audio48k_buf = bytearray()  # Frames für LiveKit in 20ms Stücken puffern
+room_to_agent: dict[str, str] = {}
 
 # MuseTalk entfernt – keine globalen Forwarder mehr
 ORCH_FORWARD_TO_MUSETALK = False
@@ -316,13 +317,14 @@ async def _mt_idle_watcher(room: str, ws: Any, idle_seconds: int = 20):
 
 @app.post("/publisher/start")
 async def publisher_start(req: Request):
-    """Start LiveKit publisher (MuseTalk entfernt)"""
+    """Start LiveKit publisher und optional BitHuman-Agent (falls konfiguriert)."""
     body = await req.json()
     room = body.get("room")
     if not room:
         raise HTTPException(400, "room required")
     idle_video_url = body.get("idle_video_url")  # legacy, ignoriert
     frames_zip_url = body.get("frames_zip_url")  # legacy, ignoriert
+    agent_id = (body.get("agent_id") or "").strip()
     
     if not idle_video_url:
         raise HTTPException(status_code=400, detail="idle_video_url required")
@@ -350,6 +352,23 @@ async def publisher_start(req: Request):
         except Exception:
             pass
 
+        # Optional: BitHuman-Agent via externem Service starten
+        try:
+            bh_url = os.getenv("BITHUMAN_AGENT_START_URL", "").strip()
+            if bh_url and agent_id:
+                import httpx
+                payload = {"room": room, "agent_id": agent_id}
+                # Fire-and-forget (kein Await, kurzer Timeout)
+                async def _fire():
+                    try:
+                        async with httpx.AsyncClient(timeout=5.0) as client:
+                            await client.post(bh_url, json=payload)
+                    except Exception:
+                        pass
+                asyncio.create_task(_fire())
+        except Exception:
+            pass
+
         # WICHTIG: HTTP Call SOFORT zurückgeben (verhindert hängende Container!)
         # Idle Watcher startet NACH dem Return (im Event Loop, nicht im Request-Context)
         return {"status": "started", "room": room}
@@ -363,6 +382,12 @@ async def publisher_start(req: Request):
         # Falls kein aktiver WS eingetragen wurde, Cleanup aus Idempotenz-Set
         if room not in musetalk_audio_streams:
             active_publisher_rooms.discard(room)
+        # Agent-ID merken (für spätere speak-Calls)
+        try:
+            if agent_id:
+                room_to_agent[room] = agent_id
+        except Exception:
+            pass
 
 
 @app.post("/publisher/stop")
@@ -383,6 +408,11 @@ async def publisher_stop(req: Request):
     except Exception:
         # Niemals 500 beim Stop zurückgeben – Client-Fluss muss stabil bleiben
         return {"status": "stopped", "room": room}
+    finally:
+        try:
+            room_to_agent.pop(room, None)
+        except Exception:
+            pass
 
 async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: bool = True, pcm_needed: bool = False):
     if not ELEVEN_KEY:
@@ -563,6 +593,50 @@ async def _safe_send(ws: WebSocket, obj: dict):
     except Exception:
         # Client bereits weg – ignorieren
         pass
+@app.post("/agent/join")
+async def agent_join(req: Request):
+    """Proxy: BitHuman Agent in Room joinen lassen"""
+    try:
+        body = await req.json()
+        room = (body.get("room") or "").strip()
+        agent_id = (body.get("agent_id") or "").strip()
+        if not (room and agent_id):
+            return {"status": "error", "message": "room und agent_id erforderlich"}
+
+        bh_join_url = os.getenv("BITHUMAN_AGENT_JOIN_URL", "").strip()
+        if not bh_join_url:
+            return {"status": "ignored", "reason": "BITHUMAN_AGENT_JOIN_URL not set"}
+
+        import httpx
+        payload = {"room": room, "agent_id": agent_id}
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(bh_join_url, json=payload)
+            return resp.json()
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/speak")
+async def speak(req: Request):
+    """Triggert optional einen BitHuman-Agenten für Lipsync im Raum."""
+    try:
+        body = await req.json()
+        text = (body.get("text") or "").strip()
+        room = (body.get("room") or last_client_room or current_audio_room or "").strip()
+        agent_id = (body.get("agent_id") or room_to_agent.get(room) or "").strip()
+        if not (text and room and agent_id):
+            return {"status": "ignored", "reason": "missing text/room/agent_id"}
+
+        bh_url = os.getenv("BITHUMAN_AGENT_SPEAK_URL", "").strip()
+        if not bh_url:
+            return {"status": "ignored", "reason": "BITHUMAN_AGENT_SPEAK_URL not set"}
+
+        import httpx
+        payload = {"text": text, "room": room, "agent_id": agent_id}
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            await client.post(bh_url, json=payload)
+        return {"status": "ok"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 
 # MuseTalk Debug-Endpoint entfernt

@@ -37,172 +37,110 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.stripeWebhook = exports.createCreditsCheckoutSession = void 0;
-const functions = __importStar(require("firebase-functions"));
+const https_1 = require("firebase-functions/v2/https");
 const stripe_1 = __importDefault(require("stripe"));
 const admin = __importStar(require("firebase-admin"));
-const mediaCheckout_1 = require("./mediaCheckout");
-// Stripe nur initialisieren wenn Secret Key vorhanden
+// Stripe nur initialisieren wenn Secret Key vorhanden (env)
 const getStripe = () => {
-    var _a;
-    const secretKey = ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.secret_key) || process.env.STRIPE_SECRET_KEY || '';
+    const secretKey = process.env.STRIPE_SECRET_KEY || '';
     if (!secretKey) {
-        throw new functions.https.HttpsError('failed-precondition', 'Stripe Secret Key nicht konfiguriert');
+        throw new https_1.HttpsError('failed-precondition', 'Stripe Secret Key nicht konfiguriert');
     }
-    return new stripe_1.default(secretKey, {
-        apiVersion: '2025-09-30.clover',
-    });
+    return new stripe_1.default(secretKey, { apiVersion: '2025-09-30.clover' });
 };
-/**
- * Erstellt eine Stripe Checkout Session für Credits-Kauf
- *
- * Test Mode: Verwende Stripe Test Keys
- * Live Mode: Verwende Stripe Live Keys
- */
-exports.createCreditsCheckoutSession = functions
-    .region('us-central1')
-    .https.onCall(async (data, context) => {
-    var _a, _b;
-    // Auth-Check
-    if (!context.auth) {
-        throw new functions.https.HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
-    }
-    const userId = context.auth.uid;
-    const { euroAmount, amount, // Preis in Cents (EUR oder USD)
-    currency, // 'eur' oder 'usd'
-    exchangeRate, credits, } = data;
-    // Validierung
+exports.createCreditsCheckoutSession = (0, https_1.onCall)({ region: 'us-central1' }, async (req) => {
+    const auth = req.auth;
+    const data = req.data || {};
+    if (!auth)
+        throw new https_1.HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
+    const userId = auth.uid;
+    const { euroAmount, amount, currency, exchangeRate, credits } = data;
     if (!amount || !currency || !credits || !euroAmount) {
-        throw new functions.https.HttpsError('invalid-argument', 'Fehlende Parameter: amount, currency, credits, euroAmount erforderlich');
+        throw new https_1.HttpsError('invalid-argument', 'Fehlende Parameter: amount, currency, credits, euroAmount erforderlich');
     }
     if (currency !== 'eur' && currency !== 'usd') {
-        throw new functions.https.HttpsError('invalid-argument', 'Währung muss eur oder usd sein');
+        throw new https_1.HttpsError('invalid-argument', 'Währung muss eur oder usd sein');
     }
     try {
-        console.log('Creating Credits Checkout Session for user:', userId);
-        console.log('Credits:', credits, 'Amount:', amount, 'Currency:', currency);
         const stripe = getStripe();
-        console.log('Stripe initialized successfully');
-        // Checkout Session erstellen
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
-            line_items: [
-                {
+            line_items: [{
                     price_data: {
-                        currency: currency,
-                        product_data: {
-                            name: `${credits} Credits`,
-                            description: `${credits} Credits für Sunriza (Basis: ${euroAmount} EUR)`,
-                            images: [
-                                'https://firebasestorage.googleapis.com/v0/b/sunriza26.appspot.com/o/app-icon.png?alt=media',
-                            ],
-                        },
-                        unit_amount: amount, // in Cents
+                        currency,
+                        product_data: { name: `${credits} Credits`, description: `${credits} Credits für Sunriza (Basis: ${euroAmount} EUR)` },
+                        unit_amount: amount,
                     },
                     quantity: 1,
-                },
-            ],
+                }],
             mode: 'payment',
-            success_url: `${((_a = functions.config().app) === null || _a === void 0 ? void 0 : _a.url) || 'http://localhost:4202'}/credits-shop?success=true&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${((_b = functions.config().app) === null || _b === void 0 ? void 0 : _b.url) || 'http://localhost:4202'}/credits-shop?cancelled=true`,
+            success_url: `${process.env.APP_URL || 'http://localhost:4202'}/credits-shop?success=true&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${process.env.APP_URL || 'http://localhost:4202'}/credits-shop?cancelled=true`,
             client_reference_id: userId,
-            metadata: {
-                userId,
-                credits: credits.toString(),
-                euroAmount: euroAmount.toString(),
-                exchangeRate: (exchangeRate === null || exchangeRate === void 0 ? void 0 : exchangeRate.toString()) || '1.0',
-                type: 'credits_purchase',
-            },
+            metadata: { userId, credits: String(credits), euroAmount: String(euroAmount), exchangeRate: exchangeRate ? String(exchangeRate) : '1.0', type: 'credits_purchase' },
         });
-        console.log('Checkout Session created:', session.id);
-        return {
-            sessionId: session.id,
-            url: session.url,
-        };
+        return { sessionId: session.id, url: session.url };
     }
     catch (error) {
-        console.error('❌ Stripe Checkout Error:', error);
-        console.error('Error details:', {
-            message: error.message,
-            type: error.type,
-            code: error.code,
-            stack: error.stack,
-        });
-        // Spezifische Fehler
-        if (error.type === 'StripeAuthenticationError') {
-            throw new functions.https.HttpsError('failed-precondition', 'Stripe API Key ungültig oder nicht konfiguriert');
-        }
-        throw new functions.https.HttpsError('internal', `Stripe Error: ${error.message || 'Unbekannter Fehler'}`);
+        if (error.type === 'StripeAuthenticationError')
+            throw new https_1.HttpsError('failed-precondition', 'Stripe API Key ungültig oder nicht konfiguriert');
+        throw new https_1.HttpsError('internal', `Stripe Error: ${error.message || 'Unbekannter Fehler'}`);
     }
 });
-/**
- * Stripe Webhook Handler
- * Verarbeitet erfolgreiche Zahlungen und schreibt Credits gut
- */
-exports.stripeWebhook = functions
-    .region('us-central1')
-    .https.onRequest(async (req, res) => {
-    var _a;
+exports.stripeWebhook = (0, https_1.onRequest)({ region: 'us-central1' }, async (req, res) => {
     const sig = req.headers['stripe-signature'];
-    const webhookSecret = ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.webhook_secret) || process.env.STRIPE_WEBHOOK_SECRET || '';
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
     if (!webhookSecret) {
-        console.error('Webhook Secret fehlt');
         res.status(500).send('Webhook Secret nicht konfiguriert');
         return;
     }
-    let event;
     const stripe = getStripe();
+    let event;
     try {
-        event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
+        // @ts-ignore
+        event = stripe.webhooks.constructEvent(req.rawBody || req.body, sig, webhookSecret);
     }
     catch (err) {
-        console.error('Webhook Signature Verification failed:', err.message);
         res.status(400).send(`Webhook Error: ${err.message}`);
         return;
     }
-    // Handle checkout.session.completed
     if (event.type === 'checkout.session.completed') {
         const session = event.data.object;
-        const { userId, credits, euroAmount, exchangeRate, type } = session.metadata || {};
-        // Media-Kauf: Separater Handler
-        if (type === 'media_purchase') {
-            await (0, mediaCheckout_1.handleMediaPurchaseWebhook)(session, admin);
+        const md = session.metadata || {};
+        if (md.type === 'media_purchase') {
+            try {
+                const path = './mediaCheckout';
+                const mod = await Promise.resolve(`${path}`).then(s => __importStar(require(s)));
+                if (mod && typeof mod.handleMediaPurchaseWebhook === 'function') {
+                    await mod.handleMediaPurchaseWebhook(session, admin);
+                }
+            }
+            catch (_) { }
             res.json({ received: true });
             return;
         }
-        // Credits-Kauf
+        const { userId, credits, euroAmount, exchangeRate } = md;
         if (!userId || !credits) {
-            console.error('Fehlende Metadata in Session:', session.id);
             res.status(400).send('Fehlende Metadata');
             return;
         }
-        const creditsNum = parseInt(credits);
-        const euroAmountNum = parseFloat(euroAmount || '0');
-        const exchangeRateNum = parseFloat(exchangeRate || '1.0');
+        const creditsNum = parseInt(String(credits));
+        const euroAmountNum = parseFloat(String(euroAmount || '0'));
+        const exchangeRateNum = parseFloat(String(exchangeRate || '1.0'));
         try {
-            // Credits zum User hinzufügen
             const userRef = admin.firestore().collection('users').doc(userId);
             await userRef.update({
                 credits: admin.firestore.FieldValue.increment(creditsNum),
                 creditsPurchased: admin.firestore.FieldValue.increment(creditsNum),
             });
-            // Transaktion speichern
             await userRef.collection('transactions').add({
-                userId,
-                type: 'credit_purchase',
-                credits: creditsNum,
-                euroAmount: euroAmountNum,
-                amount: session.amount_total || 0,
-                currency: session.currency || 'eur',
-                exchangeRate: exchangeRateNum,
-                stripeSessionId: session.id,
-                paymentIntent: session.payment_intent,
-                status: 'completed',
+                userId, type: 'credit_purchase', credits: creditsNum, euroAmount: euroAmountNum,
+                amount: session.amount_total || 0, currency: session.currency || 'eur', exchangeRate: exchangeRateNum,
+                stripeSessionId: session.id, paymentIntent: session.payment_intent, status: 'completed',
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
-            console.log(`Credits gutgeschrieben: User ${userId} - ${creditsNum} Credits`);
         }
-        catch (error) {
-            console.error('Fehler beim Credits gutschreiben:', error);
+        catch (e) {
             res.status(500).send('Interner Fehler');
             return;
         }

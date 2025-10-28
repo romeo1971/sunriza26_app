@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../models/media_models.dart';
 import '../../theme/app_theme.dart';
-import 'blur_pixelation_filter.dart';
 import 'audio_cover_rotation_widget.dart';
-import 'dart:math' as math;
 import '../../services/audio_cover_service.dart';
 
 /// Universal Timeline Media Slider - zeigt alle Media-Typen slidend von unten nach oben
