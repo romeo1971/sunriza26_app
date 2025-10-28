@@ -537,6 +537,37 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           ),
         ]);
         debugPrint('✅ LiveKit connected successfully!');
+        
+        // Bithuman Agent sofort starten
+        if (_avatarData != null) {
+          try {
+            final doc = await FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(_avatarData!.id)
+                .get();
+            if (doc.exists) {
+              final liveAvatar = doc.data()?['liveAvatar'] as Map<String, dynamic>?;
+              final agentId = (liveAvatar?['agentId'] as String?)?.trim();
+              if (agentId != null && agentId.isNotEmpty) {
+                debugPrint('🤖 Starting Bithuman Agent: $agentId for room: $room');
+                final orchUrl = AppConfig.orchestratorUrl
+                    .replaceFirst('wss://', 'https://')
+                    .replaceFirst('ws://', 'http://');
+                final agentUrl = orchUrl.endsWith('/')
+                    ? '${orchUrl}agent/join'
+                    : '$orchUrl/agent/join';
+                final agentRes = await http.post(
+                  Uri.parse(agentUrl),
+                  headers: {'Content-Type': 'application/json'},
+                  body: jsonEncode({'room': room, 'agent_id': agentId}),
+                ).timeout(const Duration(seconds: 10));
+                debugPrint('✅ Bithuman Agent join requested (${agentRes.statusCode})');
+              }
+            }
+          } catch (e) {
+            debugPrint('⚠️ Bithuman Agent start failed: $e');
+          }
+        }
       } catch (joinError) {
         debugPrint('❌ LiveKit join failed (attempt 1/2): $joinError');
         // Retry nach 2s (Network glitch, etc.)
@@ -590,8 +621,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           latentsUrl = basicDynamics?['latentsUrl'] as String?;
         final liveAvatar = data?['liveAvatar'] as Map<String, dynamic>?;
         final liveAgentId = (liveAvatar?['agentId'] as String?)?.trim();
+        debugPrint('🤖 Bithuman liveAvatar data: $liveAvatar');
+        debugPrint('🤖 Bithuman agentId: $liveAgentId');
         if (liveAgentId != null && liveAgentId.isNotEmpty) {
           agentId = liveAgentId;
+          debugPrint('✅ Bithuman agentId gesetzt: $agentId');
         }
         }
       }

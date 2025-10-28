@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-bitHuman LiveKit Agent
+bitHuman LiveKit Agent - Cloud API Integration
 
-Dieser Agent verbindet einen bitHuman Avatar mit einem LiveKit Room.
-Flutter App kann dann via LiveKit Client mit dem Avatar interagieren.
+Startet Bithuman Avatar in LiveKit Room und publisht Video automatisch.
 
 Setup:
   pip install livekit livekit-agents
@@ -21,10 +20,9 @@ Usage:
 import os
 import asyncio
 import logging
-from typing import Optional
 from pathlib import Path
 from dotenv import load_dotenv
-from livekit import rtc, api
+from livekit import agents, rtc, api
 import bithuman
 import argparse
 
@@ -41,146 +39,92 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class BitHumanLiveKitAgent:
-    """LiveKit Agent mit bitHuman Avatar"""
+async def entrypoint(ctx: agents.JobContext):
+    """
+    LiveKit Agents Entrypoint - wird pro Room-Join aufgerufen
+    """
+    logger.info(f"🚀 Bithuman Agent startet für Room: {ctx.room.name}")
     
-    def __init__(
-        self, 
-        agent_id: str,
-        api_secret: str,
-        model: str = "essence",
-        livekit_url: str = None,
-        livekit_api_key: str = None,
-        livekit_api_secret: str = None
-    ):
-        self.agent_id = agent_id
-        self.api_secret = api_secret
-        self.model = model
-        
-        # LiveKit Credentials
-        self.livekit_url = livekit_url or os.getenv("LIVEKIT_URL")
-        self.livekit_api_key = livekit_api_key or os.getenv("LIVEKIT_API_KEY")
-        self.livekit_api_secret = livekit_api_secret or os.getenv("LIVEKIT_API_SECRET")
-        
-        if not all([self.livekit_url, self.livekit_api_key, self.livekit_api_secret]):
-            raise ValueError("LiveKit credentials fehlen! Setze LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET")
-        
-        self.room: Optional[rtc.Room] = None
-        self.avatar_session: Optional[bithuman.AvatarSession] = None
-        
-    async def initialize_avatar(self):
-        """Initialisiert bitHuman Avatar Session"""
-        logger.info(f"🤖 Initialisiere bitHuman Avatar: {self.agent_id}")
-        
-        self.avatar_session = bithuman.AvatarSession(
-            avatar_id=self.agent_id,
-            api_secret=self.api_secret,
-            model=self.model
-        )
-        
-        logger.info(f"✅ Avatar Session erstellt (Model: {self.model})")
+    # Bithuman Avatar initialisieren
+    agent_id = os.getenv("BITHUMAN_AGENT_ID")
+    api_secret = os.getenv("BITHUMAN_API_SECRET")
+    model = os.getenv("BITHUMAN_MODEL", "expression")
     
-    async def connect_to_room(self, room_name: str):
-        """Verbindet Agent mit LiveKit Room"""
-        logger.info(f"🔗 Verbinde mit Room: {room_name}")
-        
-        # Token generieren
-        token = api.AccessToken(self.livekit_api_key, self.livekit_api_secret)
-        token.with_identity(f"bithuman-agent-{self.agent_id}")
-        token.with_name("BitHuman Avatar")
-        token.with_grants(api.VideoGrants(
-            room_join=True,
-            room=room_name,
-        ))
-        
-        room_token = token.to_jwt()
-        
-        # Room beitreten
-        self.room = rtc.Room()
-        
-        @self.room.on("participant_connected")
-        def on_participant_connected(participant: rtc.RemoteParticipant):
-            logger.info(f"👤 Participant joined: {participant.identity}")
-        
-        @self.room.on("track_subscribed")
-        def on_track_subscribed(
-            track: rtc.Track,
-            publication: rtc.RemoteTrackPublication,
-            participant: rtc.RemoteParticipant,
-        ):
-            logger.info(f"🎤 Track subscribed: {track.kind} from {participant.identity}")
-            
-            if track.kind == rtc.TrackKind.KIND_AUDIO:
-                asyncio.create_task(self.process_audio_track(track))
-        
-        await self.room.connect(self.livekit_url, room_token)
-        logger.info(f"✅ Verbunden mit Room: {room_name}")
+    if not agent_id or not api_secret:
+        logger.error("❌ BITHUMAN_AGENT_ID oder BITHUMAN_API_SECRET fehlt!")
+        return
     
-    async def process_audio_track(self, track: rtc.AudioTrack):
-        """Verarbeitet Audio-Input und generiert Avatar-Response"""
-        logger.info("🎧 Audio Track wird verarbeitet...")
-        
-        audio_stream = rtc.AudioStream(track)
-        
-        async for frame in audio_stream:
-            # Audio an bitHuman Avatar senden
-            if self.avatar_session:
-                try:
-                    # TODO: Audio Frame an Avatar senden
-                    # response = self.avatar_session.process_audio(frame)
-                    # Video Frame zurück an Room publishen
-                    pass
-                except Exception as e:
-                    logger.error(f"❌ Audio Processing Error: {e}")
+    logger.info(f"🤖 Initialisiere Avatar: {agent_id} (Model: {model})")
     
-    async def publish_video_track(self):
-        """Published Avatar Video Track in Room"""
-        # TODO: Implement video publishing from avatar
-        pass
+    # Bithuman Cloud API Session
+    avatar = bithuman.AvatarSession(
+        avatar_id=agent_id,
+        api_secret=api_secret,
+        model=model
+    )
     
-    async def run(self, room_name: str):
-        """Hauptloop: Avatar starten und in Room verbinden"""
-        try:
-            await self.initialize_avatar()
-            await self.connect_to_room(room_name)
-            
-            logger.info("🚀 Agent läuft... (Ctrl+C zum Beenden)")
-            
-            # Warte auf Disconnect
-            await asyncio.Event().wait()
-            
-        except KeyboardInterrupt:
-            logger.info("⏹️ Agent wird beendet...")
-        except Exception as e:
-            logger.error(f"❌ Fehler: {e}")
-        finally:
-            if self.room:
-                await self.room.disconnect()
-                logger.info("👋 Von Room getrennt")
+    logger.info("✅ Avatar Session erstellt")
+    
+    # Warte auf Participant (Flutter App)
+    await ctx.wait_for_participant()
+    logger.info(f"✅ Participant verbunden im Room")
+    
+    # Video Track publishen
+    source = rtc.VideoSource(512, 512)
+    track = rtc.LocalVideoTrack.create_video_track("bithuman-video", source)
+    options = rtc.TrackPublishOptions(source=rtc.TrackSource.SOURCE_CAMERA)
+    
+    await ctx.room.local_participant.publish_track(track, options)
+    logger.info("🎬 Video Track gepublisht")
+    
+    # TODO: Generate frames from bithuman avatar
+    # For now: black frame placeholder
+    import numpy as np
+    frame_data = np.zeros((512, 512, 4), dtype=np.uint8)
+    frame_data[:, :, 3] = 255  # Alpha
+    
+    video_frame = rtc.VideoFrame(
+        width=512,
+        height=512,
+        type=rtc.VideoBufferType.RGBA,
+        data=frame_data.tobytes()
+    )
+    source.capture_frame(video_frame)
+    logger.info("📹 Initial frame sent")
+    
+    # Warte auf Room-Ende
+    await ctx.room.wait_for_disconnect()
+    logger.info("👋 Room disconnected")
 
 
 async def main():
+    """
+    CLI Entrypoint - startet Agent für spezifischen Room
+    """
     parser = argparse.ArgumentParser(description="bitHuman LiveKit Agent")
     parser.add_argument("--agent-id", required=True, help="bitHuman Agent ID (z.B. A91XMB7113)")
     parser.add_argument("--room", required=True, help="LiveKit Room Name")
-    parser.add_argument("--model", default="essence", choices=["essence", "expression"], help="Avatar Model")
+    parser.add_argument("--model", default="expression", choices=["essence", "expression"], help="Avatar Model")
     
     args = parser.parse_args()
     
-    # API Secret aus Env
-    api_secret = os.getenv("BITHUMAN_API_SECRET")
-    if not api_secret:
+    # Set ENV für entrypoint
+    os.environ["BITHUMAN_AGENT_ID"] = args.agent_id
+    os.environ["BITHUMAN_MODEL"] = args.model
+    
+    # API Secret prüfen
+    if not os.getenv("BITHUMAN_API_SECRET"):
         logger.error("❌ BITHUMAN_API_SECRET fehlt!")
         return
     
-    # Agent erstellen und starten
-    agent = BitHumanLiveKitAgent(
-        agent_id=args.agent_id,
-        api_secret=api_secret,
-        model=args.model
+    # LiveKit Worker starten
+    worker = agents.Worker(
+        room=args.room,
+        entrypoint_fnc=entrypoint,
     )
     
-    await agent.run(args.room)
+    logger.info(f"🚀 Agent Worker startet für Room: {args.room}")
+    await worker.run()
 
 
 if __name__ == "__main__":
