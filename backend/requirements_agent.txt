@@ -1,0 +1,27 @@
+# BitHuman LiveKit Agent - Complete Dependencies
+# ==============================================
+
+# Core LiveKit Agents mit Plugins
+livekit-agents[openai,bithuman,silero]>=1.2.16
+
+# ElevenLabs TTS (falls Plugin verfügbar)
+# Fallback: Wird in Modal/Docker zur Laufzeit versucht zu installieren
+
+# Pinecone Vector Database
+pinecone-client>=3.0.0
+
+# Firebase Admin für Config/Voice IDs
+firebase-admin>=6.4.0
+
+# OpenAI Client
+openai>=1.35.0
+
+# Environment Variables
+python-dotenv>=1.1.1
+
+# Logging
+loguru>=0.7.3
+
+# Async Support
+aiohttp>=3.8.0
+
