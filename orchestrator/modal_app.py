@@ -13,7 +13,9 @@ image = (
         "httpx",
         "livekit",
     )
-    .env({"REBUILD_TIMESTAMP": "2025-10-20-15:40"})
+    .run_commands(
+        "echo 'REBUILD: 2025-10-31-19:30'",  # ← Change date/time to force rebuild
+    )
     .add_local_file("orchestrator/py_asgi_app.py", "/app/py_asgi_app.py")
 )
 
@@ -37,5 +39,28 @@ def asgi():
     sys.path.insert(0, "/app")
     from py_asgi_app import app as fastapi_app
     return fastapi_app
+
+
+@app.function(
+    secrets=[
+        modal.Secret.from_name("lipsync-eleven"),
+        modal.Secret.from_name("liveportrait-ws"),
+        modal.Secret.from_name("livekit-cloud"),
+    ]
+)
+@modal.fastapi_endpoint(method="GET")
+def check_secrets():
+    """Debug: Check loaded secrets"""
+    import os
+    return {
+        "app": "lipsync-orchestrator",
+        "secrets": {
+            "livekit_url": os.getenv("LIVEKIT_URL", "NOT SET")[:30] + "..." if os.getenv("LIVEKIT_URL") else "NOT SET",
+            "livekit_api_key": os.getenv("LIVEKIT_API_KEY", "NOT SET")[:10] + "..." if os.getenv("LIVEKIT_API_KEY") else "NOT SET",
+            "livekit_api_secret": "***" if os.getenv("LIVEKIT_API_SECRET") else "NOT SET",
+            "elevenlabs_api_key": "***" if os.getenv("ELEVENLABS_API_KEY") else "NOT SET",
+            "liveportrait_ws_url": os.getenv("LIVEPORTRAIT_WS_URL", "NOT SET")[:50] + "..." if os.getenv("LIVEPORTRAIT_WS_URL") else "NOT SET",
+        }
+    }
 
 # Force rebuild: 2025-10-20 14:05 - Updated ELEVENLABS_API_KEY

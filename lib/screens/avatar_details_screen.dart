@@ -6191,7 +6191,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       // Kein Backend: überspringen
       return;
     }
-    final uri = Uri.parse('$base/avatar/memory/insert');
+    final uri = Uri.parse('$base/avatarMemoryInsert');
     final Map<String, dynamic> payload = {
       'user_id': userId,
       'avatar_id': avatarId,
@@ -6206,37 +6206,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (filePath != null) 'file_path': filePath,
     };
     try {
-      final res = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(payload),
-      );
+      final res = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 30));
       if (res.statusCode < 200 || res.statusCode >= 300) {
-        // Fallback: Debug-Upsert erzwingen, damit Namespace/Index sicher entstehen
-        await _fallbackDebugUpsert(
-          userId: userId,
-          avatarId: avatarId,
-          note: 'fallback:${fileName ?? 'text'}',
-        );
         if (mounted) {
           _showSystemSnack(
-            'Memory insert fehlgeschlagen (${res.statusCode}) – Fallback ausgeführt',
+            'Memory insert fehlgeschlagen (${res.statusCode}): ${res.body}',
           );
         }
       }
-    } catch (_) {
-      // Netzwerkfehler → Fallback
-      await _fallbackDebugUpsert(
-        userId: userId,
-        avatarId: avatarId,
-        note: 'fallback:${fileName ?? 'text'}',
-      );
+    } catch (e) {
       if (mounted) {
-        _showSystemSnack(
-          context.read<LocalizationService>().t(
-            'avatars.details.memoryInsertFallback',
-          ),
-        );
+        _showSystemSnack('Memory insert Fehler: $e');
       }
     }
   }

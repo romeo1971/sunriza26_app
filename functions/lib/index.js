@@ -65,6 +65,7 @@ const functionsStorage = __importStar(require("firebase-functions/v2/storage"));
 const https_1 = require("firebase-functions/v2/https");
 // Exports
 __exportStar(require("./avatarChat"), exports);
+__exportStar(require("./memoryApi"), exports);
 __exportStar(require("./stripeCheckout"), exports);
 __exportStar(require("./invoiceGenerator"), exports);
 __exportStar(require("./mediaCheckout"), exports);

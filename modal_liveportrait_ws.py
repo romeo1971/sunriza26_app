@@ -27,6 +27,9 @@ image = (
         "opencv-python-headless",
         "numpy",
     )
+    .run_commands(
+        "echo 'REBUILD: 2025-10-31-19:30'",  # ← Change date/time to force rebuild
+    )
     # Nur die eine Datei bundeln – vermeidet große Mounts (API-Limit)
     .add_local_file(
         "backend/liveportrait_stream_server.py",
@@ -46,5 +49,18 @@ def asgi():
     from backend.liveportrait_stream_server import app as fastapi_app
 
     return fastapi_app
+
+
+@app.function()
+@modal.fastapi_endpoint(method="GET")
+def check_secrets():
+    """Debug: Check loaded secrets"""
+    import os
+    return {
+        "app": "liveportrait-ws",
+        "secrets": {
+            "note": "This app uses NO secrets"
+        }
+    }
 
 

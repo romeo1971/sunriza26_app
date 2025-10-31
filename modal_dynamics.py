@@ -54,8 +54,8 @@ image = (
         "which ffmpeg && ffmpeg -version | head -1",
         # KRITISCH: ONNX Runtime GPU Verifikation beim Build!
         "python3 -c 'import onnxruntime as ort; providers = ort.get_available_providers(); print(f\"ONNX Providers: {providers}\"); assert \"CUDAExecutionProvider\" in providers, \"GPU NOT AVAILABLE IN ONNX RUNTIME!\"'",
-        # Force rebuild marker
-        "echo 'IMAGE REBUILD V13 - GPU VERIFIKATION - '$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+        # Force rebuild marker - edit to force rebuild
+        "echo 'REBUILD: 2025-10-31-19:30'",  # ← Change date/time to force rebuild
     )
 )
 
@@ -640,3 +640,19 @@ def health():
         return {"status": "healthy", "service": "sunriza-dynamics-modal"}
     
     return web_app
+
+
+@app.function(
+    image=image,
+    secrets=[modal.Secret.from_name("firebase-credentials")],
+)
+@modal.fastapi_endpoint(method="GET")
+def check_secrets():
+    """Debug: Check loaded secrets"""
+    import os
+    return {
+        "app": "sunriza-dynamics",
+        "secrets": {
+            "firebase_credentials": "***" if os.getenv("FIREBASE_CREDENTIALS") else "NOT SET",
+        }
+    }

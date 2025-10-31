@@ -48,6 +48,7 @@ image = (
         # Sichtprüfung der installierten Pinecone-Pakete
         "python -m pip install --upgrade pip setuptools wheel",
         "python -m pip list | grep -i pinecone || true",
+        "echo 'REBUILD: 2025-10-31-19:30'",  # ← Change date/time to force rebuild
         gpu=None,
     )
 )
@@ -257,7 +258,7 @@ async def main():
     if PINECONE_AVAILABLE and os.getenv("PINECONE_API_KEY"):
         kb = KnowledgeBase(
             os.getenv("PINECONE_API_KEY"),
-            os.getenv("PINECONE_INDEX_NAME", "sunriza-knowledge"),
+            os.getenv("PINECONE_INDEX_NAME", "sunriza26-avatar-data"),
             os.getenv("OPENAI_API_KEY"),
             namespace
         )
@@ -296,38 +297,45 @@ async def main():
     session = AgentSession(llm=llm, vad=silero.VAD.load(), tts=tts)
     logger.info("✅ Agent Session created")
     
-    # BitHuman Avatar Session (MIT api_url wie bithumanProd!)
+    # BitHuman Avatar Session (MIT http_session FIX!)
+    import aiohttp
     logger.info("🎬 Creating BitHuman Avatar Session...")
-    avatar = bithuman.AvatarSession(
-        api_url=os.getenv("BITHUMAN_API_URL", "https://auth.api.bithuman.ai/v1/runtime-tokens/request"),
-        api_secret=os.getenv("BITHUMAN_API_SECRET"),
-        avatar_id=agent_id,
-    )
-    logger.info("✅ BitHuman Avatar Session created")
-    
-    # START BitHuman Avatar
-    logger.info("🚀 Starting BitHuman Avatar (streaming video to room)...")
-    await avatar.start(session, room=room)
-    logger.info("🎥 BitHuman Avatar STARTED - Video Track published!")
-    
-    # Start Agent
-    instructions = config.get('instructions') or f"Du bist {config.get('name', 'Avatar')}, ein hilfreicher Assistent."
-    logger.info(f"🤖 Starting Agent with instructions...")
-    await session.start(
-        agent=Agent(instructions=instructions),
-        room=room,
-        room_output_options=RoomOutputOptions(audio_enabled=False)
-    )
-    logger.info("✅ Agent fully running - listening for speech!")
-    
-    # Keep session alive
-    logger.info("⏳ Session running - waiting for disconnect...")
+    http_session = aiohttp.ClientSession()
     try:
-        await room.wait_for_disconnect()
-    except Exception as e:
-        logger.error(f"❌ Session error: {e}")
+        avatar = bithuman.AvatarSession(
+            api_url=os.getenv("BITHUMAN_API_URL", "https://auth.api.bithuman.ai/v1/runtime-tokens/request"),
+            api_secret=os.getenv("BITHUMAN_API_SECRET"),
+            avatar_id=agent_id,
+            http_session=http_session,  # ← FIX!
+        )
+        logger.info("✅ BitHuman Avatar Session created")
+        
+        # START BitHuman Avatar
+        logger.info("🚀 Starting BitHuman Avatar (streaming video to room)...")
+        await avatar.start(session, room=room)
+        logger.info("🎥 BitHuman Avatar STARTED - Video Track published!")
+        
+        # Start Agent
+        instructions = config.get('instructions') or f"Du bist {config.get('name', 'Avatar')}, ein hilfreicher Assistent."
+        logger.info(f"🤖 Starting Agent with instructions...")
+        await session.start(
+            agent=Agent(instructions=instructions),
+            room=room,
+            room_output_options=RoomOutputOptions(audio_enabled=False)
+        )
+        logger.info("✅ Agent fully running - listening for speech!")
+        
+        # Keep session alive
+        logger.info("⏳ Session running - waiting for disconnect...")
+        try:
+            await room.wait_for_disconnect()
+        except Exception as e:
+            logger.error(f"❌ Session error: {e}")
+        finally:
+            logger.info("👋 Session ended")
     finally:
-        logger.info("👋 Session ended")
+        await http_session.close()
+        logger.info("🔌 HTTP Session closed")
 
 
 if __name__ == "__main__":

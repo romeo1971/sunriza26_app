@@ -70,6 +70,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   bool _chatHandleHovered = false;
   bool _isStreamingSpeaking = false; // steuert LivePortrait Canvas
   bool _isFileSpeaking = false; // steuert Datei‑Replay
+  bool _isGreetingInProgress = true; // START gesperrt! Wird freigegeben nach Greeting
   // ignore: unused_field
   final bool _isMuted =
       false; // UI Mute (wirkt auf TTS-Player; LiveKit bleibt unverändert)
@@ -103,6 +104,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   final GlobalKey<LivePortraitCanvasState> _lpKey =
       GlobalKey<LivePortraitCanvasState>();
   StreamSubscription<PcmChunkEvent>? _pcmSub;
+  StreamSubscription<lk.RoomEvent>? _roomEventSub;
 
   // Live Avatar Animation (Sequential Chunked Loading für schnellen Start!)
   VideoPlayerController? _idleController; // Full 10s Loop (lädt im Hintergrund)
@@ -648,25 +650,28 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       }
 
       // BitHuman Agent join lassen (falls agent_id vorhanden)
+      debugPrint('🔍 agentId check: agentId=$agentId, isNull=${agentId == null}, isEmpty=${agentId?.isEmpty}');
       if (agentId != null && agentId.isNotEmpty) {
         try {
           const agentUrl = 'https://romeo1971--bithuman-complete-agent-join.modal.run';
+          debugPrint('🚀 Calling BitHuman Agent join: room=$room, agent_id=$agentId');
           final agentRes = await http.post(
             Uri.parse(agentUrl),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'room': room, 'agent_id': agentId}),
           ).timeout(const Duration(seconds: 10));
           
+          debugPrint('📡 Agent response: ${agentRes.statusCode}, body=${agentRes.body}');
           if (agentRes.statusCode >= 200 && agentRes.statusCode < 300) {
             debugPrint('✅ BitHuman Agent joined successfully');
-            // Agent wird Video Track erst publishen wenn er das erste Mal spricht
-            // Das passiert automatisch bei der ersten Chat-Antwort
           } else {
             debugPrint('⚠️ BitHuman Agent join failed: ${agentRes.statusCode}');
           }
         } catch (e) {
           debugPrint('⚠️ BitHuman Agent join error: $e');
         }
+      } else {
+        debugPrint('❌ AGENT_ID IS NULL OR EMPTY - CANNOT START AGENT!');
       }
 
       final res = await http.post(
@@ -923,6 +928,19 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint(
           '✅ VoiceId from _avatarData: ${_cachedVoiceId?.substring(0, 8) ?? "NULL"}...',
         );
+        
+        // Prüfe ob Input gesperrt bleiben soll (NUR bei BitHuman/ElevenLabs)
+        final willHaveTTS = _cachedVoiceId != null && _cachedVoiceId!.isNotEmpty;
+        final dynamicsCheck = _avatarData?.dynamics?['basic'] as Map<String, dynamic>?;
+        final willHaveBitHuman = (dynamicsCheck?['idleVideoUrl'] as String?)?.trim().isNotEmpty == true;
+        
+        // Sofort freigeben wenn KEINE TTS
+        if (!willHaveTTS && !willHaveBitHuman) {
+          debugPrint('🔓 Kein TTS/BitHuman → Input sofort freigegeben');
+          setState(() => _isGreetingInProgress = false);
+        } else {
+          debugPrint('🔒 TTS/BitHuman detected → Input bleibt gesperrt bis Greeting fertig');
+        }
 
         // Falls noch NULL: sofort aus User-Firestore nachladen
         if (_cachedVoiceId == null || _cachedVoiceId!.isEmpty) {
@@ -966,6 +984,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               (_avatarData?.training?['lipsyncEnabled'] as bool?) ?? true;
           if (!manual && _hasIdleDynamics && lipsyncEnabled) {
             await _maybeJoinLiveKit();
+            
+            // Auf BitHuman Agent warten - Backend braucht Zeit!
+            final lkService = LiveKitService();
+            if (lkService.isConnected && lkService.room != null) {
+              debugPrint('⏳ Warte auf BitHuman Agent (max 10s)...');
+              final agentConnected = await _waitForBithumanAgent(timeout: const Duration(seconds: 10));
+              if (agentConnected) {
+                debugPrint('✅ BitHuman Agent READY!');
+              } else {
+                debugPrint('⚠️ Agent timeout nach 10s - sende Greeting trotzdem');
+              }
+            }
           }
           
           if (!mounted) return; // Screen disposed? → STOP
@@ -979,9 +1009,51 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           debugPrint('🎙️ Auto‑Greeting START (_avatarData.id=${_avatarData!.id})');
           await _botSay(greet); // AWAIT damit Message garantiert gespeichert wird!
           debugPrint('🎙️ Auto‑Greeting DONE');
+          
+          // Input freigeben (war initial gesperrt)
+          if (mounted) {
+            debugPrint('🔓 Input wird jetzt FREIGEGEBEN');
+            setState(() => _isGreetingInProgress = false);
+          } else {
+            debugPrint('⚠️ Screen disposed - Input NICHT freigegeben');
+          }
         });
       }
     });
+  }
+
+  /// Wartet auf BitHuman Agent (agent-*)
+  Future<bool> _waitForBithumanAgent({Duration timeout = const Duration(seconds: 10)}) async {
+    final lkService = LiveKitService();
+    final room = lkService.room;
+    if (room == null) return false;
+    
+    // Prüfe ob Agent bereits da ist
+    final remoteParticipants = room.remoteParticipants.values.toList();
+    for (final p in remoteParticipants) {
+      if (p.identity.toLowerCase().startsWith('agent-')) {
+        debugPrint('✅ Agent bereits verbunden: ${p.identity}');
+        return true;
+      }
+    }
+    
+    // Warte auf ParticipantConnectedEvent
+    try {
+      await for (final event in lkService.events.timeout(timeout)) {
+        if (event is lk.ParticipantConnectedEvent) {
+          if (event.participant.identity.toLowerCase().startsWith('agent-')) {
+            debugPrint('✅ Agent joined: ${event.participant.identity}');
+            await Future.delayed(const Duration(milliseconds: 300));
+            return true;
+          }
+        }
+      }
+    } on TimeoutException {
+      return false;
+    } catch (_) {
+      return false;
+    }
+    return false;
   }
 
   Future<void> _initLiveAvatar(String avatarId) async {
@@ -1279,72 +1351,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               Positioned.fill(
                 child: Hero(
                   tag: 'avatar-chat-${_avatarData?.id}',
-                  child: ValueListenableBuilder<lk.VideoTrack?>(
-                    valueListenable: LiveKitService().remoteVideo,
-                    builder: (context, remoteVideoTrack, _) {
-                      // PRIORITÄT 1: LiveKit Video-Track (MuseTalk Lipsync)
-                      if (remoteVideoTrack != null) {
-                        debugPrint('🎥 RENDERING REMOTE VIDEO TRACK');
-                        return lk.VideoTrackRenderer(
-                          remoteVideoTrack,
-                          fit: lk.VideoViewFit.cover,
-                        );
-                      }
-                      debugPrint('📺 No remote video track - showing fallback');
-
-                      // PRIORITÄT 2: Sequential Chunked Video (Chunk1 → Chunk2 → Chunk3 → idle.mp4 Loop)
-                      if (_liveAvatarEnabled) {
-                        VideoPlayerController? activeCtrl;
-
-                        // Wähle den richtigen Controller basierend auf _currentChunk
-                        switch (_currentChunk) {
-                          case 1:
-                            activeCtrl = _chunk1Controller;
-                            break;
-                          case 2:
-                            activeCtrl = _chunk2Controller;
-                            break;
-                          case 3:
-                            activeCtrl = _chunk3Controller;
-                            break;
-                          case 4:
-                            activeCtrl = _idleController;
-                            break;
-                          default:
-                            activeCtrl = null;
-                        }
-
-                        if (activeCtrl != null &&
-                            activeCtrl.value.isInitialized) {
-                          return FittedBox(
-                            fit: BoxFit.cover,
-                            child: SizedBox(
-                              width: activeCtrl.value.size.width,
-                              height: activeCtrl.value.size.height,
-                              child: VideoPlayer(activeCtrl),
-                            ),
-                          );
-                        }
-                      }
-
-                      // PRIORITÄT 3: Statisches Hero-Image
-                      if (backgroundImage != null &&
-                          backgroundImage.isNotEmpty) {
-                        return Image.network(
-                          backgroundImage,
-                          fit: BoxFit.cover,
-                          frameBuilder:
-                              (context, child, frame, wasSynchronouslyLoaded) {
-                                if (wasSynchronouslyLoaded || frame != null) {
-                                  return child;
-                                }
-                                return Container(color: Colors.black);
-                              },
-                        );
-                      }
-
-                      // FALLBACK: Schwarz
-                      return Container(color: Colors.black);
+                  child: ValueListenableBuilder<bool>(
+                    valueListenable: LiveKitService().connected,
+                    builder: (context, isConnected, _) {
+                      return _buildVideoOrFallback(backgroundImage);
                     },
                   ),
                 ),
@@ -1860,6 +1870,96 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     );
   }
 
+  /// Video-Display mit direktem Room-Zugriff (bithumanProd Pattern)
+  Widget _buildVideoOrFallback(String? backgroundImage) {
+    final lkService = LiveKitService();
+    final room = lkService.room;
+    
+    // Event-Listener setup (einmalig)
+    if (_roomEventSub == null && room != null) {
+      _roomEventSub = lkService.events.listen((event) {
+        // Bei TrackPublished: Sofort subscriben!
+        if (event is lk.TrackPublishedEvent) {
+          if (event.publication.kind == lk.TrackType.VIDEO && !event.publication.subscribed) {
+            debugPrint('📥 Auto-subscribing to video from ${event.participant.identity}');
+            event.publication.subscribe().catchError((e) {
+              debugPrint('❌ Subscribe error: $e');
+            });
+          }
+        }
+        
+        if (event is lk.ParticipantConnectedEvent ||
+            event is lk.ParticipantDisconnectedEvent ||
+            event is lk.TrackPublishedEvent ||
+            event is lk.TrackUnpublishedEvent ||
+            event is lk.TrackSubscribedEvent ||
+            event is lk.TrackUnsubscribedEvent) {
+          if (mounted) setState(() {});
+        }
+      });
+    }
+    
+    // PRIORITÄT 1: LiveKit Video-Track (direkt aus Room-Participants)
+    if (room != null) {
+      final remoteParticipants = room.remoteParticipants.values.toList();
+      debugPrint('🔍 Room: ${room.name}, Participants: ${remoteParticipants.length}');
+      
+      for (final participant in remoteParticipants) {
+        final videoPublications = participant.videoTrackPublications.toList();
+        debugPrint('🔍 ${participant.identity}: ${videoPublications.length} video pubs, ${participant.audioTrackPublications.length} audio pubs');
+        
+        for (final pub in videoPublications) {
+          debugPrint('   📹 Track: sid=${pub.sid}, subscribed=${pub.subscribed}, track=${pub.track != null ? "EXISTS" : "NULL"}');
+          if (pub.track != null) {
+            final videoTrack = pub.track as lk.VideoTrack;
+            debugPrint('✅ FOUND VIDEO TRACK → RENDERING NOW');
+            return lk.VideoTrackRenderer(videoTrack, fit: lk.VideoViewFit.cover);
+          }
+        }
+      }
+    } else {
+      debugPrint('❌ Room is NULL!');
+    }
+    
+    debugPrint('📺 No remote video - showing fallback');
+    
+    // PRIORITÄT 2: Sequential Chunked Video
+    if (_liveAvatarEnabled) {
+      VideoPlayerController? activeCtrl;
+      switch (_currentChunk) {
+        case 1: activeCtrl = _chunk1Controller; break;
+        case 2: activeCtrl = _chunk2Controller; break;
+        case 3: activeCtrl = _chunk3Controller; break;
+        case 4: activeCtrl = _idleController; break;
+      }
+      if (activeCtrl != null && activeCtrl.value.isInitialized) {
+        return FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(
+            width: activeCtrl.value.size.width,
+            height: activeCtrl.value.size.height,
+            child: VideoPlayer(activeCtrl),
+          ),
+        );
+      }
+    }
+    
+    // PRIORITÄT 3: Statisches Hero-Image
+    if (backgroundImage != null && backgroundImage.isNotEmpty) {
+      return Image.network(
+        backgroundImage,
+        fit: BoxFit.cover,
+        frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+          if (wasSynchronouslyLoaded || frame != null) return child;
+          return Container(color: Colors.black);
+        },
+      );
+    }
+    
+    // FALLBACK
+    return Container(color: Colors.black);
+  }
+
   Widget _buildChatMessages() {
     return Container(
       decoration: const BoxDecoration(
@@ -2326,7 +2426,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                       ),
                       clipBehavior: Clip.hardEdge,
                       duration: const Duration(milliseconds: 120),
-                      child: const _ChatInputField(),
+                      child: _ChatInputField(key: ValueKey(_isGreetingInProgress)),
                     ),
                   ),
                 ),
@@ -2337,70 +2437,84 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                 Row(
                   children: [
                     // Voice Recording Mic (für Voice Messages UND LiveKit Spracheingabe)
-                    GestureDetector(
-                      onTap: _toggleRecording,
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: _isRecording
-                              ? ShaderMask(
-                                  shaderCallback: (bounds) =>
-                                      const LinearGradient(
-                                        colors: [
-                                          AppColors.magenta,
-                                          AppColors.lightBlue,
-                                        ],
-                                      ).createShader(bounds),
-                                  blendMode: BlendMode.srcIn,
-                                  child: const Icon(
-                                    Icons.stop,
-                                    color: Colors.white,
-                                    size: 22,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.mic,
-                                  color: Colors.black54,
-                                  size: 22,
-                                ),
+                    IgnorePointer(
+                      ignoring: _isGreetingInProgress,
+                      child: Opacity(
+                        opacity: _isGreetingInProgress ? 0.3 : 1.0,
+                        child: GestureDetector(
+                          onTap: _toggleRecording,
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: _isRecording
+                                  ? ShaderMask(
+                                      shaderCallback: (bounds) =>
+                                          const LinearGradient(
+                                            colors: [
+                                              AppColors.magenta,
+                                              AppColors.lightBlue,
+                                            ],
+                                          ).createShader(bounds),
+                                      blendMode: BlendMode.srcIn,
+                                      child: const Icon(
+                                        Icons.stop,
+                                        color: Colors.white,
+                                        size: 22,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.mic,
+                                      color: Colors.black54,
+                                      size: 22,
+                                    ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(width: 6),
-                    GestureDetector(
-                      onTap: () {
-                        _sendMessage();
-                        _messageController.clear();
-                        setState(() {}); // Box schrumpft
-                      },
-                      child: MouseRegion(
-                        cursor: SystemMouseCursors.click,
-                        child: SizedBox(
-                          width: 36,
-                          height: 36,
-                          child: hasText
-                              ? ShaderMask(
-                                  shaderCallback: (bounds) =>
-                                      const LinearGradient(
-                                        colors: [
-                                          AppColors.magenta,
-                                          AppColors.lightBlue,
-                                        ],
-                                      ).createShader(bounds),
-                                  blendMode: BlendMode.srcIn,
-                                  child: const Icon(
-                                    Icons.send,
-                                    color: Colors.white,
-                                    size: 20,
-                                  ),
-                                )
-                              : const Icon(
-                                  Icons.send,
-                                  color: Colors.black45,
-                                  size: 20,
-                                ),
+                    IgnorePointer(
+                      ignoring: _isGreetingInProgress,
+                      child: Opacity(
+                        opacity: _isGreetingInProgress ? 0.3 : 1.0,
+                        child: GestureDetector(
+                          onTap: () {
+                            if (!_isGreetingInProgress) {
+                              _sendMessage();
+                              _messageController.clear();
+                              setState(() {}); // Box schrumpft
+                            }
+                          },
+                          child: MouseRegion(
+                            cursor: SystemMouseCursors.click,
+                            child: SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: hasText
+                                  ? ShaderMask(
+                                      shaderCallback: (bounds) =>
+                                          const LinearGradient(
+                                            colors: [
+                                              AppColors.magenta,
+                                              AppColors.lightBlue,
+                                            ],
+                                          ).createShader(bounds),
+                                      blendMode: BlendMode.srcIn,
+                                      child: const Icon(
+                                        Icons.send,
+                                        color: Colors.white,
+                                        size: 20,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.send,
+                                      color: Colors.black45,
+                                      size: 20,
+                                    ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
@@ -3947,6 +4061,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _visemeSub?.cancel();
     _pcmSub?.cancel();
     _avatarSub?.cancel();
+    _roomEventSub?.cancel();
     // Teaser aufräumen
     _teaserTimer?.cancel();
     _teaserEntry?.remove();
@@ -5504,7 +5619,7 @@ class _VideoPlayerInlineState extends State<_VideoPlayerInline> {
 }
 
 class _ChatInputField extends StatelessWidget {
-  const _ChatInputField();
+  const _ChatInputField({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -5525,6 +5640,7 @@ class _ChatInputField extends StatelessWidget {
         },
         child: TextField(
           controller: controller,
+          enabled: !state._isGreetingInProgress,
           cursorColor: AppColors.magenta,
           keyboardType: TextInputType.multiline,
           textInputAction: TextInputAction.send,
@@ -5534,13 +5650,15 @@ class _ChatInputField extends StatelessWidget {
           minLines: 1,
           maxLines: null, // wächst bei Bedarf weiter
           onSubmitted: (text) {
-            if (text.trim().isNotEmpty) {
+            if (text.trim().isNotEmpty && !state._isGreetingInProgress) {
               state._sendMessage();
               controller.clear();
             }
           },
           decoration: InputDecoration(
-            hintText: 'Nachricht eingeben...',
+            hintText: state._isGreetingInProgress 
+                ? 'Avatar stellt sich vor...' 
+                : 'Nachricht eingeben...',
             hintStyle: TextStyle(
               color: AppColors.darkGrey.withValues(alpha: 0.7), // GMBC 0.7
               fontSize: 14,

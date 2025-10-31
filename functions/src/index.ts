@@ -25,6 +25,7 @@ import { onRequest } from 'firebase-functions/v2/https';
 
 // Exports
 export * from './avatarChat';
+export * from './memoryApi';
 export * from './stripeCheckout';
 export * from './invoiceGenerator';
 export * from './mediaCheckout';

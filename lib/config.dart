@@ -7,6 +7,7 @@ class AppConfig {
 
   // Backend URLs
   static const backendUrl = 'https://us-central1-sunriza26.cloudfunctions.net';
+  static const memoryApiBaseUrl = backendUrl; // Memory API als Cloud Function
   static const orchestratorUrl =
       'wss://romeo1971--lipsync-orchestrator-asgi.modal.run/';
   // LivePortrait Streaming WS (Modal)
@@ -14,5 +15,5 @@ class AppConfig {
       'wss://romeo1971--liveportrait-ws-asgi.modal.run/stream';
   // BitHuman Agent Join URL (Modal)
   static const bithumanAgentUrl =
-      'https://romeo1971--bithuman-complete-agent-join.modal.run';
+      'https://romeo1971--bithuman-worker-v4-join.modal.run';
 }

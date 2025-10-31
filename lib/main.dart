@@ -6,7 +6,6 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'firebase_options.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'auth_gate.dart';
-import 'services/ai_service.dart';
 import 'services/bithuman_service.dart';
 import 'services/video_stream_service.dart';
 import 'services/auth_service.dart';
@@ -503,7 +502,6 @@ class SunrizaApp extends StatelessWidget {
     );
     return MultiProvider(
       providers: [
-        Provider<AIService>(create: (_) => AIService()),
         Provider<VideoStreamService>(create: (_) => VideoStreamService()),
         Provider<AuthService>(create: (_) => AuthService()),
         ChangeNotifierProvider<LanguageService>(

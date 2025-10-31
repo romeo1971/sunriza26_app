@@ -2,20 +2,37 @@
 
 ## ⚠️ WICHTIG
 
-Die Dateien in diesem Verzeichnis (`main.py`, `generate_dynamics_endpoint.py`) werden **NICHT MEHR** für Production genutzt!
+**Production läuft NICHT MEHR über lokale Backend-Services!**
 
-**Production läuft jetzt auf Modal.com** (siehe `/modal_dynamics.py`)
+Alle Production-Services laufen jetzt auf:
+- **Firebase Cloud Functions** (Memory API, Chat)
+- **Modal.com** (Dynamics, BitHuman, Orchestrator)
 
-## Was noch hier ist:
+## Production Services:
 
-### Noch benötigt:
-- `app/main.py` - Memory Backend (Pinecone/OpenAI) - läuft separat
-- `avatar_backend.py` - BitHuman Service - läuft lokal
-- `requirements.txt` - Dependencies für lokale Entwicklung
+### Cloud Functions (Firebase):
+- `functions/src/memoryApi.ts` → `avatarMemoryInsert` 
+- `functions/src/avatarChat.ts` → `avatarChat`
+- URL: `https://us-central1-sunriza26.cloudfunctions.net/`
 
-### Nicht mehr benötigt (für Dynamics):
+### Modal Apps:
+- Dynamics → `modal_dynamics.py`
+- BitHuman Worker → `modal_bithuman_worker.py`
+- Orchestrator → `orchestrator/modal_app.py`
+- LivePortrait WS → `modal_liveportrait_ws.py`
+
+## Lokale Backend-Dateien (NUR für Entwicklung):
+
+### Deprecated / Nicht mehr für Production:
+- ~~`app/main.py`~~ → Ersetzt durch Cloud Functions
+- ~~`avatar_backend.py`~~ → Ersetzt durch Modal BitHuman Worker
 - ~~`main.py`~~ → Ersetzt durch `/modal_dynamics.py`
 - ~~`generate_dynamics_endpoint.py`~~ → Ersetzt durch `/modal_dynamics.py`
+- ~~`start_avatar_backend.sh`~~ (Port 8001)
+- ~~`start_main_backend.sh`~~ (Port 8002)
+
+### Noch für lokale Tests:
+- `requirements.txt` - Dependencies für lokale Entwicklung
 
 ## Lokale Tests
 
