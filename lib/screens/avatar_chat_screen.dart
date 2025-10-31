@@ -417,6 +417,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       Map<String, dynamic>? data;
       if (res.statusCode >= 200 && res.statusCode < 300) {
         data = jsonDecode(res.body) as Map<String, dynamic>;
+        debugPrint('🔍 Token data keys: ${data.keys.toList()}');
       } else {
         debugPrint('⚠️ Token POST failed (${res.statusCode}) – trying GET...');
         try {
@@ -455,6 +456,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       final token = (data['token'] as String?)?.trim();
       String? room = (data['room'] as String?)?.trim();
       final lkUrl = (data['url'] as String?)?.trim();
+      debugPrint('🔍 Parsed: token=${token?.substring(0, 20)}..., room=$room, url=$lkUrl');
       // Dynamischer Raum, falls Backend keinen liefert ODER statischen Default liefert
       const knownStaticRooms = {'sunriza26', 'sunriza'};
       if (room == null || room.isEmpty || knownStaticRooms.contains(room)) {
@@ -481,6 +483,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         }
       }
       if (token == null || token.isEmpty) {
+        debugPrint('⚠️ TOKEN NULL/EMPTY - trying GET fallback');
         // Versuch: GET-Fallback wenn POST ok, aber ohne Token
         try {
           final getUri = Uri.parse(
@@ -550,7 +553,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               final agentId = (liveAvatar?['agentId'] as String?)?.trim();
               if (agentId != null && agentId.isNotEmpty) {
                 debugPrint('🤖 Starting Bithuman Agent: $agentId for room: $room');
-                const agentUrl = 'https://romeo1971--bithuman-complete-agent-join.modal.run';
+                final agentUrl = AppConfig.bithumanAgentUrl;
                 final agentRes = await http.post(
                   Uri.parse(agentUrl),
                   headers: {'Content-Type': 'application/json'},
@@ -648,14 +651,21 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (agentId != null && agentId.isNotEmpty) {
         try {
           const agentUrl = 'https://romeo1971--bithuman-complete-agent-join.modal.run';
-          await http.post(
+          final agentRes = await http.post(
             Uri.parse(agentUrl),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({'room': room, 'agent_id': agentId}),
           ).timeout(const Duration(seconds: 10));
-          debugPrint('✅ BitHuman Agent join requested');
+          
+          if (agentRes.statusCode >= 200 && agentRes.statusCode < 300) {
+            debugPrint('✅ BitHuman Agent joined successfully');
+            // Agent wird Video Track erst publishen wenn er das erste Mal spricht
+            // Das passiert automatisch bei der ersten Chat-Antwort
+          } else {
+            debugPrint('⚠️ BitHuman Agent join failed: ${agentRes.statusCode}');
+          }
         } catch (e) {
-          debugPrint('⚠️ BitHuman Agent join failed: $e');
+          debugPrint('⚠️ BitHuman Agent join error: $e');
         }
       }
 
@@ -803,10 +813,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           _publisherIdleTimer = null;
         } else if (roomName != null && roomName.isNotEmpty) {
           _publisherIdleTimer?.cancel();
-          _publisherIdleTimer = Timer(const Duration(seconds: 1), () async {
+          _publisherIdleTimer = Timer(const Duration(seconds: 20), () async {
             try {
               if (!mounted) return;
-              debugPrint('⏹️ Auto-stop publisher+session (idle 1s) → Modal.com Kosten sparen');
+              debugPrint('⏹️ Auto-stop publisher+session (idle 20s) → Modal.com Kosten sparen');
               await _stopLiveKitPublisher(roomName, stopSession: true);
             } catch (_) {}
           });
@@ -1274,11 +1284,13 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                     builder: (context, remoteVideoTrack, _) {
                       // PRIORITÄT 1: LiveKit Video-Track (MuseTalk Lipsync)
                       if (remoteVideoTrack != null) {
+                        debugPrint('🎥 RENDERING REMOTE VIDEO TRACK');
                         return lk.VideoTrackRenderer(
                           remoteVideoTrack,
                           fit: lk.VideoViewFit.cover,
                         );
                       }
+                      debugPrint('📺 No remote video track - showing fallback');
 
                       // PRIORITÄT 2: Sequential Chunked Video (Chunk1 → Chunk2 → Chunk3 → idle.mp4 Loop)
                       if (_liveAvatarEnabled) {
@@ -2321,9 +2333,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
                 const SizedBox(width: 6),
 
-                // Rechts: Mic UND Send nebeneinander
+                // Rechts: Voice Recording Mic (Voice Messages + LiveKit Spracheingabe) UND Send
                 Row(
                   children: [
+                    // Voice Recording Mic (für Voice Messages UND LiveKit Spracheingabe)
                     GestureDetector(
                       onTap: _toggleRecording,
                       child: MouseRegion(
@@ -2526,6 +2539,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         );
         return;
       }
+      
+      // LiveKit Mikrofon aktivieren für Spracheingabe
+      final room = LiveKitService().room;
+      if (room != null && LiveKitService().connected.value) {
+        await room.localParticipant?.setMicrophoneEnabled(true);
+        debugPrint('🎤 LiveKit Microphone ENABLED for voice input');
+      }
+      
       _silenceMs = 0;
       await _startNewSegment();
       if (mounted) setState(() => _isRecording = true);
@@ -2597,6 +2618,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       _ampSub?.cancel();
       final path = await _recorder.stop();
       setState(() => _isRecording = false);
+      
+      // LiveKit Mikrofon NICHT deaktivieren - bleibt an für weitere Eingaben
+      // User kann es manuell ausschalten wenn gewünscht
+      
       final filePath = path ?? _lastRecordingPath;
       if (filePath == null || filePath.isEmpty) {
         _showSystemSnack('Keine Audiodatei aufgenommen');
@@ -2621,9 +2646,16 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       }
       final txt = await _transcribeWithWhisper(f);
       if (txt != null && txt.trim().isNotEmpty) {
-        // Zeige Text im Input zur Korrektur; Senden erst per Button
+        // Text automatisch senden (LiveKit + ElevenLabs/Whisper Flow)
         _messageController.text = txt.trim();
-        _showSystemSnack('Bitte Text prüfen und Senden tippen.');
+        _showSystemSnack('Spracheingabe erkannt: "${txt.trim()}"');
+        
+        // Automatisch senden nach Transkription
+        await Future.delayed(const Duration(milliseconds: 300));
+        if (mounted) {
+          _sendMessage();
+          _messageController.clear();
+        }
       }
       _segmentStartAt = null;
       _silenceMs = 0;
@@ -2869,11 +2901,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (voiceId == null || voiceId.isEmpty) {
         voiceId = await _reloadVoiceIdFromFirestore();
       }
-      final base = EnvService.memoryApiBaseUrl();
-      if (base.isEmpty) {
-        await _addMessage(text, false);
-        return;
-      }
+      // Bevorzugt .env MEMORY_API_BASE_URL; Fallback auf AppConfig.backendUrl
+      String base = EnvService.memoryApiBaseUrl();
+      if (base.isEmpty) base = AppConfig.backendUrl;
       final uri = Uri.parse('$base/avatar/tts');
       final payload = <String, dynamic>{'text': text};
       if (voiceId != null) payload['voice_id'] = voiceId;
@@ -2950,11 +2980,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _lastTtsRequestTime = DateTime.now();
 
     try {
-      final base2 = EnvService.memoryApiBaseUrl();
-      if (base2.isEmpty) {
-        _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
-        return null;
-      }
+      // Verwende zentralen Backend‑Host
+      String base2 = EnvService.memoryApiBaseUrl();
+      if (base2.isEmpty) base2 = AppConfig.backendUrl;
       final uri = Uri.parse('$base2/avatar/tts');
       String? idToken;
       try { idToken = await FirebaseAuth.instance.currentUser?.getIdToken(); } catch (_) {}
@@ -3090,7 +3118,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   Future<void> _chatWithBackend(String userText) async {
     debugPrint('🔥 _chatWithBackend CALLED with: "$userText"');
-    if (_avatarData == null) return;
+    debugPrint('🔥 LiveKit connected: ${LiveKitService().connected.value}');
+    debugPrint('🔥 LiveKit room: ${LiveKitService().roomName}');
+    debugPrint('🔥 BitHuman agentId: ${_avatarData?.liveAvatar?['agentId']}');
+    
+    if (_avatarData == null) {
+      debugPrint('❌ No avatarData - aborting chat');
+      return;
+    }
     setState(() => _isTyping = true);
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -3099,12 +3134,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         return;
       }
       final uid = user.uid;
-      final baseChat = EnvService.memoryApiBaseUrl();
-      if (baseChat.isEmpty) {
-        _showSystemSnack('Backend-URL fehlt (.env MEMORY_API_BASE_URL)');
-        return;
-      }
-      final uri = Uri.parse('$baseChat/avatar/chat');
+      // CHAT: Firebase Function
+      const uri = 'https://us-central1-sunriza26.cloudfunctions.net/avatarChat';
+      final chatUri = Uri.parse(uri);
 
       // Stimme robust ermitteln
       String? voiceId = (_avatarData?.training != null)
@@ -3133,36 +3165,47 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           'Content-Type': 'application/json',
           if (idToken != null && idToken.isNotEmpty) 'Authorization': 'Bearer $idToken',
         };
+        debugPrint('🌐 Calling backend: $chatUri');
+        debugPrint('📤 Payload: userId=$uid, avatarId=${_avatarData?.id}, message=$userText, room=${LiveKitService().roomName}');
+        
         final res = await http
             .post(
-              uri,
+              chatUri,
               headers: headers,
               body: jsonEncode({
-                'user_id': uid,
-                'avatar_id': _avatarData?.id ?? '',
+                'userId': uid,
+                'avatarId': _avatarData?.id ?? '',
                 'message': userText,
-                'top_k': 2,
-                'voice_id': (voiceId is String && voiceId.isNotEmpty)
+                'voiceId': (voiceId is String && voiceId.isNotEmpty)
                     ? voiceId
                     : null,
-                'avatar_name': _avatarData?.displayName,
-                'target_language': replyLang,
-                'force_reply_lang': replyLang,
+                'room': LiveKitService().roomName,
               }),
             )
             .timeout(const Duration(seconds: 60));
+        
+        debugPrint('📥 Backend status: ${res.statusCode}');
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          return jsonDecode(res.body) as Map<String, dynamic>;
+          final body = jsonDecode(res.body) as Map<String, dynamic>;
+          debugPrint('✅ Backend success: ${body.keys.toList()}');
+          return body;
+        } else {
+          debugPrint('❌ Backend error: ${res.statusCode} ${res.body}');
         }
         return null;
       }
 
       final res = await primary().timeout(const Duration(seconds: 20));
+      debugPrint('📥 Backend response received: ${res != null}');
 
       final answer = (res?['answer'] as String?)?.trim();
+      debugPrint('💬 Answer from backend: ${answer != null ? "\"${answer.substring(0, answer.length > 50 ? 50 : answer.length)}...\"" : "NULL"}');
+      
       if (answer == null || answer.isEmpty) {
+        debugPrint('❌ No answer from backend');
         _showSystemSnack('Chat nicht verfügbar (keine Antwort)');
       } else {
+        debugPrint('✅ Got answer, adding message and processing TTS...');
         await _addMessage(answer, false, skipPersist: false); // Backend hat schon gespeichert!
 
         // DEBUG: Check Streaming Conditions
@@ -3176,9 +3219,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         } else if (_lipsync.visemeStream != null &&
             _cachedVoiceId != null &&
             _cachedVoiceId!.isNotEmpty) {
-          debugPrint('🚀 Chat: Using STREAMING audio');
+          debugPrint('🚀 Chat: Using STREAMING audio to BitHuman Agent');
+          debugPrint('🎤 VoiceID: ${_cachedVoiceId!.substring(0, 8)}...');
+          debugPrint('📝 Text to speak: "${answer.substring(0, answer.length > 100 ? 100 : answer.length)}..."');
           try {
-            unawaited(_lipsync.speak(answer, _cachedVoiceId!));
+            await _lipsync.speak(answer, _cachedVoiceId!);
+            debugPrint('✅ Lipsync speak completed');
           } catch (e) {
             debugPrint('⚠️ Lipsync speak error: $e');
           }
@@ -3708,8 +3754,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     try {
       if (_avatarData == null) return;
       final uid = FirebaseAuth.instance.currentUser!.uid;
-      final base = EnvService.memoryApiBaseUrl();
-      if (base.isEmpty) return;
+      // Bevorzugt MEMORY_API_BASE_URL; Fallback auf AppConfig.backendUrl
+      String base = EnvService.memoryApiBaseUrl();
+      if (base.isEmpty) base = AppConfig.backendUrl;
       final uri = Uri.parse('$base/avatar/memory/insert');
       final payload = {
         'user_id': uid,
@@ -3938,20 +3985,28 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _timelineTimer?.cancel();
     _chatStopwatch.stop();
     
+    // Persist-Flag: Wenn LIVEKIT_PERSIST=1, dann NICHT automatisch stoppen/entkoppeln
+    final bool persistLivekit =
+        ((dotenv.env['LIVEKIT_PERSIST'] ?? '').trim() == '1');
+    
     // WICHTIG: Lipsync Strategy STOP bevor dispose (stoppt Audio!)
-    debugPrint('🛑 Stopping Lipsync Strategy audio...');
-    _lipsync.stop().catchError((e) {
-      debugPrint('⚠️ Lipsync stop error: $e');
-    });
-    try {
-      _lipsync.dispose();
-    } catch (e) {
-      debugPrint('⚠️ Lipsync dispose error: $e');
+    if (!persistLivekit) {
+      debugPrint('🛑 Stopping Lipsync Strategy audio...');
+      _lipsync.stop().catchError((e) {
+        debugPrint('⚠️ Lipsync stop error: $e');
+      });
+      try {
+        _lipsync.dispose();
+      } catch (e) {
+        debugPrint('⚠️ Lipsync dispose error: $e');
+      }
+    } else {
+      debugPrint('⏸️ LIVEKIT_PERSIST=1 → Lipsync/LiveKit bleiben aktiv.');
     }
 
     // LiveKit disconnecten (spart ~1€/Monat bei 2.500 Min idle!)
     final roomName = LiveKitService().roomName;
-    if (roomName != null && roomName.isNotEmpty) {
+    if (!persistLivekit && roomName != null && roomName.isNotEmpty) {
       debugPrint(
         '🔌 Disconnecting LiveKit & stopping MuseTalk (room: $roomName)',
       );

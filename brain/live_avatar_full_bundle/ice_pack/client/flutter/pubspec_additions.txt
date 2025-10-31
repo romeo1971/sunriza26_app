@@ -1,4 +1,0 @@
-# Add to pubspec.yaml
-dependencies:
-  flutter_webrtc: ^0.9.40
-  video_player: ^2.8.5

@@ -44,7 +44,12 @@ if (!admin.apps.length) {
     }
     catch (_) { }
 }
-exports.avatarChat = (0, https_1.onRequest)({ region: 'us-central1', cors: true }, async (req, res) => {
+exports.avatarChat = (0, https_1.onRequest)({
+    region: 'us-central1',
+    cors: true,
+    invoker: 'public',
+    secrets: ['OPENAI_API_KEY', 'PINECONE_API_KEY', 'GOOGLE_CSE_API_KEY', 'GOOGLE_CSE_CX']
+}, async (req, res) => {
     if (req.method === 'OPTIONS') {
         res.status(204).send('');
         return;

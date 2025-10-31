@@ -53,7 +53,7 @@ const vertexAI_1 = require("./vertexAI");
 const config_1 = require("./config");
 const rag_service_1 = require("./rag_service");
 const node_fetch_1 = __importDefault(require("node-fetch"));
-const openai_1 = __importDefault(require("openai"));
+// import OpenAI from 'openai'; // Nicht benötigt, nutzen native fetch
 const stream_1 = require("stream");
 const ffmpeg_static_1 = __importDefault(require("ffmpeg-static"));
 const fluent_ffmpeg_1 = __importDefault(require("fluent-ffmpeg"));
@@ -62,6 +62,7 @@ const os = __importStar(require("os"));
 const path = __importStar(require("path"));
 const sharp_1 = __importDefault(require("sharp"));
 const functionsStorage = __importStar(require("firebase-functions/v2/storage"));
+const https_1 = require("firebase-functions/v2/https");
 // Exports
 __exportStar(require("./avatarChat"), exports);
 __exportStar(require("./stripeCheckout"), exports);
@@ -248,6 +249,7 @@ exports.testTTS = functions
     .https
     .onRequest(async (req, res) => {
     return corsHandler(req, res, async () => {
+        var _a;
         try {
             if (req.method !== 'POST') {
                 res.status(405).json({ error: 'Nur POST Requests erlaubt' });
@@ -259,7 +261,7 @@ exports.testTTS = functions
                 return;
             }
             // 1) ElevenLabs bevorzugen, falls Key vorhanden
-            const elevenKey = process.env.ELEVENLABS_API_KEY;
+            const elevenKey = (_a = process.env.ELEVENLABS_API_KEY) === null || _a === void 0 ? void 0 : _a.trim();
             if (elevenKey) {
                 try {
                     const effectiveVoiceId = (typeof voiceId === 'string' && voiceId.trim().length > 0)
@@ -301,7 +303,7 @@ exports.testTTS = functions
                         try {
                             errText = await r.text();
                         }
-                        catch (_a) { }
+                        catch (_b) { }
                         console.warn(`ElevenLabs antwortete mit Status ${r.status}: ${r.statusText} | ${errText === null || errText === void 0 ? void 0 : errText.slice(0, 400)}`);
                         throw new Error(`ElevenLabs HTTP ${r.status}`);
                     }
@@ -1245,87 +1247,61 @@ exports.restoreAvatarCovers = functions
  * LLM Router: OpenAI primär (gpt-4o-mini), Gemini Fallback
  * Body: { messages: [{role:'system'|'user'|'assistant', content:string}], maxTokens?, temperature? }
  */
-exports.llm = functions
-    .region('us-central1')
-    .runWith({ secrets: ['OPENAI_API_KEY', 'GEMINI_API_KEY'] })
-    .https.onRequest(async (req, res) => {
-    return corsHandler(req, res, async () => {
-        try {
-            if (req.method !== 'POST') {
-                res.status(405).json({ error: 'Nur POST Requests erlaubt' });
-                return;
-            }
-            const { messages, maxTokens, temperature } = req.body || {};
-            if (!Array.isArray(messages) || messages.length === 0) {
-                res.status(400).json({ error: 'messages[] ist erforderlich' });
-                return;
-            }
-            // OpenAI primär
-            const openaiKey = process.env.OPENAI_API_KEY;
-            const geminiKey = process.env.GEMINI_API_KEY;
-            const joined = messages
-                .map((m) => `${m.role || 'user'}: ${m.content || ''}`)
-                .join('\n');
-            const tryOpenAI = async () => {
-                var _a, _b, _c;
-                if (!openaiKey)
-                    throw new Error('OPENAI_API_KEY fehlt');
-                const client = new openai_1.default({ apiKey: openaiKey });
-                const resp = await client.chat.completions.create({
-                    model: 'gpt-4o-mini',
-                    messages: messages.map((m) => ({ role: m.role, content: m.content })),
-                    max_tokens: maxTokens || 300,
-                    temperature: temperature !== null && temperature !== void 0 ? temperature : 0.6,
-                });
-                const text = ((_c = (_b = (_a = resp.choices) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.message) === null || _c === void 0 ? void 0 : _c.content) || '';
-                return text.trim();
-            };
-            const tryGemini = async () => {
-                var _a, _b, _c, _d, _e;
-                if (!geminiKey)
-                    throw new Error('GEMINI_API_KEY fehlt');
-                const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
-                const body = {
-                    contents: [
-                        {
-                            parts: [{ text: joined }],
-                        },
-                    ],
-                    generationConfig: {
-                        temperature: temperature !== null && temperature !== void 0 ? temperature : 0.6,
-                        maxOutputTokens: maxTokens || 300,
-                    },
-                };
-                const r = await node_fetch_1.default(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body),
-                });
-                if (!r.ok)
-                    throw new Error(`Gemini HTTP ${r.status}`);
-                const j = await r.json();
-                const text = ((_e = (_d = (_c = (_b = (_a = j === null || j === void 0 ? void 0 : j.candidates) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.content) === null || _c === void 0 ? void 0 : _c.parts) === null || _d === void 0 ? void 0 : _d[0]) === null || _e === void 0 ? void 0 : _e.text) || '';
-                return text.trim();
-            };
-            let answer = '';
-            try {
-                // Priorisiere OpenAI (günstiger laut Vorgabe), Gemini als Fallback
-                answer = await tryOpenAI();
-            }
-            catch (e) {
-                console.warn('OpenAI Fehler, fallback auf Gemini:', e);
-                answer = await tryGemini();
-            }
-            res.status(200).json({ answer });
+exports.llm = (0, https_1.onRequest)({
+    region: 'us-central1',
+    cors: true,
+    invoker: 'public',
+    secrets: ['OPENAI_API_KEY']
+}, async (req, res) => {
+    var _a, _b, _c, _d;
+    if (req.method === 'OPTIONS') {
+        res.status(204).send('');
+        return;
+    }
+    try {
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'Nur POST Requests erlaubt' });
+            return;
         }
-        catch (error) {
-            console.error('LLM Router Fehler:', error);
-            res.status(500).json({
-                error: 'LLM Fehler',
-                details: error instanceof Error ? error.message : 'Unbekannter Fehler',
-            });
+        const { messages, maxTokens, temperature } = req.body || {};
+        if (!Array.isArray(messages) || messages.length === 0) {
+            res.status(400).json({ error: 'messages[] ist erforderlich' });
+            return;
         }
-    });
+        const openaiKey = (_a = process.env.OPENAI_API_KEY) === null || _a === void 0 ? void 0 : _a.trim();
+        if (!openaiKey) {
+            res.status(500).json({ error: 'OPENAI_API_KEY fehlt' });
+            return;
+        }
+        // Native fetch statt OpenAI SDK
+        const response = await (0, node_fetch_1.default)('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${openaiKey}`,
+            },
+            body: JSON.stringify({
+                model: 'gpt-4o-mini',
+                messages: messages.map((m) => ({ role: m.role, content: m.content })),
+                max_tokens: maxTokens || 300,
+                temperature: temperature !== null && temperature !== void 0 ? temperature : 0.6,
+            }),
+        });
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`OpenAI API Error: ${response.status} ${errorText}`);
+        }
+        const data = await response.json();
+        const answer = (((_d = (_c = (_b = data.choices) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.message) === null || _d === void 0 ? void 0 : _d.content) || '').trim();
+        res.status(200).json({ answer });
+    }
+    catch (error) {
+        console.error('LLM Router Fehler:', error);
+        res.status(500).json({
+            error: 'LLM Fehler',
+            details: error instanceof Error ? error.message : 'Unbekannter Fehler',
+        });
+    }
 });
 /**
  * Talking-Head: Jobs anlegen / Status / Callback

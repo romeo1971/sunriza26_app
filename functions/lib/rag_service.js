@@ -246,9 +246,9 @@ ${context}`;
     }
     // Keys aus Secret Manager oder Env holen (best effort)
     async getCSEKeys() {
-        var _a, _b, _c, _d;
-        const envKey = process.env.GOOGLE_CSE_API_KEY;
-        const envCx = process.env.GOOGLE_CSE_CX;
+        var _a, _b, _c, _d, _e, _f;
+        const envKey = (_a = process.env.GOOGLE_CSE_API_KEY) === null || _a === void 0 ? void 0 : _a.trim();
+        const envCx = (_b = process.env.GOOGLE_CSE_CX) === null || _b === void 0 ? void 0 : _b.trim();
         if (envKey && envCx)
             return { apiKey: envKey, cx: envCx };
         try {
@@ -260,13 +260,13 @@ ${context}`;
             const [cxV] = await client.accessSecretVersion({
                 name: `projects/sunriza26/secrets/GOOGLE_CSE_CX/versions/latest`,
             });
-            const apiKey = (_b = (_a = keyV.payload) === null || _a === void 0 ? void 0 : _a.data) === null || _b === void 0 ? void 0 : _b.toString();
-            const cx = (_d = (_c = cxV.payload) === null || _c === void 0 ? void 0 : _c.data) === null || _d === void 0 ? void 0 : _d.toString();
+            const apiKey = (_d = (_c = keyV.payload) === null || _c === void 0 ? void 0 : _c.data) === null || _d === void 0 ? void 0 : _d.toString();
+            const cx = (_f = (_e = cxV.payload) === null || _e === void 0 ? void 0 : _e.data) === null || _f === void 0 ? void 0 : _f.toString();
             if (apiKey && cx)
                 return { apiKey, cx };
             return null;
         }
-        catch (_e) {
+        catch (_g) {
             return null;
         }
     }

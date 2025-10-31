@@ -18,13 +18,17 @@ import os
 # === MODAL IMAGE MIT ALLEN DEPENDENCIES ===
 image = (
     modal.Image.debian_slim()
+    # Systemabhängigkeiten für OpenCV (headless ausreichend, aber libs schaden nicht) [REBUILD v2]
+    .apt_install("libgl1-mesa-glx", "libglib2.0-0", "libsm6", "libxext6", "libxrender1")
     .pip_install(
         # Core
         "livekit-agents[openai,bithuman,silero]>=1.2.16",
         "python-dotenv>=1.1.1",
+        # OpenCV headless (erzwingen, Headful deinstallieren)
+        "opencv-python-headless==4.10.0.84",
         
-        # Knowledge Base
-        "pinecone-client>=3.0.0",
+        # Knowledge Base (neues SDK)
+        "pinecone>=5.0.0",
         "openai>=1.35.0",
         
         # Firebase
@@ -37,7 +41,13 @@ image = (
     )
     # Versuche ElevenLabs Plugin (falls verfügbar)
     .run_commands(
+        # Entferne evtl. installiertes opencv-python (headful)
+        "python -m pip uninstall -y opencv-python opencv-contrib-python pinecone-client || true",
+        "pip install --no-cache-dir --force-reinstall opencv-python-headless==4.10.0.84",
         "pip install livekit-plugins-elevenlabs || echo 'ElevenLabs plugin wird zur Laufzeit geprüft'",
+        # Sichtprüfung der installierten Pinecone-Pakete
+        "python -m pip install --upgrade pip setuptools wheel",
+        "python -m pip list | grep -i pinecone || true",
         gpu=None,
     )
 )
@@ -78,7 +88,32 @@ def start_agent(room: str, agent_id: str):
     # ENV setzen
     env = os.environ.copy()
     env["BITHUMAN_AGENT_ID"] = agent_id
-    
+
+    # Sicherstellen: korrektes Pinecone SDK zur Laufzeit erzwingen (kein pinecone-client)
+    try:
+        import subprocess as _sp
+        _sp.run([sys.executable, "-m", "pip", "uninstall", "-y", "pinecone-client"], check=False)
+        _sp.run([sys.executable, "-m", "pip", "install", "--no-cache-dir", "pinecone==5.0.1"], check=False)
+    except Exception as _e:
+        print(f"⚠️ Pinecone runtime setup skipped: {_e}")
+
+    # LiveKit Token besorgen (vom Orchestrator) → garantiert passender Raum
+    import requests as _req
+    try:
+        orch = os.getenv("ORCHESTRATOR_URL", "https://romeo1971--lipsync-orchestrator-asgi.modal.run").rstrip("/")
+        tk_res = _req.get(f"{orch}/livekit/token", params={"room": room, "avatar_id": agent_id, "user_id": "agent"}, timeout=10)
+        tk_res.raise_for_status()
+        tk_json = tk_res.json()
+        lk_url = tk_json.get("url")
+        lk_token = tk_json.get("token")
+        if not lk_url or not lk_token:
+            raise RuntimeError("LiveKit token response invalid")
+        env["LK_URL"] = lk_url
+        env["LK_TOKEN"] = lk_token
+    except Exception as e:
+        print(f"❌ Could not mint LiveKit token: {e}")
+        return {"status": "error", "message": str(e)}
+
     print(f"🚀 Starting Agent: room={room}, agent={agent_id}")
     
     # === AGENT CODE INLINE (damit Modal es findet) ===
@@ -89,7 +124,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import asyncio
 
-from livekit.agents import Agent, AgentSession, JobContext, RoomOutputOptions, WorkerOptions, WorkerType, cli
+from livekit.agents import Agent, AgentSession, RoomOutputOptions
+from livekit import rtc
 from livekit.plugins import bithuman, openai, silero
 
 # ElevenLabs
@@ -107,13 +143,8 @@ try:
 except ImportError:
     FIREBASE_AVAILABLE = False
 
-# Pinecone
-try:
-    from pinecone import Pinecone
-    from openai import OpenAI
-    PINECONE_AVAILABLE = True
-except ImportError:
-    PINECONE_AVAILABLE = False
+# Pinecone (vorübergehend deaktiviert – vermeidet Import-Konflikte)
+PINECONE_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent")
@@ -193,9 +224,14 @@ def get_config(agent_id: str) -> Dict[str, Any]:
         return {}
 
 
-async def entrypoint(ctx: JobContext):
-    logger.info(f"🚀 BitHuman Agent starting for room: {ctx.room.name}")
-    await ctx.connect()
+async def main():
+    url = os.getenv("LK_URL")
+    token = os.getenv("LK_TOKEN")
+    if not url or not token:
+        logger.error("❌ LK_URL/LK_TOKEN not set")
+        return
+    room = rtc.Room()
+    await room.connect(url, token)
     logger.info("✅ Connected to LiveKit room")
     
     agent_id = os.getenv("BITHUMAN_AGENT_ID")
@@ -203,9 +239,12 @@ async def entrypoint(ctx: JobContext):
         logger.error("❌ BITHUMAN_AGENT_ID not set!")
         return
     
-    # WICHTIG: Erst auf Participant warten!
-    await ctx.wait_for_participant()
-    logger.info("✅ Participant joined")
+    # WICHTIG: Warte auf Teilnehmer wie bithumanProd!
+    logger.info("⏳ Waiting for participant to join...")
+    # Warte bis mindestens 1 Teilnehmer im Room ist (außer uns selbst)
+    while len([p for p in room.remote_participants.values()]) == 0:
+        await asyncio.sleep(0.5)
+    logger.info("✅ Participant joined!")
     
     config = get_config(agent_id)
     voice_id = config.get('voice_id') or os.getenv("ELEVEN_DEFAULT_VOICE_ID")
@@ -232,8 +271,11 @@ async def entrypoint(ctx: JobContext):
         logger.info("🎵 Using OpenAI TTS (fallback)")
         tts = openai.TTS(voice="coral")
     
-    # LLM Setup
-    base_llm = openai.realtime.RealtimeModel(model="gpt-4o-mini-realtime-preview")
+    # LLM Setup (mit voice wie bithumanProd!)
+    base_llm = openai.realtime.RealtimeModel(
+        voice=os.getenv("OPENAI_VOICE", "coral"),
+        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini-realtime-preview")
+    )
     
     # Custom LLM Wrapper with Knowledge Base
     class KBLLM:
@@ -254,9 +296,10 @@ async def entrypoint(ctx: JobContext):
     session = AgentSession(llm=llm, vad=silero.VAD.load(), tts=tts)
     logger.info("✅ Agent Session created")
     
-    # BitHuman Avatar Session (OHNE api_url - nur api_secret + avatar_id!)
+    # BitHuman Avatar Session (MIT api_url wie bithumanProd!)
     logger.info("🎬 Creating BitHuman Avatar Session...")
     avatar = bithuman.AvatarSession(
+        api_url=os.getenv("BITHUMAN_API_URL", "https://auth.api.bithuman.ai/v1/runtime-tokens/request"),
         api_secret=os.getenv("BITHUMAN_API_SECRET"),
         avatar_id=agent_id,
     )
@@ -264,7 +307,7 @@ async def entrypoint(ctx: JobContext):
     
     # START BitHuman Avatar
     logger.info("🚀 Starting BitHuman Avatar (streaming video to room)...")
-    await avatar.start(session, room=ctx.room)
+    await avatar.start(session, room=room)
     logger.info("🎥 BitHuman Avatar STARTED - Video Track published!")
     
     # Start Agent
@@ -272,7 +315,7 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🤖 Starting Agent with instructions...")
     await session.start(
         agent=Agent(instructions=instructions),
-        room=ctx.room,
+        room=room,
         room_output_options=RoomOutputOptions(audio_enabled=False)
     )
     logger.info("✅ Agent fully running - listening for speech!")
@@ -280,7 +323,7 @@ async def entrypoint(ctx: JobContext):
     # Keep session alive
     logger.info("⏳ Session running - waiting for disconnect...")
     try:
-        await ctx.room.wait_for_disconnect()
+        await room.wait_for_disconnect()
     except Exception as e:
         logger.error(f"❌ Session error: {e}")
     finally:
@@ -288,7 +331,7 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint, worker_type=WorkerType.ROOM))
+    asyncio.run(main())
 '''
     
     # Agent Code in temp file
@@ -328,7 +371,7 @@ if __name__ == "__main__":
 
 
 @app.function(secrets=secrets)
-@modal.web_endpoint(method="POST")
+@modal.fastapi_endpoint(method="POST")
 def join(data: dict):
     """
     Webhook: Startet Agent ODER Health Check

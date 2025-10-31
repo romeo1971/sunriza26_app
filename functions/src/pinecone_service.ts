@@ -29,12 +29,12 @@ export class PineconeService {
   constructor() {
     // Pinecone initialisieren
     this.pinecone = new Pinecone({
-      apiKey: process.env.PINECONE_API_KEY!,
+      apiKey: process.env.PINECONE_API_KEY!.trim(),
     });
 
     // OpenAI für Embeddings
     this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!,
+      apiKey: process.env.OPENAI_API_KEY!.trim(),
     });
 
     this.indexName = 'sunriza26-avatar-data';

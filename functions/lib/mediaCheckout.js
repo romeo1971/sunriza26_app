@@ -42,7 +42,7 @@ const stripe_1 = __importDefault(require("stripe"));
 // Stripe nur initialisieren wenn Secret Key vorhanden
 const getStripe = () => {
     var _a;
-    const secretKey = process.env.STRIPE_SECRET_KEY || ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.secret_key) || '';
+    const secretKey = (process.env.STRIPE_SECRET_KEY || ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.secret_key) || '').trim();
     if (!secretKey) {
         throw new functions.https.HttpsError('failed-precondition', 'Stripe Secret Key nicht konfiguriert');
     }
@@ -97,7 +97,7 @@ exports.mediaCheckoutWebhook = functions
     .https.onRequest(async (req, res) => {
     var _a;
     const sig = req.headers['stripe-signature'];
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.webhook_secret) || '';
+    const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.webhook_secret) || '').trim();
     if (!webhookSecret) {
         res.status(500).send('Webhook Secret nicht konfiguriert');
         return;

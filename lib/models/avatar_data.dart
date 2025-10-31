@@ -30,6 +30,7 @@ class AvatarData {
   final bool? nicknamePublic; // Nickname öffentlich
   final bool? lastNamePublic; // Nachname öffentlich
   final Map<String, dynamic>? dynamics; // Dynamics (idle.mp4, chunks, etc.)
+  final Map<String, dynamic>? liveAvatar; // BitHuman Live Avatar (agentId, etc.)
 
   AvatarData({
     required this.id,
@@ -61,6 +62,7 @@ class AvatarData {
     this.nicknamePublic,
     this.lastNamePublic,
     this.dynamics,
+    this.liveAvatar,
   });
 
   // Factory constructor für Firestore
@@ -108,6 +110,7 @@ class AvatarData {
       nicknamePublic: map['nicknamePublic'],
       lastNamePublic: map['lastNamePublic'],
       dynamics: map['dynamics'],
+      liveAvatar: map['liveAvatar'],
     );
   }
 
@@ -154,6 +157,7 @@ class AvatarData {
     if (firstNamePublic != null) map['firstNamePublic'] = firstNamePublic;
     if (nicknamePublic != null) map['nicknamePublic'] = nicknamePublic;
     if (lastNamePublic != null) map['lastNamePublic'] = lastNamePublic;
+    if (liveAvatar != null) map['liveAvatar'] = liveAvatar;
 
     return map;
   }
@@ -189,6 +193,7 @@ class AvatarData {
     bool? nicknamePublic,
     bool? lastNamePublic,
     Map<String, dynamic>? dynamics,
+    Map<String, dynamic>? liveAvatar,
     bool clearAvatarImageUrl = false,
   }) {
     return AvatarData(
@@ -223,6 +228,7 @@ class AvatarData {
       nicknamePublic: nicknamePublic ?? this.nicknamePublic,
       lastNamePublic: lastNamePublic ?? this.lastNamePublic,
       dynamics: dynamics ?? this.dynamics,
+      liveAvatar: liveAvatar ?? this.liveAvatar,
     );
   }
 

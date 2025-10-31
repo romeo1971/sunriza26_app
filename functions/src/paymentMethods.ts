@@ -11,7 +11,7 @@ import * as admin from 'firebase-admin';
 
 // Stripe initialisieren (conditional)
 function getStripe() {
-  const secretKey = process.env.STRIPE_SECRET_KEY || functions.config().stripe?.secret_key;
+  const secretKey = (process.env.STRIPE_SECRET_KEY || functions.config().stripe?.secret_key || '').trim();
   if (!secretKey) {
     throw new functions.https.HttpsError('failed-precondition', 'Stripe Secret Key nicht konfiguriert');
   }

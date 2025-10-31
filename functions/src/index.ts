@@ -12,7 +12,7 @@ import { generateLipsyncVideo, validateVideoRequest } from './vertexAI';
 import { getConfig } from './config';
 import { RAGService } from './rag_service';
 import fetch from 'node-fetch';
-import OpenAI from 'openai';
+// import OpenAI from 'openai'; // Nicht benötigt, nutzen native fetch
 import { PassThrough } from 'stream';
 import ffmpegPath from 'ffmpeg-static';
 import ffmpeg from 'fluent-ffmpeg';
@@ -21,6 +21,7 @@ import * as os from 'os';
 import * as path from 'path';
 import sharp from 'sharp';
 import * as functionsStorage from 'firebase-functions/v2/storage';
+import { onRequest } from 'firebase-functions/v2/https';
 
 // Exports
 export * from './avatarChat';
@@ -241,7 +242,7 @@ export const testTTS = functions
         }
 
         // 1) ElevenLabs bevorzugen, falls Key vorhanden
-        const elevenKey = process.env.ELEVENLABS_API_KEY;
+        const elevenKey = process.env.ELEVENLABS_API_KEY?.trim();
         if (elevenKey) {
           try {
             const effectiveVoiceId = (typeof voiceId === 'string' && voiceId.trim().length > 0)
@@ -1153,84 +1154,65 @@ export const restoreAvatarCovers = functions
  * LLM Router: OpenAI primär (gpt-4o-mini), Gemini Fallback
  * Body: { messages: [{role:'system'|'user'|'assistant', content:string}], maxTokens?, temperature? }
  */
-export const llm = functions
-  .region('us-central1')
-  .runWith({ secrets: ['OPENAI_API_KEY', 'GEMINI_API_KEY'] })
-  .https.onRequest(async (req, res) => {
-    return corsHandler(req, res, async () => {
-      try {
-        if (req.method !== 'POST') {
-          res.status(405).json({ error: 'Nur POST Requests erlaubt' });
-          return;
-        }
-        const { messages, maxTokens, temperature } = req.body || {};
-        if (!Array.isArray(messages) || messages.length === 0) {
-          res.status(400).json({ error: 'messages[] ist erforderlich' });
-          return;
-        }
-        // OpenAI primär
-        const openaiKey = process.env.OPENAI_API_KEY;
-        const geminiKey = process.env.GEMINI_API_KEY;
-        const joined = messages
-          .map((m: any) => `${m.role || 'user'}: ${m.content || ''}`)
-          .join('\n');
+export const llm = onRequest({
+  region: 'us-central1',
+  cors: true,
+  invoker: 'public',
+  secrets: ['OPENAI_API_KEY']
+}, async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.status(204).send('');
+    return;
+  }
+  try {
+    if (req.method !== 'POST') {
+      res.status(405).json({ error: 'Nur POST Requests erlaubt' });
+      return;
+    }
+    const { messages, maxTokens, temperature } = req.body || {};
+    if (!Array.isArray(messages) || messages.length === 0) {
+      res.status(400).json({ error: 'messages[] ist erforderlich' });
+      return;
+    }
+    
+    const openaiKey = process.env.OPENAI_API_KEY?.trim();
+    if (!openaiKey) {
+      res.status(500).json({ error: 'OPENAI_API_KEY fehlt' });
+      return;
+    }
 
-        const tryOpenAI = async () => {
-          if (!openaiKey) throw new Error('OPENAI_API_KEY fehlt');
-          const client = new OpenAI({ apiKey: openaiKey });
-          const resp = await client.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: messages.map((m: any) => ({ role: m.role, content: m.content })),
-            max_tokens: maxTokens || 300,
-            temperature: temperature ?? 0.6,
-          });
-          const text = resp.choices?.[0]?.message?.content || '';
-          return text.trim();
-        };
-
-        const tryGemini = async () => {
-          if (!geminiKey) throw new Error('GEMINI_API_KEY fehlt');
-          const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
-          const body = {
-            contents: [
-              {
-                parts: [{ text: joined }],
-              },
-            ],
-            generationConfig: {
-              temperature: temperature ?? 0.6,
-              maxOutputTokens: maxTokens || 300,
-            },
-          } as any;
-          const r = await (fetch as any)(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-          });
-          if (!(r as any).ok) throw new Error(`Gemini HTTP ${(r as any).status}`);
-          const j = await (r as any).json();
-          const text = j?.candidates?.[0]?.content?.parts?.[0]?.text || '';
-          return (text as string).trim();
-        };
-
-        let answer = '';
-        try {
-          // Priorisiere OpenAI (günstiger laut Vorgabe), Gemini als Fallback
-          answer = await tryOpenAI();
-        } catch (e) {
-          console.warn('OpenAI Fehler, fallback auf Gemini:', e);
-          answer = await tryGemini();
-        }
-        res.status(200).json({ answer });
-      } catch (error) {
-        console.error('LLM Router Fehler:', error);
-        res.status(500).json({
-          error: 'LLM Fehler',
-          details: error instanceof Error ? error.message : 'Unbekannter Fehler',
-        });
-      }
+    // Native fetch statt OpenAI SDK
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openaiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: messages.map((m: any) => ({ role: m.role, content: m.content })),
+        max_tokens: maxTokens || 300,
+        temperature: temperature ?? 0.6,
+      }),
     });
-  });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenAI API Error: ${response.status} ${errorText}`);
+    }
+    
+    const data = await response.json();
+    const answer = (data.choices?.[0]?.message?.content || '').trim();
+    
+    res.status(200).json({ answer });
+  } catch (error) {
+    console.error('LLM Router Fehler:', error);
+    res.status(500).json({
+      error: 'LLM Fehler',
+      details: error instanceof Error ? error.message : 'Unbekannter Fehler',
+    });
+  }
+});
 
 /**
  * Talking-Head: Jobs anlegen / Status / Callback

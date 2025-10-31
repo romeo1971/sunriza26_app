@@ -42,7 +42,7 @@ const stripe_1 = __importDefault(require("stripe"));
 const admin = __importStar(require("firebase-admin"));
 // Stripe nur initialisieren wenn Secret Key vorhanden (env)
 const getStripe = () => {
-    const secretKey = process.env.STRIPE_SECRET_KEY || '';
+    const secretKey = (process.env.STRIPE_SECRET_KEY || '').trim();
     if (!secretKey) {
         throw new https_1.HttpsError('failed-precondition', 'Stripe Secret Key nicht konfiguriert');
     }
@@ -89,7 +89,7 @@ exports.createCreditsCheckoutSession = (0, https_1.onCall)({ region: 'us-central
 });
 exports.stripeWebhook = (0, https_1.onRequest)({ region: 'us-central1' }, async (req, res) => {
     const sig = req.headers['stripe-signature'];
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || '';
+    const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
     if (!webhookSecret) {
         res.status(500).send('Webhook Secret nicht konfiguriert');
         return;

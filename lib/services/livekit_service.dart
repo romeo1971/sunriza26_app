@@ -25,10 +25,16 @@ class LiveKitService {
   // Beobachtbarer Remote-Video-Track (für Rendering)
   final ValueNotifier<lk.VideoTrack?> remoteVideo =
       ValueNotifier<lk.VideoTrack?>(null);
+  
+  // Voice Activity Detection: Audio Level State
+  final ValueNotifier<bool> isSpeaking = ValueNotifier<bool>(false);
+  final ValueNotifier<double> audioLevel = ValueNotifier<double>(0.0);
+  Timer? _vadTimer;
 
   bool get isConnected => connected.value;
   String? get roomName => _roomName;
   Stream<lk.RoomEvent> get events => _events.stream;
+  lk.Room? get room => _room; // Public access für Mikrofon-Toggle
 
   bool get _enabled => (dotenv.env['LIVEKIT_ENABLED'] ?? '').trim() == '1';
   String get _lkUrl => (dotenv.env['LIVEKIT_URL'] ?? '').trim();
@@ -63,25 +69,58 @@ class LiveKitService {
       await leave();
     }
 
-    final lk.Room roomObj = lk.Room(roomOptions: const lk.RoomOptions());
+    // Room mit AUDIO OPTIONS wie bithumanProd!
+    final lk.Room roomObj = lk.Room(
+      roomOptions: const lk.RoomOptions(
+        adaptiveStream: true,
+        dynacast: true,
+        defaultAudioPublishOptions: lk.AudioPublishOptions(dtx: true),
+        defaultVideoPublishOptions: lk.VideoPublishOptions(simulcast: true),
+      ),
+    );
     // Listener erstellen und Events relayn + Tracks beobachten
     final lis = roomObj.createListener();
     lis.on<lk.RoomEvent>((e) => _events.add(e));
+    
+    // DEBUG: Participant Connected
+    lis.on<lk.ParticipantConnectedEvent>((e) {
+      debugPrint('👤 PARTICIPANT CONNECTED: ${e.participant.identity}');
+    });
+    
+    // DEBUG: Track Published
+    lis.on<lk.TrackPublishedEvent>((e) {
+      debugPrint('📹 TRACK PUBLISHED: ${e.publication.kind} from ${e.participant.identity}');
+    });
+    
+    // DEBUG: Track Subscribed
     lis.on<lk.TrackSubscribedEvent>((e) {
+      debugPrint('✅ TRACK SUBSCRIBED: ${e.track.kind} from ${e.participant.identity}');
       final t = e.track;
       if (t is lk.RemoteVideoTrack) {
+        debugPrint('🎬 REMOTE VIDEO TRACK SET!');
         remoteVideo.value = t;
       }
     });
+    
     lis.on<lk.TrackUnsubscribedEvent>((e) {
+      debugPrint('❌ TRACK UNSUBSCRIBED: ${e.track.kind}');
       if (remoteVideo.value == e.track) {
         remoteVideo.value = null;
       }
     });
+    
     lis.on<lk.ParticipantDisconnectedEvent>((e) {
+      debugPrint('👋 PARTICIPANT DISCONNECTED: ${e.participant.identity}');
       // Wenn der Publisher geht, Video-Track zurücksetzen
       remoteVideo.value = null;
     });
+    
+    // Voice Activity Detection: DEAKTIVIERT - Manuelles Mikrofon nur
+    // lis.on<lk.LocalTrackPublishedEvent>((e) {
+    //   if (e.publication.kind == lk.TrackType.AUDIO) {
+    //     _setupAudioLevelMonitoring(roomObj);
+    //   }
+    // });
     lis.on<lk.RoomDisconnectedEvent>((e) async {
       connected.value = false;
       if (_manualStop) {
@@ -106,7 +145,14 @@ class LiveKitService {
           return;
         }
         try {
-          final lk.Room nr = lk.Room(roomOptions: const lk.RoomOptions());
+          final lk.Room nr = lk.Room(
+            roomOptions: const lk.RoomOptions(
+              adaptiveStream: true,
+              dynacast: true,
+              defaultAudioPublishOptions: lk.AudioPublishOptions(dtx: true),
+              defaultVideoPublishOptions: lk.VideoPublishOptions(simulcast: true),
+            ),
+          );
           final lis2 = nr.createListener();
           lis2.on<lk.RoomEvent>((e) => _events.add(e));
           lis2.on<lk.TrackSubscribedEvent>((e) {
@@ -129,6 +175,13 @@ class LiveKitService {
           connected.value = true;
           connectionStatus.value = 'connected';
           _reconnectAttempts = 0;
+          
+          // MIKROFON DEAKTIVIERT bei Reconnect - wird manuell aktiviert
+          try {
+            await nr.localParticipant?.setMicrophoneEnabled(false);
+            debugPrint('🎤 Microphone DISABLED after reconnect (manual activation only)');
+          } catch (_) {}
+
         } catch (_) {}
       });
     });
@@ -145,6 +198,15 @@ class LiveKitService {
       connected.value = true;
       connectionStatus.value = 'connected';
       _reconnectAttempts = 0;
+      
+      // MIKROFON DEAKTIVIERT by default - wird manuell aktiviert beim Recording
+      try {
+        await roomObj.localParticipant?.setMicrophoneEnabled(false);
+        debugPrint('🎤 Microphone DISABLED by default (manual activation only)');
+      } catch (e) {
+        debugPrint('⚠️ Could not disable microphone: $e');
+      }
+      
       debugPrint('✅ LiveKit CONNECTED to room: $room');
       return true;
     } catch (e) {
@@ -187,10 +249,64 @@ class LiveKitService {
     }
   }
 
+  // Voice Activity Detection DEAKTIVIERT - nur manuelles Mikrofon
+  // 
+  // /// Setup Audio Level Monitoring for Voice Activity Detection
+  // void _setupAudioLevelMonitoring(lk.Room room) {
+  //   _vadTimer?.cancel();
+  //   
+  //   // Monitor local participant audio level stream für Voice Activity Detection
+  //   // VAD threshold: -40dB, silence timeout: 3s wie bithumanProd
+  //   const vadThreshold = 0.01; // ~-40dB in linear scale (0.0-1.0)
+  //   const silenceTimeout = Duration(seconds: 3);
+  //   DateTime? lastSpeechTime;
+  //   
+  //   _vadTimer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+  //     final localParticipant = room.localParticipant;
+  //     if (localParticipant == null) {
+  //       isSpeaking.value = false;
+  //       return;
+  //     }
+  //     
+  //     // Check if microphone is enabled
+  //     final isMicEnabled = localParticipant.isMicrophoneEnabled();
+  //     if (!isMicEnabled) {
+  //       isSpeaking.value = false;
+  //       audioLevel.value = 0.0;
+  //       return;
+  //     }
+  //     
+  //     // Get audio level from participant (0.0-1.0)
+  //     // LiveKit Participant hat audioLevel Property das automatisch gemessen wird
+  //     final level = localParticipant.audioLevel;
+  //     audioLevel.value = level;
+  //     
+  //     // Voice Activity Detection mit threshold
+  //     if (level > vadThreshold) {
+  //       isSpeaking.value = true;
+  //       lastSpeechTime = DateTime.now();
+  //     } else {
+  //       // Silence timeout: wenn 3s keine Sprache -> isSpeaking = false
+  //       if (lastSpeechTime != null) {
+  //         final silenceDuration = DateTime.now().difference(lastSpeechTime!);
+  //         if (silenceDuration > silenceTimeout) {
+  //           isSpeaking.value = false;
+  //         }
+  //         // Während Silence Timeout noch speaking = true
+  //       } else {
+  //         isSpeaking.value = false;
+  //       }
+  //     }
+  //   });
+  // }
+
   Future<void> dispose() async {
     await leave();
     await _events.close();
+    _vadTimer?.cancel();
     connected.dispose();
     remoteVideo.dispose();
+    isSpeaking.dispose();
+    audioLevel.dispose();
   }
 }

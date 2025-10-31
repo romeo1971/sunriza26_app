@@ -251,8 +251,8 @@ ${context}`;
 
   // Keys aus Secret Manager oder Env holen (best effort)
   private async getCSEKeys(): Promise<{ apiKey: string; cx: string } | null> {
-    const envKey = process.env.GOOGLE_CSE_API_KEY;
-    const envCx = process.env.GOOGLE_CSE_CX;
+    const envKey = process.env.GOOGLE_CSE_API_KEY?.trim();
+    const envCx = process.env.GOOGLE_CSE_CX?.trim();
     if (envKey && envCx) return { apiKey: envKey, cx: envCx };
     try {
       const { SecretManagerServiceClient } = await import('@google-cloud/secret-manager');

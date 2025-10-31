@@ -90,7 +90,7 @@ dependencies:
   # extended_image_library: ^4.0.6
 
   # LiveKit Flutter SDK (Room Join/Leave, Remote Audio/Video)
-  livekit_client: ^2.2.6
+  livekit_client: ^2.2.6  # Mikrofon-Management manuell (livekit_components hat intl-Konflikt)
   
   # Google Cloud Vision API für umfassende KI-Bilderkennung
   googleapis: ^15.0.0

@@ -94,3 +94,5 @@ make install-git-hooks
 ```
 
 Hinweis: Diese Datei ist bewusst im Ordner `brain/` verankert, damit sie bei jedem Kontextwechsel schnell auffindbar ist.
+
+verhaltensregeln.md befolgen 1:1

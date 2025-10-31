@@ -9,7 +9,12 @@ if (!admin.apps.length) {
   } catch (_) {}
 }
 
-export const avatarChat = onRequest({ region: 'us-central1', cors: true }, async (req, res) => {
+export const avatarChat = onRequest({ 
+  region: 'us-central1', 
+  cors: true,
+  invoker: 'public',
+  secrets: ['OPENAI_API_KEY', 'PINECONE_API_KEY', 'GOOGLE_CSE_API_KEY', 'GOOGLE_CSE_CX']
+}, async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.status(204).send('');
     return;

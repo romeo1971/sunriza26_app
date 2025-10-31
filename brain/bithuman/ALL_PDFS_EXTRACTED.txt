@@ -1,0 +1,4168 @@
+=== Agent Generation API.pdf ===
+🔑
+🤖
+
+Agent Generation API
+
+Early Access: bitHuman Agent Creation Service
+Programmatically create interactive avatar agents through our
+cloud-hosted REST API.
+
+Authentication
+Get your API secret from imaginex.bithuman.ai
+
+Base URL
+https://public.api.bithuman.ai
+
+Endpoints
+Generate Agent
+POST /v1/agent/generate
+
+Create a new interactive avatar agent with customizable
+parameters.
+Headers:
+Content-Type: application/json
+api-secret: YOUR_API_SECRET
+
+Request Body:
+{
+"prompt": "string (optional)",
+"image": "string (optional)",
+"video": "string (optional)",
+
+"audio": "string (optional)"
+}
+
+Parameters:
+Parame
+ter
+
+prompt
+
+image
+
+video
+
+audio
+
+Typ
+e
+
+Descript
+ion
+
+Example
+
+strin
+g
+
+Custom
+system
+prompt
+for the
+agent
+
+"You are a friendly AI assistant"
+
+strin
+g
+
+Image
+URL or
+base64
+data
+
+"https://example.com/
+image.jpg"
+
+strin
+g
+
+Video
+URL or
+base64
+data
+
+"https://example.com/
+video.mp4"
+
+strin
+g
+
+Audio
+URL or
+base64
+data
+
+"https://example.com/
+audio.mp3"
+
+Response:
+{
+"success": true,
+"message": "Agent generation started",
+"agent_id": "A91XMB7113",
+"status": "processing"
+}
+
+Example Request:
+import requests
+url = "https://public.api.bithuman.ai/v1/agent/generate"
+headers = {
+"Content-Type": "application/json",
+"api-secret": "YOUR_API_SECRET"
+}
+payload = {
+"prompt": "You are a professional video content creator who helps with
+social media content."
+}
+response = requests.post(url, headers=headers, json=payload)
+print(response.json())
+
+Example with Media:
+payload = {
+"prompt": "You are an art critic who analyzes visual artworks.",
+"image": "https://example.com/artwork.jpg"
+}
+response = requests.post(url, headers=headers, json=payload)
+
+Get Agent Status
+GET /v1/agent/status/{agent_id}
+
+Retrieve the current status and details of a specific agent.
+Headers:
+api-secret: YOUR_API_SECRET
+
+Path Parameters:
+Parameter
+agent_id
+
+Type
+string
+
+Description
+The unique identifier of the
+agent
+
+Parameter
+agent_id
+
+Type
+string
+
+Description
+The unique identifier of the
+agent
+
+Response:
+{
+"success": true,
+"data": {
+"agent_id": "agent id",
+"event_type": "lip_created",
+"status": "ready",
+"error_message": null,
+"created_at": "2025-08-01T13:58:51.907177+00:00",
+"updated_at": "2025-08-01T09:59:15.159901+00:00",
+"system_prompt": "your agent prompt",
+"image_url": "your_image_url",
+"video_url": "your_video_url",
+"name": "agent name",
+"model_url": "your model url"
+}
+}
+
+Status Values:
+•
+•
+•
+
+processing - Agent is currently being generated
+ready - Agent generation completed successfully
+failed - Agent generation failed
+
+Example Request:
+import requests
+agent_id = "A81FMS8296"
+url = f"https://public.api.bithuman.ai/v1/agent/status/{agent_id}"
+headers = {
+"api-secret": "YOUR_API_SECRET"
+}
+response = requests.get(url, headers=headers)
+print(response.json())
+
+Complete Example:
+import requests
+import time
+# Step 1: Create agent
+generate_url = "https://public.api.bithuman.ai/v1/agent/generate"
+headers = {
+"Content-Type": "application/json",
+"api-secret": "YOUR_API_SECRET"
+}
+payload = {
+"prompt": "You are a friendly AI assistant that helps with creative writing."
+}
+# Generate agent
+response = requests.post(generate_url, headers=headers, json=payload)
+result = response.json()
+agent_id = result["agent_id"]
+print(f"Agent created: {agent_id}")
+# Step 2: Poll for completion
+status_url = f"https://public.api.bithuman.ai/v1/agent/status/{agent_id}"
+status_headers = {"api-secret": "YOUR_API_SECRET"}
+while True:
+status_response = requests.get(status_url, headers=status_headers)
+status_data = status_response.json()
+status = status_data["data"]["status"]
+if status == "ready":
+print(f"Agent ready: {status_data['data']['model_url']}")
+break
+elif status == "failed":
+print("Generation failed")
+break
+time.sleep(5) # Wait 5 seconds before checking again
+
+Error Handling
+Common HTTP Status Codes:
+•
+•
+•
+•
+•
+
+200 - Success
+400 - Bad Request (invalid parameters)
+401 - Unauthorized (invalid API secret)
+429 - Rate Limit Exceeded
+500 - Internal Server Error
+
+Error Response Format:
+{
+
+"error": "Invalid API secret",
+"code": "UNAUTHORIZED",
+"details": "Please check your API secret from imaginex.bithuman.ai"
+}
+
+
+=== Agent_Context_API.pdf ===
+Agent Context API
+
+29.10.25, 05:03
+
+Agent Context API
+Real-time communication with imaginex platform agents
+
+Send messages to your imaginex platform agents in real-time, make them speak proactively, or add backgrou
+their responses.
+
+Note: This API is for agents created and deployed on the imaginex.bithuman.ai platform, not for local SD
+
+What is Agent Context API?
+The Agent Context API allows you to interact with your imaginex platform agents in real-time:
+Make agents speak → Trigger proactive speech to users
+Add background knowledge → Enhance agent responses with context
+Target specific rooms → Send messages to individual sessions
+Real-time delivery → Instant communication with active agents
+
+Perfect for: Live agent control, dynamic content updates, personalized interactions, customer service autom
+agents
+
+Quick Start
+Prerequisites
+Agent created and deployed on imaginex.bithuman.ai platform
+Agent code identifier from your imaginex dashboard
+Valid API secret from imaginex.bithuman.ai
+Agent actively running in a LiveKit session (not local SDK agents)
+
+Base URL
+https://your-api-endpoint.com/v1/agent/{agent_code}
+
+Note: {agent_code} is the unique identifier of your agent from the imaginex platform dashboard (
+
+API Endpoints
+Make Agent Speak
+Make your agent speak a message proactively to users in the session.
+
+https://sdk.docs.bithuman.ai/#/preview/agent-context-api
+
+Seite 1 von 11
+
+Agent Context API
+
+29.10.25, 05:03
+
+POST /v1/agent/{agent_code}/speak
+
+Request
+
+{
+"message": "Hello! I have an important update for you.",
+"room_id": "room_123"
+
+// Optional: target specific room
+
+}
+
+Headers
+
+Content-Type: application/json
+api-secret: your_api_secret_here
+
+Response
+
+{
+"success": true,
+"message": "Speech triggered successfully",
+"data": {
+"agent_code": "A12345678",
+"delivered_to_rooms": 1,
+"timestamp": "2024-01-15T10:30:00Z"
+}
+}
+
+Example Usage
+
+import requests
+# Make imaginex platform agent announce a promotion
+# Note: A12345678 is your agent code from imaginex dashboard
+response = requests.post(
+'https://api.example.com/v1/agent/A12345678/speak',
+headers={'api-secret': 'your_secret'},
+json={
+'message': 'Great news! We have a 20% discount available today!',
+'room_id': 'customer_session_1'
+}
+)
+if response.json()['success']:
+print("Imaginex agent spoke successfully!")
+
+// JavaScript/Node.js - Control imaginex platform agent
+// Note: A12345678 is your agent code from imaginex dashboard
+const response = await fetch('/v1/agent/A12345678/speak', {
+
+https://sdk.docs.bithuman.ai/#/preview/agent-context-api
+
+Seite 2 von 11
+
+Agent Context API
+
+29.10.25, 05:03
+
+method: 'POST',
+headers: {
+'Content-Type': 'application/json',
+'api-secret': 'your_secret'
+},
+body: JSON.stringify({
+message: 'Your order has been confirmed and will arrive tomorrow!',
+room_id: 'order_confirmation_room'
+})
+});
+const result = await response.json();
+console.log('Imaginex agent speech result:', result);
+
+Add Background Context
+
+Add background knowledge to your agent without triggering speech. The agent will use this information to e
+
+POST /v1/agent/{agent_code}/add-context
+
+Request
+
+{
+
+"context": "User John Smith is a premium customer who prefers email communication an
+"type": "add_context",
+"room_id": "room_456"
+
+// Optional: target specific room
+
+}
+
+Headers
+
+Content-Type: application/json
+api-secret: your_api_secret_here
+
+Response
+
+{
+"success": true,
+"message": "Context added successfully",
+"data": {
+"agent_code": "A12345678",
+"context_type": "add_context",
+"delivered_to_rooms": 1,
+"timestamp": "2024-01-15T10:35:00Z"
+}
+}
+
+Example Usage
+https://sdk.docs.bithuman.ai/#/preview/agent-context-api
+
+Seite 3 von 11
+
+Agent Context API
+
+29.10.25, 05:03
+
+import requests
+# Add customer context to imaginex platform agent
+# Note: A12345678 is your agent code from imaginex dashboard
+response = requests.post(
+'https://api.example.com/v1/agent/A12345678/add-context',
+headers={'api-secret': 'your_secret'},
+json={
+'context': 'Customer has VIP status and prefers technical explanations',
+'type': 'add_context',
+'room_id': 'vip_customer_session'
+}
+)
+print("Context added to imaginex agent:", response.json())
+
+// Add context about user preferences to imaginex platform agent
+// Note: A12345678 is your agent code from imaginex dashboard
+const response = await fetch('/v1/agent/A12345678/add-context', {
+method: 'POST',
+headers: {
+'Content-Type': 'application/json',
+'api-secret': 'your_secret'
+},
+body: JSON.stringify({
+context: 'User is interested in enterprise features and has a team of 50+ people'
+type: 'add_context'
+})
+});
+
+Unified Context Endpoint (Advanced)
+
+For advanced use cases, you can use the unified endpoint that supports both speech and context addition in
+
+POST /v1/agent/{agent_code}/add-context
+
+Request for Speech
+
+{
+"context": "Thank you for your patience. Your issue has been resolved!",
+"type": "speak",
+"room_id": "support_session_1"
+}
+
+Request for Background Context
+
+{
+"context": "Customer reported billing issue #12345 on January 10th",
+
+https://sdk.docs.bithuman.ai/#/preview/agent-context-api
+
+Seite 4 von 11
+
+Agent Context API
+
+29.10.25, 05:03
+
+"type": "add_context",
+"room_id": "support_session_1"
+}
+
+Use Cases & Examples
+Announcements & Notifications
+# System maintenance announcement to imaginex platform agents
+# Note: SUPPORT_AGENT is your agent code from imaginex dashboard
+def notify_maintenance():
+requests.post('/v1/agent/SUPPORT_AGENT/speak',
+headers={'api-secret': API_SECRET},
+json={
+
+'message': 'We will have scheduled maintenance tonight from 2-4 AM EST. Yo
+}
+)
+# Flash sale notification to sales agent on imaginex platform
+def announce_sale():
+requests.post('/v1/agent/SALES_AGENT/speak',
+headers={'api-secret': API_SECRET},
+json={
+
+'message': 'Flash Sale Alert! 50% off all premium plans for the next 2 hou
+}
+)
+
+Personalized Customer Service
+# Add customer context when they join - for imaginex platform agents
+# Note: agent_code should be from your imaginex dashboard (e.g., A12345678)
+def setup_customer_context(agent_code, customer_data, room_id):
+context = f"""
+Customer: {customer_data['name']}
+Account Type: {customer_data['tier']}
+Last Purchase: {customer_data['last_order']}
+Preferred Contact: {customer_data['contact_method']}
+Previous Issues: {customer_data['support_history']}
+"""
+requests.post(f'/v1/agent/{agent_code}/add-context',
+headers={'api-secret': API_SECRET},
+json={
+'context': context,
+'type': 'add_context',
+'room_id': room_id
+}
+)
+# Proactive issue resolution with imaginex platform agent
+def proactive_support_followup(agent_code, issue_id):
+
+https://sdk.docs.bithuman.ai/#/preview/agent-context-api
+
+Seite 5 von 11
+
+Agent Context API
+
+29.10.25, 05:03
+
+requests.post(f'/v1/agent/{agent_code}/speak',
+headers={'api-secret': API_SECRET},
+json={
+
+'message': f'I see you had issue #{issue_id} last week. Is everything work
+}
+)
+
+Dynamic Content Updates
+# Update product information for imaginex platform agents
+# Note: agent_code should be from your imaginex dashboard
+def update_product_knowledge(agent_code, product_updates):
+for update in product_updates:
+requests.post(f'/v1/agent/{agent_code}/add-context',
+headers={'api-secret': API_SECRET},
+json={
+'context': f"Product Update: {update['product']} now has {update[
+'type': 'add_context'
+}
+)
+# Live event updates via imaginex platform agent
+def broadcast_event_update(agent_code, event_info):
+requests.post(f'/v1/agent/{agent_code}/speak',
+headers={'api-secret': API_SECRET},
+json={
+'message': f"Event Update: {event_info['title']} starts in {event_info
+}
+)
+
+Integration Patterns
+Real-time Webhooks + Agent Context
+from flask import Flask, request
+import requests
+app = Flask(__name__)
+@app.route('/webhook/order-confirmed', methods=['POST'])
+def handle_order_confirmation():
+order_data = request.json
+# Add order context to agent
+requests.post(f'/v1/agent/{order_data["agent_code"]}/add-context',
+headers={'api-secret': API_SECRET},
+json={
+'context': f"Customer just placed order #{order_data['order_id']} for $
+'type': 'add_context',
+'room_id': order_data['session_id']
+}
+
+https://sdk.docs.bithuman.ai/#/preview/agent-context-api
+
+Seite 6 von 11
+
+Agent Context API
+
+29.10.25, 05:03
+
+)
+# Make agent speak confirmation
+requests.post(f'/v1/agent/{order_data["agent_code"]}/speak',
+headers={'api-secret': API_SECRET},
+json={
+
+'message': f"Great! Your order #{order_data['order_id']} has been confirme
+'room_id': order_data['session_id']
+}
+)
+return {'status': 'success'}
+
+CRM Integration
+# Sync customer data with agent context
+def sync_crm_data(customer_id, agent_code, room_id):
+# Fetch from CRM
+customer = crm_client.get_customer(customer_id)
+# Format context for agent
+context = f"""
+Customer Profile:
+- Name: {customer.name}
+- Tier: {customer.tier}
+- Lifetime Value: ${customer.ltv}
+- Satisfaction Score: {customer.satisfaction}/10
+- Recent Activity: {customer.recent_activity}
+- Preferences: {customer.preferences}
+"""
+# Send to agent
+requests.post(f'/v1/agent/{agent_code}/add-context',
+headers={'api-secret': API_SECRET},
+json={
+'context': context,
+'type': 'add_context',
+'room_id': room_id
+}
+)
+
+Analytics-Driven Interactions
+# Trigger proactive engagement based on analytics
+def analytics_driven_engagement():
+# Check user behavior analytics
+users_about_to_churn = analytics.get_churn_risk_users()
+for user in users_about_to_churn:
+# Add context about user's situation
+requests.post(f'/v1/agent/{user["assigned_agent"]}/add-context',
+headers={'api-secret': API_SECRET},
+json={
+
+'context': f"User {user['name']} has {user['churn_risk']}% churn risk.
+
+https://sdk.docs.bithuman.ai/#/preview/agent-context-api
+
+Seite 7 von 11
+
+Agent Context API
+
+29.10.25, 05:03
+
+'type': 'add_context',
+'room_id': user['session_id']
+}
+)
+# Proactive outreach
+requests.post(f'/v1/agent/{user["assigned_agent"]}/speak',
+headers={'api-secret': API_SECRET},
+json={
+
+'message': f"Hi {user['name']}! I noticed you haven't been active late
+'room_id': user['session_id']
+}
+)
+
+Error Handling
+Common Error Responses
+// Agent not found
+{
+"success": false,
+"error": "AGENT_NOT_FOUND",
+"message": "Agent with code 'A12345678' not found"
+}
+// Invalid API secret
+{
+"success": false,
+"error": "UNAUTHORIZED",
+"message": "Invalid api-secret"
+}
+// No active sessions
+{
+"success": false,
+"error": "NO_ACTIVE_ROOMS",
+"message": "No active sessions found for agent"
+}
+// Invalid context type
+{
+"success": false,
+"error": "VALIDATION_ERROR",
+"message": "Invalid type. Must be one of: speak, add_context"
+}
+
+Error Handling Best Practices
+def safe_agent_speak(agent_code, message, room_id=None):
+try:
+response = requests.post(
+
+https://sdk.docs.bithuman.ai/#/preview/agent-context-api
+
+Seite 8 von 11
+
+Agent Context API
+
+29.10.25, 05:03
+
+f'/v1/agent/{agent_code}/speak',
+headers={'api-secret': API_SECRET},
+json={'message': message, 'room_id': room_id},
+timeout=10
+)
+if response.status_code == 200:
+return response.json()
+elif response.status_code == 404:
+print(f"Agent {agent_code} not found or no active sessions")
+elif response.status_code == 401:
+print("Invalid API credentials")
+else:
+print(f"Unexpected error: {response.status_code}")
+except requests.exceptions.Timeout:
+print("Request timed out")
+except requests.exceptions.RequestException as e:
+print(f"Request failed: {e}")
+return None
+
+Best Practices
+Context Management
+Be specific: Provide clear, actionable context information
+Stay relevant: Only add context that a!ects current interactions
+Update regularly: Refresh context as situations change
+Organize data: Structure context for easy agent comprehension
+
+Speech Optimization
+Natural language: Write messages as if the agent is speaking directly
+Appropriate timing: Don't interrupt ongoing conversations
+User value: Ensure proactive messages provide real value
+Frequency control: Avoid overwhelming users with too many messages
+
+Technical Best Practices
+Retry logic: Implement retries for network failures
+Rate limiting: Don't exceed API rate limits
+Monitoring: Track delivery success rates
+Security: Secure your API secrets properly
+
+Advanced Features
+Room Targeting
+Target specific rooms when agents handle multiple concurrent sessions:
+https://sdk.docs.bithuman.ai/#/preview/agent-context-api
+
+Seite 9 von 11
+
+Agent Context API
+
+29.10.25, 05:03
+
+# Send different messages to different rooms
+rooms = ['room_1', 'room_2', 'room_3']
+messages = ['VIP customer message', 'Standard message', 'Trial user message']
+for room, message in zip(rooms, messages):
+requests.post(f'/v1/agent/{AGENT_CODE}/speak',
+headers={'api-secret': API_SECRET},
+json={'message': message, 'room_id': room}
+)
+
+Delivery Tracking
+Monitor message delivery across your agent fleet:
+
+def track_delivery_success():
+results = []
+for agent_code in ACTIVE_AGENTS:
+response = safe_agent_speak(agent_code, "System check message")
+results.append({
+'agent': agent_code,
+'success': response is not None,
+'timestamp': datetime.now()
+})
+return results
+
+Batch Operations
+Send context to multiple agents e!iciently:
+
+def batch_context_update(agent_codes, context_data):
+"""Update multiple agents with new context"""
+for agent_code in agent_codes:
+requests.post(f'/v1/agent/{agent_code}/add-context',
+headers={'api-secret': API_SECRET},
+json={
+'context': context_data,
+'type': 'add_context'
+}
+)
+
+Ready to Get Started?
+
+https://sdk.docs.bithuman.ai/#/preview/agent-context-api
+
+1.
+
+Get your API secret - Visit imaginex.bithuman.ai
+
+2.
+
+Create and deploy an agent - Create your agent on the imaginex platform
+
+3.
+
+Get your agent code - Find the agent code (e.g., A12345678) in your imaginex dashboard
+
+4.
+
+Test the APIs - Try the examples above with your imaginex agent
+
+5.
+
+Build integrations - Connect your systems for real-time interaction with platform agents
+
+Seite 10 von 11
+
+Agent Context API
+
+29.10.25, 05:03
+
+Need Help?
+Community support: Discord
+
+Start building real-time interactions with your imaginex platform agents today!
+
+Previous
+
+Agent Generation API
+CLOUD SERVICES
+
+https://sdk.docs.bithuman.ai/#/preview/agent-context-api
+
+Seite 11 von 11
+
+
+=== Live Microphone Avatar.pdf ===
+Live Microphone Avatar
+
+29.10.25, 05:04
+
+Live Microphone Avatar
+Real-time avatar from your microphone
+Speak and see your avatar respond instantly.
+
+Quick Start
+1. Install
+pip install bithuman --upgrade livekit-rtc livekit-agents
+
+2. Set environment
+export BITHUMAN_API_SECRET="your_secret"
+export BITHUMAN_MODEL_PATH="/path/to/model.imx"
+
+3. Run
+View source code on GitHub
+
+python examples/avatar-with-microphone.py
+
+4. Usage
+Speak into microphone → Avatar animates in real-time
+Stay quiet → Avatar stops a!er silence timeout (3 seconds)
+Press q → Quit application
+
+What it does
+1. Captures audio from your default microphone
+2. Creates real-time avatar animation as you speak
+3. Shows live video using LocalVideoPlayer
+4. Automatically detects voice activity and silence
+Key features:
+Real-time audio processing at 24kHz
+Voice activity detection with configurable threshold (-40dB)
+Automatic silence detection (3-second timeout)
+https://sdk.docs.bithuman.ai/#/examples/avatar-with-microphone
+
+Seite 1 von 4
+
+Live Microphone Avatar
+
+29.10.25, 05:04
+
+Local audio/video processing (no web interface)
+
+Command Line Options
+Customize the behavior with command line arguments:
+
+# Adjust volume and silence detection
+python examples/avatar-with-microphone.py \
+--volume 1.5 \
+--slient-threshold-db -35
+# Use specific model and credentials
+python examples/avatar-with-microphone.py \
+--model /path/to/model.imx \
+--api-secret your_secret
+# Enable audio echo for testing
+python examples/avatar-with-microphone.py --echo
+
+Available options:
+--model : Path to .imx model file
+--api-secret : Your bitHuman API secret
+--token : JWT token (alternative to API secret)
+--volume : Audio volume multiplier (default: 1.0)
+--slient-threshold-db : Silence threshold in dB (default: -40)
+--echo : Enable audio echo for testing
+--insecure : Disable SSL verification (dev only)
+
+Common Issues
+No microphone input detected?
+Check microphone permissions in system settings
+Verify microphone is set as default input device
+Test microphone with other applications first
+Avatar not responding to voice?
+Speak louder or closer to microphone
+Adjust --slient-threshold-db to lower value (e.g., -50)
+Increase --volume parameter
+Performance issues or lag?
+Close other audio applications
+Use wired microphone instead of wireless
+Check CPU usage and close unnecessary programs
+Audio echo or feedback?
+Don't use --echo flag in normal operation
+Use headphones to prevent speaker feedback
+
+https://sdk.docs.bithuman.ai/#/examples/avatar-with-microphone
+
+Seite 2 von 4
+
+Live Microphone Avatar
+
+29.10.25, 05:04
+
+Adjust microphone and speaker volumes
+
+Perfect for
+Voice assistant prototypes
+Interactive kiosk applications
+Live demonstration setups
+Real-time avatar testing
+Voice-controlled interfaces
+
+Technical Details
+Audio processing:
+Sample rate: 24kHz
+Input: Mono microphone
+Bu"er: 240 samples per chunk (10ms at 24kHz)
+Silence detection: -40dB threshold with 3s timeout
+Processing: Real-time with LiveKit audio utilities
+Video output:
+Local video player (not web-based)
+Real-time display with FPS control
+Automatic frame rate adjustment
+Local processing only
+Voice Activity Detection:
+Uses threshold-based detection
+Configurable sensitivity
+Automatic timeout for silence
+Real-time processing
+
+Advanced Usage
+Fine-tune voice detection:
+
+# More sensitive (picks up quieter voices)
+python examples/avatar-with-microphone.py --slient-threshold-db -50
+# Less sensitive (only loud voices)
+python examples/avatar-with-microphone.py --slient-threshold-db -30
+# Boost quiet microphones
+python examples/avatar-with-microphone.py --volume 2.0
+
+Development testing:
+
+https://sdk.docs.bithuman.ai/#/examples/avatar-with-microphone
+
+Seite 3 von 4
+
+Live Microphone Avatar
+
+29.10.25, 05:04
+
+# Enable echo to hear your processed audio
+python examples/avatar-with-microphone.py --echo
+
+Next Steps
+Want AI conversation? → Try OpenAI Agent
+Need web deployment? → Try Apple Local Agent
+
+Real-time interaction made simple with local processing!
+
+Previous
+
+Audio Clip Avatar
+
+OpenAI Con
+
+EXAMPLES
+
+https://sdk.docs.bithuman.ai/#/examples/avatar-with-microphone
+
+Seite 4 von 4
+
+
+=== LiveKit Cloud Plugin.pdf ===
+🚀
+
+LiveKit Cloud Plugin
+
+CLOUD
+
+LIVEKIT
+
+bitHuman LiveKit Cloud Plugin Integration
+Use existing bitHuman agents in real-time applications with our
+cloud-hosted LiveKit plugin featuring Essence (CPU) and
+Expression (GPU) models.
+
+Quick Start
+1. Install Cloud Plugin
+# Uninstall existing plugin
+uv pip uninstall livekit-plugins-bithuman
+# Install cloud plugin from GitHub
+GIT_LFS_SKIP_SMUDGE=1 uv pip install git+https://github.com/livekit/
+agents@main#subdirectory=livekit-plugins/livekit-plugins-bithuman
+
+2. Get API Credentials
+•
+
+API Secret: imaginex.bithuman.ai
+
+3. Find Your Agent ID
+To use an existing avatar with the Expression Model, you'll need to
+locate your agent ID from the bitHuman platform.
+
+Step 1: Select Your Agent
+Navigate to your imaginex.bithuman.ai dashboard and click on the
+
+agent card you want to use.
+
+Click on the agent card you want to use for integration
+
+Step 2: Access Agent Settings
+Once you click on the agent, the Agent Settings dialog will open,
+displaying your unique Agent ID at the top.
+
+Copy the Agent ID from the Agent Settings dialog
+Tip: The Agent ID (e.g., A78WKV4515) is a unique identifier for
+your specific avatar. You'll use this as the avatar_id parameter in
+your code.
+
+4. Set Environment
+export BITHUMAN_API_SECRET="your_api_secret"
+
+Usage Examples
+
+**Essence Model (CPU) **
+For standard avatar interactions with built-in personalities:
+import bithuman
+# Create avatar session with essence model
+bithuman_avatar = bithuman.AvatarSession(
+avatar_id="your_agent_code",
+api_secret="your_api_secret",
+)
+# Start conversation
+response = bithuman_avatar.generate_response("Hello, how are you?")
+
+Expression Model (GPU) - Agent ID
+For custom avatars created through the platform (see Find Your
+Agent ID above for instructions):
+import bithuman
+# Create avatar session with expression model
+bithuman_avatar = bithuman.AvatarSession(
+avatar_id="your_agent_code",
+api_secret="your_api_secret",
+model="expression"
+)
+# Generate avatar response
+response = bithuman_avatar.generate_response("Tell me about yourself")
+
+Expression Model (GPU) - Custom Image
+For dynamic avatar creation using custom images:
+import bithuman
+import os
+from PIL import Image
+
+# Create avatar session with custom image
+bithuman_avatar = bithuman.AvatarSession(
+avatar_image=Image.open(os.path.join("your_image_path")),
+api_secret="your_api_secret",
+model="expression"
+)
+# Process custom image and generate response
+response = bithuman_avatar.generate_response("Describe what you see")
+
+Configuration Options
+Avatar Session Parameters
+Type
+
+Requir
+ed
+
+Description
+
+avatar_id
+
+string
+
+Yes*
+
+Unique identifier for
+pre-created avatar
+
+avatar_image
+
+PIL.Ima
+ge
+
+Yes*
+
+Custom image for
+dynamic avatar
+creation
+
+Yes
+
+Authentication
+secret from
+bitHuman platform
+
+No
+
+Model type:
+"essence" (default)
+or "expression"
+
+Parameter
+
+api_secret
+
+model
+
+string
+
+string
+
+*Either avatar_id or avatar_image is required, not both.
+
+Model Types
+Essence Model:
+•
+•
+
+Pre-trained personalities and behaviors
+Optimized for conversational AI
+
+• Faster response times
+• Supports full body and animal mode
+Expression Model:
+•
+•
+•
+•
+
+Dynamic facial expression mapping
+Image-based avatar generation
+Supports only face and shoulder & above
+Do not support animal mode at the moment
+
+Cloud Advantages
+No Local Storage - No need to download large model files
+Auto-Updates - Always use the latest model versions
+Scalability - Handle multiple concurrent sessions
+Performance - Optimized cloud infrastructure
+Cross-Platform - Works on any device with internet
+
+Advanced Integration
+Session Management
+import bithuman
+class AvatarManager:
+def __init__(self, api_secret):
+self.api_secret = api_secret
+self.sessions = {}
+def create_session(self, session_id, avatar_id, model="essence"):
+self.sessions[session_id] = bithuman.AvatarSession(
+avatar_id=avatar_id,
+api_secret=self.api_secret,
+model=model
+)
+return self.sessions[session_id]
+def get_response(self, session_id, message):
+
+if session_id in self.sessions:
+return self.sessions[session_id].generate_response(message)
+return None
+# Usage
+manager = AvatarManager("your_api_secret")
+session = manager.create_session("user_123", "avatar_456")
+response = manager.get_response("user_123", "Hello!")
+
+Error Handling
+import bithuman
+try:
+avatar = bithuman.AvatarSession(
+avatar_id="your_agent_code",
+api_secret="your_api_secret"
+)
+response = avatar.generate_response("Test message")
+except bithuman.AuthenticationError:
+print("Invalid API secret. Check your credentials.")
+except bithuman.QuotaExceededError:
+print("API quota exceeded. Upgrade your plan.")
+except bithuman.NetworkError:
+print("Network connectivity issues. Check internet connection.")
+except Exception as e:
+print(f"Unexpected error: {e}")
+
+Monitoring & Debugging
+Enable Logging
+import logging
+import bithuman
+# Enable debug logging
+logging.basicConfig(level=logging.DEBUG)
+
+logger = logging.getLogger('bithuman')
+avatar = bithuman.AvatarSession(
+avatar_id="your_agent_code",
+api_secret="your_api_secret",
+debug=True
+)
+
+Performance Metrics
+import time
+import bithuman
+avatar = bithuman.AvatarSession(
+avatar_id="your_agent_code",
+api_secret="your_api_secret"
+)
+start_time = time.time()
+response = avatar.generate_response("Performance test")
+response_time = time.time() - start_time
+print(f"Response generated in {response_time:.2f} seconds")
+
+Common Issues
+Authentication Errors:
+• Verify API secret from imaginex.bithuman.ai
+• Check environment variable is properly set
+Network Timeouts:
+• Ensure stable internet connection
+• Consider implementing retry logic for production use
+Model Loading Issues:
+•
+•
+
+Verify avatar_id exists in your account
+For expression model, ensure image format is supported
+(PNG, JPG, WEBP)
+
+Plugin Installation:
+•
+•
+
+Use uv package manager as shown in installation
+Ensure GIT_LFS_SKIP_SMUDGE=1 flag is included
+
+Perfect for
+Production Applications - Reliable cloud infrastructure
+Scalable Solutions - Handle thousands of concurrent users
+Mobile Applications - No local storage requirements
+Enterprise Integration - Professional-grade API
+Rapid Prototyping - Quick setup without model management
+
+Pricing & Limits
+Visit imaginex.bithuman.ai for current pricing and usage limits.
+Free Tier Includes:
+• 199 credits per month
+• Community support
+Pro Features:
+•
+•
+•
+
+Unlimited credits
+Priority support
+Custom model training
+
+Next Steps
+API Documentation: Agent Generation API
+Local Examples: Examples Overview
+Community Support: Discord
+
+
+=== bithuman_Real-time_Events.pdf ===
+Real-time Events
+
+29.10.25, 04:46
+
+Real-time Event Handling
+Master advanced webhook patterns and event processing
+Build robust, scalable systems that respond intelligently to every avatar interaction.
+
+Event Types Deep Dive
+room_join
+When: User connects to an avatar session
+Frequency: Once per user connection
+Use for: Session tracking, user onboarding, capacity monitoring
+
+{
+"agent_id": "agent_customer_support",
+"event_type": "room.join",
+"data": {
+"room_name": "customer-support-room",
+"participant_count": 1,
+"session_id": "session_xyz789"
+},
+"timestamp": 1705312200.0
+}
+
+chat_push
+When: Any message sent in the conversation
+Frequency: Per message (both user and agent)
+Use for: Chat logging, sentiment analysis, keyword triggers
+
+{
+"agent_id": "agent_customer_support",
+"event_type": "chat.push",
+"data": {
+"role": "user",
+"message": "I need help with my order #12345",
+"session_id": "session_xyz789",
+"timestamp": 1705312285.0
+},
+"timestamp": 1705312285.0
+}
+
+Advanced Processing Patterns
+https://sdk.docs.bithuman.ai/#/integrations/event-handling
+
+Seite 1 von 9
+
+Real-time Events
+
+29.10.25, 04:46
+
+Async Processing
+Handle webhooks e!iciently without blocking responses:
+
+from celery import Celery
+from flask import Flask, request, jsonify
+app = Flask(__name__)
+celery = Celery('webhook_processor')
+@app.route('/webhook', methods=['POST'])
+def webhook_handler():
+# Return 200 immediately
+data = request.json
+# Queue for background processing
+process_webhook_async.delay(data)
+return jsonify({'status': 'accepted'}), 200
+@celery.task
+def process_webhook_async(data):
+"""Process webhook in background"""
+event_type = data.get('event_type')
+try:
+if event_type == 'chat.push':
+analyze_sentiment(data)
+update_conversation_log(data)
+check_keyword_triggers(data)
+elif event_type == 'room.join':
+log_user_session(data)
+update_capacity_metrics(data)
+trigger_welcome_message(data)
+except Exception as e:
+logger.error(f"Webhook processing failed: {e}")
+# Send to dead letter queue for retry
+handle_processing_error(data, e)
+
+Event Routing
+Route di!erent events to specialized handlers:
+
+class WebhookRouter:
+def __init__(self):
+self.handlers = {
+'room.join': [
+self.log_user_session,
+self.update_capacity_metrics,
+self.trigger_welcome_message
+],
+'chat.push': [
+self.analyze_message_sentiment,
+self.detect_urgent_keywords,
+self.update_conversation_state
+]
+
+https://sdk.docs.bithuman.ai/#/integrations/event-handling
+
+Seite 2 von 9
+
+Real-time Events
+
+29.10.25, 04:46
+
+}
+def route_event(self, webhook_data):
+event_type = webhook_data.get('event_type')
+handlers = self.handlers.get(event_type, [])
+for handler in handlers:
+try:
+handler(webhook_data)
+except Exception as e:
+logger.error(f"Handler {handler.__name__} failed: {e}")
+
+Event Aggregation
+Combine multiple events for insights:
+
+class EventAggregator:
+def __init__(self):
+self.session_buffer = {}
+
+# sessionId -> events
+
+def process_event(self, event_data):
+session_id = event_data.get('sessionId')
+event_type = event_data.get('event')
+if session_id not in self.session_buffer:
+self.session_buffer[session_id] = {
+'events': [],
+'start_time': None,
+'user_id': None
+}
+session = self.session_buffer[session_id]
+session['events'].append(event_data)
+# Update session metadata
+if event_type == 'room.join':
+session['start_time'] = event_data['timestamp']
+session['session_id'] = event_data['data']['session_id']
+elif event_type == 'chat.push':
+# Update latest activity timestamp
+session['last_activity'] = event_data['timestamp']
+def cleanup_inactive_sessions(self):
+"""Clean up sessions that have been inactive for too long"""
+from datetime import datetime
+current_time = datetime.now()
+inactive_sessions = []
+for session_id, session_data in self.session_buffer.items():
+
+last_activity = session_data.get('last_activity', session_data.get('start_
+if last_activity:
+
+inactive_duration = (current_time - datetime.fromisoformat(last_activi
+if inactive_duration > 1800:
+
+# 30 minutes of inactivity
+
+inactive_sessions.append(session_id)
+# Process and remove inactive sessions
+for session_id in inactive_sessions:
+
+https://sdk.docs.bithuman.ai/#/integrations/event-handling
+
+Seite 3 von 9
+
+Real-time Events
+
+29.10.25, 04:46
+
+session_data = self.session_buffer[session_id]
+self.analyze_session_activity(session_data)
+del self.session_buffer[session_id]
+def analyze_session_activity(self, session_data):
+"""Analyze session activity based on available events"""
+events = session_data['events']
+# Calculate engagement metrics from available events
+message_events = [e for e in events if e['event_type'] == 'chat.push']
+user_messages = [e for e in message_events if e['data']['role'] == 'user'
+engagement_score = self.calculate_engagement(user_messages)
+session_quality = self.assess_session_quality(events)
+# Store analytics based on current activity
+self.store_session_analytics({
+'session_id': session_data['session_id'],
+'message_count': len(message_events),
+'user_message_count': len(user_messages),
+'engagement_score': engagement_score,
+'quality_score': session_quality,
+'last_activity': session_data.get('last_activity')
+})
+
+Integration Patterns
+Real-time Dashboard
+Stream events to live dashboard:
+
+from flask_socketio import SocketIO, emit
+socketio = SocketIO(app, cors_allowed_origins="*")
+@app.route('/webhook', methods=['POST'])
+def webhook_handler():
+data = request.json
+# Process event
+processed_data = process_event(data)
+# Broadcast to connected dashboards
+socketio.emit('avatar_event', processed_data, namespace='/dashboard')
+return jsonify({'status': 'success'})
+# Dashboard receives real-time updates
+@socketio.on('connect', namespace='/dashboard')
+def dashboard_connected():
+emit('status', {'message': 'Connected to avatar events'})
+
+https://sdk.docs.bithuman.ai/#/integrations/event-handling
+
+Seite 4 von 9
+
+Real-time Events
+
+29.10.25, 04:46
+
+Smart Alerts
+Intelligent notifications based on patterns:
+
+class SmartAlertSystem:
+def __init__(self):
+self.user_sessions = {}
+self.error_patterns = {}
+def analyze_chat_event(self, data):
+message = data['message']['content'].lower()
+user_id = data['user']['id']
+# Detect frustration keywords
+frustration_words = ['frustrated', 'angry', 'terrible', 'awful']
+if any(word in message for word in frustration_words):
+self.escalate_to_human(data, reason='user_frustration')
+# Detect repeated questions
+if self.is_repeat_question(user_id, message):
+self.suggest_help_resources(data)
+def analyze_error_patterns(self, error_data):
+agent_id = error_data['agentId']
+error_code = error_data['error']['code']
+# Track error frequency
+key = f"{agent_id}:{error_code}"
+self.error_patterns[key] = self.error_patterns.get(key, 0) + 1
+# Alert if error rate exceeds threshold
+if self.error_patterns[key] > 5:
+
+# 5 errors in window
+
+self.alert_operations_team({
+'agent_id': agent_id,
+'error_code': error_code,
+'frequency': self.error_patterns[key],
+'severity': 'high'
+})
+
+Analytics Pipeline
+Feed events into analytics systems:
+
+import boto3
+from datetime import datetime
+class AnalyticsPipeline:
+def __init__(self):
+self.kinesis = boto3.client('kinesis')
+self.s3 = boto3.client('s3')
+def process_webhook(self, event_data):
+# Stream to real-time analytics
+self.stream_to_kinesis(event_data)
+# Archive for batch processing
+self.archive_to_s3(event_data)
+
+https://sdk.docs.bithuman.ai/#/integrations/event-handling
+
+Seite 5 von 9
+
+Real-time Events
+
+29.10.25, 04:46
+
+# Update metrics in database
+self.update_metrics_db(event_data)
+def stream_to_kinesis(self, data):
+"""Stream to AWS Kinesis for real-time analytics"""
+record = {
+'Data': json.dumps(data),
+'PartitionKey': data.get('agentId', 'default')
+}
+self.kinesis.put_record(
+StreamName='avatar-events',
+**record
+)
+def archive_to_s3(self, data):
+"""Archive events for batch processing"""
+date = datetime.now().strftime('%Y-%m-%d')
+hour = datetime.now().strftime('%H')
+key = f"avatar-events/{date}/{hour}/{data['sessionId']}.json"
+self.s3.put_object(
+Bucket='avatar-analytics',
+Key=key,
+Body=json.dumps(data),
+ContentType='application/json'
+)
+
+Error Handling & Resilience
+Retry Logic
+Handle transient failures gracefully:
+
+import time
+import random
+from functools import wraps
+def retry_with_backoff(max_retries=3, base_delay=1):
+def decorator(func):
+@wraps(func)
+def wrapper(*args, **kwargs):
+for attempt in range(max_retries):
+try:
+return func(*args, **kwargs)
+except Exception as e:
+if attempt == max_retries - 1:
+raise e
+# Exponential backoff with jitter
+delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+time.sleep(delay)
+
+https://sdk.docs.bithuman.ai/#/integrations/event-handling
+
+Seite 6 von 9
+
+Real-time Events
+
+29.10.25, 04:46
+
+return None
+return wrapper
+return decorator
+@retry_with_backoff(max_retries=3)
+def process_webhook_event(data):
+# Your processing logic here
+analytics_service.track_event(data)
+crm_service.update_contact(data)
+
+Dead Letter Queues
+Handle failed events for later processing:
+
+import redis
+import json
+class DeadLetterQueue:
+def __init__(self):
+self.redis_client = redis.Redis(host='localhost', port=6379)
+def add_failed_event(self, event_data, error_info):
+"""Add failed event to DLQ for later processing"""
+dlq_item = {
+'event': event_data,
+'error': str(error_info),
+'failed_at': datetime.now().isoformat(),
+'retry_count': 0
+}
+self.redis_client.lpush('webhook_dlq', json.dumps(dlq_item))
+def process_dlq(self):
+"""Process failed events from DLQ"""
+while True:
+item = self.redis_client.brpop('webhook_dlq', timeout=5)
+if not item:
+continue
+dlq_data = json.loads(item[1])
+try:
+# Retry processing
+process_webhook_event(dlq_data['event'])
+logger.info(f"DLQ item processed successfully")
+except Exception as e:
+dlq_data['retry_count'] += 1
+if dlq_data['retry_count'] < 3:
+# Re-queue for retry
+self.redis_client.lpush('webhook_dlq', json.dumps(dlq_data))
+else:
+# Move to permanent failure queue
+self.redis_client.lpush('webhook_failed', json.dumps(dlq_data
+logger.error(f"DLQ item failed permanently: {e}")
+
+https://sdk.docs.bithuman.ai/#/integrations/event-handling
+
+Seite 7 von 9
+
+Real-time Events
+
+29.10.25, 04:46
+
+Monitoring & Alerting
+Track webhook health and performance:
+
+import prometheus_client
+from prometheus_client import Counter, Histogram, Gauge
+# Metrics
+
+webhook_requests = Counter('webhook_requests_total', 'Total webhook requests', ['event
+
+processing_time = Histogram('webhook_processing_seconds', 'Time spent processing webho
+active_sessions = Gauge('active_avatar_sessions', 'Current active avatar sessions'
+def track_webhook_metrics(func):
+@wraps(func)
+def wrapper(*args, **kwargs):
+start_time = time.time()
+event_type = request.json.get('event', 'unknown')
+try:
+result = func(*args, **kwargs)
+webhook_requests.labels(event_type=event_type, status='success').inc(
+return result
+except Exception as e:
+webhook_requests.labels(event_type=event_type, status='error').inc()
+raise e
+finally:
+processing_time.observe(time.time() - start_time)
+return wrapper
+@app.route('/webhook', methods=['POST'])
+@track_webhook_metrics
+def webhook_handler():
+# Your webhook logic here
+pass
+
+Production Checklist
+Before going live with your webhook integration:
+
+Security
+HTTPS endpoint with valid SSL certificate
+Webhook signature verification implemented
+IP whitelisting configured (optional)
+Authentication headers secured
+Input validation and sanitization
+
+Reliability
+Async processing for heavy operations
+Retry logic for transient failures
+
+https://sdk.docs.bithuman.ai/#/integrations/event-handling
+
+Seite 8 von 9
+
+Real-time Events
+
+29.10.25, 04:46
+
+Dead letter queue for failed events
+Monitoring and alerting configured
+Response time under 5 seconds
+
+Scalability
+Horizontal scaling capability
+Database connection pooling
+Message queue for high volume
+Rate limiting and throttling
+Circuit breaker pattern
+
+Monitoring
+Application metrics and logging
+Error tracking and alerting
+Performance monitoring
+Health check endpoint
+Dashboard for real-time visibility
+
+Next Steps
+1.
+
+Start simple - Begin with basic event logging
+
+2.
+
+Add analytics - Track user engagement and patterns
+
+3.
+
+Build intelligence - Add sentiment analysis and smart alerts
+
+4.
+
+Optimize performance - Implement async processing and caching
+
+5.
+
+Scale up - Add queuing and horizontal scaling
+
+Resources
+Integration examples: Webhook Integration Guide
+Community support: Discord
+API reference: bitHuman API Docs
+
+Build powerful, real-time avatar integrations!
+
+Previous
+
+Webhook Integration
+INTEGRATIONS
+
+https://sdk.docs.bithuman.ai/#/integrations/event-handling
+
+Seite 9 von 9
+
+
+=== bithuman_Webhook_Integration.pdf ===
+Webhook Integration
+
+29.10.25, 04:45
+
+Webhook Integration
+Get real-time notifications when users interact with your avatars
+
+Connect your applications to receive instant HTTP callbacks when avatar events occur - from user conversati
+
+What Are Webhooks?
+Webhooks let your application automatically respond to avatar events:
+User joins session → Notify your CRM
+Chat message sent → Log to database
+Perfect for: Analytics, CRM integration, Slack notifications, database logging, real-time dashboards
+
+Quick Setup
+Configure Your Endpoint
+Navigate to the webhook configuration in your bitHuman developer dashboard:
+
+Step 1: Access Developer Dashboard
+Visit imaginex.bithuman.ai/#developer and navigate to the Webhooks section.
+
+Configure your webhook settings in the developer dashboard
+
+Step 2: Configure Endpoint URL
+Set up your webhook endpoint URL in the configuration panel:
+https://sdk.docs.bithuman.ai/#/integrations/webhook-integration?id=
+
+%EF%B8%8F-implementation-examples
+
+Seite 1 von 8
+
+Webhook Integration
+
+29.10.25, 04:45
+
+POST https://your-app.com/webhook
+Content-Type: application/json
+
+Choose Events to Receive
+Select which events trigger your webhook:
+room_join - User connects to avatar
+chat_push - Messages in conversation
+
+Add Authentication (Recommended)
+Secure your endpoint with custom headers:
+
+Authorization: Bearer your-api-token
+X-API-Key: your-secret-key
+
+Webhook Payload Examples
+Room Join Event
+{
+"agent_id": "agent_abc123",
+"event_type": "room.join",
+"data": {
+"room_name": "customer-support",
+"participant_count": 1,
+"session_id": "session_xyz789"
+},
+"timestamp": 1705312200.0
+}
+
+Chat Message Event
+{
+"agent_id": "agent_abc123",
+"event_type": "chat.push",
+"data": {
+"role": "user",
+"message": "Hello, I need help with my order",
+"session_id": "session_xyz789",
+"timestamp": 1705312285.0
+},
+"timestamp": 1705312285.0
+}
+
+https://sdk.docs.bithuman.ai/#/integrations/webhook-integration?id=
+
+%EF%B8%8F-implementation-examples
+
+Seite 2 von 8
+
+Webhook Integration
+
+29.10.25, 04:45
+
+Implementation Examples
+Flask Server (Python)
+from flask import Flask, request, jsonify
+import hmac
+import hashlib
+app = Flask(__name__)
+WEBHOOK_SECRET = "your-webhook-secret"
+@app.route('/webhook', methods=['POST'])
+def handle_webhook():
+# Verify signature (recommended)
+signature = request.headers.get('X-bitHuman-Signature', '')
+if not verify_signature(request.data, signature):
+return jsonify({'error': 'Invalid signature'}), 401
+data = request.json
+event_type = data.get('event_type')
+# Handle different events
+if event_type == 'room.join':
+handle_user_joined(data)
+elif event_type == 'chat.push':
+handle_new_message(data)
+return jsonify({'status': 'success'})
+def handle_user_joined(data):
+agent_id = data.get('agent_id')
+room_data = data.get('data', {})
+session_id = room_data.get('session_id')
+room_name = room_data.get('room_name')
+participant_count = room_data.get('participant_count')
+print(f"User joined agent {agent_id} in room {room_name} (session: {session_id
+# Add your logic: Update CRM, send notification, etc.
+def handle_new_message(data):
+agent_id = data.get('agent_id')
+message_data = data.get('data', {})
+role = message_data.get('role')
+message = message_data.get('message')
+session_id = message_data.get('session_id')
+print(f"New {role} message in session {session_id}: {message}")
+# Add your logic: Log to database, analyze sentiment, etc.
+def verify_signature(payload, signature):
+expected = hmac.new(
+WEBHOOK_SECRET.encode(),
+payload,
+hashlib.sha256
+).hexdigest()
+return hmac.compare_digest(f"sha256={expected}", signature)
+
+https://sdk.docs.bithuman.ai/#/integrations/webhook-integration?id=
+
+%EF%B8%8F-implementation-examples
+
+Seite 3 von 8
+
+Webhook Integration
+
+29.10.25, 04:45
+
+if __name__ == '__main__':
+app.run(port=3000)
+
+Express.js Server (Node.js)
+const express = require('express');
+const crypto = require('crypto');
+const app = express();
+app.use(express.json());
+const WEBHOOK_SECRET = 'your-webhook-secret';
+app.post('/webhook', (req, res) => {
+// Verify signature
+const signature = req.headers['x-bithuman-signature'];
+if (!verifySignature(req.body, signature)) {
+return res.status(401).json({ error: 'Invalid signature' });
+}
+const { event_type, agent_id, data } = req.body;
+switch (event_type) {
+case 'room.join':
+console.log(`User joined agent ${agent_id} in room ${data.room_name} (session:
+// Your logic here
+break;
+case 'chat.push':
+
+console.log(`New ${data.role} message in session ${data.session_id}: ${data mess
+// Your logic here
+break;
+}
+res.json({ status: 'success' });
+});
+function verifySignature(payload, signature) {
+const expected = crypto
+.createHmac('sha256', WEBHOOK_SECRET)
+.update(JSON.stringify(payload))
+.digest('hex');
+return crypto.timingSafeEqual(
+Buffer.from(`sha256=${expected}`),
+Buffer.from(signature)
+);
+}
+app.listen(3000, () => {
+console.log('Webhook server running on port 3000');
+});
+
+Common Use Cases
+https://sdk.docs.bithuman.ai/#/integrations/webhook-integration?id=
+
+%EF%B8%8F-implementation-examples
+
+Seite 4 von 8
+
+Webhook Integration
+
+29.10.25, 04:45
+
+Analytics Dashboard
+# Track user engagement metrics
+def handle_chat_push(data):
+db.analytics.create({
+'agent_id': data['agentId'],
+'user_id': data['user']['id'],
+'message_type': data['message']['type'],
+'timestamp': data['timestamp'],
+'content_length': len(data['message']['content'])
+})
+
+Slack Notifications
+import requests
+def handle_room_join(data):
+slack_webhook = "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+message = {
+"text": f"
+
+New user joined avatar!",
+
+"attachments": [{
+"color": "good",
+"fields": [
+{"title": "Agent", "value": data['agentId'], "short": True},
+{"title": "User", "value": data['user']['id'], "short": True}
+]
+}]
+}
+requests.post(slack_webhook, json=message)
+
+Database Logging
+# PostgreSQL with SQLAlchemy
+def handle_room_join(data):
+agent_id = data.get('agent_id')
+room_data = data.get('data', {})
+session_id = room_data.get('session_id')
+room_name = room_data.get('room_name')
+participant_count = room_data.get('participant_count')
+timestamp = data.get('timestamp')
+user_session = UserSession.create({
+'agent_id': agent_id,
+'session_id': session_id,
+'room_name': room_name,
+'participant_count': participant_count,
+'started_at': timestamp
+})
+db.session.add(user_session)
+
+https://sdk.docs.bithuman.ai/#/integrations/webhook-integration?id=
+
+%EF%B8%8F-implementation-examples
+
+Seite 5 von 8
+
+Webhook Integration
+
+29.10.25, 04:45
+
+db.session.commit()
+
+Security Best Practices
+Signature Verification
+Always verify webhook signatures to ensure requests come from bitHuman:
+
+import hmac
+import hashlib
+def verify_webhook_signature(payload, signature, secret):
+expected = hmac.new(
+secret.encode('utf-8'),
+payload.encode('utf-8'),
+hashlib.sha256
+).hexdigest()
+return hmac.compare_digest(
+f"sha256={expected}",
+signature
+)
+
+IP Whitelisting
+Restrict webhook access to bitHuman servers:
+
+ALLOWED_IPS = ['52.14.127.', '18.216.155.']
+
+# Example IPs
+
+def is_allowed_ip(request_ip):
+return any(request_ip.startswith(ip) for ip in ALLOWED_IPS)
+
+HTTPS Only
+Always use HTTPS endpoints
+Valid SSL certificates required
+HTTP endpoints will be rejected
+
+Testing Your Webhook
+Local Development with ngrok
+# Expose local server for testing
+ngrok http 3000
+
+https://sdk.docs.bithuman.ai/#/integrations/webhook-integration?id=
+
+%EF%B8%8F-implementation-examples
+
+Seite 6 von 8
+
+Webhook Integration
+
+29.10.25, 04:45
+
+# Use the HTTPS URL in webhook settings
+# Example: https://abc123.ngrok.io/webhook
+
+Test Webhook Button
+Use the Test button in the bitHuman dashboard to send sample events to your endpoint.
+
+Manual Testing
+# Test room.join event
+curl -X POST https://your-app.com/webhook \
+-H "Content-Type: application/json" \
+-H "X-bitHuman-Signature: sha256=..." \
+-d '{
+"agent_id": "test_agent",
+"event_type": "room.join",
+"data": {
+"room_name": "test-room",
+"participant_count": 1,
+"session_id": "session_123"
+},
+"timestamp": 1705312200.0
+}'
+# Test chat.push event
+curl -X POST https://your-app.com/webhook \
+-H "Content-Type: application/json" \
+-H "X-bitHuman-Signature: sha256=..." \
+-d '{
+"agent_id": "test_agent",
+"event_type": "chat.push",
+"data": {
+"role": "user",
+"message": "Hello!",
+"session_id": "session_123",
+"timestamp": 1705312260.0
+},
+"timestamp": 1705312260.0
+}'
+
+Monitoring & Debugging
+Response Requirements
+Your webhook endpoint must:
+Return HTTP 2xx status codes
+Respond within 30 seconds
+Handle duplicate events gracefully
+
+Automatic Retries
+https://sdk.docs.bithuman.ai/#/integrations/webhook-integration?id=
+
+%EF%B8%8F-implementation-examples
+
+Seite 7 von 8
+
+Webhook Integration
+
+29.10.25, 04:45
+
+bitHuman automatically retries failed webhooks:
+1st retry: A!er 1 second
+2nd retry: A!er 5 seconds
+3rd retry: A!er 30 seconds
+Max attempts: 3 total
+
+Debug Common Issues
+Issue
+
+Cause
+
+Solution
+
+Signature Invalid
+
+Wrong secret or algorithm
+
+Check HMAC SHA256 implementation
+
+Timeout Errors
+
+Slow processing
+
+Return 200 immediately, process async
+
+404 Not Found
+
+Incorrect URL
+
+Verify endpoint URL in dashboard
+
+SSL Errors
+
+Invalid certificate
+
+Use valid HTTPS certificate
+
+Ready to Integrate?
+1.
+
+Set up your endpoint - Create webhook handler in your app
+
+2.
+
+Configure in dashboard - Add URL and auth headers at imaginex.bithuman.ai/#developer
+
+3.
+
+Test integration - Use the test button to verify
+
+4.
+
+Monitor events - Watch real-time notifications flow in
+
+Need Help?
+Advanced patterns: Real-time Events Guide
+Community support: Discord
+Technical issues: Check our troubleshooting guide
+
+Start receiving real-time avatar events in minutes!
+
+Previous
+
+LiveKit Cloud Plugin
+CLOUD SERVICES
+
+https://sdk.docs.bithuman.ai/#/integrations/webhook-integration?id=
+
+%EF%B8%8F-implementation-examples
+
+Seite 8 von 8
+
+
+=== 📱 Flutter Integration.pdf ===
+Flutter Integration
+
+30.10.25, 11:35
+
+Flutter + LiveKit + bitHuman Integration Guide
+
+This comprehensive guide shows how to integrate Flutter with LiveKit and bitHuman Cloud Essence to create
+applications with AI-powered avatars.
+
+Architecture Overview
+!"""""""""""""""""#
+Flutter App
+
+$
+$
+
+!"""""""""""""""""#
+
+$
+
+$
+
+$
+
+$
+
+$
+
+$
+
+LiveKit Room
+
+$
+
+$
+
+$
+
+$
+
+$
+
+Python Agent
+
+$
+$
+
+$
+
+!"""""""""""#
+
+$
+
+$
+
+Video
+
+$
+
+$◄""►$
+
+$
+
+Real-time $
+
+$◄""►$
+
+$ bitHuman
+
+$
+
+$
+
+$
+
+$
+
+View
+
+$
+
+$
+
+$
+
+$
+
+Streaming $
+
+$
+
+$
+
+Avatar
+
+$
+
+$
+
+$
+
+%"""""""""""&
+
+$
+
+$
+
+%"""""""""""&
+
+$
+
+$
+
+$
+
+$
+
+$
+
+!"""""""""""#
+
+!"""""""""""""""""#
+
+$
+
+$
+
+$
+
+$
+
+$
+
+$
+
+$
+
+$
+
+$
+
+%"""""""""""&
+
+$
+$
+
+$
+
+!"""""""""""#
+
+$
+
+$
+
+Audio
+
+$
+
+$◄""►$
+
+$
+
+Audio
+
+$
+
+$◄""►$
+
+$
+
+OpenAI
+
+$
+
+$
+
+Capture
+
+$
+
+$
+
+$
+
+$
+
+Routing
+
+$
+
+$
+
+$
+
+$
+
+API
+
+$
+
+$
+
+$
+
+%"""""""""""&
+
+$
+
+$
+
+%"""""""""""&
+
+$
+
+$
+
+%"""""""""""&
+
+$
+
+%"""""""""""""""""&
+
+!"""""""""""#
+
+!"""""""""""#
+
+%"""""""""""""""""&
+
+!"""""""""""#
+
+$
+$
+
+$
+
+%"""""""""""""""""&
+
+Why a Token Server is required (Production)
+
+LiveKit requires a JWT to join rooms. Creating this JWT needs your LiveKit API key and secret, which mus
+(Flutter).
+Provide a tiny server endpoint /token that mints short-lived tokens with room grants and identity.
+For development you can hardcode a token in Flutter; for production use the token endpoint.
+Minimal endpoint (Python/Flask):
+
+@app.route('/token', methods=['POST'])
+def create_token():
+data = request.get_json() or {}
+room = data.get('room', 'flutter-avatar-room')
+identity = data.get('participant', 'Flutter User')
+at = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET, identity=identity)
+at.add_grant(api.VideoGrant(room_join=True, room=room))
+at.ttl = timedelta(hours=1)
+return jsonify({ 'token': at.to_jwt(), 'server_url': LIVEKIT_URL })
+
+Component Responsibilities
+Flutter App: Cross-platform UI, camera/microphone capture, video rendering
+LiveKit Room: Real-time media routing, participant management, signaling
+Python Agent: AI conversation processing, avatar rendering, media coordination
+
+Quick Start
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 1 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+Prerequisites
+Flutter SDK 3.0+
+Python 3.11+
+bitHuman API Secret
+LiveKit Cloud account
+OpenAI API Key
+
+Complete Setup Guide
+Step 1: Project Structure
+
+mkdir flutter-bithuman-avatar
+cd flutter-bithuman-avatar
+mkdir -p backend frontend/lib
+
+Step 2: Backend Configuration
+
+cd backend
+# Create requirements.txt
+cat > requirements.txt << EOF
+livekit-agents==0.6.0
+livekit-plugins-openai==0.6.0
+livekit-plugins-silero==0.6.0
+bithuman==0.1.0
+flask==3.0.0
+python-dotenv==1.0.0
+EOF
+# Create environment configuration
+cat > .env.example << EOF
+# bitHuman API Configuration
+BITHUMAN_API_SECRET=sk_bh_your_secret_here
+BITHUMAN_AVATAR_ID=A33NZN6384
+# OpenAI API Configuration
+OPENAI_API_KEY=sk-proj_your_key_here
+# LiveKit Configuration
+LIVEKIT_API_KEY=APIyour_key
+LIVEKIT_API_SECRET=your_secret
+LIVEKIT_URL=wss://your-project.livekit.cloud
+EOF
+# Setup Python environment
+cp .env.example .env
+# Edit .env with your actual API keys
+python3 -m venv .venv
+source .venv/bin/activate
+
+# On Windows: .venv\Scripts\activate
+
+pip install -r requirements.txt
+
+Step 3: Frontend Configuration
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 2 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+cd ../frontend
+# Initialize Flutter project
+flutter create . --org com.bithuman.avatar
+# Update pubspec.yaml with LiveKit dependencies
+cat > pubspec.yaml << EOF
+name: flutter_bithuman_avatar
+description: Flutter app with LiveKit and bitHuman AI avatar integration
+version: 1.0.0+1
+environment:
+sdk: '>=3.0.0 <4.0.0'
+flutter: ">=3.10.0"
+dependencies:
+flutter:
+sdk: flutter
+livekit_components: 1.2.2+hotfix.1
+livekit_client: ^2.5.3
+provider: ^6.1.1
+http: ^1.1.0
+flutter_dotenv: ^5.1.0
+dev_dependencies:
+flutter_test:
+sdk: flutter
+flutter_lints: ^3.0.0
+flutter:
+uses-material-design: true
+assets:
+- .env
+EOF
+flutter pub get
+
+Step 4: Run the System
+
+# Terminal 1: Start Backend
+cd backend
+source .venv/bin/activate
+python token_server.py &
+python agent.py dev
+# Terminal 2: Start Frontend
+cd frontend
+flutter run -d chrome --web-port 8080
+
+Flutter CLI Installation (macOS)
+brew install --cask flutter
+echo 'export PATH="$PATH:/Applications/flutter/bin"' >> ~/.zprofile
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 3 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+source ~/.zprofile
+flutter --version
+flutter doctor
+flutter config --enable-web
+
+Environment Configuration
+The Flutter app supports environment variables for configuration:
+
+# Required: LiveKit server URL
+export LIVEKIT_SERVER_URL="wss://your-project.livekit.cloud"
+# Token configuration (choose one)
+export LIVEKIT_TOKEN_ENDPOINT="http://localhost:3000/token"
+
+# Recommended
+
+# OR
+export LIVEKIT_TOKEN="your-jwt-token-here"
+
+# Testing only
+
+# Optional: Room configuration
+export LIVEKIT_ROOM_NAME="flutter-avatar-room"
+export LIVEKIT_PARTICIPANT_NAME="Flutter User"
+
+See frontend/CONFIG.md for detailed configuration options.
+
+Platform Support
+This Flutter app supports multiple platforms:
+Web: Run in browser (fastest to test)
+Android: Mobile app with camera/microphone permissions
+iOS: Mobile app with camera/microphone permissions
+Quick test on web:
+
+cd frontend
+flutter run -d chrome
+
+Check available devices:
+
+flutter devices
+
+Troubleshooting
+If you encounter shader compilation errors on macOS:
+
+# Clean and rebuild
+flutter clean
+flutter pub get
+flutter run -d chrome --web-port 8080
+# Alternative: Use different port
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 4 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+flutter run -d chrome --web-port 3000
+
+If Flutter doctor shows issues:
+
+# Install missing dependencies
+brew install cocoapods
+flutter doctor --android-licenses
+
+Flutter Implementation
+Core Flutter Code
+The Flutter app uses LiveKit Components for production-ready video calling UI:
+
+1. pubspec.yaml
+
+name: flutter_bithuman_avatar
+description: Flutter app with LiveKit and bitHuman AI avatar integration
+version: 1.0.0+1
+environment:
+sdk: '>=3.0.0 <4.0.0'
+flutter: ">=3.10.0"
+dependencies:
+flutter:
+sdk: flutter
+# LiveKit Components (production-ready UI)
+livekit_components: 1.2.2+hotfix.1
+livekit_client: ^2.5.3
+# State management
+provider: ^6.1.1
+# HTTP requests
+http: ^1.1.0
+# Environment variables
+flutter_dotenv: ^5.1.0
+dev_dependencies:
+flutter_test:
+sdk: flutter
+flutter_lints: ^3.0.0
+flutter:
+uses-material-design: true
+assets:
+- .env
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 5 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+2. main.dart (Complete Implementation)
+
+import 'package:flutter/material.dart';
+import 'package:livekit_client/livekit_client.dart' as lk;
+import 'package:livekit_components/livekit_components.dart';
+import 'package:logging/logging.dart';
+import 'config/livekit_config.dart';
+// Create logger instance
+final _logger = Logger('BitHumanFlutter');
+import 'dart:convert';
+import 'dart:math';
+void main() {
+// Initialize logger (show info level and above)
+Logger.root.level = Level.INFO;
+Logger.root.onRecord.listen((record) {
+print('${record.level.name}: ${record.time}: ${record.message}');
+});
+runApp(const BitHumanFlutterApp());
+}
+class BitHumanFlutterApp extends StatelessWidget {
+const BitHumanFlutterApp({super.key});
+@override
+Widget build(BuildContext context) {
+return MaterialApp(
+title: 'bitHuman Flutter Integration',
+theme: LiveKitTheme().buildThemeData(context),
+themeMode: ThemeMode.dark,
+home: const ConnectionScreen(),
+debugShowCheckedModeBanner: false,
+);
+}
+}
+/// Connection screen - handles token generation and room joining
+class ConnectionScreen extends StatefulWidget {
+const ConnectionScreen({super.key});
+@override
+State<ConnectionScreen> createState() => _ConnectionScreenState();
+}
+class _ConnectionScreenState extends State<ConnectionScreen> {
+final Logger _logger = Logger('ConnectionScreen');
+bool _isConnecting = false;
+String? _error;
+@override
+void initState() {
+super.initState();
+// Auto-connect on startup
+WidgetsBinding.instance.addPostFrameCallback((_) {
+_connect();
+});
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 6 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+}
+Future<void> _connect() async {
+setState(() {
+_isConnecting = true;
+_error = null;
+});
+try {
+// Get configuration
+final serverUrl = LiveKitConfig.serverUrl;
+final roomName = LiveKitConfig.roomName;
+final participantName = LiveKitConfig.participantName;
+_logger.info('Connecting to room: $roomName as $participantName');
+_logger.info('Server: $serverUrl');
+// Get token from token server
+final token = await LiveKitConfig.getToken();
+_logger.info('Token obtained successfully');
+if (!mounted) return;
+// Navigate to video room using LiveKit Components
+Navigator.of(context).pushReplacement(
+MaterialPageRoute(
+builder: (_) => VideoRoomScreen(
+url: serverUrl,
+token: token,
+roomName: roomName,
+),
+),
+);
+} catch (e) {
+_logger.severe('Connection failed: $e');
+setState(() {
+_error = e.toString();
+_isConnecting = false;
+});
+}
+}
+@override
+Widget build(BuildContext context) {
+return Scaffold(
+backgroundColor: const Color(0xFF1a1a1a),
+body: Center(
+child: Column(
+mainAxisAlignment: MainAxisAlignment.center,
+children: [
+const CircularProgressIndicator(
+valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+),
+const SizedBox(height: 20),
+Text(
+_isConnecting ? 'Connecting to AI Avatar...' : 'Connection Failed',
+style: const TextStyle(
+color: Colors.white70,
+fontSize: 18,
+),
+),
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 7 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+if (_error != null) ...[
+const SizedBox(height: 16),
+Text(
+_error!,
+style: const TextStyle(
+color: Colors.red,
+fontSize: 14,
+),
+textAlign: TextAlign.center,
+),
+const SizedBox(height: 16),
+ElevatedButton(
+onPressed: _connect,
+child: const Text('Retry'),
+),
+],
+],
+),
+),
+);
+}
+}
+const tokenEndpoint = 'http://localhost:3000/token';
+try {
+final response = await http.post(
+Uri.parse(tokenEndpoint),
+headers: {'Content-Type': 'application/json'},
+body: jsonEncode({
+'room': roomName,
+'participant': participantName,
+}),
+);
+if (response.statusCode == 200) {
+return jsonDecode(response.body);
+} else {
+throw Exception('Token server error: ${response.statusCode}');
+}
+} catch (e) {
+throw Exception('Failed to get token: $e');
+}
+}
+}
+/// Video room screen using LiveKit Components for full-screen AI Avatar display
+class VideoRoomScreen extends StatefulWidget {
+final String url;
+final String token;
+final String roomName;
+const VideoRoomScreen({
+super.key,
+required this.url,
+required this.token,
+required this.roomName,
+});
+@override
+State<VideoRoomScreen> createState() => _VideoRoomScreenState();
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 8 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+}
+class _VideoRoomScreenState extends State<VideoRoomScreen> {
+@override
+Widget build(BuildContext context) {
+// Use LiveKit Components' LivekitRoom widget
+return LivekitRoom(
+roomContext: RoomContext(
+url: widget.url,
+token: widget.token,
+connect: true,
+roomOptions: lk.RoomOptions(
+adaptiveStream: true,
+dynacast: true,
+// Enable microphone by default as per LiveKit docs
+defaultAudioPublishOptions: lk.AudioPublishOptions(
+dtx: true,
+),
+defaultVideoPublishOptions: lk.VideoPublishOptions(
+simulcast: true,
+),
+),
+),
+builder: (context, roomCtx) {
+// Enable microphone by default as per LiveKit docs
+WidgetsBinding.instance.addPostFrameCallback((_) {
+try {
+roomCtx.room.localParticipant?.setMicrophoneEnabled(true);
+_logger.info('
+
+Microphone enabled by default');
+
+} catch (error) {
+_logger.warning('Could not enable microphone, error: $error');
+}
+});
+return Scaffold(
+appBar: AppBar(
+title: Text('Room: ${widget.roomName}'),
+backgroundColor: const Color(0xFF1a1a1a),
+actions: [
+// Connection status indicator
+Padding(
+padding: const EdgeInsets.all(16),
+child: Row(
+children: [
+Icon(
+roomCtx.room.connectionState == lk.ConnectionState.connected
+? Icons.circle
+: Icons.circle_outlined,
+
+color: roomCtx.room.connectionState == lk.ConnectionState.connec
+? Colors.green
+: Colors.red,
+size: 12,
+),
+const SizedBox(width: 8),
+Text(
+roomCtx.room.connectionState.toString().split('.').last,
+style: const TextStyle(fontSize: 12),
+),
+],
+),
+),
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 9 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+],
+),
+backgroundColor: const Color(0xFF1a1a1a),
+body: Stack(
+children: [
+// Full-screen video for AI Avatar (remote participants only)
+Positioned.fill(
+child: Container(
+color: Colors.black,
+child: _VideoDisplayWidget(roomCtx: roomCtx),
+),
+),
+// Audio handling - separate from video to prevent re-rendering
+Positioned.fill(
+child: _AudioHandlerWidget(roomCtx: roomCtx),
+),
+// Loading indicator overlay (only show when no remote video)
+Positioned.fill(
+child: _LoadingOverlay(),
+),
+// Control bar at the bottom (floating over video)
+Positioned(
+left: 0,
+right: 0,
+bottom: 0,
+child: Container(
+decoration: BoxDecoration(
+gradient: LinearGradient(
+begin: Alignment.topCenter,
+end: Alignment.bottomCenter,
+colors: [
+Colors.transparent,
+Colors.black.withOpacity(0.6),
+],
+),
+),
+padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+child: const ControlBar(),
+),
+),
+],
+),
+);
+},
+);
+}
+}
+/// Video display widget that caches the video renderer to prevent re-rendering
+class _VideoDisplayWidget extends StatefulWidget {
+final RoomContext roomCtx;
+const _VideoDisplayWidget({required this.roomCtx});
+@override
+State<_VideoDisplayWidget> createState() => _VideoDisplayWidgetState();
+}
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 10 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+class _VideoDisplayWidgetState extends State<_VideoDisplayWidget> {
+lk.VideoTrackRenderer? _cachedVideoRenderer;
+String? _lastVideoTrackId;
+@override
+void initState() {
+super.initState();
+// Listen for track published events
+widget.roomCtx.room.addListener(_onRoomChanged);
+}
+@override
+void dispose() {
+widget.roomCtx.room.removeListener(_onRoomChanged);
+super.dispose();
+}
+void _onRoomChanged() {
+// Force rebuild when room state changes (e.g., new tracks published)
+if (mounted) {
+setState(() {});
+}
+}
+@override
+Widget build(BuildContext context) {
+// Get remote participants
+
+final remoteParticipants = widget.roomCtx.room.remoteParticipants.values.toList();
+if (remoteParticipants.isEmpty) {
+return const Center(
+child: Column(
+mainAxisAlignment: MainAxisAlignment.center,
+children: [
+CircularProgressIndicator(
+valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+),
+SizedBox(height: 16),
+Text(
+'Waiting for AI Avatar to join...',
+style: TextStyle(color: Colors.white70, fontSize: 16),
+),
+SizedBox(height: 8),
+Text(
+'Make sure the backend agent is running',
+style: TextStyle(color: Colors.white54, fontSize: 12),
+),
+],
+),
+);
+}
+// Find the first remote participant with video
+for (final participant in remoteParticipants) {
+_logger.fine('
+
+Checking participant: ${participant.identity}');
+
+_logger.fine('
+
+Video tracks count: ${participant.videoTrackPublications.length
+
+// Check all video tracks, not just subscribed ones
+final videoTracks = participant.videoTrackPublications
+.where((pub) => pub.track != null)
+.toList();
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 11 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+_logger.fine('
+
+Available video tracks: ${videoTracks.length}');
+
+for (final pub in videoTracks) {
+_logger.fine('
+
+Track: ${pub.sid}, enabled: ${pub.enabled}, subscribed: ${p
+
+}
+if (videoTracks.isNotEmpty) {
+final videoTrack = videoTracks.first.track as lk.VideoTrack;
+// Only recreate renderer if track ID changed
+if (_lastVideoTrackId != videoTrack.sid) {
+_logger.info('
+
+Creating new video renderer for ${participant.identity}');
+
+_cachedVideoRenderer = lk.VideoTrackRenderer(
+videoTrack,
+fit: lk.VideoViewFit.cover,
+);
+_lastVideoTrackId = videoTrack.sid;
+}
+return Container(
+color: Colors.black,
+child: _cachedVideoRenderer!,
+);
+}
+}
+return const Center(
+child: Column(
+mainAxisAlignment: MainAxisAlignment.center,
+children: [
+Icon(
+Icons.videocam_off,
+color: Colors.white54,
+size: 48,
+),
+SizedBox(height: 16),
+Text(
+'AI Avatar connected but no video yet',
+style: TextStyle(color: Colors.white70, fontSize: 16),
+),
+SizedBox(height: 8),
+Text(
+'Video will appear when AI starts speaking',
+style: TextStyle(color: Colors.white54, fontSize: 12),
+),
+],
+),
+);
+}
+}
+/// Audio handler widget that manages audio without affecting video rendering
+class _AudioHandlerWidget extends StatefulWidget {
+final RoomContext roomCtx;
+const _AudioHandlerWidget({required this.roomCtx});
+@override
+State<_AudioHandlerWidget> createState() => _AudioHandlerWidgetState();
+}
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 12 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+class _AudioHandlerWidgetState extends State<_AudioHandlerWidget> {
+@override
+Widget build(BuildContext context) {
+// Get remote participants
+
+final remoteParticipants = widget.roomCtx.room.remoteParticipants.values.toList();
+for (final participant in remoteParticipants) {
+final audioTracks = participant.audioTrackPublications
+.where((pub) => pub.track != null && pub.subscribed)
+.toList();
+if (audioTracks.isNotEmpty) {
+_logger.fine('
+
+Audio track active for ${participant.identity}');
+
+// Audio is handled automatically by LiveKit Components
+// We just need to ensure the track is subscribed
+break;
+}
+}
+return const SizedBox.shrink();
+}
+}
+/// Loading overlay that shows only when no remote video is available
+class _LoadingOverlay extends StatefulWidget {
+@override
+State<_LoadingOverlay> createState() => _LoadingOverlayState();
+}
+class _LoadingOverlayState extends State<_LoadingOverlay> {
+int _lastParticipantCount = 0;
+@override
+Widget build(BuildContext context) {
+final roomContext = RoomContext.of(context);
+if (roomContext != null) {
+final remoteParticipants = roomContext.room.remoteParticipants.values;
+// Only log when state changes
+if (remoteParticipants.length != _lastParticipantCount) {
+_logger.fine('
+
+Loading overlay: ${remoteParticipants.length} remote partici
+
+_lastParticipantCount = remoteParticipants.length;
+}
+final hasRemoteVideo = remoteParticipants.any((participant) {
+return participant.videoTrackPublications.isNotEmpty;
+});
+if (!hasRemoteVideo) {
+return Container(
+color: Colors.black.withOpacity(0.8),
+child: const Center(
+child: Column(
+mainAxisAlignment: MainAxisAlignment.center,
+children: [
+CircularProgressIndicator(
+valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+),
+SizedBox(height: 16),
+Text(
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 13 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+'Waiting for AI Avatar video...',
+style: TextStyle(color: Colors.white70, fontSize: 16),
+),
+],
+),
+),
+);
+}
+}
+return const SizedBox.shrink();
+}
+}
+/// Control bar widget for media controls
+class ControlBar extends StatelessWidget {
+const ControlBar({super.key});
+@override
+Widget build(BuildContext context) {
+return Row(
+mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+children: [
+// Microphone toggle
+IconButton(
+onPressed: () {
+// Toggle microphone logic here
+},
+icon: const Icon(Icons.mic, color: Colors.white),
+style: IconButton.styleFrom(
+backgroundColor: Colors.black.withOpacity(0.5),
+shape: const CircleBorder(),
+),
+),
+// Camera toggle
+IconButton(
+onPressed: () {
+// Toggle camera logic here
+},
+icon: const Icon(Icons.videocam, color: Colors.white),
+style: IconButton.styleFrom(
+backgroundColor: Colors.black.withOpacity(0.5),
+shape: const CircleBorder(),
+),
+),
+// End call
+IconButton(
+onPressed: () {
+Navigator.of(context).pop();
+},
+icon: const Icon(Icons.call_end, color: Colors.red),
+style: IconButton.styleFrom(
+backgroundColor: Colors.black.withOpacity(0.5),
+shape: const CircleBorder(),
+),
+),
+],
+);
+}
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 14 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+}
+
+LiveKit Configuration
+3. config/livekit_config.dart
+import 'dart:convert';
+import 'dart:math';
+import 'package:http/http.dart' as http;
+class LiveKitConfig {
+// LiveKit server configuration
+static const String serverUrl = 'wss://your-project.livekit.cloud';
+static const String? tokenEndpoint = 'http://localhost:3000/token';
+// Generate random room and participant names
+static String get roomName {
+const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+final random = Random();
+
+return 'room-${String.fromCharCodes(Iterable.generate(12, (_) => chars.codeUnitAt(
+}
+static String get participantName {
+const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+final random = Random();
+
+return 'user-${String.fromCharCodes(Iterable.generate(8, (_) => chars.codeUnitAt(r
+}
+// Get JWT token from token server
+static Future<String> getToken() async {
+if (tokenEndpoint == null) {
+
+throw Exception('Token endpoint not configured. Please set LIVEKIT_TOKEN_ENDPOIN
+}
+try {
+final response = await http.post(
+Uri.parse(tokenEndpoint!),
+headers: {'Content-Type': 'application/json'},
+body: jsonEncode({
+'room': roomName,
+'participant': participantName,
+}),
+);
+if (response.statusCode == 200) {
+final data = jsonDecode(response.body);
+return data['token'] as String;
+} else {
+
+throw Exception('Token server returned ${response.statusCode}: ${response.body
+}
+} catch (e) {
+throw Exception('Failed to get token: $e');
+}
+}
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 15 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+Logging Configuration
+4. Logging Setup
+import 'package:logging/logging.dart';
+// Create logger instance
+final _logger = Logger('BitHumanFlutter');
+void main() {
+// Initialize logger (show info level and above)
+Logger.root.level = Level.INFO;
+Logger.root.onRecord.listen((record) {
+print('${record.level.name}: ${record.time}: ${record.message}');
+});
+runApp(const BitHumanFlutterApp());
+
+Project Structure
+lib/
+'"" main.dart
+
+# Complete app implementation with LiveKit Components
+
+'"" config/
+$
+
+%"" livekit_config.dart
+
+%"" .env
+
+# LiveKit configuration and token management
+# Environment variables
+
+Key Components
+BitHumanFlutterApp: Main app widget with LiveKit theme and dark mode
+ConnectionScreen: Handles token generation and automatic room joining
+VideoRoomScreen: Full-screen AI Avatar display using LiveKit Components
+_VideoDisplayWidget: Cached video renderer to prevent re-rendering during speech
+_AudioHandlerWidget: Separate audio handling to avoid video flashing
+_LoadingOverlay: Loading indicator when no remote video is available
+ControlBar: Floating media controls (mic, camera, end call)
+LiveKitConfig: Configuration and token management with random room names
+Logger: Structured logging with INFO level and above
+
+Architecture Benefits
+LiveKit Components: O!icial UI components for better stability
+Cached Video Rendering: Prevents flashing during audio changes
+Separated Audio/Video: Independent handling prevents re-rendering issues
+Structured Logging: Clean console output with appropriate log levels
+
+Auto-connection: Seamless user experience with automatic room joining LocalVideoTrack? get localVideo
+
+MediaService
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 16 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+Handles camera and microphone permissions:
+
+class MediaService extends ChangeNotifier {
+// Permission management
+Future<bool> requestCameraPermission();
+Future<bool> requestMicrophonePermission();
+// Media controls
+void toggleCamera();
+void toggleMicrophone();
+void switchCamera();
+// State properties
+bool get cameraPermissionGranted;
+bool get microphonePermissionGranted;
+}
+
+VideoCallScreen
+Main video call interface with AI avatar integration:
+
+class VideoCallScreen extends StatefulWidget {
+// Displays remote avatar video
+// Shows local camera preview
+// Provides media controls
+// Handles connection status
+}
+
+Configuration
+LiveKit Configuration
+
+class LiveKitConfig {
+static const String serverUrl = 'wss://your-project.livekit.cloud';
+static const String? tokenEndpoint = 'http://localhost:3000/token';
+static const String roomName = 'flutter-avatar-room';
+static const String participantName = 'Flutter User';
+// Media settings
+static const int videoWidth = 1280;
+static const int videoHeight = 720;
+static const int videoFps = 30;
+static const int videoBitrate = 1_000_000;
+}
+
+Platform-Specific Setup
+iOS (ios/Runner/Info.plist):
+
+<key>NSCameraUsageDescription</key>
+<string>This app needs camera access for video calls with AI avatar</string>
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 17 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+<key>NSMicrophoneUsageDescription</key>
+<string>This app needs microphone access for voice interaction with AI avatar</string
+
+Android (android/app/src/main/AndroidManifest.xml):
+
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+Backend Implementation
+Python Backend Code
+The Python backend uses LiveKit agents with bitHuman integration:
+
+1. requirements.txt
+
+livekit-agents==0.6.0
+livekit-plugins-openai==0.6.0
+livekit-plugins-silero==0.6.0
+bithuman==0.1.0
+flask==3.0.0
+python-dotenv==1.0.0
+
+2. agent.py (Complete Agent Implementation)
+
+import asyncio
+import logging
+import os
+from typing import AsyncGenerator
+import livekit.agents
+from livekit.agents import JobContext, WorkerOptions, cli
+from livekit.agents.voice_assistant import VoiceAssistant
+from livekit.plugins import openai, silero
+from livekit import rtc
+import bithuman
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("flutter-bithuman-agent")
+class BitHumanAvatarAgent:
+def __init__(self, ctx: JobContext):
+self.ctx = ctx
+self.agent = None
+# Get environment variables
+self.api_secret = os.getenv("BITHUMAN_API_SECRET")
+self.avatar_id = os.getenv("BITHUMAN_AVATAR_ID", "A33NZN6384")
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 18 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+if not self.api_secret:
+raise ValueError("BITHUMAN_API_SECRET environment variable is required"
+async def start(self):
+"""Start the AI avatar agent"""
+try:
+logger.info("Starting bitHuman avatar agent...")
+# Initialize bitHuman avatar session
+bithuman_avatar = bithuman.AvatarSession(
+api_secret=self.api_secret,
+avatar_id=self.avatar_id,
+)
+# Configure AI voice assistant
+self.agent = VoiceAssistant(
+vad=openai.VAD(),
+
+# Voice Activity Detection
+
+stt=openai.STT(),
+
+# Speech-to-Text
+
+llm=openai.LLM(),
+
+# Language Model
+
+tts=bithuman.TTS(),
+
+# Text-to-Speech (bitHuman)
+
+)
+# Start the agent
+await self.agent.start()
+# Connect avatar to the room
+await bithuman_avatar.start(self.agent, room=self.ctx.room)
+logger.info("Flutter integration agent is ready and running")
+# Keep the agent running
+await self.agent.run()
+except Exception as e:
+logger.error(f"Error starting agent: {e}")
+raise
+async def entrypoint(ctx: JobContext):
+"""Main entry point for the LiveKit agent"""
+try:
+# Connect to the room
+await ctx.connect()
+# Create and start the agent
+agent = BitHumanAvatarAgent(ctx)
+await agent.start()
+except Exception as e:
+logger.error(f"Agent failed: {e}")
+raise
+if __name__ == "__main__":
+# Configure worker options
+cli.run_app(
+WorkerOptions(
+entrypoint_fnc=entrypoint,
+# Increase memory limit for avatar processing
+job_memory_warn_mb=2000,
+# Keep some processes ready for faster startup
+num_idle_processes=2,
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 19 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+# Allow more time for initialization
+initialize_process_timeout=180,
+)
+)
+
+3. token_server.py (Token Generation Server)
+
+from flask import Flask, request, jsonify
+from livekit import api
+from datetime import timedelta
+import os
+from dotenv import load_dotenv
+# Load environment variables
+load_dotenv()
+app = Flask(__name__)
+# LiveKit configuration
+LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
+LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
+LIVEKIT_URL = os.getenv("LIVEKIT_URL")
+if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, LIVEKIT_URL]):
+raise ValueError("Missing required LiveKit environment variables")
+@app.route('/token', methods=['POST'])
+def create_token():
+"""Generate a JWT token for LiveKit room access"""
+try:
+data = request.get_json() or {}
+room = data.get('room', 'flutter-avatar-room')
+identity = data.get('participant', 'Flutter User')
+# Create access token
+at = api.AccessToken(
+LIVEKIT_API_KEY,
+LIVEKIT_API_SECRET,
+identity=identity
+)
+# Add video grant (permission to join room)
+at.add_grant(api.VideoGrant(room_join=True, room=room))
+# Set token expiration (1 hour)
+at.ttl = timedelta(hours=1)
+# Generate JWT token
+token = at.to_jwt()
+return jsonify({
+'token': token,
+'server_url': LIVEKIT_URL
+})
+except Exception as e:
+return jsonify({'error': str(e)}), 500
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 20 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+@app.route('/health', methods=['GET'])
+def health_check():
+"""Health check endpoint"""
+return jsonify({'status': 'healthy'})
+if __name__ == '__main__':
+print("
+
+Starting LiveKit Token Server...")
+
+print(f"
+
+Server URL: {LIVEKIT_URL}")
+
+print("
+
+Token endpoint: http://localhost:3000/token")
+
+print("
+
+Health check: http://localhost:3000/health")
+
+app.run(host='0.0.0.0', port=3000, debug=True)
+
+4. .env.example
+
+# bitHuman API Configuration
+BITHUMAN_API_SECRET=sk_bh_your_secret_here
+BITHUMAN_AVATAR_ID=A33NZN6384
+# OpenAI API Configuration
+OPENAI_API_KEY=sk-proj_your_key_here
+# LiveKit Configuration
+LIVEKIT_API_KEY=APIyour_key
+LIVEKIT_API_SECRET=your_secret
+LIVEKIT_URL=wss://your-project.livekit.cloud
+
+5. run_backend.sh (Startup Script)
+
+#!/bin/bash
+echo "
+
+Starting Flutter + bitHuman Backend..."
+
+# Check if .env exists
+if [ ! -f .env ]; then
+echo "
+
+.env file not found. Please copy .env.example to .env and configure it."
+
+exit 1
+fi
+# Load environment variables
+export $(cat .env | grep -v '^#' | xargs)
+# Check required environment variables
+if [ -z "$BITHUMAN_API_SECRET" ]; then
+echo "
+
+BITHUMAN_API_SECRET is required"
+
+exit 1
+fi
+if [ -z "$LIVEKIT_API_KEY" ]; then
+echo "
+
+LIVEKIT_API_KEY is required"
+
+exit 1
+fi
+echo "
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Environment variables loaded"
+
+Seite 21 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+# Start token server in background
+echo "
+
+Starting token server..."
+
+python token_server.py &
+TOKEN_PID=$!
+# Wait a moment for token server to start
+sleep 2
+# Start the agent
+echo "
+
+Starting LiveKit agent..."
+
+python agent.py dev
+# Cleanup on exit
+trap "kill $TOKEN_PID" EXIT
+
+Agent Architecture
+The Python backend uses LiveKit agents with bitHuman integration:
+
+async def entrypoint(ctx: JobContext):
+# Connect to LiveKit room
+await ctx.connect()
+# Initialize bitHuman avatar
+bithuman_avatar = bithuman.AvatarSession(
+api_secret=api_secret,
+avatar_id=avatar_id,
+)
+# Configure AI session
+session = AgentSession(
+llm=openai.realtime.RealtimeModel(voice="coral"),
+vad=silero.VAD.load()
+)
+# Start avatar and AI
+await bithuman_avatar.start(session, room=ctx.room)
+await session.start(agent=Agent(instructions=...), room=ctx.room)
+
+Key Features
+Avatar Integration: Uses bitHuman Cloud Essence for avatar rendering
+AI Conversation: OpenAI Realtime API for natural language processing
+Voice Activity Detection: Silero VAD for conversation flow
+Error Handling: Comprehensive error handling and logging
+Configuration: Environment-based configuration
+
+Environment Variables
+# bitHuman API
+BITHUMAN_API_SECRET=sk_bh_your_secret_here
+BITHUMAN_AVATAR_ID=A33NZN6384
+# OpenAI API
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 22 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+OPENAI_API_KEY=sk-proj_your_key_here
+OPENAI_VOICE=coral
+# LiveKit
+LIVEKIT_API_KEY=APIyour_key
+LIVEKIT_API_SECRET=your_secret
+LIVEKIT_URL=wss://your-project.livekit.cloud
+
+Advanced Configuration
+Custom Avatar Integration
+Using Avatar ID
+
+bithuman_avatar = bithuman.AvatarSession(
+api_secret=api_secret,
+avatar_id="YOUR_AVATAR_ID",
+)
+
+Using Custom Image
+
+bithuman_avatar = bithuman.AvatarSession(
+api_secret=api_secret,
+avatar_image="path/to/your/image.jpg",
+)
+
+AI Personality Customization
+agent_instructions = """
+You are a helpful AI assistant integrated with a Flutter mobile app.
+Respond naturally and concisely to user questions.
+Keep responses brief and engaging for mobile users.
+You can help with general questions, provide information,
+and have friendly conversations.
+"""
+
+Voice Customization
+llm=openai.realtime.RealtimeModel(
+voice="coral",
+
+# Options: alloy, echo, fable, onyx, nova, shimmer, coral
+
+model="gpt-4o-mini-realtime-preview",
+)
+
+Flutter UI Customization
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 23 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+Theme Customization
+
+class AppTheme {
+static const Color primaryColor = Color(0xFF2196F3);
+static const Color videoBackgroundColor = Color(0xFF1E1E1E);
+static const Color controlActiveColor = Color(0xFF4CAF50);
+}
+
+Video Quality Settings
+
+class LiveKitConfig {
+static const int videoWidth = 1280;
+static const int videoHeight = 720;
+static const int videoFps = 30;
+static const int videoBitrate = 1_000_000;
+}
+
+Testing and Debugging
+Backend Testing
+1. Diagnostic Tool:
+
+python diagnose.py
+
+2. LiveKit Playground:
+Start agent: python agent.py dev
+Visit: https://agents-playground.livekit.io
+Use same LiveKit credentials
+3. Console Testing:
+
+python agent.py console
+
+Flutter Testing
+1. Unit Tests:
+
+flutter test
+
+2. Integration Tests:
+
+flutter test integration_test/
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 24 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+3. Manual Testing:
+Test on di!erent devices
+Test camera/microphone permissions
+Test network connectivity
+Test avatar loading
+
+Debug Configuration
+Backend Debug
+
+import logging
+logging.basicConfig(level=logging.DEBUG)
+
+Flutter Debug
+
+import 'package:logger/logger.dart';
+final logger = Logger('MyApp');
+logger.d('Debug message');
+
+Deployment
+Backend Deployment
+Docker Deployment
+
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY . .
+CMD ["python", "agent.py", "start"]
+
+Cloud Deployment
+AWS ECS/Fargate
+Google Cloud Run
+Azure Container Instances
+Heroku
+Railway
+
+Flutter Deployment
+Mobile Deployment
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 25 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+# iOS
+flutter build ios --release
+# Android
+flutter build apk --release
+flutter build appbundle --release
+
+Web Deployment
+
+flutter build web --release
+# Deploy to Firebase, Vercel, Netlify, etc.
+
+Troubleshooting
+Common Issues
+Backend Issues
+1. "Avatar session failed"
+Check bitHuman API secret
+Verify avatar ID exists
+Check account access
+2. "Module not found"
+
+pip install -r requirements.txt
+
+3. Connection timeouts
+Check LiveKit credentials
+Verify network connectivity
+Check firewall settings
+
+Flutter Issues
+1. "No camera found"
+Check device permissions
+Verify camera not in use
+Test on di!erent device
+2. "Connection failed"
+Verify LiveKit server URL
+Check token validity
+Ensure backend is running
+3. "Avatar not showing"
+Check backend logs
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 26 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+Verify bitHuman API key
+Test with LiveKit Playground
+
+Performance Optimization
+Backend Optimization
+
+WorkerOptions(
+job_memory_warn_mb=2000,
+
+# Increase memory limit
+
+num_idle_processes=2,
+
+# More idle processes
+
+initialize_process_timeout=180,
+
+# Longer timeout
+
+)
+
+Flutter Optimization
+Use const constructors where possible
+Implement proper disposal of resources
+Optimize video quality based on device capabilities
+Use e!icient state management
+
+API Reference
+LiveKit Flutter SDK
+Room Management
+
+// Connect to room
+await room.connect(serverUrl, token);
+// Disconnect from room
+await room.disconnect();
+// Get participants
+List<RemoteParticipant> participants = room.remoteParticipants.values.toList();
+
+Media Tracks
+
+// Get video track
+RemoteVideoTrack? videoTrack = participant.videoTrackPublications.values
+.firstWhere((pub) => pub.track != null)?.track as RemoteVideoTrack?;
+// Get audio track
+RemoteAudioTrack? audioTrack = participant.audioTrackPublications.values
+.firstWhere((pub) => pub.track != null)?.track as RemoteAudioTrack?;
+
+Media Controls
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 27 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+// Toggle microphone
+await localParticipant.setMicrophoneEnabled(!isEnabled);
+// Toggle camera
+await localParticipant.setCameraEnabled(!isEnabled);
+
+bitHuman Python SDK
+Avatar Session
+
+# Create avatar session
+avatar = bithuman.AvatarSession(
+api_secret=api_secret,
+avatar_id=avatar_id,
+)
+# Start avatar
+await avatar.start(session, room=room)
+
+Agent Session
+
+# Create agent session
+session = AgentSession(
+llm=openai.realtime.RealtimeModel(voice="coral"),
+vad=silero.VAD.load()
+)
+# Start agent
+await session.start(agent=Agent(instructions=...), room=room)
+
+Best Practices
+Security
+Use secure token generation
+Validate all inputs
+Implement proper error handling
+Use HTTPS in production
+
+Performance
+Optimize video quality for device capabilities
+Implement proper resource disposal
+Use e!icient state management
+Monitor memory usage
+
+User Experience
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 28 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+Provide clear loading states
+Handle errors gracefully
+Implement proper permissions flow
+Test on various devices
+
+Code Quality
+Follow Flutter/Dart conventions
+Implement proper error handling
+Write comprehensive tests
+Document complex logic
+
+Support and Resources
+Documentation
+Flutter Documentation
+LiveKit Flutter SDK
+bitHuman Documentation
+LiveKit Agents Documentation
+
+Community
+Discord Community
+GitHub Issues
+LiveKit Community
+
+Examples
+Flutter Example
+Cloud Essence Example
+Expression Examples
+
+Implementation Checklist
+Backend Setup
+Python virtual environment created
+Dependencies installed (livekit-agents, bithuman, flask)
+Environment variables configured (.env file)
+Token server running on port 3000
+LiveKit agent running and connected
+bitHuman API secret configured
+OpenAI API key configured
+
+Frontend Setup
+Flutter project created
+livekit_components dependency added
+main.dart implemented with LivekitRoom
+ParticipantLoop configured for video rendering
+Audio playback enabled (showAudioTracks: true)
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 29 von 30
+
+Flutter Integration
+
+30.10.25, 11:35
+
+Custom layout builder for full-screen video
+Loading overlay implemented
+Error handling added
+Debug logging enabled
+
+Testing & Validation
+Backend agent connects to LiveKit
+Token server generates valid JWT tokens
+Flutter app connects to room
+AI avatar video displays correctly
+Audio plays from AI avatar
+Loading states work properly
+Error handling works
+Debug logs show expected output
+
+Success Criteria
+Your implementation is successful when:
+1.
+
+Flutter app launches without errors
+
+2.
+
+Backend agent connects to LiveKit room
+
+3.
+
+AI avatar video appears in full screen
+
+4.
+
+Audio plays from AI avatar
+
+5.
+
+Loading indicator shows when no video
+
+6.
+
+Error handling works for connection issues
+
+7.
+
+Debug logs show proper track rendering
+
+Ready to build? Start with the Flutter Example and follow the setup instructions!
+
+Previous
+
+Real-time Events
+INTEGRATIONS
+
+https://docs.bithuman.ai/#/integrations/flutter-integration
+
+Seite 30 von 30
+
+
