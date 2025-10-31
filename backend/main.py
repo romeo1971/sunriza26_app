@@ -1,5 +1,6 @@
 from fastapi import FastAPI, BackgroundTasks, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 import subprocess
@@ -10,6 +11,15 @@ import requests
 import shutil
 
 app = FastAPI()
+
+# CORS für Flutter
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 class DynamicsRequest(BaseModel):
     avatar_id: str
@@ -30,6 +40,24 @@ async def root():
 async def health():
     """Health Check für das Backend"""
     return {"status": "healthy", "service": "sunriza26-backend"}
+
+@app.get("/api/elevenlabs/voices")
+async def get_elevenlabs_voices():
+    """Proxy für ElevenLabs Voices API (umgeht Flutter SSL-Problem)"""
+    try:
+        api_key = os.getenv("ELEVENLABS_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="ELEVENLABS_API_KEY fehlt")
+        
+        response = requests.get(
+            "https://api.elevenlabs.io/v1/voices",
+            headers={"xi-api-key": api_key},
+            timeout=10
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/generate-dynamics")
 async def generate_dynamics(request: DynamicsRequest, background_tasks: BackgroundTasks):

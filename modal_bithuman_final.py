@@ -60,7 +60,7 @@ secrets = [
     timeout=3600,  # 60 Min
     cpu=2.0,
     memory=4096,
-    keep_warm=1,  # 1 Container warm halten
+    min_containers=0,  # scale-to-zero (spart Kosten)
 )
 def start_agent(room: str, agent_id: str):
     """
@@ -194,16 +194,24 @@ def get_config(agent_id: str) -> Dict[str, Any]:
 
 
 async def entrypoint(ctx: JobContext):
+    logger.info(f"🚀 BitHuman Agent starting for room: {ctx.room.name}")
     await ctx.connect()
-    await ctx.wait_for_participant()
+    logger.info("✅ Connected to LiveKit room")
     
     agent_id = os.getenv("BITHUMAN_AGENT_ID")
-    config = get_config(agent_id)
+    if not agent_id:
+        logger.error("❌ BITHUMAN_AGENT_ID not set!")
+        return
     
+    # WICHTIG: Erst auf Participant warten!
+    await ctx.wait_for_participant()
+    logger.info("✅ Participant joined")
+    
+    config = get_config(agent_id)
     voice_id = config.get('voice_id') or os.getenv("ELEVEN_DEFAULT_VOICE_ID")
     namespace = config.get('namespace')
     
-    logger.info(f"Agent: {agent_id}, Voice: {voice_id}, NS: {namespace}")
+    logger.info(f"🤖 Agent: {agent_id}, Voice: {voice_id}, NS: {namespace}")
     
     # Knowledge Base
     kb = None
@@ -214,24 +222,20 @@ async def entrypoint(ctx: JobContext):
             os.getenv("OPENAI_API_KEY"),
             namespace
         )
+        logger.info("✅ Knowledge Base initialized")
     
-    # BitHuman Avatar
-    avatar = bithuman.AvatarSession(
-        api_url=os.getenv("BITHUMAN_API_URL", "https://auth.api.bithuman.ai/v1/runtime-tokens/request"),
-        api_secret=os.getenv("BITHUMAN_API_SECRET"),
-        avatar_id=agent_id,
-    )
-    
-    # TTS
+    # TTS Setup
     if ELEVENLABS_AVAILABLE and voice_id:
+        logger.info(f"🎵 Using ElevenLabs TTS with voice: {voice_id}")
         tts = elevenlabs.TTS(voice_id=voice_id, api_key=os.getenv("ELEVENLABS_API_KEY"))
     else:
+        logger.info("🎵 Using OpenAI TTS (fallback)")
         tts = openai.TTS(voice="coral")
     
-    # LLM mit Pinecone
+    # LLM Setup
     base_llm = openai.realtime.RealtimeModel(model="gpt-4o-mini-realtime-preview")
     
-    # Custom LLM Wrapper
+    # Custom LLM Wrapper with Knowledge Base
     class KBLLM:
         def __init__(self, llm, kb):
             self.llm = llm
@@ -244,17 +248,43 @@ async def entrypoint(ctx: JobContext):
             return await self.llm.generate(prompt, **kwargs)
     
     llm = KBLLM(base_llm, kb) if kb else base_llm
+    logger.info("✅ LLM initialized")
     
-    # Session
+    # Agent Session (VAD + LLM + TTS)
     session = AgentSession(llm=llm, vad=silero.VAD.load(), tts=tts)
-    await avatar.start(session, room=ctx.room)
+    logger.info("✅ Agent Session created")
     
+    # BitHuman Avatar Session (OHNE api_url - nur api_secret + avatar_id!)
+    logger.info("🎬 Creating BitHuman Avatar Session...")
+    avatar = bithuman.AvatarSession(
+        api_secret=os.getenv("BITHUMAN_API_SECRET"),
+        avatar_id=agent_id,
+    )
+    logger.info("✅ BitHuman Avatar Session created")
+    
+    # START BitHuman Avatar
+    logger.info("🚀 Starting BitHuman Avatar (streaming video to room)...")
+    await avatar.start(session, room=ctx.room)
+    logger.info("🎥 BitHuman Avatar STARTED - Video Track published!")
+    
+    # Start Agent
     instructions = config.get('instructions') or f"Du bist {config.get('name', 'Avatar')}, ein hilfreicher Assistent."
+    logger.info(f"🤖 Starting Agent with instructions...")
     await session.start(
         agent=Agent(instructions=instructions),
         room=ctx.room,
         room_output_options=RoomOutputOptions(audio_enabled=False)
     )
+    logger.info("✅ Agent fully running - listening for speech!")
+    
+    # Keep session alive
+    logger.info("⏳ Session running - waiting for disconnect...")
+    try:
+        await ctx.room.wait_for_disconnect()
+    except Exception as e:
+        logger.error(f"❌ Session error: {e}")
+    finally:
+        logger.info("👋 Session ended")
 
 
 if __name__ == "__main__":

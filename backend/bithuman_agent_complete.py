@@ -397,7 +397,7 @@ if __name__ == "__main__":
             entrypoint_fnc=entrypoint,
             worker_type=WorkerType.ROOM,
             job_memory_warn_mb=2000,
-            num_idle_processes=1,
+            num_idle_processes=0,  # Scale-to-zero! Nur aktiv wenn Chat läuft
             initialize_process_timeout=300,
         )
     )

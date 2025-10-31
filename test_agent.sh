@@ -22,9 +22,13 @@ echo ""
 
 # Test 1: Health Check
 echo "1️⃣ Health Check..."
-if curl -sf "${MODAL_URL}/health" > /dev/null 2>&1; then
+HEALTH=$(curl -sf -X POST "${MODAL_URL}" \
+    -H "Content-Type: application/json" \
+    -d '{"health": true}' 2>&1)
+
+if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Health Check OK${NC}"
-    curl -s "${MODAL_URL}/health" | python3 -m json.tool
+    echo "$HEALTH" | python3 -m json.tool
 else
     echo -e "${RED}❌ Health Check FAILED${NC}"
     exit 1

@@ -550,12 +550,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               final agentId = (liveAvatar?['agentId'] as String?)?.trim();
               if (agentId != null && agentId.isNotEmpty) {
                 debugPrint('🤖 Starting Bithuman Agent: $agentId for room: $room');
-                final orchUrl = AppConfig.orchestratorUrl
-                    .replaceFirst('wss://', 'https://')
-                    .replaceFirst('ws://', 'http://');
-                final agentUrl = orchUrl.endsWith('/')
-                    ? '${orchUrl}agent/join'
-                    : '$orchUrl/agent/join';
+                const agentUrl = 'https://romeo1971--bithuman-complete-agent-join.modal.run';
                 final agentRes = await http.post(
                   Uri.parse(agentUrl),
                   headers: {'Content-Type': 'application/json'},
@@ -652,9 +647,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       // BitHuman Agent join lassen (falls agent_id vorhanden)
       if (agentId != null && agentId.isNotEmpty) {
         try {
-          final agentUrl = orchUrl.endsWith('/')
-              ? '${orchUrl}agent/join'
-              : '$orchUrl/agent/join';
+          const agentUrl = 'https://romeo1971--bithuman-complete-agent-join.modal.run';
           await http.post(
             Uri.parse(agentUrl),
             headers: {'Content-Type': 'application/json'},

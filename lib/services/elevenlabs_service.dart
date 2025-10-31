@@ -90,8 +90,7 @@ class ElevenLabsService {
     }
   }
 
-  /// Holt verfügbare Voices ausschließlich über Backend-Proxy (/avatar/voices)
-  /// – kein direkter ElevenLabs-Aufruf im Client.
+  /// Holt verfügbare Voices über Backend-Proxy (umgeht Flutter SSL-Problem)
   static Future<List<Map<String, dynamic>>?> getVoices() async {
     try {
       final base = (dotenv.env['MEMORY_API_BASE_URL'] ?? '').trim();
@@ -99,15 +98,22 @@ class ElevenLabsService {
         debugPrint('❌ Backend URL fehlt: MEMORY_API_BASE_URL');
         return null;
       }
+      
+      // Nutze neuen Backend-Proxy Endpoint
+      final url = '$base/api/elevenlabs/voices';
+      debugPrint('🔍 Rufe Backend Proxy auf: $url');
       final r = await http.get(
-        Uri.parse('$base/avatar/voices'),
+        Uri.parse(url),
         headers: {'accept': 'application/json'},
       );
+      
       if (r.statusCode >= 200 && r.statusCode < 300) {
         final data = jsonDecode(r.body);
+        // ElevenLabs API Response Format: {"voices": [...]}
         final list = (data is Map && data['voices'] is List)
             ? List<Map<String, dynamic>>.from(data['voices'])
             : <Map<String, dynamic>>[];
+        debugPrint('✅ Backend Voices: ${list.length} verfügbar');
         return list;
       } else {
         debugPrint('❌ Backend Voices HTTP ${r.statusCode}: ${r.body}');

@@ -656,3 +656,137 @@ async def debug_audio():
         }
     except Exception as e:
         return {"error": str(e)}
+
+
+# ==================== ELEVENLABS PROXY (Flutter SSL-Workaround) ====================
+@app.get("/api/elevenlabs/voices")
+async def elevenlabs_voices_proxy():
+    """Proxy für ElevenLabs Voices API - umgeht Flutter SSL-Problem"""
+    if not ELEVEN_KEY:
+        raise HTTPException(status_code=500, detail="ELEVENLABS_API_KEY not configured")
+    
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"https://{ELEVEN_BASE}/v1/voices",
+                headers={"xi-api-key": ELEVEN_KEY}
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ElevenLabs API error: {str(e)}")
+
+
+@app.post("/api/elevenlabs/clone")
+async def elevenlabs_clone_proxy(req: Request):
+    """Proxy für ElevenLabs Voice Clone API - umgeht Flutter SSL-Problem"""
+    if not ELEVEN_KEY:
+        raise HTTPException(status_code=500, detail="ELEVENLABS_API_KEY not configured")
+    
+    try:
+        body = await req.json()
+        import httpx
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(
+                f"https://{ELEVEN_BASE}/v1/voices/add",
+                headers={
+                    "xi-api-key": ELEVEN_KEY,
+                    "Content-Type": "application/json"
+                },
+                json=body
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"ElevenLabs API error: {str(e)}")
+
+
+@app.post("/avatar/voice/create")
+async def create_eleven_voice(req: Request):
+    """Voice Cloning Endpoint - lädt Audio von URLs und erstellt ElevenLabs Stimme"""
+    if not ELEVEN_KEY:
+        raise HTTPException(status_code=400, detail="ELEVENLABS_API_KEY fehlt")
+    
+    try:
+        body = await req.json()
+        user_id = body.get("user_id")
+        avatar_id = body.get("avatar_id")
+        audio_urls = body.get("audio_urls", [])
+        name = body.get("name")
+        voice_id = body.get("voice_id")
+        dialect = body.get("dialect")
+        tempo = body.get("tempo")
+        stability = body.get("stability")
+        similarity = body.get("similarity")
+        
+        if not (user_id and avatar_id and audio_urls):
+            raise HTTPException(status_code=400, detail="user_id, avatar_id und audio_urls erforderlich")
+        
+        import httpx
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            # Lade Audios herunter (max 3)
+            files = []
+            for i, url in enumerate(audio_urls[:3]):
+                resp = await client.get(url, timeout=60.0)
+                resp.raise_for_status()
+                ctype = resp.headers.get('content-type', 'application/octet-stream')
+                ext = '.wav' if 'wav' in ctype else ('.m4a' if ('mp4' in ctype or 'm4a' in ctype) else '.mp3')
+                files.append(("files", (f"sample_{i}{ext}", resp.content, ctype)))
+            
+            voice_name = name or f"avatar_{avatar_id}"
+            canonical_name = f"avatar_{avatar_id}"
+            headers_eleven = {"xi-api-key": ELEVEN_KEY}
+            
+            # Alte Stimme löschen falls vorhanden
+            if voice_id and voice_id.strip() and voice_id != "__CLONE__":
+                try:
+                    del_resp = await client.delete(
+                        f"https://{ELEVEN_BASE}/v1/voices/{voice_id.strip()}",
+                        headers=headers_eleven,
+                        timeout=30.0
+                    )
+                    if 200 <= del_resp.status_code < 300:
+                        print(f"✅ Alte Stimme gelöscht: {voice_id}")
+                except Exception:
+                    pass
+            
+            # Labels für Metadaten
+            labels = {}
+            if dialect:
+                labels["dialect"] = str(dialect)
+            if tempo is not None:
+                labels["tempo"] = f"{float(tempo):.2f}"
+            if stability is not None:
+                labels["stability"] = f"{float(stability):.2f}"
+            if similarity is not None:
+                labels["similarity"] = f"{float(similarity):.2f}"
+            
+            # Neue Stimme erstellen
+            data = {"name": canonical_name}
+            if labels:
+                import json as json_lib
+                data["labels"] = json_lib.dumps(labels)
+            
+            # Multipart Request
+            create_resp = await client.post(
+                f"https://{ELEVEN_BASE}/v1/voices/add",
+                headers={**headers_eleven, "Accept": "application/json"},
+                data=data,
+                files=files,
+                timeout=120.0
+            )
+            create_resp.raise_for_status()
+            res_data = create_resp.json()
+            new_voice_id = res_data.get("voice_id") or res_data.get("id")
+            result_name = res_data.get("name") or canonical_name
+            
+            if not new_voice_id:
+                raise HTTPException(status_code=500, detail="ElevenLabs: voice_id fehlt in Antwort")
+            
+            return {"voice_id": new_voice_id, "name": result_name}
+            
+    except httpx.HTTPStatusError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=f"ElevenLabs: {e.response.text}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Voice Create Fehler: {str(e)}")

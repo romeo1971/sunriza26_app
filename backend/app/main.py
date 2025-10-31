@@ -3009,3 +3009,69 @@ def update_avatar_fact(payload: FactUpdateRequest) -> FactUpdateResponse:
         logger.exception("Fact-Update Fehler")
         raise HTTPException(status_code=500, detail=f"Fact-Update Fehler: {e}")
 
+
+# ==================== ELEVENLABS PROXY (wegen Flutter SSL-Problem) ====================
+@app.get("/api/elevenlabs/voices")
+async def get_elevenlabs_voices():
+    """
+    Proxy für ElevenLabs Voices API
+    
+    Umgeht Flutter SSL-Handshake Problem mit ElevenLabs API
+    """
+    import aiohttp
+    
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ELEVENLABS_API_KEY not configured")
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                "https://api.elevenlabs.io/v1/voices",
+                headers={"xi-api-key": api_key}
+            ) as resp:
+                if resp.status != 200:
+                    error_text = await resp.text()
+                    raise HTTPException(status_code=resp.status, detail=f"ElevenLabs API error: {error_text}")
+                
+                data = await resp.json()
+                return data
+    except aiohttp.ClientError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch voices: {str(e)}")
+
+
+@app.post("/api/elevenlabs/clone")
+async def clone_elevenlabs_voice(request: Request):
+    """
+    Proxy für ElevenLabs Voice Clone API
+    
+    Umgeht Flutter SSL-Handshake Problem mit ElevenLabs API
+    """
+    import aiohttp
+    
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="ELEVENLABS_API_KEY not configured")
+    
+    try:
+        # Get JSON body
+        body = await request.json()
+        
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                "https://api.elevenlabs.io/v1/voices/add",
+                headers={
+                    "xi-api-key": api_key,
+                    "Content-Type": "application/json"
+                },
+                json=body
+            ) as resp:
+                if resp.status not in [200, 201]:
+                    error_text = await resp.text()
+                    raise HTTPException(status_code=resp.status, detail=f"ElevenLabs API error: {error_text}")
+                
+                data = await resp.json()
+                return data
+    except aiohttp.ClientError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to clone voice: {str(e)}")
+
