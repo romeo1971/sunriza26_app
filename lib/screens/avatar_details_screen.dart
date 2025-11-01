@@ -6173,8 +6173,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }();
   }
 
-  String _memoryApiBaseUrl() {
-    return EnvService.memoryApiBaseUrl();
+  String _pineconeApiBaseUrl() {
+    return EnvService.pineconeApiBaseUrl();
   }
 
   Future<void> _triggerMemoryInsert({
@@ -6186,12 +6186,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     String? filePath,
     String? source,
   }) async {
-    final base = _memoryApiBaseUrl();
+    final base = _pineconeApiBaseUrl();
     if (base.isEmpty) {
       // Kein Backend: überspringen
       return;
     }
-    final uri = Uri.parse('$base/avatarMemoryInsert');
+    final uri = Uri.parse('$base/avatar/memory/insert');
     final Map<String, dynamic> payload = {
       'user_id': userId,
       'avatar_id': avatarId,
@@ -6232,7 +6232,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     required String avatarId,
     String? note,
   }) async {
-    final base = _memoryApiBaseUrl();
+    final base = _pineconeApiBaseUrl();
     if (base.isEmpty) return;
     try {
       final uri = Uri.parse('$base/debug/upsert');
@@ -6255,7 +6255,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     String? fileName,
     String? filePath,
   }) async {
-    final base = _memoryApiBaseUrl();
+    final base = _pineconeApiBaseUrl();
     if (base.isEmpty) return; // kein Backend erreichbar → still weiter
     final uri = Uri.parse('$base/avatar/memory/delete/by-file');
     final Map<String, dynamic> payload = {

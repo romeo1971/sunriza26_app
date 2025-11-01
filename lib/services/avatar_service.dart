@@ -425,7 +425,7 @@ class AvatarService {
   /// Löscht Pinecone/Knowledge-Einträge für diesen Avatar (Best Effort)
   Future<void> _deletePineconeEntries(String avatarId, String userId) async {
     try {
-      final base = EnvService.memoryApiBaseUrl();
+      final base = EnvService.pineconeApiBaseUrl();
       if (base.isEmpty) return;
       final uri = Uri.parse('$base/avatar/memory/delete/by-avatar');
       await http

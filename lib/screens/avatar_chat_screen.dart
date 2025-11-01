@@ -3868,8 +3868,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     try {
       if (_avatarData == null) return;
       final uid = FirebaseAuth.instance.currentUser!.uid;
-      // Bevorzugt MEMORY_API_BASE_URL; Fallback auf AppConfig.backendUrl
-      String base = EnvService.memoryApiBaseUrl();
+      // Pinecone Memory Insert nutzt PINECONE_API_BASE_URL
+      String base = EnvService.pineconeApiBaseUrl();
       if (base.isEmpty) base = AppConfig.backendUrl;
       final uri = Uri.parse('$base/avatar/memory/insert');
       final payload = {

@@ -59,6 +59,26 @@ class EnvService {
     return AppConfig.memoryApiBaseUrl;
   }
 
+  static String pineconeApiBaseUrl() {
+    const fromDefine = String.fromEnvironment(
+      'PINECONE_API_BASE_URL',
+      defaultValue: '',
+    );
+    if (fromDefine.isNotEmpty) return _normalizeBase(fromDefine.trim());
+
+    final fromEnv = _safeEnv('PINECONE_API_BASE_URL');
+    if (fromEnv.isNotEmpty) return _normalizeBase(fromEnv);
+
+    // Optional: spezielle LAN‑URL für physische Geräte
+    const lanDefine = String.fromEnvironment('LAN_BASE_URL', defaultValue: '');
+    if (lanDefine.isNotEmpty) return _normalizeBase(lanDefine.trim());
+    final lanEnv = _safeEnv('LAN_BASE_URL');
+    if (lanEnv.isNotEmpty) return _normalizeBase(lanEnv);
+
+    // Production: Cloud Functions als Fallback
+    return AppConfig.backendUrl;
+  }
+
   // Feature-Flags für Orchestrator
   static bool orchestratorEnabled() {
     final v = _safeEnv('ORCHESTRATOR_ENABLED');

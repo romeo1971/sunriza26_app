@@ -111,8 +111,8 @@ class FactReviewService {
   }) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception('Nicht angemeldet');
-    final base = EnvService.memoryApiBaseUrl();
-    if (base.isEmpty) throw Exception('MEMORY_API_BASE_URL fehlt');
+    final base = EnvService.pineconeApiBaseUrl();
+    if (base.isEmpty) throw Exception('PINECONE_API_BASE_URL fehlt');
 
     final uri = Uri.parse('$base/avatar/facts/list');
     final body = <String, dynamic>{
@@ -147,8 +147,8 @@ class FactReviewService {
   }) async {
     final user = _auth.currentUser;
     if (user == null) throw Exception('Nicht angemeldet');
-    final base = EnvService.memoryApiBaseUrl();
-    if (base.isEmpty) throw Exception('MEMORY_API_BASE_URL fehlt');
+    final base = EnvService.pineconeApiBaseUrl();
+    if (base.isEmpty) throw Exception('PINECONE_API_BASE_URL fehlt');
 
     final uri = Uri.parse('$base/avatar/facts/update');
     final body = <String, dynamic>{
