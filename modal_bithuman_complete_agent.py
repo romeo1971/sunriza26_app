@@ -260,22 +260,22 @@ async def main():
     
     logger.info(f"🤖 Agent: {agent_id}, Voice: {voice_id}, NS: {namespace}, Model: {bh_model}")
     
-    # Knowledge Base
+    # Knowledge Base (Avatar-spezifischer Index!)
     kb = None
     if PINECONE_AVAILABLE and os.getenv("PINECONE_API_KEY"):
         try:
             kb = KnowledgeBase(
                 os.getenv("PINECONE_API_KEY"),
-                os.getenv("PINECONE_INDEX_NAME", "sunriza26-avatar-data"),
+                os.getenv("PINECONE_INDEX_NAME", "avatars-index"),  # RICHTIG: Avatar-Index, nicht global!
                 os.getenv("OPENAI_API_KEY"),
                 namespace
             )
-            logger.info("✅ Knowledge Base initialized")
+            logger.info(f"✅ Knowledge Base initialized (index=avatars-index, namespace={namespace})")
         except Exception as e:
             logger.warning(f"⚠️ Knowledge Base init failed (continuing without KB): {e}")
             kb = None
     
-    # TTS Setup
+    # TTS Setup - ElevenLabs für Custom Voice
     if ELEVENLABS_AVAILABLE and voice_id:
         logger.info(f"🎵 Using ElevenLabs TTS with voice: {voice_id}")
         tts = elevenlabs.TTS(voice_id=voice_id, api_key=os.getenv("ELEVENLABS_API_KEY"))
@@ -283,9 +283,9 @@ async def main():
         logger.info("🎵 Using OpenAI TTS (fallback)")
         tts = openai.TTS(voice="coral")
     
-    # LLM Setup (mit voice wie bithumanProd!)
+    # LLM Setup - Realtime API OHNE voice (damit TTS übernimmt!)
     base_llm = openai.realtime.RealtimeModel(
-        voice=os.getenv("OPENAI_VOICE", "coral"),
+        voice=None,  # WICHTIG: None damit ElevenLabs TTS genutzt wird!
         model=os.getenv("OPENAI_MODEL", "gpt-4o-mini-realtime-preview")
     )
     
