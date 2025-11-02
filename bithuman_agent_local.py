@@ -31,6 +31,11 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("bithuman-local")
 
+# DEBUG: Print ENV vars
+logger.info(f"🔍 LIVEKIT_URL: {os.getenv('LIVEKIT_URL')}")
+logger.info(f"🔍 LIVEKIT_API_KEY: {os.getenv('LIVEKIT_API_KEY')}")
+logger.info(f"🔍 LIVEKIT_API_SECRET: {'SET' if os.getenv('LIVEKIT_API_SECRET') else 'MISSING'}")
+
 
 async def entrypoint(ctx: JobContext):
     """Main entrypoint"""
