@@ -22,7 +22,7 @@ image = (
     .apt_install("libgl1-mesa-glx", "libglib2.0-0", "libsm6", "libxext6", "libxrender1")
     .pip_install(
         # Core
-        "livekit-agents[openai,bithuman,silero]>=1.2.16",
+        "livekit-agents[openai,bithuman,silero]>=1.2.17",
         "python-dotenv>=1.1.1",
         # OpenCV headless (erzwingen, Headful deinstallieren)
         "opencv-python-headless==4.10.0.84",
@@ -68,12 +68,11 @@ secrets = [
 
 @app.function(
     secrets=secrets,
-    timeout=3600,  # 60 Min
     cpu=2.0,
     memory=4096,
-    min_containers=0,  # scale-to-zero (spart Kosten)
+    timeout=3600,
 )
-def start_agent(room: str, agent_id: str):
+def run_agent(room: str, agent_id: str):
     """
     Startet BitHuman Agent für Room.
     
@@ -213,11 +212,16 @@ def get_config(agent_id: str) -> Dict[str, Any]:
             if vid == '__CLONE__':
                 vid = None
             
+            # BitHuman Model aus liveAvatar.model lesen
+            live_avatar = data.get('liveAvatar', {})
+            bh_model = live_avatar.get('model', 'expression')  # Default: expression
+            
             return {
                 'voice_id': vid.strip() if vid else None,
                 'namespace': f"{data.get('userId', '')}_{doc.id}",
                 'instructions': data.get('personality'),
                 'name': data.get('name', 'Avatar'),
+                'bithuman_model': bh_model,
             }
         return {}
     except Exception as e:
@@ -250,19 +254,24 @@ async def main():
     config = get_config(agent_id)
     voice_id = config.get('voice_id') or os.getenv("ELEVEN_DEFAULT_VOICE_ID")
     namespace = config.get('namespace')
+    bh_model = config.get('bithuman_model', 'expression')  # Default: expression
     
-    logger.info(f"🤖 Agent: {agent_id}, Voice: {voice_id}, NS: {namespace}")
+    logger.info(f"🤖 Agent: {agent_id}, Voice: {voice_id}, NS: {namespace}, Model: {bh_model}")
     
     # Knowledge Base
     kb = None
     if PINECONE_AVAILABLE and os.getenv("PINECONE_API_KEY"):
-        kb = KnowledgeBase(
-            os.getenv("PINECONE_API_KEY"),
-            os.getenv("PINECONE_INDEX_NAME", "sunriza26-avatar-data"),
-            os.getenv("OPENAI_API_KEY"),
-            namespace
-        )
-        logger.info("✅ Knowledge Base initialized")
+        try:
+            kb = KnowledgeBase(
+                os.getenv("PINECONE_API_KEY"),
+                os.getenv("PINECONE_INDEX_NAME", "sunriza26-avatar-data"),
+                os.getenv("OPENAI_API_KEY"),
+                namespace
+            )
+            logger.info("✅ Knowledge Base initialized")
+        except Exception as e:
+            logger.warning(f"⚠️ Knowledge Base init failed (continuing without KB): {e}")
+            kb = None
     
     # TTS Setup
     if ELEVENLABS_AVAILABLE and voice_id:
@@ -297,18 +306,18 @@ async def main():
     session = AgentSession(llm=llm, vad=silero.VAD.load(), tts=tts)
     logger.info("✅ Agent Session created")
     
-    # BitHuman Avatar Session (MIT http_session FIX!)
-    import aiohttp
-    logger.info("🎬 Creating BitHuman Avatar Session...")
-    http_session = aiohttp.ClientSession()
+    # BitHuman Avatar Session (Cloud Plugin)
+    logger.info(f"🎬 Creating BitHuman Avatar Session (model={bh_model})...")
+    
     try:
+        # WICHTIG: model_path für lokales Model ODER avatar_id für Cloud
+        # Da wir Cloud nutzen: nur avatar_id + api_secret
         avatar = bithuman.AvatarSession(
-            api_url=os.getenv("BITHUMAN_API_URL", "https://auth.api.bithuman.ai/v1/runtime-tokens/request"),
-            api_secret=os.getenv("BITHUMAN_API_SECRET"),
             avatar_id=agent_id,
-            http_session=http_session,  # ← FIX!
+            api_secret=os.getenv("BITHUMAN_API_SECRET"),
+            model=bh_model,  # essence oder expression
         )
-        logger.info("✅ BitHuman Avatar Session created")
+        logger.info(f"✅ BitHuman Avatar Session created (model={bh_model})")
         
         # START BitHuman Avatar
         logger.info("🚀 Starting BitHuman Avatar (streaming video to room)...")
@@ -333,9 +342,9 @@ async def main():
             logger.error(f"❌ Session error: {e}")
         finally:
             logger.info("👋 Session ended")
-    finally:
-        await http_session.close()
-        logger.info("🔌 HTTP Session closed")
+    except Exception as e:
+        logger.error(f"❌ Avatar Session error: {e}")
+        raise
 
 
 if __name__ == "__main__":
@@ -412,7 +421,7 @@ def join(data: dict):
     print(f"🎬 Join request: room={room}, agent={agent_id}")
     
     # Agent asynchron starten
-    start_agent.spawn(room, agent_id)
+    run_agent.spawn(room, agent_id)
     
     return {"status": "started", "room": room, "agent_id": agent_id}
 

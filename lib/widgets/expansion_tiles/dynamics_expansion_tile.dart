@@ -14,7 +14,7 @@ class DynamicsExpansionTile extends StatelessWidget {
   // Live Avatar State
   final String? heroImageUrl;
   final String? heroAudioUrl;
-  final VoidCallback? onGenerateLiveAvatar;
+  final Function(String model)? onGenerateLiveAvatar; // ← Mit Model parameter
   final bool isGeneratingLiveAvatar;
   final String? liveAvatarAgentId;
 

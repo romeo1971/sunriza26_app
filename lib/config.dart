@@ -15,5 +15,5 @@ class AppConfig {
       'wss://romeo1971--liveportrait-ws-asgi.modal.run/stream';
   // BitHuman Agent Join URL (Modal)
   static const bithumanAgentUrl =
-      'https://romeo1971--bithuman-worker-v4-join.modal.run';
+      'https://romeo1971--bithuman-complete-agent-join.modal.run';
 }

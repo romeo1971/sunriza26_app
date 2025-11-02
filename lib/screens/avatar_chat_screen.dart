@@ -649,30 +649,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('🖼️ Frames zip: $framesZipUrl');
       }
 
-      // BitHuman Agent join lassen (falls agent_id vorhanden)
-      debugPrint('🔍 agentId check: agentId=$agentId, isNull=${agentId == null}, isEmpty=${agentId?.isEmpty}');
-      if (agentId != null && agentId.isNotEmpty) {
-        try {
-          const agentUrl = 'https://romeo1971--bithuman-complete-agent-join.modal.run';
-          debugPrint('🚀 Calling BitHuman Agent join: room=$room, agent_id=$agentId');
-          final agentRes = await http.post(
-            Uri.parse(agentUrl),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'room': room, 'agent_id': agentId}),
-          ).timeout(const Duration(seconds: 10));
-          
-          debugPrint('📡 Agent response: ${agentRes.statusCode}, body=${agentRes.body}');
-          if (agentRes.statusCode >= 200 && agentRes.statusCode < 300) {
-            debugPrint('✅ BitHuman Agent joined successfully');
-          } else {
-            debugPrint('⚠️ BitHuman Agent join failed: ${agentRes.statusCode}');
-          }
-        } catch (e) {
-          debugPrint('⚠️ BitHuman Agent join error: $e');
-        }
-      } else {
-        debugPrint('❌ AGENT_ID IS NULL OR EMPTY - CANNOT START AGENT!');
-      }
+      // BitHuman Agent wird bereits in _joinRoom() gestartet - hier nicht mehr nötig
 
       final res = await http.post(
         Uri.parse(url),
@@ -1924,6 +1901,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     debugPrint('📺 No remote video - showing fallback');
     
     // PRIORITÄT 2: Sequential Chunked Video
+    debugPrint('🎬 _liveAvatarEnabled=$_liveAvatarEnabled, _currentChunk=$_currentChunk');
     if (_liveAvatarEnabled) {
       VideoPlayerController? activeCtrl;
       switch (_currentChunk) {
@@ -1932,7 +1910,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         case 3: activeCtrl = _chunk3Controller; break;
         case 4: activeCtrl = _idleController; break;
       }
+      debugPrint('🎬 activeCtrl=${activeCtrl != null ? "EXISTS" : "NULL"}, initialized=${activeCtrl?.value.isInitialized ?? false}, playing=${activeCtrl?.value.isPlaying ?? false}');
       if (activeCtrl != null && activeCtrl.value.isInitialized) {
+        debugPrint('✅ RENDERING CHUNK VIDEO (chunk $_currentChunk)');
         return FittedBox(
           fit: BoxFit.cover,
           child: SizedBox(
@@ -1941,7 +1921,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             child: VideoPlayer(activeCtrl),
           ),
         );
+      } else {
+        debugPrint('⚠️ activeCtrl not ready - showing static image/black');
       }
+    } else {
+      debugPrint('⚠️ _liveAvatarEnabled=false - skipping chunk videos');
     }
     
     // PRIORITÄT 3: Statisches Hero-Image
@@ -3944,7 +3928,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       _idleVideoUrl = idleUrl;
 
       debugPrint(
-        '✅ Preload fertig: Chunk2=${_chunk2Controller != null}, Chunk3=${_chunk3Controller != null}, idle=${_idleController != null}',
+        '✅ Preload fertig: Chunk2=${_chunk2Controller != null ? "OK" : "FAIL"}, Chunk3=${_chunk3Controller != null ? "OK" : "FAIL"}, idle=${_idleController != null ? "OK (init=${_idleController!.value.isInitialized})" : "FAIL"}',
       );
     } catch (e) {
       debugPrint('⚠️ Preload Error: $e');
@@ -4039,8 +4023,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   }
 
   void _playIdleLoop() {
+    debugPrint('🔧 _playIdleLoop called: _idleController=${_idleController != null ? "EXISTS" : "NULL"}, init=${_idleController?.value.isInitialized ?? false}');
     if (_idleController == null || !_idleController!.value.isInitialized) {
-      debugPrint('⚠️ idle.mp4 noch nicht ready → Warte...');
+      debugPrint('⚠️ idle.mp4 noch nicht ready → Warte 500ms...');
       Future.delayed(const Duration(milliseconds: 500), _playIdleLoop);
       return;
     }
@@ -4050,6 +4035,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _idleController!.setLooping(true);
     _idleController!.seekTo(Duration.zero);
     _idleController!.play();
+    debugPrint('✅ idle.mp4 started, _currentChunk=$_currentChunk, playing=${_idleController!.value.isPlaying}');
     setState(() {}); // UI refresh
   }
 

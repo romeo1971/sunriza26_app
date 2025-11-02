@@ -5,7 +5,7 @@ import '../../theme/app_theme.dart';
 class LiveAvatarTile extends StatefulWidget {
   final String? heroImageUrl;
   final String? heroAudioUrl;
-  final VoidCallback? onGenerate;
+  final Function(String model)? onGenerate; // ← Jetzt mit Model parameter!
   final bool isGenerating;
   final String? agentId;
 
@@ -172,7 +172,7 @@ class _LiveAvatarTileState extends State<LiveAvatarTile> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: canGenerate ? widget.onGenerate : null,
+              onPressed: canGenerate ? () => widget.onGenerate?.call(_selectedModel) : null,
               icon: widget.isGenerating
                   ? const SizedBox(
                       width: 18,

@@ -7651,7 +7651,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   // 🚀 Live Avatar mit bitHuman generieren
-  Future<void> _generateLiveAvatar() async {
+  Future<void> _generateLiveAvatar(String model) async {
     if (_avatarData == null) return;
 
     // Verhindere mehrfaches Starten
@@ -7706,7 +7706,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         );
       }
 
-      // BitHuman Agent erstellen
+      // BitHuman Agent erstellen (mit gewähltem Model)
+      debugPrint('🎬 Creating Agent with model: $model');
       final agentId = await BitHumanService.createAgent(
         imageUrl: heroImageUrl,
         audioUrl: heroAudioUrl,
@@ -7720,6 +7721,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         // Agent ID speichern
         setState(() => _liveAvatarAgentId = agentId);
 
+        // Warte bis Agent ready & hole finales Model von API
+        await BitHumanService.waitForAgent(agentId);
+        final agentStatus = await BitHumanService.getAgentStatus(agentId);
+        final finalModel = model; // User-Auswahl nutzen (API gibt model zurück, ist aber optional)
+        
+        debugPrint('📝 Saving Agent: ID=$agentId, Model=$finalModel');
+
         // In Firebase speichern
         try {
           await FirebaseFirestore.instance
@@ -7728,11 +7736,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
               .update({
                 'liveAvatar': {
                   'agentId': agentId,
-                  'model': 'essence',
+                  'model': finalModel, // ← Von UI gewähltes Model!
                   'createdAt': FieldValue.serverTimestamp(),
                 },
               });
-          debugPrint('✅ Agent ID in Firebase gespeichert');
+          debugPrint('✅ Agent ID in Firebase gespeichert (model=$finalModel)');
         } catch (e) {
           debugPrint('❌ Fehler beim Speichern der Agent ID: $e');
         }
