@@ -70,7 +70,9 @@ secrets = [
     secrets=secrets,
     cpu=2.0,
     memory=4096,
-    timeout=3600,
+    timeout=300,  # 5 Min max (Demo Mode)
+    min_containers=0,  # scale-to-zero
+    scaledown_window=120,  # shutdown nach 2 Min idle
 )
 def run_agent(room: str, agent_id: str):
     """

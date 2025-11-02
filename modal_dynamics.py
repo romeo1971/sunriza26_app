@@ -629,19 +629,6 @@ def api_generate_dynamics():
     return web_app
 
 
-@app.function(image=image, min_containers=0, scaledown_window=20)
-@modal.asgi_app()
-def health():
-    from fastapi import FastAPI
-    web_app = FastAPI()
-    
-    @web_app.get("/")
-    async def check():
-        return {"status": "healthy", "service": "sunriza-dynamics-modal"}
-    
-    return web_app
-
-
 @app.function(
     image=image,
     secrets=[modal.Secret.from_name("firebase-credentials")],

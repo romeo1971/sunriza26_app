@@ -20,6 +20,7 @@ import os
 image = (
     modal.Image.debian_slim()
     .pip_install(
+        "fastapi[standard]",  # Required für Modal Web Endpoints
         "livekit-agents[openai,bithuman,silero]>=1.2.16",
         "python-dotenv>=1.1.1",
         "firebase-admin>=6.4.0",
@@ -46,10 +47,11 @@ secrets = [
 
 @app.function(
     secrets=secrets,
-    timeout=3600,  # 60 Min max
+    timeout=300,  # 5 Min max (Demo Mode)
     cpu=2.0,
     memory=4096,
-    keep_warm=1,  # Ein Container warm halten für schnellere Starts
+    min_containers=0,  # scale-to-zero
+    scaledown_window=120,  # shutdown nach 2 Min idle
 )
 def start_agent(room: str, agent_id: str, voice_id: str = None):
     """
@@ -230,16 +232,5 @@ def join(data: dict):
         "room": room,
         "agent_id": agent_id,
         "voice_id": voice_id or "from_firebase",
-    }
-
-
-@app.function(secrets=secrets)
-@modal.web_endpoint(method="GET")
-def health():
-    """Health Check"""
-    return {
-        "status": "ok",
-        "service": "bithuman-elevenlabs-agent",
-        "endpoint": "POST /join with {room, agent_id, voice_id?}",
     }
 

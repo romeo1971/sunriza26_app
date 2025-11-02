@@ -16,6 +16,7 @@ image = (
     modal.Image.debian_slim()
     .apt_install("libgl1-mesa-glx", "libglib2.0-0", "libsm6", "libxext6", "libxrender1")
     .pip_install(
+        "fastapi[standard]",  # Required für Modal Web Endpoints
         "livekit-agents[openai,bithuman,silero]>=1.2.17",
         "python-dotenv>=1.1.1",
         "firebase-admin>=6.4.0",
@@ -187,8 +188,9 @@ if __name__ == "__main__":
     gpu="T4",  # GPU für expression model  
     cpu=2.0,
     memory=8192,
-    timeout=86400,  # 24h max runtime
-    keep_warm=1,  # Always-on (1 container immer bereit)
+    timeout=300,  # 5 Min max
+    min_containers=0,  # scale-to-zero
+    scaledown_window=120,  # shutdown nach 2 Min idle
 )
 def run_worker():
     """Runs the LiveKit Worker continuously"""
