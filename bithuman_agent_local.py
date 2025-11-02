@@ -23,7 +23,8 @@ from livekit.agents import (
     WorkerType,
     cli,
 )
-from livekit.plugins import bithuman, openai, silero
+from livekit.plugins import bithuman, silero
+from livekit.plugins import openai as lk_openai
 
 load_dotenv()
 
@@ -46,10 +47,10 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"🤖 Agent ID: {agent_id}")
     
     # TTS
-    tts = openai.TTS(voice="coral")
+    tts = lk_openai.TTS(voice="coral")
     
     # LLM
-    llm = openai.realtime.RealtimeModel(
+    llm = lk_openai.realtime.RealtimeModel(
         voice="coral",
         model="gpt-4o-mini-realtime-preview"
     )
