@@ -13,7 +13,7 @@ export const avatarChat = onRequest({
   region: 'us-central1', 
   cors: true,
   invoker: 'public',
-  secrets: ['OPENAI_API_KEY', 'PINECONE_API_KEY', 'GOOGLE_CSE_API_KEY', 'GOOGLE_CSE_CX']
+  secrets: ['OPENAI_API_KEY', 'PINECONE_API_KEY', 'MISTRAL_API_KEY', 'GOOGLE_CSE_API_KEY', 'GOOGLE_CSE_CX']
 }, async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.status(204).send('');

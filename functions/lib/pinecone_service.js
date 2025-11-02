@@ -127,7 +127,7 @@ class PineconeService {
             throw error;
         }
     }
-    /// Sucht ähnliche Dokumente
+    /// Sucht ähnliche Dokumente (user-spezifisch, avatars-index)
     async searchSimilarDocuments(query, userId, topK = 5, filter, avatarId) {
         var _a;
         try {
@@ -153,7 +153,41 @@ class PineconeService {
         }
         catch (error) {
             console.error('Error searching similar documents:', error);
-            throw error;
+            return [];
+        }
+    }
+    /// Sucht ähnliche Dokumente (global, sunriza26-avatar-data)
+    async searchSimilarDocumentsGlobal(query, topK = 5) {
+        var _a, _b;
+        try {
+            const globalIndexName = 'sunriza26-avatar-data';
+            // Prüfe, ob Index existiert
+            const indexes = await this.pinecone.listIndexes();
+            const indexExists = (_a = indexes.indexes) === null || _a === void 0 ? void 0 : _a.some(index => index.name === globalIndexName);
+            if (!indexExists) {
+                console.log(`Global index ${globalIndexName} does not exist, skipping`);
+                return [];
+            }
+            const index = this.pinecone.index(globalIndexName);
+            // Query-Embedding generieren
+            const queryEmbedding = await this.generateTextEmbedding(query);
+            // Ähnliche Vektoren suchen (namespace 'global')
+            const searchResponse = await index.namespace('global').query({
+                vector: queryEmbedding,
+                topK,
+                includeMetadata: true,
+            });
+            // Ergebnisse in DocumentVector-Format konvertieren
+            const results = ((_b = searchResponse.matches) === null || _b === void 0 ? void 0 : _b.map(match => ({
+                id: match.id,
+                values: match.values || [],
+                metadata: match.metadata,
+            }))) || [];
+            return results;
+        }
+        catch (error) {
+            console.error('Error searching global documents:', error);
+            return [];
         }
     }
     /// Löscht Dokument aus Pinecone

@@ -164,7 +164,7 @@ export class PineconeService {
     }
   }
 
-  /// Sucht ähnliche Dokumente
+  /// Sucht ähnliche Dokumente (user-spezifisch, avatars-index)
   async searchSimilarDocuments(
     query: string,
     userId: string,
@@ -200,7 +200,49 @@ export class PineconeService {
       return results;
     } catch (error) {
       console.error('Error searching similar documents:', error);
-      throw error;
+      return [];
+    }
+  }
+
+  /// Sucht ähnliche Dokumente (global, sunriza26-avatar-data)
+  async searchSimilarDocumentsGlobal(
+    query: string,
+    topK: number = 5
+  ): Promise<DocumentVector[]> {
+    try {
+      const globalIndexName = 'sunriza26-avatar-data';
+      
+      // Prüfe, ob Index existiert
+      const indexes = await this.pinecone.listIndexes();
+      const indexExists = indexes.indexes?.some(index => index.name === globalIndexName);
+      if (!indexExists) {
+        console.log(`Global index ${globalIndexName} does not exist, skipping`);
+        return [];
+      }
+
+      const index = this.pinecone.index(globalIndexName);
+      
+      // Query-Embedding generieren
+      const queryEmbedding = await this.generateTextEmbedding(query);
+      
+      // Ähnliche Vektoren suchen (namespace 'global')
+      const searchResponse = await index.namespace('global').query({
+        vector: queryEmbedding,
+        topK,
+        includeMetadata: true,
+      });
+
+      // Ergebnisse in DocumentVector-Format konvertieren
+      const results: DocumentVector[] = searchResponse.matches?.map(match => ({
+        id: match.id,
+        values: match.values || [],
+        metadata: match.metadata as unknown as DocumentMetadata,
+      })) || [];
+
+      return results;
+    } catch (error) {
+      console.error('Error searching global documents:', error);
+      return [];
     }
   }
 

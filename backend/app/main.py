@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
 from openai import OpenAI
+from mistralai import Mistral
 from google.cloud import texttospeech
 import base64, requests, json, tempfile, subprocess, threading
 import unicodedata
@@ -98,6 +99,7 @@ else:
     load_dotenv(find_dotenv(), override=False)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX", "sunriza")
 PINECONE_CLOUD = os.getenv("PINECONE_CLOUD", "aws")
@@ -110,6 +112,7 @@ LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "").strip()
 
 # Standard-Modelle (nur ändern, wenn explizit angewiesen)
 GPT_MODEL = os.getenv("GPT_MODEL", "gpt-4o-mini")
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1536"))
 GPT_SYSTEM_PROMPT = os.getenv(
@@ -129,12 +132,15 @@ GPT_SYSTEM_PROMPT = os.getenv(
 
 if not OPENAI_API_KEY:
     raise RuntimeError("OPENAI_API_KEY fehlt in .env")
+if not MISTRAL_API_KEY:
+    raise RuntimeError("MISTRAL_API_KEY fehlt in .env")
 if not PINECONE_API_KEY:
     raise RuntimeError("PINECONE_API_KEY fehlt in .env")
 
 app = FastAPI(title="Avatar Memory API", version="0.1.0")
 logger = logging.getLogger("uvicorn.error")
 client = OpenAI(api_key=OPENAI_API_KEY, timeout=20, max_retries=0)
+mistral_client = Mistral(api_key=MISTRAL_API_KEY)
 pc = get_pinecone(PINECONE_API_KEY)
 
 # In‑Memory Latenz‑Histories (Rolling Window)
@@ -2482,19 +2488,18 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
     # if champion_q:
     #     user_msg += "\nHinweis: Gemeint ist der aktuell amtierende Weltmeister (Herren, sofern nicht 'Frauen' erwähnt). Antworte knapp: Land + Jahr des Titels."
 
-    # 3) OpenAI Chat
+    # 3) Mistral Chat (keine Content-Moderation)
     try:
-        comp = client.chat.completions.create(
-            model=GPT_MODEL,
+        comp = mistral_client.chat.complete(
+            model=MISTRAL_MODEL,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user_msg},
             ],
             temperature=0.2,
             max_tokens=120,
-            timeout=12,
         )
-        answer = comp.choices[0].message.content.strip()  # type: ignore
+        answer = comp.choices[0].message.content.strip()
         # Nachbearbeitung: konsequent Ich‑Form erzwingen (ersetzt Avatar‑Name → Ich)
         name_variants2 = []
         if effective_avatar_name:

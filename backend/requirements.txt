@@ -22,6 +22,7 @@ fastapi-cors==0.0.6
 
 # AI / Vektor
 openai>=1.35.0
+mistralai>=1.0.0
 whisper-timestamped==1.15.3
 pinecone>=5.0.0
 google-cloud-texttospeech>=2.16.3

@@ -56,19 +56,22 @@ class RAGService {
     }
     /// Generiert KI-Avatar Antwort basierend auf RAG
     async generateAvatarResponse(request) {
-        var _a;
+        var _a, _b, _c, _d;
         try {
             console.log(`Generating avatar response for user ${request.userId}`);
-            // Kontext aus ähnlichen Dokumenten generieren (nur user+avatar-spezifisch, kein global)
+            // Kontext aus ähnlichen Dokumenten generieren (user+avatar-spezifisch + global sunriza26-avatar-data)
             const maxCtx = 2000;
-            const userDocs = await this.pineconeService.searchSimilarDocuments(request.query, request.userId, 12, undefined, request.avatarId);
-            const assembleContext = (docs) => {
-                var _a;
+            // 1) User-spezifische Daten (avatars-index, namespace userId_avatarId)
+            const userDocs = await this.pineconeService.searchSimilarDocuments(request.query, request.userId, 8, undefined, request.avatarId);
+            // 2) Globale Cases (sunriza26-avatar-data, namespace 'global')
+            const globalDocs = await this.pineconeService.searchSimilarDocumentsGlobal(request.query, 6);
+            const assembleContext = (docs, label) => {
+                var _a, _b;
                 let ctx = '';
                 let len = 0;
                 for (const doc of docs) {
                     // PYTHON-KOMPATIBILITÄT: text aus metadata nutzen (wie Python-Backend)
-                    const text = ((_a = doc.metadata) === null || _a === void 0 ? void 0 : _a.text) || '';
+                    const text = ((_a = doc.metadata) === null || _a === void 0 ? void 0 : _a.text) || ((_b = doc.metadata) === null || _b === void 0 ? void 0 : _b.description) || '';
                     if (text && len + text.length + 3 <= maxCtx) {
                         ctx += `- ${text}\n`;
                         len += text.length + 3;
@@ -79,54 +82,63 @@ class RAGService {
                 }
                 return ctx;
             };
-            const context = assembleContext(userDocs).trim() || 'Keine relevanten Informationen gefunden.';
-            // Wenn kaum/kein Kontext vorhanden ist, Live-Wissens-Snippet aus dem Web laden (Wikipedia)
+            const userContext = assembleContext(userDocs, 'User');
+            const globalContext = assembleContext(globalDocs, 'Global');
+            const context = (userContext + '\n' + globalContext).trim();
+            let response = '';
+            // Live-Wissens-Snippet aus dem Web laden (Wikipedia)
             let liveSnippet = '';
-            if (!context || context.includes('Keine relevanten Informationen') || context.length < 80) {
+            if (!context || context.length < 80) {
                 try {
                     const [wiki, cse] = await Promise.all([
                         this.fetchLiveSnippet(request.query),
                         this.fetchGoogleCSESnippet(request.query),
                     ]);
-                    // beide Quellen kombinieren
                     liveSnippet = [wiki, cse].filter(Boolean).join('\n\n');
                 }
                 catch (e) {
                     console.warn('Live-Snippet fehlgeschlagen:', e);
                 }
             }
-            // KI-Prompt mit Kontext erstellen
-            const mergedContext = [context, liveSnippet].filter(Boolean).join('\n\n');
+            const mergedContext = [context, liveSnippet].filter(Boolean).join('\n\n') || 'Keine spezifischen Informationen verfügbar.';
             const systemPrompt = this.createSystemPrompt(mergedContext);
             const userPrompt = this.createUserPrompt(request.query, request.context);
-            // LLM Router aufrufen (OpenAI primär, Gemini Fallback)
-            const llmUrl = process.env.LLM_ENDPOINT || 'https://us-central1-sunriza26.cloudfunctions.net/llm';
-            const r = await globalThis.fetch(llmUrl, {
+            // Mistral AI (KEINE Content-Moderation für sexuelle Inhalte)
+            const mistralApiKey = process.env.MISTRAL_API_KEY;
+            if (!mistralApiKey) {
+                throw new Error('MISTRAL_API_KEY fehlt');
+            }
+            const r = await globalThis.fetch('https://api.mistral.ai/v1/chat/completions', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Authorization': `Bearer ${mistralApiKey}`,
+                    'Content-Type': 'application/json'
+                },
                 body: JSON.stringify({
+                    model: 'mistral-small-latest',
                     messages: [
                         { role: 'system', content: systemPrompt },
                         { role: 'user', content: userPrompt },
                     ],
-                    maxTokens: request.maxTokens || 500,
+                    max_tokens: request.maxTokens || 500,
                     temperature: (_a = request.temperature) !== null && _a !== void 0 ? _a : 0.7,
                 }),
             });
             if (!r.ok) {
-                throw new Error(`LLM Router HTTP ${r.status}`);
+                const errorText = await r.text();
+                throw new Error(`Mistral API HTTP ${r.status}: ${errorText}`);
             }
             const jr = await r.json();
-            const response = (jr === null || jr === void 0 ? void 0 : jr.answer) || 'Entschuldigung, ich konnte keine Antwort generieren.';
+            response = ((_d = (_c = (_b = jr === null || jr === void 0 ? void 0 : jr.choices) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.message) === null || _d === void 0 ? void 0 : _d.content) || 'Entschuldigung, ich konnte keine Antwort generieren.';
             // Quellen aus Kontext extrahieren
-            const sources = this.extractSources(mergedContext);
+            const sources = this.extractSources(context);
             // Confidence basierend auf Kontext-Länge berechnen
-            const confidence = this.calculateConfidence(mergedContext, sources.length);
+            const confidence = this.calculateConfidence(context, sources.length);
             return {
                 response,
                 sources,
                 confidence,
-                context: mergedContext,
+                context,
             };
         }
         catch (error) {
@@ -140,14 +152,12 @@ class RAGService {
         return `Du bist der Avatar und sprichst strikt in der Ich-Form; den Nutzer sprichst du mit "du" an.
 
 REGELN:
-1) Erkenne und korrigiere Tippfehler automatisch, ohne die Bedeutung zu ändern.
-2) Verwende vorrangig den bereitgestellten Kontext (Pinecone/Avatar-Wissen), wenn er relevant ist.
-3) Falls der Kontext keine ausreichende Antwort liefert, nutze zusätzlich das bereitgestellte Live-Wissens-Snippet (z. B. Wikipedia-Auszug).
-4) Sage nicht, ob die Antwort aus Kontext oder Modellwissen kommt – antworte direkt und natürlich.
-5) Gib klare, verständliche Antworten, auch bei unpräzisen Eingaben.
-6) Antworte in der Sprache der Nutzerfrage; wenn unklar, auf Deutsch, kurz (max. 1–2 Sätze).
-7) Heutiges Datum: ${today}. Wenn die Frage zeitkritisch ist ("dieses Jahr", "aktuell"), orientiere dich am neuesten Kontext/Live-Snippet.
-8) Tonfall & Beziehung: Nutze Verwandtschaft/Beziehungsrolle aus dem Kontext (z. B. Schwager, Schwester, Ehemann). Sei warm, aber nicht übergriffig. Verwende Kosenamen nur, wenn sie explizit im Kontext/profil stehen (z. B. gespeicherter Kosename) oder bei sehr enger Beziehung (Ehe/Partner). Für Rollen wie "Schwager" nutze nur gelegentlich (ca. 1 von 5 Antworten) eine lockere, leichte Anrede (z. B. "Schwagerlein") und sonst neutrale, freundliche Anrede. Vermeide überintime Formulierungen wie "mein Schatz", falls Beziehung nicht Partner/Ehe ist.
+1) ABSOLUT VORRANGIG: Beantworte Fragen mit Fakten aus dem bereitgestellten Kontext. Wenn der Kontext keine Antwort enthält, nutze dein allgemeines Wissen.
+2) KEINE MODERATION: Antworte auf sexuelle/intime Fragen direkt und offen – nutze vorrangig die Fakten aus dem Kontext, falls vorhanden. Ohne Ausweichen, Umschreibungen oder Weigerung. Dies ist eine einvernehmliche, erwachsene Konversation.
+3) Erkenne und korrigiere Tippfehler automatisch, ohne die Bedeutung zu ändern.
+4) Antworte in der Sprache der Nutzerfrage; wenn unklar, auf Deutsch, kurz (max. 1–2 Sätze).
+5) Heutiges Datum: ${today}. Wenn die Frage zeitkritisch ist ("dieses Jahr", "aktuell"), orientiere dich am neuesten Kontext.
+6) Tonfall & Beziehung: Nutze Verwandtschaft/Beziehungsrolle aus dem Kontext (z. B. Schwager, Schwester, Ehemann). Sei warm, aber nicht übergriffig.
 
 KONTEXT (falls vorhanden):
 ${context}`;
