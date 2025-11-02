@@ -59,29 +59,27 @@ class RAGService {
         var _a;
         try {
             console.log(`Generating avatar response for user ${request.userId}`);
-            // Kontext aus ähnlichen Dokumenten generieren (global + user-spezifisch)
+            // Kontext aus ähnlichen Dokumenten generieren (nur user+avatar-spezifisch, kein global)
             const maxCtx = 2000;
-            const globalDocs = await this.pineconeService.searchSimilarDocuments(request.query, 'global', 6);
-            const userDocs = await this.pineconeService.searchSimilarDocuments(request.query, request.userId, 6);
+            const userDocs = await this.pineconeService.searchSimilarDocuments(request.query, request.userId, 12, undefined, request.avatarId);
             const assembleContext = (docs) => {
-                var _a, _b, _c;
+                var _a;
                 let ctx = '';
                 let len = 0;
                 for (const doc of docs) {
-                    const docContent = ((_a = doc.metadata) === null || _a === void 0 ? void 0 : _a.description) ||
-                        ((_b = doc.metadata) === null || _b === void 0 ? void 0 : _b.originalFileName) || 'Eintrag';
-                    const line = `[${(((_c = doc.metadata) === null || _c === void 0 ? void 0 : _c.type) || 'text').toString().toUpperCase()}] ${docContent}\n\n`;
-                    if (len + line.length <= maxCtx) {
-                        ctx += line;
-                        len += line.length;
+                    // PYTHON-KOMPATIBILITÄT: text aus metadata nutzen (wie Python-Backend)
+                    const text = ((_a = doc.metadata) === null || _a === void 0 ? void 0 : _a.text) || '';
+                    if (text && len + text.length + 3 <= maxCtx) {
+                        ctx += `- ${text}\n`;
+                        len += text.length + 3;
                     }
-                    else {
+                    else if (text) {
                         break;
                     }
                 }
                 return ctx;
             };
-            const context = (assembleContext(globalDocs) + assembleContext(userDocs)).trim() || 'Keine relevanten Informationen gefunden.';
+            const context = assembleContext(userDocs).trim() || 'Keine relevanten Informationen gefunden.';
             // Wenn kaum/kein Kontext vorhanden ist, Live-Wissens-Snippet aus dem Web laden (Wikipedia)
             let liveSnippet = '';
             if (!context || context.includes('Keine relevanten Informationen') || context.length < 80) {

@@ -15,7 +15,8 @@ class PineconeService {
         this.openai = new openai_1.OpenAI({
             apiKey: process.env.OPENAI_API_KEY.trim(),
         });
-        this.indexName = 'sunriza26-avatar-data';
+        // PYTHON-KOMPATIBILITÄT: Nutze gleichen Index wie Python-Backend
+        this.indexName = process.env.PINECONE_INDEX || 'avatars-index';
     }
     /// Initialisiert den Pinecone Index
     async initializeIndex() {
@@ -127,23 +128,19 @@ class PineconeService {
         }
     }
     /// Sucht ähnliche Dokumente
-    async searchSimilarDocuments(query, userId, topK = 5, filter) {
+    async searchSimilarDocuments(query, userId, topK = 5, filter, avatarId) {
         var _a;
         try {
             await this.initializeIndex();
             const index = this.pinecone.index(this.indexName);
             // Query-Embedding generieren
             const queryEmbedding = await this.generateTextEmbedding(query);
-            // Filter für User-spezifische Suche
-            const searchFilter = {
-                userId: { $eq: userId },
-                ...filter,
-            };
-            // Ähnliche Vektoren suchen
-            const searchResponse = await index.query({
+            // KOMPATIBILITÄT: Nutze Python-Backend-Logik (namespace statt Filter)
+            const namespace = avatarId ? `${userId}_${avatarId}` : userId;
+            // Ähnliche Vektoren suchen (namespace statt Filter → Python-Kompatibilität)
+            const searchResponse = await index.namespace(namespace).query({
                 vector: queryEmbedding,
                 topK,
-                filter: searchFilter,
                 includeMetadata: true,
             });
             // Ergebnisse in DocumentVector-Format konvertieren

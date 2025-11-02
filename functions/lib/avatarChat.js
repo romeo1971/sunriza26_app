@@ -83,6 +83,7 @@ exports.avatarChat = (0, https_1.onRequest)({
         const response = await rag.generateAvatarResponse({
             query: message,
             userId,
+            avatarId,
         });
         // Avatar-Antwort speichern
         const answerText = response.response;

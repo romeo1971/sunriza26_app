@@ -6493,6 +6493,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // Remote löschen (Videos) + Thumbs und Media-Dokumente
     bool heroDeleted = false;
     final String? currentHeroAtStart = _getHeroVideoUrl();
+    String _urlNoQuery(String u) {
+      final i = u.indexOf('?');
+      return i == -1 ? u : u.substring(0, i);
+    }
     for (final url in _selectedRemoteVideos) {
       try {
         debugPrint('🗑️ Lösche Video: $url');
@@ -6529,12 +6533,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         debugPrint('❌ Fehler beim Löschen des Videos: $e');
       }
       final removed = _videoUrls.remove(url);
-      if (currentHeroAtStart != null && url == currentHeroAtStart) {
+      if (currentHeroAtStart != null && _urlNoQuery(url) == _urlNoQuery(currentHeroAtStart)) {
         heroDeleted = true;
       }
       debugPrint(
         '🗑️ Video aus Liste entfernt: $removed (verbleibend: ${_videoUrls.length})',
       );
+    }
+    // Falls Hero-URL noch gesetzt ist, aber nicht mehr in der Liste vorkommt (wegen Token/Query-Unterschieden),
+    // sicherheitshalber als gelöscht markieren
+    if (!heroDeleted && currentHeroAtStart != null) {
+      final stillPresent = _videoUrls.any((v) => _urlNoQuery(v) == _urlNoQuery(currentHeroAtStart));
+      if (!stillPresent) {
+        heroDeleted = true;
+      }
     }
     // Hero-Video-Status nach Delete: Wenn das gelöschte Video das Hero war → Firestore-Feld leeren
     // Local entfernen (Bilder)

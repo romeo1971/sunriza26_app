@@ -60,6 +60,7 @@ export const avatarChat = onRequest({
     const response = await rag.generateAvatarResponse({
       query: message,
       userId,
+      avatarId,
     });
 
     // Avatar-Antwort speichern

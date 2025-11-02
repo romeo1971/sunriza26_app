@@ -6,6 +6,7 @@ import { PineconeService, DocumentMetadata } from './pinecone_service';
 export interface RAGRequest {
   userId: string;
   query: string;
+  avatarId?: string;
   context?: string;
   maxTokens?: number;
   temperature?: number;
@@ -50,35 +51,31 @@ export class RAGService {
     try {
       console.log(`Generating avatar response for user ${request.userId}`);
 
-      // Kontext aus ähnlichen Dokumenten generieren (global + user-spezifisch)
+      // Kontext aus ähnlichen Dokumenten generieren (nur user+avatar-spezifisch, kein global)
       const maxCtx = 2000;
-      const globalDocs = await this.pineconeService.searchSimilarDocuments(
-        request.query,
-        'global',
-        6
-      );
       const userDocs = await this.pineconeService.searchSimilarDocuments(
         request.query,
         request.userId,
-        6
+        12,
+        undefined,
+        request.avatarId
       );
       const assembleContext = (docs: any[]) => {
         let ctx = '';
         let len = 0;
         for (const doc of docs) {
-          const docContent = (doc.metadata?.description as string) ||
-            (doc.metadata?.originalFileName as string) || 'Eintrag';
-          const line = `[${(doc.metadata?.type || 'text').toString().toUpperCase()}] ${docContent}\n\n`;
-          if (len + line.length <= maxCtx) {
-            ctx += line;
-            len += line.length;
-          } else {
+          // PYTHON-KOMPATIBILITÄT: text aus metadata nutzen (wie Python-Backend)
+          const text = (doc.metadata?.text as string) || '';
+          if (text && len + text.length + 3 <= maxCtx) {
+            ctx += `- ${text}\n`;
+            len += text.length + 3;
+          } else if (text) {
             break;
           }
         }
         return ctx;
       };
-      const context = (assembleContext(globalDocs) + assembleContext(userDocs)).trim() || 'Keine relevanten Informationen gefunden.';
+      const context = assembleContext(userDocs).trim() || 'Keine relevanten Informationen gefunden.';
 
       // Wenn kaum/kein Kontext vorhanden ist, Live-Wissens-Snippet aus dem Web laden (Wikipedia)
       let liveSnippet = '';

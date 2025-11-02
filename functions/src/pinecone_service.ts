@@ -37,7 +37,8 @@ export class PineconeService {
       apiKey: process.env.OPENAI_API_KEY!.trim(),
     });
 
-    this.indexName = 'sunriza26-avatar-data';
+    // PYTHON-KOMPATIBILITÄT: Nutze gleichen Index wie Python-Backend
+    this.indexName = process.env.PINECONE_INDEX || 'avatars-index';
   }
 
   /// Initialisiert den Pinecone Index
@@ -168,7 +169,8 @@ export class PineconeService {
     query: string,
     userId: string,
     topK: number = 5,
-    filter?: Partial<DocumentMetadata>
+    filter?: Partial<DocumentMetadata>,
+    avatarId?: string
   ): Promise<DocumentVector[]> {
     try {
       await this.initializeIndex();
@@ -178,17 +180,13 @@ export class PineconeService {
       // Query-Embedding generieren
       const queryEmbedding = await this.generateTextEmbedding(query);
 
-      // Filter für User-spezifische Suche
-      const searchFilter = {
-        userId: { $eq: userId },
-        ...filter,
-      };
-
-      // Ähnliche Vektoren suchen
-      const searchResponse = await index.query({
+      // KOMPATIBILITÄT: Nutze Python-Backend-Logik (namespace statt Filter)
+      const namespace = avatarId ? `${userId}_${avatarId}` : userId;
+      
+      // Ähnliche Vektoren suchen (namespace statt Filter → Python-Kompatibilität)
+      const searchResponse = await index.namespace(namespace).query({
         vector: queryEmbedding,
         topK,
-        filter: searchFilter,
         includeMetadata: true,
       });
 

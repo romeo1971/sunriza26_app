@@ -66,6 +66,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   Timer? _publisherIdleTimer; // Stoppt MuseTalk bei Inaktivität (Kostenbremse)
   bool _isRecording = false;
   bool _isTyping = false;
+  bool _isProcessingResponse = false; // Gesamter Response-Zyklus (bis TTS/Streaming fertig)
   double _chatHeight = 200.0; // Resizable Chat-Höhe
   bool _chatHandleHovered = false;
   bool _isStreamingSpeaking = false; // steuert LivePortrait Canvas
@@ -782,6 +783,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('🎙️ _isStreamingSpeaking: $isPlaying');
         setState(() => _isStreamingSpeaking = isPlaying);
 
+        // WICHTIG: Eingabe freigeben, wenn Streaming fertig
+        if (!isPlaying && _isProcessingResponse) {
+          debugPrint('✅ Streaming finished → unlock input');
+          setState(() => _isProcessingResponse = false);
+        }
+
         // WICHTIG: MuseTalk Session wird NUR EINMAL beim Chat-Eintritt gestartet (_initLiveAvatar)!
         // NICHT bei jedem Audio-Playback starten - das würde zu vielen Container-Starts führen!
         // Der Guard verhindert bereits doppelte Starts, aber wir vermeiden hier unnötige Calls.
@@ -815,6 +822,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (mounted && _isFileSpeaking != speaking) {
         debugPrint('🔊 _isFileSpeaking: $speaking');
         setState(() => _isFileSpeaking = speaking);
+        
+        // WICHTIG: Eingabe freigeben, wenn Datei-Playback fertig
+        if (!speaking && _isProcessingResponse) {
+          debugPrint('✅ File playback finished → unlock input');
+          setState(() => _isProcessingResponse = false);
+        }
       }
     });
 
@@ -3224,17 +3237,23 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       debugPrint('❌ No avatarData - aborting chat');
       return;
     }
-    setState(() => _isTyping = true);
+    setState(() {
+      _isTyping = true;
+      _isProcessingResponse = true;
+    });
     try {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         _showSystemSnack('Nicht angemeldet');
+        if (mounted) setState(() => _isProcessingResponse = false);
         return;
       }
       final uid = user.uid;
-      // CHAT: Firebase Function
-      const uri = 'https://us-central1-sunriza26.cloudfunctions.net/avatarChat';
-      final chatUri = Uri.parse(uri);
+      // CHAT: Python Memory API (gleicher Pinecone-Index/Namensraum wie Inserts)
+      final base = EnvService.memoryApiBaseUrl();
+      final chatUri = Uri.parse('$base/avatar/chat');
+      // Fallback: alte Cloud Function (zur Sicherheit, um Ausfälle zu vermeiden)
+      final fallbackUri = Uri.parse('https://us-central1-sunriza26.cloudfunctions.net/avatarChat');
 
       // Stimme robust ermitteln
       String? voiceId = (_avatarData?.training != null)
@@ -3266,21 +3285,45 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('🌐 Calling backend: $chatUri');
         debugPrint('📤 Payload: userId=$uid, avatarId=${_avatarData?.id}, message=$userText, room=${LiveKitService().roomName}');
         
-        final res = await http
-            .post(
-              chatUri,
-              headers: headers,
-              body: jsonEncode({
-                'userId': uid,
-                'avatarId': _avatarData?.id ?? '',
-                'message': userText,
-                'voiceId': (voiceId is String && voiceId.isNotEmpty)
-                    ? voiceId
-                    : null,
-                'room': LiveKitService().roomName,
-              }),
-            )
-            .timeout(const Duration(seconds: 60));
+        http.Response res;
+        // 1) Cloud Function zuerst (stabil), Python als Fallback
+        try {
+          debugPrint('🌐 Calling CF avatarChat: $fallbackUri');
+          res = await http
+              .post(
+                fallbackUri,
+                headers: headers,
+                body: jsonEncode({
+                  'userId': uid,
+                  'avatarId': _avatarData?.id ?? '',
+                  'message': userText,
+                  'voiceId': (voiceId is String && voiceId.isNotEmpty) ? voiceId : null,
+                  'room': LiveKitService().roomName,
+                }),
+              )
+              .timeout(const Duration(seconds: 60));
+        } catch (_) {
+          res = http.Response('', 599);
+        }
+        if (!(res.statusCode >= 200 && res.statusCode < 300)) {
+          try {
+            debugPrint('🌐 CF fehlgeschlagen (${res.statusCode}) → Fallback Python /avatar/chat: $chatUri');
+            res = await http
+                .post(
+                  chatUri,
+                  headers: headers,
+                  body: jsonEncode({
+                    'user_id': uid,
+                    'avatar_id': _avatarData?.id ?? '',
+                    'message': userText,
+                    'voice_id': (voiceId is String && voiceId.isNotEmpty) ? voiceId : null,
+                  }),
+                )
+                .timeout(const Duration(seconds: 60));
+          } catch (e) {
+            debugPrint('❌ Python /avatar/chat Fehler: $e');
+          }
+        }
         
         debugPrint('📥 Backend status: ${res.statusCode}');
         if (res.statusCode >= 200 && res.statusCode < 300) {
@@ -3302,6 +3345,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (answer == null || answer.isEmpty) {
         debugPrint('❌ No answer from backend');
         _showSystemSnack('Chat nicht verfügbar (keine Antwort)');
+        if (mounted) setState(() => _isProcessingResponse = false);
       } else {
         debugPrint('✅ Got answer, adding message and processing TTS...');
         await _addMessage(answer, false, skipPersist: false); // Backend hat schon gespeichert!
@@ -3314,6 +3358,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         // Wenn TTS deaktiviert → nur Text (kein Streaming/MP3)
         if (!_isTtsEnabled()) {
           debugPrint('📝 TTS disabled → text-only (skip audio)');
+          if (mounted) setState(() => _isProcessingResponse = false);
         } else if (_lipsync.visemeStream != null &&
             _cachedVoiceId != null &&
             _cachedVoiceId!.isNotEmpty) {
@@ -3325,6 +3370,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             debugPrint('✅ Lipsync speak completed');
           } catch (e) {
             debugPrint('⚠️ Lipsync speak error: $e');
+          } finally {
+            if (mounted) setState(() => _isProcessingResponse = false);
           }
           // KEIN return! finally muss ausgeführt werden!
         } else {
@@ -3342,14 +3389,25 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                 );
                 await file.writeAsBytes(bytes, flush: true);
                 _lastRecordingPath = file.path;
-                unawaited(_playAudioAtPath(file.path));
-              } catch (_) {}
+                await _playAudioAtPath(file.path);
+                // Warte auf Playback-Ende
+                await _player.playerStateStream.firstWhere((state) => 
+                  state.processingState == ProcessingState.completed);
+                if (mounted) setState(() => _isProcessingResponse = false);
+              } catch (_) {
+                if (mounted) setState(() => _isProcessingResponse = false);
+              }
+            } else {
+              if (mounted) setState(() => _isProcessingResponse = false);
             }
+          } else {
+            if (mounted) setState(() => _isProcessingResponse = false);
           }
         }
       }
     } catch (e) {
       _showSystemSnack('Chat fehlgeschlagen: $e');
+      if (mounted) setState(() => _isProcessingResponse = false);
     } finally {
       if (mounted) setState(() => _isTyping = false);
     }
@@ -5626,7 +5684,7 @@ class _ChatInputField extends StatelessWidget {
         },
         child: TextField(
           controller: controller,
-          enabled: !state._isGreetingInProgress,
+          enabled: !(state._isGreetingInProgress || state._isProcessingResponse),
           cursorColor: AppColors.magenta,
           keyboardType: TextInputType.multiline,
           textInputAction: TextInputAction.send,
@@ -5636,15 +5694,18 @@ class _ChatInputField extends StatelessWidget {
           minLines: 1,
           maxLines: null, // wächst bei Bedarf weiter
           onSubmitted: (text) {
-            if (text.trim().isNotEmpty && !state._isGreetingInProgress) {
+            final locked = state._isGreetingInProgress || state._isProcessingResponse;
+            if (text.trim().isNotEmpty && !locked) {
               state._sendMessage();
               controller.clear();
             }
           },
           decoration: InputDecoration(
-            hintText: state._isGreetingInProgress 
-                ? 'Avatar stellt sich vor...' 
-                : 'Nachricht eingeben...',
+            hintText: state._isGreetingInProgress
+                ? 'Avatar stellt sich vor...'
+                : state._isProcessingResponse
+                    ? 'Bitte warten – wird vorgelesen...'
+                    : 'Nachricht eingeben...',
             hintStyle: TextStyle(
               color: AppColors.darkGrey.withValues(alpha: 0.7), // GMBC 0.7
               fontSize: 14,
