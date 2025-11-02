@@ -69,8 +69,9 @@ async def entrypoint(ctx: JobContext):
         api_url=os.getenv("BITHUMAN_API_URL", "https://auth.api.bithuman.ai/v1/runtime-tokens/request"),
         api_secret=os.getenv("BITHUMAN_API_SECRET"),
         avatar_id=agent_id,
+        model="essence",  # essence = CPU, expression = GPU
     )
-    logger.info("✅ Avatar created")
+    logger.info("✅ Avatar created (model=essence)")
     
     # Start Avatar
     logger.info("🚀 Starting Avatar...")
