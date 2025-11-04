@@ -24,6 +24,24 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   final Set<String> _anchorFetchInFlight = {};
   FirebaseFunctions get _fns => FirebaseFunctions.instanceFor(region: 'us-central1');
 
+  Widget _gmbcSpinner({double size = 20, double strokeWidth = 2}) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
+          stops: [0.0, 0.5, 1.0],
+        ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
+        child: CircularProgressIndicator(
+          strokeWidth: strokeWidth,
+          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -347,7 +365,24 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   /// Zeigt Transaktions-Details
   Future<void> _showTransactionDetails(app.Transaction transaction) async {
-    // Status vor Anzeige abrufen, damit Label korrekt ist (persistenzloser State)
+    // Zeige sofort Loading (GMBC Spinner), während Status geladen wird
+    if (mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          content: Row(
+            children: [
+              _gmbcSpinner(size: 20, strokeWidth: 2),
+              const SizedBox(width: 12),
+              const Expanded(child: Text('Lade Rechnungsdetails…', style: TextStyle(color: Colors.white))),
+            ],
+          ),
+        ),
+      );
+    }
+
     try {
       final statusFn = _fns.httpsCallable('getInvoiceAnchorStatus');
       final res = await statusFn.call({ 'transactionId': transaction.id });
@@ -368,6 +403,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         }
       } catch (_) {}
     } catch (_) {}
+
+    if (mounted && Navigator.canPop(context)) {
+      Navigator.pop(context); // Loading schließen
+    }
 
     showDialog(
       context: context,
@@ -590,10 +629,10 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           builder: (_) => AlertDialog(
             backgroundColor: const Color(0xFF1A1A1A),
             content: Row(
-              children: const [
-                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
-                SizedBox(width: 12),
-                Expanded(child: Text('PDF‑Rechnung in Erstellung – Einen Moment bitte', style: TextStyle(color: Colors.white)) ),
+              children: [
+                _gmbcSpinner(size: 20, strokeWidth: 2),
+                const SizedBox(width: 12),
+                const Expanded(child: Text('PDF‑Rechnung in Erstellung – Einen Moment bitte', style: TextStyle(color: Colors.white)) ),
               ],
             ),
           ),

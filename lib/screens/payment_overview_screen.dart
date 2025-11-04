@@ -18,6 +18,24 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
   UserProfile? _userProfile;
   bool _loading = true;
 
+  Widget _gmbcSpinner({double size = 32, double strokeWidth = 3}) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
+          stops: [0.0, 0.5, 1.0],
+        ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
+        child: CircularProgressIndicator(
+          strokeWidth: strokeWidth,
+          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -133,7 +151,7 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
         ),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: _gmbcSpinner())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(24),
               child: Column(

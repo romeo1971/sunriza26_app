@@ -18,6 +18,23 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
   double _exchangeRate = 1.10; // EUR -> USD (wird live aktualisiert)
   // ignore: unused_field
   bool _loadingExchangeRate = false;
+  Widget _gmbcSpinner({double size = 32, double strokeWidth = 3}) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
+          stops: [0.0, 0.5, 1.0],
+        ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
+        child: CircularProgressIndicator(
+          strokeWidth: strokeWidth,
+          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -48,13 +65,9 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
       }
 
       if (success && sessionId != null && sessionId.isNotEmpty) {
-        // Zur Übersicht wechseln, Stack NICHT leeren (Hamburger-Stacks bleiben erhalten)
         if (!mounted) return;
-        Navigator.pushNamed(
-          context,
-          '/payment-overview',
-          arguments: { 'sessionId': sessionId },
-        );
+        // Zeige Erfolg direkt hier, bleibt auf "Credits kaufen"
+        _showSuccessDialog(sessionId);
       }
     } catch (_) {}
   }
@@ -103,9 +116,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
-                // Nach Erfolg zurück zur Übersicht "Zahlungen & Credits"
-                Navigator.pushReplacementNamed(context, '/payment-overview');
+                Navigator.pop(context); // Bleibt auf Credits-Shop offen
               },
               child: const Text('Okay'),
             ),
@@ -654,7 +665,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (context) => const Center(child: CircularProgressIndicator()),
+        builder: (context) => Center(child: _gmbcSpinner()),
       );
 
       // Cloud Function aufrufen
