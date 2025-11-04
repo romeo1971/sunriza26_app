@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../theme/app_theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../models/user_profile.dart';
 import 'transactions_screen.dart';
@@ -74,7 +75,11 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
       final args = ModalRoute.of(context)?.settings.arguments as Map?;
       final argSession = args != null ? (args['sessionId'] as String?) : null;
       if (argSession != null && argSession.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        final last = prefs.getString('last_stripe_session_id');
+        if (last == argSession) return; // schon gezeigt
         await _showSuccessDialog(argSession);
+        await prefs.setString('last_stripe_session_id', argSession);
         return;
       }
       // 2) Fallback: URL‑Parameter (falls direkt aufgerufen)
@@ -82,7 +87,11 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
       final success = uri.queryParameters['success'] == 'true';
       final sessionId = uri.queryParameters['session_id'];
       if (success && sessionId != null && sessionId.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        final last = prefs.getString('last_stripe_session_id');
+        if (last == sessionId) return; // schon gezeigt
         await _showSuccessDialog(sessionId);
+        await prefs.setString('last_stripe_session_id', sessionId);
       }
     } catch (_) {}
   }

@@ -92,7 +92,7 @@ async function renderStyledInvoice(doc: any, args: {
 
   // Headerband
   doc.save();
-  const grad = doc.linearGradient(left, 110, left, 40); // bottom -> top
+  const grad = doc.linearGradient(left, 110, right, 40); // bottom-left -> top-right
   grad.stop(0, '#6B7280'); // deutlich dunkler unten (HOWAREU gut lesbar)
   grad.stop(1, '#F7F7F9'); // sehr hell oben
   doc.rect(left, 40, right - left, 70).fill(grad);
@@ -186,15 +186,19 @@ async function renderStyledInvoice(doc: any, args: {
   doc.roundedRect(boxX, totalsY, boxWidth - 6, 86, 6).fill('#F8F9FB');
   doc.fillColor('#000').font('Helvetica').fontSize(11);
   const subtotal = args.items.reduce((a, b) => a + b.total, 0);
+  const vatRate = (args.seller.country || '').toUpperCase() === 'DE' ? 0.19 : 0.0;
+  const vatLabel = vatRate > 0 ? `MwSt (${(vatRate * 100).toFixed(0)}%)` : 'MwSt';
+  const vatAmount = +(subtotal * vatRate).toFixed(2);
+  const grandTotal = +(subtotal + vatAmount).toFixed(2);
   const labelLeft = unitX; // exakt linksbündig mit "Einzelpreis"
   const valueWidth = numericRight - labelLeft;
   doc.text('Zwischensumme', labelLeft, totalsY + 10);
   doc.text(`${subtotal.toFixed(2)} ${args.currency.toUpperCase()}`, labelLeft, totalsY + 10, { width: valueWidth, align: 'right' });
-  doc.text('MwSt', labelLeft, totalsY + 30);
-  doc.text(`${(0).toFixed(2)} ${args.currency.toUpperCase()}`, labelLeft, totalsY + 30, { width: valueWidth, align: 'right' });
+  doc.text(vatLabel, labelLeft, totalsY + 30);
+  doc.text(`${vatAmount.toFixed(2)} ${args.currency.toUpperCase()}`, labelLeft, totalsY + 30, { width: valueWidth, align: 'right' });
   doc.font('Helvetica-Bold');
   doc.text('Gesamt', labelLeft, totalsY + 52);
-  doc.text(`${subtotal.toFixed(2)} ${args.currency.toUpperCase()}`, labelLeft, totalsY + 52, { width: valueWidth, align: 'right' });
+  doc.text(`${grandTotal.toFixed(2)} ${args.currency.toUpperCase()}`, labelLeft, totalsY + 52, { width: valueWidth, align: 'right' });
   doc.restore();
 }
 

@@ -36,7 +36,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.stripeWebhook = exports.createCreditsCheckoutSession = void 0;
+exports.stripeWebhook = exports.getCreditsCheckoutDetails = exports.createCreditsCheckoutSession = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const functions = __importStar(require("firebase-functions/v1"));
 const stripe_1 = __importDefault(require("stripe"));
@@ -96,6 +96,27 @@ exports.createCreditsCheckoutSession = (0, https_1.onCall)({ region: 'us-central
         if (error.type === 'StripeAuthenticationError')
             throw new https_1.HttpsError('failed-precondition', 'Stripe API Key ungültig oder nicht konfiguriert');
         throw new https_1.HttpsError('internal', `Stripe Error: ${error.message || 'Unbekannter Fehler'}`);
+    }
+});
+// Liefert Checkout‑Details (Credits/Amount/Currency) nach Stripe‑Redirect
+exports.getCreditsCheckoutDetails = (0, https_1.onCall)({ region: 'us-central1' }, async (req) => {
+    var _a;
+    const sessionId = String(((_a = req.data) === null || _a === void 0 ? void 0 : _a.sessionId) || '').trim();
+    if (!sessionId)
+        throw new https_1.HttpsError('invalid-argument', 'sessionId fehlt');
+    try {
+        const stripe = getStripe();
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+        const md = session.metadata || {};
+        const credits = parseInt(String(md.credits || '0')) || 0;
+        return {
+            credits,
+            amountTotal: session.amount_total || 0,
+            currency: session.currency || 'eur',
+        };
+    }
+    catch (e) {
+        throw new https_1.HttpsError('internal', (e === null || e === void 0 ? void 0 : e.message) || 'Stripe Fehler');
     }
 });
 // Webhook auf v1 wegen besserer Raw Body Support

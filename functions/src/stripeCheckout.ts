@@ -59,6 +59,25 @@ export const createCreditsCheckoutSession = onCall({ region: 'us-central1' }, as
   }
 });
 
+// Liefert Checkout‑Details (Credits/Amount/Currency) nach Stripe‑Redirect
+export const getCreditsCheckoutDetails = onCall({ region: 'us-central1' }, async (req) => {
+  const sessionId = String((req.data as any)?.sessionId || '').trim();
+  if (!sessionId) throw new HttpsError('invalid-argument', 'sessionId fehlt');
+  try {
+    const stripe = getStripe();
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    const md: any = session.metadata || {};
+    const credits = parseInt(String(md.credits || '0')) || 0;
+    return {
+      credits,
+      amountTotal: session.amount_total || 0,
+      currency: session.currency || 'eur',
+    };
+  } catch (e: any) {
+    throw new HttpsError('internal', e?.message || 'Stripe Fehler');
+  }
+});
+
 // Webhook auf v1 wegen besserer Raw Body Support
 export const stripeWebhook = functions
   .region('us-central1')

@@ -23,6 +23,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   final Set<String> _anchorStamped = {};
   final Set<String> _anchorFetchInFlight = {};
   FirebaseFunctions get _fns => FirebaseFunctions.instanceFor(region: 'us-central1');
+  void Function(VoidCallback fn)? _dialogSetState; // Rebuild-Funktion für Details-Dialog
 
   Widget _gmbcSpinner({double size = 20, double strokeWidth = 2}) {
     return SizedBox(
@@ -365,133 +366,103 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   /// Zeigt Transaktions-Details
   Future<void> _showTransactionDetails(app.Transaction transaction) async {
-    // Zeige sofort Loading (GMBC Spinner), während Status geladen wird
-    if (mounted) {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
-          content: Row(
-            children: [
-              _gmbcSpinner(size: 20, strokeWidth: 2),
-              const SizedBox(width: 12),
-              const Expanded(child: Text('Lade Rechnungsdetails…', style: TextStyle(color: Colors.white))),
-            ],
-          ),
-        ),
-      );
-    }
-
-    try {
-      final statusFn = _fns.httpsCallable('getInvoiceAnchorStatus');
-      final res = await statusFn.call({ 'transactionId': transaction.id });
-      final data = Map<String, dynamic>.from(res.data as Map);
-      final status = (data['status'] as String?) ?? 'unknown';
-      setState(() {
-        _anchorStatus[transaction.id] = status;
-        if (status == 'stamped') _anchorStamped.add(transaction.id);
-      });
-      // auch in Firestore spiegeln
-      try {
-        final uid = FirebaseAuth.instance.currentUser?.uid;
-        if (uid != null) {
-          await FirebaseFirestore.instance
-              .collection('users').doc(uid)
-              .collection('transactions').doc(transaction.id)
-              .set({ 'anchorStatus': status }, SetOptions(merge: true));
-        }
-      } catch (_) {}
-    } catch (_) {}
-
-    if (mounted && Navigator.canPop(context)) {
-      Navigator.pop(context); // Loading schließen
+    // Öffne Details SOFORT, Status wird im Hintergrund aktualisiert
+    // Background fetch nur, wenn nicht bereits in Flight
+    if (!_anchorFetchInFlight.contains(transaction.id)) {
+      _anchorFetchInFlight.add(transaction.id);
+      _fns.httpsCallable('getInvoiceAnchorStatus')
+        .call({ 'transactionId': transaction.id })
+        .then((res) async {
+          final data = Map<String, dynamic>.from(res.data as Map);
+          final status = (data['status'] as String?) ?? 'unknown';
+          if (mounted) {
+            setState(() {
+              _anchorStatus[transaction.id] = status;
+              if (status == 'stamped') _anchorStamped.add(transaction.id);
+            });
+          }
+          // spiegeln
+          try {
+            final uid = FirebaseAuth.instance.currentUser?.uid;
+            if (uid != null) {
+              await FirebaseFirestore.instance
+                  .collection('users').doc(uid)
+                  .collection('transactions').doc(transaction.id)
+                  .set({ 'anchorStatus': status }, SetOptions(merge: true));
+            }
+          } catch (_) {}
+        })
+        .whenComplete(() { _anchorFetchInFlight.remove(transaction.id); });
     }
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: [
-            Text(transaction.typeIcon, style: const TextStyle(fontSize: 28)),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                transaction.typeDescription,
-                style: const TextStyle(color: Colors.white, fontSize: 18),
-              ),
-            ),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildDetailRow(
-                'Datum',
-                _dateFormat.format(transaction.createdAt),
-              ),
-              if (transaction.amount != null)
-                _buildDetailRow('Betrag', transaction.formattedAmount),
-              if (transaction.credits != null)
-                _buildDetailRow('Credits', transaction.formattedCredits),
-              if (transaction.currency != null)
-                _buildDetailRow('Währung', transaction.currency!.toUpperCase()),
-              if (transaction.exchangeRate != null &&
-                  transaction.exchangeRate != 1.0)
-                _buildDetailRow(
-                  'Wechselkurs',
-                  '1 EUR = ${transaction.exchangeRate!.toStringAsFixed(4)} USD',
-                ),
-              if (transaction.invoiceNumber != null)
-                _buildDetailRow('Rechnungsnr.', transaction.invoiceNumber!),
-              if (transaction.stripeSessionId != null)
-                _buildDetailRow(
-                  'Stripe ID',
-                  transaction.stripeSessionId!,
-                  mono: true,
-                ),
-              _buildDetailRow('Status', transaction.status),
-
-              // Media-Details
-              if (transaction.mediaName != null) ...[
-                const SizedBox(height: 16),
-                const Divider(color: Colors.white24),
-                const SizedBox(height: 16),
-                _buildDetailRow('Medium', transaction.mediaName!),
-                if (transaction.mediaType != null)
-                  _buildDetailRow(
-                    'Typ',
-                    _getMediaTypeLabel(transaction.mediaType!),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setStateDialog) {
+          _dialogSetState = setStateDialog;
+          return AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+            title: Row(
+              children: [
+                Text(transaction.typeIcon, style: const TextStyle(fontSize: 28)),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    transaction.typeDescription,
+                    style: const TextStyle(color: Colors.white, fontSize: 18),
                   ),
+                ),
               ],
-            ],
-          ),
-        ),
-        actions: [
-          // PDF-Download-Link bewusst entfernt (extern verfügbar)
-          TextButton(
-            onPressed: (_resolveAnchorStatus(transaction) == 'pending')
-                ? null
-                : () => _handleAnchorAction(transaction),
-            style: TextButton.styleFrom(
-              foregroundColor: (_resolveAnchorStatus(transaction) == 'stamped')
-                  ? AppColors.lightBlue
-                  : ((_resolveAnchorStatus(transaction) == 'pending')
-                      ? Colors.amberAccent
-                      : Colors.white70),
-              disabledForegroundColor: Colors.amberAccent,
             ),
-            child: Text(_anchorActionLabel(transaction.id)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Schließen'),
-          ),
-        ],
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildDetailRow('Datum', _dateFormat.format(transaction.createdAt)),
+                  if (transaction.amount != null)
+                    _buildDetailRow('Betrag', transaction.formattedAmount),
+                  if (transaction.credits != null)
+                    _buildDetailRow('Credits', transaction.formattedCredits),
+                  if (transaction.currency != null)
+                    _buildDetailRow('Währung', transaction.currency!.toUpperCase()),
+                  if (transaction.exchangeRate != null && transaction.exchangeRate != 1.0)
+                    _buildDetailRow('Wechselkurs', '1 EUR = ${transaction.exchangeRate!.toStringAsFixed(4)} USD'),
+                  if (transaction.invoiceNumber != null)
+                    _buildDetailRow('Rechnungsnr.', transaction.invoiceNumber!),
+                  if (transaction.stripeSessionId != null)
+                    _buildDetailRow('Stripe ID', transaction.stripeSessionId!, mono: true),
+                  _buildDetailRow('Status', transaction.status),
+                  if (transaction.mediaName != null) ...[
+                    const SizedBox(height: 16),
+                    const Divider(color: Colors.white24),
+                    const SizedBox(height: 16),
+                    _buildDetailRow('Medium', transaction.mediaName!),
+                    if (transaction.mediaType != null)
+                      _buildDetailRow('Typ', _getMediaTypeLabel(transaction.mediaType!)),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: (_resolveAnchorStatus(transaction) == 'pending') ? null : () => _handleAnchorAction(transaction),
+                style: TextButton.styleFrom(
+                  foregroundColor: (_resolveAnchorStatus(transaction) == 'stamped')
+                      ? AppColors.lightBlue
+                      : ((_resolveAnchorStatus(transaction) == 'pending') ? Colors.amberAccent : Colors.white70),
+                  disabledForegroundColor: Colors.amberAccent,
+                ),
+                child: Text(_anchorActionLabel(transaction.id)),
+              ),
+              TextButton(
+                onPressed: () { _dialogSetState = null; Navigator.pop(context); },
+                child: const Text('Schließen'),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -572,6 +543,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     try {
       // Sofort pending setzen und Button sperren
       setState(() { _anchorStatus[transaction.id] = 'pending'; });
+      _dialogSetState?.call(() {});
       final ensure = _fns.httpsCallable('ensureInvoiceForTransaction');
       await ensure.call({ 'transactionId': transaction.id });
       final statusFn = _fns.httpsCallable('getInvoiceAnchorStatus');
@@ -584,6 +556,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         _anchorStatus[transaction.id] = status;
         if (status == 'stamped') _anchorStamped.add(transaction.id);
       });
+      _dialogSetState?.call(() {});
       // Persistiere Status in der Transaktion (vermeidet Flackern beim erneuten Laden)
       try {
         final uid = FirebaseAuth.instance.currentUser?.uid;

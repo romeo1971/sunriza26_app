@@ -426,7 +426,7 @@ class SunrizaApp extends StatelessWidget {
               shadowColor: AppColors.magenta.withValues(alpha: 0.5),
             ),
           ),
-          home: const AuthGate(),
+          home: const _ResumeRouter(child: AuthGate()),
           debugShowCheckedModeBanner: false,
           routes: {
             '/home': (context) => const HomeNavigationScreen(),
@@ -516,4 +516,56 @@ class SunrizaApp extends StatelessWidget {
       child: isMacOS ? ExcludeSemantics(child: app) : app,
     );
   }
+}
+
+/// Fängt App-Resume nach externen Flows (z.B. Stripe Checkout) ab
+class _ResumeRouter extends StatefulWidget {
+  final Widget child;
+  const _ResumeRouter({required this.child});
+
+  @override
+  State<_ResumeRouter> createState() => _ResumeRouterState();
+}
+
+class _ResumeRouterState extends State<_ResumeRouter> with WidgetsBindingObserver {
+  String? _lastHandledSessionId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // Direkt nach Build einmal prüfen (Kaltstart)
+    WidgetsBinding.instance.addPostFrameCallback((_) => _handleResumeDeepLink());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _handleResumeDeepLink();
+    }
+  }
+
+  void _handleResumeDeepLink() {
+    try {
+      final uri = Uri.base;
+      final success = uri.queryParameters['success'] == 'true';
+      final sessionId = uri.queryParameters['session_id'];
+      if (!success || sessionId == null || sessionId.isEmpty) return;
+      if (_lastHandledSessionId == sessionId) return; // doppelte Navigation vermeiden
+      _lastHandledSessionId = sessionId;
+
+      // Wenn wir nicht bereits auf Credits-Shop/Payment-Overview sind → zur Übersicht navigieren
+      final navigator = Navigator.of(context);
+      navigator.pushNamed('/payment-overview', arguments: { 'sessionId': sessionId });
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

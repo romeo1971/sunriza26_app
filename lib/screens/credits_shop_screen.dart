@@ -64,72 +64,14 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
         return;
       }
 
+      // Erfolg NICHT nochmal hier anzeigen – wird in "Zahlungen & Credits" gezeigt
       if (success && sessionId != null && sessionId.isNotEmpty) {
-        if (!mounted) return;
-        // Zeige Erfolg direkt hier, bleibt auf "Credits kaufen"
-        _showSuccessDialog(sessionId);
+        return;
       }
     } catch (_) {}
   }
 
-  Future<void> _showSuccessDialog(String sessionId) async {
-    try {
-      final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
-      final fn = fns.httpsCallable('getCreditsCheckoutDetails');
-      final res = await fn.call({ 'sessionId': sessionId });
-      final data = Map<String, dynamic>.from(res.data as Map);
-      final credits = data['credits'] as int? ?? 0;
-      final amountTotal = (data['amountTotal'] as int? ?? 0) / 100.0;
-      final currency = (data['currency'] as String? ?? 'eur').toUpperCase();
-
-      if (!mounted) return;
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          title: Row(
-            children: [
-              ShaderMask(
-                shaderCallback: (bounds) => LinearGradient(
-                  colors: [
-                    Color(0xFFE91E63),
-                    AppColors.lightBlue,
-                    Color(0xFF00E5FF),
-                  ],
-                ).createShader(bounds),
-                child: const Icon(Icons.check_circle, size: 28, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              const Text('Zahlung erfolgreich', style: TextStyle(color: Colors.white, fontSize: 18)),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('Credits: $credits', style: const TextStyle(color: Colors.white, fontSize: 16)),
-              const SizedBox(height: 8),
-              Text('Betrag: ${amountTotal.toStringAsFixed(2)} $currency', style: const TextStyle(color: Colors.white70)),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context); // Bleibt auf Credits-Shop offen
-              },
-              child: const Text('Okay'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Zahlungsdetails konnten nicht geladen werden: $e')),
-      );
-    }
-  }
+  // Erfolg-Dialog wird nur in "Zahlungen & Credits" angezeigt
 
   /// Holt aktuellen EUR/USD Wechselkurs
   Future<void> _fetchExchangeRate() async {
