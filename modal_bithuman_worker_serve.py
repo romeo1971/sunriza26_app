@@ -37,6 +37,7 @@ secrets = [
     modal.Secret.from_name("elevenlabs-api"),
     modal.Secret.from_name("firebase-admin"),
     modal.Secret.from_name("pinecone-api"),
+    modal.Secret.from_name("mistral-api"),
 ]
 
 from livekit.agents import (
@@ -193,35 +194,53 @@ async def entrypoint(ctx: JobContext):
             logger.warning(f"⚠️ Knowledge Base init failed: {e}")
             kb = None
     
-    # TTS
-    if ELEVENLABS_AVAILABLE and voice_id:
-        tts = elevenlabs.TTS(voice_id=voice_id, api_key=os.getenv("ELEVENLABS_API_KEY"))
-    else:
-        tts = openai.TTS(voice="coral")
+    # LLM Setup - Mistral AI (kein OpenAI für LLM!)
+    from mistralai import Mistral as MistralClient
+    mistral = MistralClient(api_key=os.getenv("MISTRAL_API_KEY"))
     
-    # LLM - OHNE voice damit TTS (ElevenLabs) übernimmt!
-    base_llm = openai.realtime.RealtimeModel(
-        voice=None,  # WICHTIG: None damit ElevenLabs TTS genutzt wird!
-        model="gpt-4o-mini-realtime-preview"
-    )
-    
-    # Custom LLM Wrapper with Knowledge Base
-    class KBLLM:
-        def __init__(self, llm, kb):
-            self.llm = llm
+    # Custom LLM Wrapper mit Pinecone + Mistral
+    class PineconeMistralLLM:
+        def __init__(self, mistral_client, kb):
+            self.mistral = mistral_client
             self.kb = kb
         
-        async def generate(self, prompt, **kwargs):
+        async def chat(self, chat_ctx):
+            # Letzten User-Prompt holen
+            last_msg = chat_ctx.messages[-1] if chat_ctx.messages else None
+            if not last_msg or last_msg.role != "user":
+                # Fallback ohne Kontext
+                resp = await asyncio.to_thread(
+                    self.mistral.chat.complete,
+                    model="mistral-small-latest",
+                    messages=[{"role": m.role, "content": m.content} for m in chat_ctx.messages]
+                )
+                return resp.choices[0].message.content
+            
+            prompt = last_msg.content
+            
+            # 1. Pinecone abfragen
             ctx = await self.kb.query(prompt) if self.kb else None
-            if ctx:
-                prompt = f"Kontext:\\n{ctx}\\n\\nFrage: {prompt}\\n\\nAntworte basierend auf dem Kontext."
-            return await self.llm.generate(prompt, **kwargs)
+            
+            # 2. Wenn Pinecone Kontext hat → DIREKT zurückgeben (KEINE LLM Moderation!)
+            if ctx and ctx.strip():
+                logger.info("✅ Pinecone Kontext gefunden → DIREKTE Antwort (kein LLM)")
+                return ctx
+            
+            # 3. Nur wenn KEIN Pinecone Kontext → Mistral AI
+            logger.info("⚠️ Kein Pinecone Kontext → Mistral AI Fallback")
+            resp = await asyncio.to_thread(
+                self.mistral.chat.complete,
+                model="mistral-small-latest",
+                messages=[{"role": m.role, "content": m.content} for m in chat_ctx.messages]
+            )
+            return resp.choices[0].message.content
     
-    llm = KBLLM(base_llm, kb) if kb else base_llm
-    logger.info("✅ LLM initialized")
+    llm = PineconeMistralLLM(mistral, kb) if kb else openai.LLM(model="gpt-4o-mini")
+    logger.info("✅ LLM: Pinecone + Mistral (BitHuman Voice aktiv!)")
     
-    # Session
-    session = AgentSession(llm=llm, vad=silero.VAD.load(), tts=tts)
+    # Agent Session (VAD + LLM) - KEIN TTS! BitHuman nutzt seine eigene Voice!
+    logger.info("🎵 Using BitHuman's own voice (from avatar creation)")
+    session = AgentSession(llm=llm, vad=silero.VAD.load())
     
     # BitHuman Avatar
     logger.info(f"🎬 Creating BitHuman Avatar (model={bh_model})...")

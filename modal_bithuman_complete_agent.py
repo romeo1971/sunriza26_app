@@ -31,6 +31,9 @@ image = (
         "pinecone>=5.0.0",
         "openai>=1.35.0",
         
+        # Mistral AI
+        "mistralai>=1.0.0",
+        
         # Firebase
         "firebase-admin>=6.4.0",
         
@@ -63,6 +66,7 @@ secrets = [
     modal.Secret.from_name("elevenlabs-api"),     # ELEVENLABS_API_KEY, ELEVEN_DEFAULT_VOICE_ID
     modal.Secret.from_name("pinecone-api"),       # PINECONE_API_KEY, PINECONE_INDEX_NAME
     modal.Secret.from_name("firebase-admin"),     # FIREBASE_CREDENTIALS (JSON)
+    modal.Secret.from_name("mistral-api"),        # MISTRAL_API_KEY
 ]
 
 
@@ -145,8 +149,13 @@ try:
 except ImportError:
     FIREBASE_AVAILABLE = False
 
-# Pinecone (vorübergehend deaktiviert – vermeidet Import-Konflikte)
-PINECONE_AVAILABLE = False
+# Pinecone
+try:
+    from pinecone import Pinecone
+    from openai import OpenAI
+    PINECONE_AVAILABLE = True
+except ImportError:
+    PINECONE_AVAILABLE = False
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("agent")
@@ -275,37 +284,78 @@ async def main():
             logger.warning(f"⚠️ Knowledge Base init failed (continuing without KB): {e}")
             kb = None
     
-    # TTS Setup - ElevenLabs für Custom Voice
-    if ELEVENLABS_AVAILABLE and voice_id:
-        logger.info(f"🎵 Using ElevenLabs TTS with voice: {voice_id}")
-        tts = elevenlabs.TTS(voice_id=voice_id, api_key=os.getenv("ELEVENLABS_API_KEY"))
-    else:
-        logger.info("🎵 Using OpenAI TTS (fallback)")
-        tts = openai.TTS(voice="coral")
+    # LLM Setup - Mistral AI (kein OpenAI für LLM!)
+    try:
+        from mistralai import Mistral as MistralClient
+        mistral_client = MistralClient(api_key=os.getenv("MISTRAL_API_KEY"))
+        MISTRAL_AVAILABLE = True
+    except Exception as e:
+        logger.warning(f"⚠️ Mistral import failed: {e}")
+        mistral_client = None
+        MISTRAL_AVAILABLE = False
     
-    # LLM Setup - Realtime API OHNE voice (damit TTS übernimmt!)
-    base_llm = openai.realtime.RealtimeModel(
-        voice=None,  # WICHTIG: None damit ElevenLabs TTS genutzt wird!
-        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini-realtime-preview")
-    )
-    
-    # Custom LLM Wrapper with Knowledge Base
-    class KBLLM:
-        def __init__(self, llm, kb):
-            self.llm = llm
+    # Custom LLM Wrapper mit Pinecone + Mistral
+    class PineconeMistralLLM:
+        def __init__(self, mistral_client, kb):
+            self.mistral = mistral_client
             self.kb = kb
         
-        async def generate(self, prompt, **kwargs):
+        async def chat(self, chat_ctx):
+            # Letzten User-Prompt holen
+            last_msg = chat_ctx.messages[-1] if chat_ctx.messages else None
+            if not last_msg or last_msg.role != "user":
+                # Fallback ohne Kontext
+                resp = await asyncio.to_thread(
+                    self.mistral.chat.complete,
+                    model="mistral-small-latest",
+                    messages=[{"role": m.role, "content": m.content} for m in chat_ctx.messages]
+                )
+                return resp.choices[0].message.content
+            
+            prompt = last_msg.content
+            
+            # 1. Pinecone abfragen
             ctx = await self.kb.query(prompt) if self.kb else None
-            if ctx:
-                prompt = f"Kontext:\\n{ctx}\\n\\nFrage: {prompt}\\n\\nAntworte basierend auf dem Kontext."
-            return await self.llm.generate(prompt, **kwargs)
+            
+            # 2. Wenn Pinecone Kontext hat → DIREKT zurückgeben (KEINE LLM Moderation!)
+            if ctx and ctx.strip():
+                logger.info("✅ Pinecone Kontext gefunden → DIREKTE Antwort (kein LLM)")
+                return ctx
+            
+            # 3. Nur wenn KEIN Pinecone Kontext → Mistral AI
+            logger.info("⚠️ Kein Pinecone Kontext → Mistral AI Fallback")
+            resp = await asyncio.to_thread(
+                self.mistral.chat.complete,
+                model="mistral-small-latest",
+                messages=[{"role": m.role, "content": m.content} for m in chat_ctx.messages]
+            )
+            return resp.choices[0].message.content
     
-    llm = KBLLM(base_llm, kb) if kb else base_llm
-    logger.info("✅ LLM initialized")
+    # LLM Setup basierend auf verfügbaren Services
+    if MISTRAL_AVAILABLE and kb:
+        llm = PineconeMistralLLM(mistral_client, kb)
+        logger.info("✅ LLM: Pinecone + Mistral (BitHuman Voice aktiv!)")
+    else:
+        llm = openai.LLM(model="gpt-4o-mini")
+        logger.info("⚠️ Fallback: OpenAI LLM (Mistral/Pinecone nicht verfügbar)")
     
-    # Agent Session (VAD + LLM + TTS)
-    session = AgentSession(llm=llm, vad=silero.VAD.load(), tts=tts)
+    # TTS Setup: ElevenLabs falls Voice-ID vorhanden, sonst BitHuman intern
+    tts = None
+    if ELEVENLABS_AVAILABLE and voice_id:
+        logger.info(f"✅ ElevenLabs TTS aktiviert (Voice: {voice_id})")
+        tts = elevenlabs.TTS(
+            voice_id=voice_id,
+            api_key=os.getenv("ELEVENLABS_API_KEY"),
+        )
+    else:
+        logger.info("⚠️ Kein ElevenLabs → BitHuman nutzt interne Voice (vom audioUrl)")
+    
+    # Agent Session (VAD + LLM + optional TTS)
+    session = AgentSession(
+        llm=llm,
+        vad=silero.VAD.load(),
+        tts=tts  # None = BitHuman nutzt audioUrl, sonst ElevenLabs
+    )
     logger.info("✅ Agent Session created")
     
     # BitHuman Avatar Session (Cloud Plugin)
@@ -335,6 +385,25 @@ async def main():
             room_output_options=RoomOutputOptions(audio_enabled=False)
         )
         logger.info("✅ Agent fully running - listening for speech!")
+        
+        # CUSTOM: Höre auch auf orchestrator-audio für ElevenLabs TTS
+        async def forward_orchestrator_audio():
+            """Forward audio from orchestrator-audio directly to BitHuman Avatar"""
+            logger.info("🎧 Listening for orchestrator-audio tracks...")
+            for participant_id, participant in room.remote_participants.items():
+                if participant.identity == "orchestrator-audio":
+                    logger.info(f"✅ Found orchestrator-audio participant!")
+                    for track_id, track_pub in participant.track_publications.items():
+                        if track_pub.kind == rtc.TrackKind.KIND_AUDIO and track_pub.track:
+                            logger.info(f"🎵 Subscribing to orchestrator-audio track: {track_id}")
+                            track = track_pub.track
+                            # Forward audio frames directly to Avatar (bypass LLM/VAD)
+                            async for frame in rtc.AudioStream(track):
+                                # BitHuman Avatar nutzt den Audio-Stream automatisch für Lipsync
+                                logger.debug(f"📥 Audio frame from orchestrator: {len(frame.data)} bytes")
+        
+        # Start orchestrator audio forwarding in background
+        asyncio.create_task(forward_orchestrator_audio())
         
         # Keep session alive
         logger.info("⏳ Session running - waiting for disconnect...")

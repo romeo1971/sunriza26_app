@@ -18,6 +18,31 @@ class MediaPurchaseService {
     return profile.credits >= requiredCredits;
   }
 
+  /// Prüft, ob der Avatar‑Owner alle notwendigen Verkäuferdaten bereitgestellt hat
+  /// (Name/Firma + Adresse + aktiver Payout bei Stripe Connect)
+  Future<bool> isSellerCompliant(String avatarId) async {
+    try {
+      final avatarDoc = await _firestore.collection('avatars').doc(avatarId).get();
+      final ownerId = (avatarDoc.data() ?? const {})['userId'] as String?;
+      if (ownerId == null || ownerId.isEmpty) return false;
+      final userDoc = await _firestore.collection('users').doc(ownerId).get();
+      if (!userDoc.exists) return false;
+      final u = userDoc.data() ?? const {};
+      final name = ((u['companyName'] ?? u['displayName'] ?? u['name']) as String?)?.trim();
+      final addr = (u['address'] as Map<String, dynamic>?) ?? const {};
+      final street = (addr['street'] ?? u['street']) as String?;
+      final postal = (addr['postalCode'] ?? u['postalCode']) as String?;
+      final city = (addr['city'] ?? u['city']) as String?;
+      final country = (addr['country'] ?? u['country']) as String?;
+      final payoutsEnabled = (u['payoutsEnabled'] == true);
+      final hasName = (name != null && name.isNotEmpty);
+      final hasAddr = [street, postal, city, country].every((v) => v is String && v.trim().isNotEmpty);
+      return hasName && hasAddr && payoutsEnabled;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Prüft ob User Media bereits gekauft hat
   Future<bool> hasMediaAccess(String userId, String mediaId) async {
     final purchaseDoc = await _firestore

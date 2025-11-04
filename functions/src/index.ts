@@ -190,6 +190,10 @@ export const generateLiveVideo = functions
     });
   });
 
+// Spiegelung: invoiceAnchors → Transaktion (verhindert UI‑Flackern und doppelte Reads)
+// Entfernt: Spiegelung aus einer separaten Collection. Anchordaten liegen direkt unter
+// users/{userId}/transactions/{txId}.invoiceAnchors
+
 /**
  * Health Check Endpoint
  */

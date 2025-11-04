@@ -40,6 +40,8 @@ class Transaction {
   // Rechnungs-Daten
   final String? invoiceNumber; // Rechnungsnummer
   final String? invoicePdfUrl; // URL zur PDF-Rechnung
+  // Nachweis-Status (OTS): pending | stamped | stored | not_anchored | error
+  final String? anchorStatus;
 
   Transaction({
     required this.id,
@@ -61,6 +63,7 @@ class Transaction {
     this.mediaIds,
     this.invoiceNumber,
     this.invoicePdfUrl,
+    this.anchorStatus,
   });
 
   factory Transaction.fromFirestore(DocumentSnapshot doc) {
@@ -124,6 +127,7 @@ class Transaction {
       mediaIds: (map['mediaIds'] as List<dynamic>?)?.cast<String>(),
       invoiceNumber: map['invoiceNumber'] as String?,
       invoicePdfUrl: map['invoicePdfUrl'] as String?,
+      anchorStatus: map['anchorStatus'] as String?,
     );
   }
 
@@ -178,6 +182,7 @@ class Transaction {
       if (mediaIds != null) 'mediaIds': mediaIds,
       if (invoiceNumber != null) 'invoiceNumber': invoiceNumber,
       if (invoicePdfUrl != null) 'invoicePdfUrl': invoicePdfUrl,
+      if (anchorStatus != null) 'anchorStatus': anchorStatus,
     };
   }
 

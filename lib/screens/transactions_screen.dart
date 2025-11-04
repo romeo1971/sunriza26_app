@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../theme/app_theme.dart';
 import '../models/transaction_model.dart' as app;
@@ -17,6 +18,11 @@ class TransactionsScreen extends StatefulWidget {
 class _TransactionsScreenState extends State<TransactionsScreen> {
   final _dateFormat = DateFormat('dd.MM.yyyy HH:mm');
   String _filter = 'all'; // all, credits, media
+  // OTS-Status je Transaktion (stamped/pending/…)
+  final Map<String, String> _anchorStatus = {};
+  final Set<String> _anchorStamped = {};
+  final Set<String> _anchorFetchInFlight = {};
+  FirebaseFunctions get _fns => FirebaseFunctions.instanceFor(region: 'us-central1');
 
   @override
   Widget build(BuildContext context) {
@@ -107,7 +113,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             padding: const EdgeInsets.all(16),
             itemCount: transactions.length,
             itemBuilder: (context, index) {
-              return _buildTransactionCard(transactions[index]);
+              final tx = transactions[index];
+              if (tx.anchorStatus != null && !_anchorStatus.containsKey(tx.id)) {
+                _anchorStatus[tx.id] = tx.anchorStatus!;
+              }
+              return _buildTransactionCard(tx);
             },
           );
         },
@@ -223,27 +233,61 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         color: Colors.white70,
                       ),
                       const SizedBox(width: 8),
-                      Text(
-                        'Rechnung: ${transaction.invoiceNumber}',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
+                      GestureDetector(
+                        onTap: () => _showTransactionDetails(transaction),
+                        child: Builder(
+                          builder: (context) {
+                            final status = _resolveAnchorStatus(transaction);
+                            final label = (status == 'pending')
+                                ? 'Nachweis in Prüfung'
+                                : 'Rechnung: ${transaction.invoiceNumber}';
+                            if (status == 'stamped') {
+                              return _gradientLinkText(label);
+                            }
+                            return Text(
+                              label,
+                              style: TextStyle(
+                                color: status == 'pending' ? Colors.amberAccent : Colors.white70,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            );
+                          },
                         ),
                       ),
                       const Spacer(),
-                      if (transaction.invoicePdfUrl != null)
-                        TextButton.icon(
-                          onPressed: () => _downloadInvoice(transaction),
-                          icon: const Icon(Icons.download, size: 16),
-                          label: const Text('PDF'),
-                          style: TextButton.styleFrom(
-                            foregroundColor: AppColors.lightBlue,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 6,
-                            ),
-                          ),
+                      // Rechts: PDF-Download (Icon + "PDF")
+                      TextButton(
+                        onPressed: () => _downloadInvoice(transaction),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                         ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.download,
+                              size: 16,
+                              color: (_resolveAnchorStatus(transaction) == 'pending')
+                                  ? Colors.amberAccent
+                                  : AppColors.lightBlue,
+                            ),
+                            const SizedBox(width: 6),
+                            if (_resolveAnchorStatus(transaction) == 'stamped')
+                              _gradientLinkText('PDF')
+                            else
+                              Text(
+                                'PDF',
+                                style: TextStyle(
+                                  color: (_resolveAnchorStatus(transaction) == 'pending')
+                                      ? Colors.amberAccent
+                                      : AppColors.lightBlue,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -302,7 +346,29 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   /// Zeigt Transaktions-Details
-  void _showTransactionDetails(app.Transaction transaction) {
+  Future<void> _showTransactionDetails(app.Transaction transaction) async {
+    // Status vor Anzeige abrufen, damit Label korrekt ist (persistenzloser State)
+    try {
+      final statusFn = _fns.httpsCallable('getInvoiceAnchorStatus');
+      final res = await statusFn.call({ 'transactionId': transaction.id });
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final status = (data['status'] as String?) ?? 'unknown';
+      setState(() {
+        _anchorStatus[transaction.id] = status;
+        if (status == 'stamped') _anchorStamped.add(transaction.id);
+      });
+      // auch in Firestore spiegeln
+      try {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null) {
+          await FirebaseFirestore.instance
+              .collection('users').doc(uid)
+              .collection('transactions').doc(transaction.id)
+              .set({ 'anchorStatus': status }, SetOptions(merge: true));
+        }
+      } catch (_) {}
+    } catch (_) {}
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -367,16 +433,21 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
         ),
         actions: [
-          if (transaction.invoicePdfUrl != null)
-            TextButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _downloadInvoice(transaction);
-              },
-              icon: const Icon(Icons.download),
-              label: const Text('Rechnung herunterladen'),
-              style: TextButton.styleFrom(foregroundColor: AppColors.lightBlue),
+          // PDF-Download-Link bewusst entfernt (extern verfügbar)
+          TextButton(
+            onPressed: (_resolveAnchorStatus(transaction) == 'pending')
+                ? null
+                : () => _handleAnchorAction(transaction),
+            style: TextButton.styleFrom(
+              foregroundColor: (_resolveAnchorStatus(transaction) == 'stamped')
+                  ? AppColors.lightBlue
+                  : ((_resolveAnchorStatus(transaction) == 'pending')
+                      ? Colors.amberAccent
+                      : Colors.white70),
+              disabledForegroundColor: Colors.amberAccent,
             ),
+            child: Text(_anchorActionLabel(transaction.id)),
+          ),
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Schließen'),
@@ -431,12 +502,138 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     }
   }
 
+  // GMBC-Gradient-Text für Links
+  Widget _gradientLinkText(String text) {
+    return ShaderMask(
+      blendMode: BlendMode.srcIn,
+      shaderCallback: (bounds) => const LinearGradient(
+        colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
+        stops: [0.0, 0.5, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
+      child: Text(
+        text,
+        style: const TextStyle(fontWeight: FontWeight.w700),
+      ),
+    );
+  }
+
+  // Status-Auflösung: nimmt lokalen Override vor, sonst den aus Firestore-Objekt
+  String? _resolveAnchorStatus(app.Transaction tx) {
+    return _anchorStatus[tx.id] ?? tx.anchorStatus;
+  }
+
+  String _anchorActionLabel(String txId) {
+    final s = _anchorStatus[txId];
+    if (s == 'stamped') return 'Nachweis anzeigen';
+    if (s == 'pending') return 'Nachweis in Prüfung';
+    return 'Nachweis erstellen';
+  }
+
+  Future<void> _handleAnchorAction(app.Transaction transaction) async {
+    try {
+      // Sofort pending setzen und Button sperren
+      setState(() { _anchorStatus[transaction.id] = 'pending'; });
+      final ensure = _fns.httpsCallable('ensureInvoiceForTransaction');
+      await ensure.call({ 'transactionId': transaction.id });
+      final statusFn = _fns.httpsCallable('getInvoiceAnchorStatus');
+      final res = await statusFn.call({ 'transactionId': transaction.id });
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final status = (data['status'] as String?) ?? 'unknown';
+      final nr = (data['invoiceNumber'] as String?) ?? '';
+      final otsUrl = data['otsUrl'] as String?;
+      setState(() {
+        _anchorStatus[transaction.id] = status;
+        if (status == 'stamped') _anchorStamped.add(transaction.id);
+      });
+      // Persistiere Status in der Transaktion (vermeidet Flackern beim erneuten Laden)
+      try {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null) {
+          await FirebaseFirestore.instance
+              .collection('users').doc(uid)
+              .collection('transactions').doc(transaction.id)
+              .set({ 'anchorStatus': status }, SetOptions(merge: true));
+        }
+      } catch (_) {}
+      final msg = status == 'stamped'
+          ? 'Echtheitsnachweis verifiziert'
+          : (status == 'pending' ? 'Erstellung des Nachweises läuft…' : 'Nachweis erstellt');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$msg${nr.isNotEmpty ? ' ($nr)' : ''}')),
+        );
+      }
+      if (status == 'stamped' && otsUrl != null && otsUrl.isNotEmpty) {
+        final uri = Uri.parse(otsUrl);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Nachweis fehlgeschlagen: $e')),
+      );
+    }
+  }
+
   /// Lädt Rechnung herunter
   Future<void> _downloadInvoice(app.Transaction transaction) async {
-    if (transaction.invoicePdfUrl == null) return;
+    String? url;
+    // Immer ensure aufrufen, um frische Signed URL zu bekommen
+    try {
+      // Loading‑Dialog während PDF‑Erzeugung
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            content: Row(
+              children: const [
+                SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)),
+                SizedBox(width: 12),
+                Expanded(child: Text('PDF‑Rechnung in Erstellung – Einen Moment bitte', style: TextStyle(color: Colors.white)) ),
+              ],
+            ),
+          ),
+        );
+      }
+      // Nur Dateien sicherstellen – kein OTS‑Start
+      final ensure = _fns.httpsCallable('ensureInvoiceFiles');
+      final res = await ensure.call({ 'transactionId': transaction.id });
+      url = (res.data['invoicePdfUrl'] as String?);
+    } catch (_) {
+      url = transaction.invoicePdfUrl;
+      if (url == null || url.isEmpty) {
+        try {
+          final uid = FirebaseAuth.instance.currentUser?.uid;
+          if (uid != null) {
+            final snap = await FirebaseFirestore.instance
+                .collection('users').doc(uid)
+                .collection('transactions').doc(transaction.id)
+                .get();
+            url = (snap.data()?['invoicePdfUrl'] as String?);
+          }
+        } catch (_) {}
+      }
+    }
+
+    if (mounted) {
+      // Dialog schließen, bevor Download startet oder Fehler gezeigt wird
+      if (Navigator.canPop(context)) Navigator.pop(context);
+    }
+
+    if (url == null || url.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('PDF-Link nicht verfügbar.')),
+      );
+      return;
+    }
 
     try {
-      final uri = Uri.parse(transaction.invoicePdfUrl!);
+      final uri = Uri.parse(url);
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
       } else {

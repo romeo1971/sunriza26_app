@@ -3336,7 +3336,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         return null;
       }
 
-      final res = await primary().timeout(const Duration(seconds: 20));
+      final res = await primary().timeout(const Duration(seconds: 90));  // Erhöht für Cold Start
       debugPrint('📥 Backend response received: ${res != null}');
 
       final answer = (res?['answer'] as String?)?.trim();
@@ -4843,6 +4843,8 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
   final _purchaseService = MediaPurchaseService();
   String _paymentMethod = 'credits'; // 'credits' oder 'stripe'
   List<AudioCoverImage>? _covers; // Lazy geladene Cover
+  bool _sellerReady = true;
+  String _sellerHint = '';
 
   @override
   void initState() {
@@ -4860,6 +4862,20 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
         _loadCoversFromFirestore();
       }
     }
+    // Verkäufer-Compliance prüfen (Avatar Owner)
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+      final avatarId = chatState?._avatarData?.id;
+      if (avatarId != null) {
+        final ok = await _purchaseService.isSellerCompliant(avatarId);
+        if (mounted) {
+          setState(() {
+            _sellerReady = ok;
+            if (!ok) _sellerHint = 'Kauf zur Zeit nicht möglich';
+          });
+        }
+      }
+    });
   }
 
   Future<void> _loadCoversFromFirestore() async {
@@ -5336,8 +5352,16 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
               icon: const Icon(Icons.close, color: Colors.white, size: 24),
               onPressed: _isProcessing ? null : () => Navigator.pop(context),
             ),
+            if (!_sellerReady)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: Text(
+                  _sellerHint,
+                  style: const TextStyle(color: Colors.amberAccent, fontWeight: FontWeight.w600),
+                ),
+              ),
             ElevatedButton(
-              onPressed: _isProcessing ? null : _handlePurchase,
+              onPressed: _isProcessing || !_sellerReady ? null : _handlePurchase,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),

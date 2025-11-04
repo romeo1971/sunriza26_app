@@ -38,11 +38,22 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.stripeWebhook = exports.createCreditsCheckoutSession = void 0;
 const https_1 = require("firebase-functions/v2/https");
+const functions = __importStar(require("firebase-functions/v1"));
 const stripe_1 = __importDefault(require("stripe"));
 const admin = __importStar(require("firebase-admin"));
+// Einfache Rechnungsnummer erzeugen: YYYYMMDD-<6hex>
+function generateInvoiceNumber() {
+    const now = new Date();
+    const y = now.getUTCFullYear();
+    const m = String(now.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(now.getUTCDate()).padStart(2, '0');
+    const rand = Math.random().toString(16).slice(2, 8).toUpperCase();
+    return `${y}${m}${d}-${rand}`;
+}
 // Stripe nur initialisieren wenn Secret Key vorhanden (env)
 const getStripe = () => {
-    const secretKey = (process.env.STRIPE_SECRET_KEY || '').trim();
+    var _a;
+    const secretKey = (process.env.STRIPE_SECRET_KEY || ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.secret_key) || '').trim();
     if (!secretKey) {
         throw new https_1.HttpsError('failed-precondition', 'Stripe Secret Key nicht konfiguriert');
     }
@@ -87,9 +98,13 @@ exports.createCreditsCheckoutSession = (0, https_1.onCall)({ region: 'us-central
         throw new https_1.HttpsError('internal', `Stripe Error: ${error.message || 'Unbekannter Fehler'}`);
     }
 });
-exports.stripeWebhook = (0, https_1.onRequest)({ region: 'us-central1' }, async (req, res) => {
+// Webhook auf v1 wegen besserer Raw Body Support
+exports.stripeWebhook = functions
+    .region('us-central1')
+    .https.onRequest(async (req, res) => {
+    var _a;
     const sig = req.headers['stripe-signature'];
-    const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+    const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.webhook_secret) || '').trim();
     if (!webhookSecret) {
         res.status(500).send('Webhook Secret nicht konfiguriert');
         return;
@@ -97,10 +112,11 @@ exports.stripeWebhook = (0, https_1.onRequest)({ region: 'us-central1' }, async 
     const stripe = getStripe();
     let event;
     try {
-        // @ts-ignore
-        event = stripe.webhooks.constructEvent(req.rawBody || req.body, sig, webhookSecret);
+        // v1 hat rawBody automatisch
+        event = stripe.webhooks.constructEvent(req.rawBody, sig, webhookSecret);
     }
     catch (err) {
+        console.error('Webhook Signature Error:', err.message);
         res.status(400).send(`Webhook Error: ${err.message}`);
         return;
     }
@@ -121,6 +137,7 @@ exports.stripeWebhook = (0, https_1.onRequest)({ region: 'us-central1' }, async 
         }
         const { userId, credits, euroAmount, exchangeRate } = md;
         if (!userId || !credits) {
+            console.error('Fehlende Metadata:', md);
             res.status(400).send('Fehlende Metadata');
             return;
         }
@@ -128,19 +145,24 @@ exports.stripeWebhook = (0, https_1.onRequest)({ region: 'us-central1' }, async 
         const euroAmountNum = parseFloat(String(euroAmount || '0'));
         const exchangeRateNum = parseFloat(String(exchangeRate || '1.0'));
         try {
+            console.log(`Credits gutschreiben: ${creditsNum} für User ${userId}`);
             const userRef = admin.firestore().collection('users').doc(userId);
             await userRef.update({
                 credits: admin.firestore.FieldValue.increment(creditsNum),
                 creditsPurchased: admin.firestore.FieldValue.increment(creditsNum),
             });
+            const invoiceNumber = generateInvoiceNumber();
             await userRef.collection('transactions').add({
                 userId, type: 'credit_purchase', credits: creditsNum, euroAmount: euroAmountNum,
                 amount: session.amount_total || 0, currency: session.currency || 'eur', exchangeRate: exchangeRateNum,
                 stripeSessionId: session.id, paymentIntent: session.payment_intent, status: 'completed',
+                invoiceNumber,
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),
             });
+            console.log(`✅ Credits erfolgreich gutgeschrieben`);
         }
         catch (e) {
+            console.error('Firestore Error:', e);
             res.status(500).send('Interner Fehler');
             return;
         }

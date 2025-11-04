@@ -123,8 +123,10 @@ class _LkAudioPub:
 
             self._room = rtc.Room(room_options=rtc.RoomOptions(auto_subscribe=True))
             await self._room.connect(url, token)
-            self._source = rtc.AudioSource(rtc.AudioSourceOptions())
-            self._track = rtc.LocalAudioTrack.create_audio_track("tts", self._source)
+            # WICHTIG: AudioSource als MICROPHONE (nicht als screenshare/file) damit BitHuman es als User-Voice erkennt!
+            self._source = rtc.AudioSource(rtc.AudioSourceOptions(echo_cancellation=False, noise_suppression=False))
+            # Track als "microphone" publishen (Source.MICROPHONE)
+            self._track = rtc.LocalAudioTrack.create_audio_track("user-voice", self._source)
             await self._room.local_participant.publish_track(self._track)
             self._connected_room = room_name
             print(f"✅ LiveKit audio publisher connected: room={room_name}")

@@ -32,9 +32,92 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
 
   /// Prüft ob Stripe Success/Cancel Parameter vorhanden sind
   void _checkStripeResult() {
-    // HINWEIS: In Flutter Web würde man hier die URL-Parameter auslesen
-    // In Flutter Mobile App ist das nicht relevant, da externe URL
-    // Vorerst: Zeige Info-Message dass User Credits manuell prüfen soll
+    try {
+      final uri = Uri.base;
+      final success = uri.queryParameters['success'] == 'true';
+      final cancelled = uri.queryParameters['cancelled'] == 'true';
+      final sessionId = uri.queryParameters['session_id'];
+      if (!success && !cancelled) return;
+
+      if (cancelled) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Zahlung abgebrochen.')),
+        );
+        return;
+      }
+
+      if (success && sessionId != null && sessionId.isNotEmpty) {
+        // Zur Übersicht wechseln, Stack NICHT leeren (Hamburger-Stacks bleiben erhalten)
+        if (!mounted) return;
+        Navigator.pushNamed(
+          context,
+          '/payment-overview',
+          arguments: { 'sessionId': sessionId },
+        );
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _showSuccessDialog(String sessionId) async {
+    try {
+      final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
+      final fn = fns.httpsCallable('getCreditsCheckoutDetails');
+      final res = await fn.call({ 'sessionId': sessionId });
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final credits = data['credits'] as int? ?? 0;
+      final amountTotal = (data['amountTotal'] as int? ?? 0) / 100.0;
+      final currency = (data['currency'] as String? ?? 'eur').toUpperCase();
+
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          title: Row(
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) => LinearGradient(
+                  colors: [
+                    Color(0xFFE91E63),
+                    AppColors.lightBlue,
+                    Color(0xFF00E5FF),
+                  ],
+                ).createShader(bounds),
+                child: const Icon(Icons.check_circle, size: 28, color: Colors.white),
+              ),
+              const SizedBox(width: 12),
+              const Text('Zahlung erfolgreich', style: TextStyle(color: Colors.white, fontSize: 18)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Credits: $credits', style: const TextStyle(color: Colors.white, fontSize: 16)),
+              const SizedBox(height: 8),
+              Text('Betrag: ${amountTotal.toStringAsFixed(2)} $currency', style: const TextStyle(color: Colors.white70)),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                // Nach Erfolg zurück zur Übersicht "Zahlungen & Credits"
+                Navigator.pushReplacementNamed(context, '/payment-overview');
+              },
+              child: const Text('Okay'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Zahlungsdetails konnten nicht geladen werden: $e')),
+      );
+    }
   }
 
   /// Holt aktuellen EUR/USD Wechselkurs
