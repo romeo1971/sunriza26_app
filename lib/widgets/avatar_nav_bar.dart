@@ -106,10 +106,10 @@ class AvatarNavBar extends StatelessWidget {
               },
             ),
 
-          // Geteilte Momente Icon
-          if (currentScreen != 'moments')
+          // BOL – Book of life (separat erreichbar über andere UI)
+          if (currentScreen != 'bol')
             IconButton(
-              tooltip: loc.t('sharedMoments.title'),
+              tooltip: 'BOL - Book of life',
               icon: const Icon(
                 Icons.collections_bookmark_outlined,
                 size: 18,
@@ -118,7 +118,7 @@ class AvatarNavBar extends StatelessWidget {
               onPressed: () {
                 Navigator.pushReplacementNamed(
                   context,
-                  '/shared-moments',
+                  '/bol',
                   arguments: {
                     'avatarId': avatarId,
                   }, // KEIN fromScreen → Ersetzt aktuellen Screen, Zurück geht zu Details

@@ -640,7 +640,7 @@ class _AvatarListScreenState extends State<AvatarListScreen>
                         onPressed: () async {
                           await Navigator.pushNamed(
                             context,
-                            '/shared-moments',
+                            '/moments',
                             arguments: {
                               'avatarId': avatar.id,
                               'fromScreen': 'avatar-list',

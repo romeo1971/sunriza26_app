@@ -5,6 +5,7 @@ import 'explore_screen.dart';
 import 'favorites_screen.dart';
 import 'avatar_list_screen.dart';
 import 'user_profile_public_screen.dart';
+import 'moments_screen.dart';
 import 'avatar_chat_screen.dart';
 import '../theme/app_theme.dart';
 
@@ -29,6 +30,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
   late final Widget _avatarListScreen;
   late final Widget _favoritesScreen;
   late final Widget _profileScreen;
+  late final Widget _momentsScreen;
 
   @override
   void initState() {
@@ -40,6 +42,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
     _avatarListScreen = const AvatarListScreen();
     _favoritesScreen = const FavoritesScreen();
     _profileScreen = const UserProfilePublicScreen();
+    _momentsScreen = const MomentsScreen();
   }
 
   Future<void> _toggleFavoriteInExplore(
@@ -120,7 +123,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
               _exploreScreen,
               _avatarListScreen,
               _favoritesScreen,
-              _profileScreen,
+              _momentsScreen,
             ],
           ),
 
@@ -171,13 +174,13 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
                       label: 'Favoriten',
                       index: 2,
                     ),
-                    // Profil - AUSKOMMENTIERT (evtl. später anderes Icon)
-                    // _buildNavItem(
-                    //   iconFilled: Icons.person,
-                    //   iconOutlined: Icons.person_outline,
-                    //   label: 'Profil',
-                    //   index: 3,
-                    // ),
+                    // Momente (NEU)
+                    _buildNavItem(
+                      iconFilled: Icons.bookmarks,
+                      iconOutlined: Icons.bookmarks_outlined,
+                      label: 'Momente',
+                      index: 3,
+                    ),
                   ],
                 ),
               ),

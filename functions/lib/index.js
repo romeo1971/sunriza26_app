@@ -1296,7 +1296,7 @@ exports.llm = (0, https_1.onRequest)({
             throw new Error(`OpenAI API Error: ${response.status} ${errorText}`);
         }
         const data = await response.json();
-        const answer = (((_d = (_c = (_b = data.choices) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.message) === null || _d === void 0 ? void 0 : _d.content) || '').trim();
+        const answer = (((_d = (_c = (_b = data === null || data === void 0 ? void 0 : data.choices) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.message) === null || _d === void 0 ? void 0 : _d.content) || '').trim();
         res.status(200).json({ answer });
     }
     catch (error) {

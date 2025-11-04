@@ -22,6 +22,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   final Map<String, String> _anchorStatus = {};
   final Set<String> _anchorStamped = {};
   final Set<String> _anchorFetchInFlight = {};
+  final Set<String> _autoUpgradeAttempted = {}; // verhindert wiederholte Upgrades & UI-Flackern
   FirebaseFunctions get _fns => FirebaseFunctions.instanceFor(region: 'us-central1');
   void Function(VoidCallback fn)? _dialogSetState; // Rebuild-Funktion für Details-Dialog
 
@@ -133,9 +134,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             itemCount: transactions.length,
             itemBuilder: (context, index) {
               final tx = transactions[index];
-              if (tx.anchorStatus != null && !_anchorStatus.containsKey(tx.id)) {
-                _anchorStatus[tx.id] = tx.anchorStatus!;
-              }
               return _buildTransactionCard(tx);
             },
           );
@@ -246,32 +244,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   const SizedBox(height: 12),
                   Row(
                     children: [
-                      const Icon(
-                        Icons.description,
-                        size: 16,
-                        color: Colors.white70,
-                      ),
+                      const Icon(Icons.description, size: 16, color: Colors.white70),
                       const SizedBox(width: 8),
                       GestureDetector(
                         onTap: () => _showTransactionDetails(transaction),
-                        child: Builder(
-                          builder: (context) {
-                            final status = _resolveAnchorStatus(transaction);
-                            final label = (status == 'pending')
-                                ? 'Nachweis in Prüfung'
-                                : 'Rechnung: ${transaction.invoiceNumber}';
-                            if (status == 'stamped') {
-                              return _gradientLinkText(label);
-                            }
-                            return Text(
-                              label,
-                              style: TextStyle(
-                                color: status == 'pending' ? Colors.amberAccent : Colors.white70,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            );
-                          },
+                        child: Text(
+                          'Rechnung: ${transaction.invoiceNumber}',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                       const Spacer(),
@@ -284,26 +267,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(
-                              Icons.download,
-                              size: 16,
-                              color: (_resolveAnchorStatus(transaction) == 'pending')
-                                  ? Colors.amberAccent
-                                  : AppColors.lightBlue,
-                            ),
+                            const Icon(Icons.download, size: 16, color: AppColors.lightBlue),
                             const SizedBox(width: 6),
-                            if (_resolveAnchorStatus(transaction) == 'stamped')
-                              _gradientLinkText('PDF')
-                            else
-                              Text(
-                                'PDF',
-                                style: TextStyle(
-                                  color: (_resolveAnchorStatus(transaction) == 'pending')
-                                      ? Colors.amberAccent
-                                      : AppColors.lightBlue,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
+                            _gradientLinkText('PDF'),
                           ],
                         ),
                       ),
@@ -447,16 +413,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: (_resolveAnchorStatus(transaction) == 'pending') ? null : () => _handleAnchorAction(transaction),
-                style: TextButton.styleFrom(
-                  foregroundColor: (_resolveAnchorStatus(transaction) == 'stamped')
-                      ? AppColors.lightBlue
-                      : ((_resolveAnchorStatus(transaction) == 'pending') ? Colors.amberAccent : Colors.white70),
-                  disabledForegroundColor: Colors.amberAccent,
-                ),
-                child: Text(_anchorActionLabel(transaction.id)),
-              ),
-              TextButton(
                 onPressed: () { _dialogSetState = null; Navigator.pop(context); },
                 child: const Text('Schließen'),
               ),
@@ -539,6 +495,37 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     return 'Nachweis erstellen';
   }
 
+  // Triggert bei Anzeige automatisch ein Einzel‑Upgrade für pending
+  void _maybeAutoUpgrade(app.Transaction tx) {
+    if (_resolveAnchorStatus(tx) != 'pending') return;
+    if (_autoUpgradeAttempted.contains(tx.id)) return; // pro Session nur ein Versuch
+    if (_anchorFetchInFlight.contains(tx.id)) return;
+    _anchorFetchInFlight.add(tx.id);
+    _autoUpgradeAttempted.add(tx.id);
+    try {
+      final upgrade = _fns.httpsCallable('upgradeInvoiceForTransaction');
+      upgrade.call({ 'transactionId': tx.id }).whenComplete(() {
+        _anchorFetchInFlight.remove(tx.id);
+        // Status frisch abfragen
+        _fns.httpsCallable('getInvoiceAnchorStatus')
+            .call({ 'transactionId': tx.id })
+            .then((res) {
+          final data = Map<String, dynamic>.from(res.data as Map);
+          final s = (data['status'] as String?) ?? 'unknown';
+          final prev = _anchorStatus[tx.id];
+          if (prev != s && mounted) {
+            setState(() {
+              _anchorStatus[tx.id] = s;
+              if (s == 'stamped') _anchorStamped.add(tx.id);
+            });
+          }
+        }).catchError((_) { _anchorFetchInFlight.remove(tx.id); });
+      });
+    } catch (_) {
+      _anchorFetchInFlight.remove(tx.id);
+    }
+  }
+
   Future<void> _handleAnchorAction(app.Transaction transaction) async {
     try {
       // Sofort pending setzen und Button sperren
@@ -546,6 +533,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       _dialogSetState?.call(() {});
       final ensure = _fns.httpsCallable('ensureInvoiceForTransaction');
       await ensure.call({ 'transactionId': transaction.id });
+      // Versuche sofortiges Upgrade (sofern OTS-Service konfiguriert)
+      try {
+        final upgrade = _fns.httpsCallable('upgradeInvoiceForTransaction');
+        await upgrade.call({ 'transactionId': transaction.id });
+      } catch (_) {}
       final statusFn = _fns.httpsCallable('getInvoiceAnchorStatus');
       final res = await statusFn.call({ 'transactionId': transaction.id });
       final data = Map<String, dynamic>.from(res.data as Map);

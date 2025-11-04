@@ -1651,7 +1651,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             onTap: () {
               Navigator.pushNamed(
                 context,
-                '/shared-moments',
+                '/moments',
                 arguments: {'avatarId': id},
               );
             },

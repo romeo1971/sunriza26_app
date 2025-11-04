@@ -36,11 +36,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ensureInvoiceFiles = exports.getInvoiceAnchorStatus = exports.ensureInvoiceForTransaction = exports.generateInvoice = void 0;
+exports.ensureInvoiceFiles = exports.generateInvoice = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const pdfkit_1 = __importDefault(require("pdfkit"));
 const admin = __importStar(require("firebase-admin"));
-const crypto_1 = __importDefault(require("crypto"));
+// OTS entfernt – keine Service-URL nötig
 function generateInvoiceNumber() {
     const now = new Date();
     const y = now.getUTCFullYear();
@@ -119,6 +119,7 @@ async function getMediaThumbBuffer(tx) {
         return null;
     }
 }
+// OTS entfernt
 // Zentrales Rendering für ein konsistentes, schönes PDF-Layout
 async function renderStyledInvoice(doc, args) {
     const left = 50;
@@ -278,206 +279,12 @@ exports.generateInvoice = functions
     }
 });
 // Schreibe Anker-Infos direkt in die Transaktion (keine invoiceAnchors-Collection)
-exports.ensureInvoiceForTransaction = functions
-    .region('us-central1')
-    .https.onCall(async (data, context) => {
-    var _a, _b, _c, _d, _e;
-    if (!context.auth)
-        throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
-    const userId = context.auth.uid;
-    const txId = ((data === null || data === void 0 ? void 0 : data.transactionId) || '').trim();
-    if (!txId)
-        throw new functions.https.HttpsError('invalid-argument', 'transactionId fehlt');
-    const db = admin.firestore();
-    const txRef = db.collection('users').doc(userId).collection('transactions').doc(txId);
-    const txSnap = await txRef.get();
-    if (!txSnap.exists)
-        throw new functions.https.HttpsError('not-found', 'Transaktion nicht gefunden');
-    const tx = txSnap.data() || {};
-    let invoiceNumber = tx.invoiceNumber;
-    if (!invoiceNumber) {
-        invoiceNumber = generateInvoiceNumber();
-        await txRef.set({ invoiceNumber }, { merge: true });
-    }
-    // Setze sofort pending, um UI zu blocken
-    await txRef.set({ anchorStatus: 'pending' }, { merge: true });
-    const bucket = admin.storage().bucket();
-    const pdfPath = `invoices/${userId}/${invoiceNumber}.pdf`;
-    const xmlPath = `invoices/${userId}/${invoiceNumber}.xml`;
-    try {
-        // 0) PDF/XML existieren? Wenn nicht → jetzt erzeugen
-        const pdfFile = bucket.file(pdfPath);
-        const xmlFile = bucket.file(xmlPath);
-        const [pdfExists] = await pdfFile.exists();
-        const [xmlExists] = await xmlFile.exists();
-        if (!pdfExists || !xmlExists) {
-            // Minimaldaten aus Transaktion
-            const items = [
-                {
-                    description: tx.credits ? `${tx.credits} Credits` : (tx.mediaName || 'Kauf'),
-                    quantity: 1,
-                    unitPrice: ((tx.amount || 0) / 100) || 0,
-                    total: ((tx.amount || 0) / 100) || 0,
-                },
-            ];
-            // Verkäufer bestimmen:
-            // - Media-Kauf → Avatar‑Owner (falls vollständig vorhanden), sonst Firmen‑Impressum
-            // - Credits → Firmen‑Impressum
-            let seller = getCompanyImprint();
-            try {
-                const txType = String(tx.type || '').toLowerCase();
-                if (txType === 'media_purchase' && tx.avatarId) {
-                    const avatarSnap = await db.collection('avatars').doc(String(tx.avatarId)).get();
-                    const ownerUserId = (_a = avatarSnap.data()) === null || _a === void 0 ? void 0 : _a.userId;
-                    if (ownerUserId) {
-                        const userSnap = await db.collection('users').doc(ownerUserId).get();
-                        if (userSnap.exists) {
-                            const u = (userSnap.data() || {});
-                            const name = (u.companyName || u.displayName || u.name || '').toString().trim();
-                            if (name) {
-                                seller = {
-                                    name,
-                                    street: ((_b = u.address) === null || _b === void 0 ? void 0 : _b.street) || u.street,
-                                    postalCode: ((_c = u.address) === null || _c === void 0 ? void 0 : _c.postalCode) || u.postalCode,
-                                    city: ((_d = u.address) === null || _d === void 0 ? void 0 : _d.city) || u.city,
-                                    country: ((_e = u.address) === null || _e === void 0 ? void 0 : _e.country) || u.country,
-                                    vatId: u.vatId || u.taxId,
-                                };
-                            }
-                        }
-                    }
-                }
-            }
-            catch (_) {
-                // Fallback bleibt Firmen‑Impressum
-            }
-            // Käufer-Daten
-            let buyer = { name: tx.userName || userId };
-            try {
-                const userSnap = await db.collection('users').doc(userId).get();
-                const u = (userSnap.data() || {});
-                buyer = { name: u.displayName || u.name || userId, email: u.email };
-            }
-            catch (_) { }
-            // PDF generieren (neues Layout)
-            const doc = new pdfkit_1.default({ size: 'A4', margin: 50 });
-            const pdfStream = doc.pipe(pdfFile.createWriteStream({ contentType: 'application/pdf' }));
-            const createdAt = tx.createdAt && tx.createdAt.toDate ? tx.createdAt.toDate() : new Date();
-            const mediaThumb = (String(tx.type || '').toLowerCase() === 'media_purchase') ? await getMediaThumbBuffer(tx) : null;
-            await renderStyledInvoice(doc, {
-                invoiceNumber,
-                date: createdAt,
-                seller,
-                buyer,
-                items,
-                currency: (tx.currency || 'EUR').toString(),
-                mediaThumb,
-                rbr: tx.rbr || `RBR-${invoiceNumber}`,
-            });
-            doc.end();
-            await new Promise((resolve, reject) => { pdfStream.on('finish', resolve); pdfStream.on('error', reject); });
-            // XML generieren (einfacher Placeholder mit Seller/Buyer)
-            const xml = `<?xml version="1.0" encoding="UTF-8"?>\n` +
-                `<Invoice>` +
-                `<ID>${invoiceNumber}</ID>` +
-                `<Seller><Name>${seller.name}</Name>${seller.vatId ? `<VAT>${seller.vatId}</VAT>` : ''}</Seller>` +
-                `<Buyer><Name>${buyer.name}</Name>${buyer.email ? `<Email>${buyer.email}</Email>` : ''}</Buyer>` +
-                `<Total>${items[0].total.toFixed(2)}</Total>` +
-                `<Currency>${(tx.currency || 'EUR').toString().toUpperCase()}</Currency>` +
-                `</Invoice>`;
-            await xmlFile.save(Buffer.from(xml, 'utf-8'), { contentType: 'application/xml' });
-            // URLs in Transaktion ablegen
-            const [pdfUrl] = await pdfFile.getSignedUrl({ action: 'read', expires: Date.now() + 30 * 24 * 3600 * 1000, responseDisposition: `attachment; filename=\"${invoiceNumber}.pdf\"` });
-            const [xmlUrl] = await xmlFile.getSignedUrl({ action: 'read', expires: Date.now() + 30 * 24 * 3600 * 1000 });
-            await txRef.set({ invoicePdfUrl: pdfUrl, invoiceXmlUrl: xmlUrl }, { merge: true });
-        }
-        const [pdfBuf] = await bucket.file(pdfPath).download();
-        const pdfSha256 = crypto_1.default.createHash('sha256').update(pdfBuf).digest('hex');
-        let xmlSha256 = null;
-        try {
-            const [xmlBuf] = await bucket.file(xmlPath).download();
-            xmlSha256 = crypto_1.default.createHash('sha256').update(xmlBuf).digest('hex');
-        }
-        catch (_f) {
-            xmlSha256 = null;
-        }
-        // Best‑Effort OTS: hier bewusst nicht stempeln → Status bleibt pending, bis extern erledigt
-        const payload = {
-            anchorStatus: 'pending',
-            invoiceAnchors: {
-                status: 'pending',
-                calendar: null,
-                anchoredAt: admin.firestore.FieldValue.serverTimestamp(),
-                pdfSha256,
-                xmlSha256,
-                pdfPath,
-                xmlPath,
-                otsUrl: null,
-            },
-        };
-        await txRef.set(payload, { merge: true });
-        // Rückgabe
-        // IMMER frische Signed URL erzeugen (verhindert NoSuchKey/expired)
-        const [freshUrl] = await bucket.file(pdfPath).getSignedUrl({ action: 'read', expires: Date.now() + 30 * 24 * 3600 * 1000, responseDisposition: `attachment; filename=\"${invoiceNumber}.pdf\"` });
-        await txRef.set({ invoicePdfUrl: freshUrl }, { merge: true });
-        return { invoiceNumber, invoicePdfUrl: freshUrl, invoiceXmlUrl: tx.invoiceXmlUrl || null, status: 'pending' };
-    }
-    catch (e) {
-        // Fallback: setze dennoch pending-Status ohne Hashes, keine Exception werfen
-        console.warn('ensureInvoiceForTransaction soft-fail, continue with pending:', (e === null || e === void 0 ? void 0 : e.message) || e);
-        const fallback = {
-            anchorStatus: 'pending',
-            invoiceAnchors: {
-                status: 'pending',
-                calendar: null,
-                anchoredAt: admin.firestore.FieldValue.serverTimestamp(),
-                pdfSha256: null,
-                xmlSha256: null,
-                pdfPath,
-                xmlPath,
-                otsUrl: null,
-            },
-        };
-        await txRef.set(fallback, { merge: true });
-        try {
-            const [freshUrl] = await bucket.file(pdfPath).getSignedUrl({ action: 'read', expires: Date.now() + 30 * 24 * 3600 * 1000, responseDisposition: `attachment; filename=\"${invoiceNumber}.pdf\"` });
-            await txRef.set({ invoicePdfUrl: freshUrl }, { merge: true });
-            return { invoiceNumber, invoicePdfUrl: freshUrl, invoiceXmlUrl: tx.invoiceXmlUrl || null, status: 'pending' };
-        }
-        catch (_) {
-            return { invoiceNumber, invoicePdfUrl: tx.invoicePdfUrl || null, invoiceXmlUrl: tx.invoiceXmlUrl || null, status: 'pending' };
-        }
-    }
-});
-exports.getInvoiceAnchorStatus = functions
-    .region('us-central1')
-    .https.onCall(async (data, context) => {
-    if (!context.auth)
-        throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
-    const userId = context.auth.uid;
-    const txId = ((data === null || data === void 0 ? void 0 : data.transactionId) || '').trim();
-    if (!txId)
-        throw new functions.https.HttpsError('invalid-argument', 'transactionId fehlt');
-    const db = admin.firestore();
-    const txRef = db.collection('users').doc(userId).collection('transactions').doc(txId);
-    const txSnap = await txRef.get();
-    if (!txSnap.exists)
-        throw new functions.https.HttpsError('not-found', 'Transaktion nicht gefunden');
-    const tx = txSnap.data() || {};
-    const anchorStatus = tx.anchorStatus || 'not_anchored';
-    const ia = tx.invoiceAnchors || {};
-    return {
-        status: anchorStatus,
-        invoiceNumber: tx.invoiceNumber || null,
-        pdfSha256: ia.pdfSha256 || null,
-        xmlSha256: ia.xmlSha256 || null,
-        otsCalendar: ia.calendar || null,
-        otsUrl: ia.otsUrl || null,
-        pdfPath: ia.pdfPath || null,
-        xmlPath: ia.xmlPath || null,
-        anchoredAt: ia.anchoredAt || null,
-    };
-});
+// ensureInvoiceForTransaction entfernt
+// getInvoiceAnchorStatus entfernt
+// Upgrade pending OTS proofs periodically and mark as stamped when attestations included
+// upgradeInvoiceAnchors entfernt
+// Sofort-Upgrade per Button/Klick für EINE Transaktion
+// upgradeInvoiceForTransaction entfernt
 // Nur PDF/XML sicherstellen und Download-URL liefern – KEIN Anchor/Status
 exports.ensureInvoiceFiles = functions
     .region('us-central1')

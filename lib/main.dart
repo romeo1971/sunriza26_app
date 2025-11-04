@@ -18,7 +18,8 @@ import 'screens/media_gallery_screen.dart';
 import 'screens/playlist_list_screen.dart';
 import 'screens/playlist_scheduler_screen.dart';
 import 'screens/playlist_timeline_screen.dart';
-import 'screens/shared_moments_screen.dart';
+import 'screens/bol_screen.dart';
+import 'screens/moments_screen.dart';
 import 'screens/avatar_review_facts_screen.dart';
 import 'screens/credits_shop_screen.dart';
 import 'screens/payment_overview_screen.dart';
@@ -468,15 +469,17 @@ class SunrizaApp extends StatelessWidget {
               final p = ModalRoute.of(context)!.settings.arguments as Playlist;
               return PlaylistTimelineScreen(playlist: p);
             },
-            '/shared-moments': (context) {
+            // BOL – Book of Life
+            '/bol': (context) {
               final args = ModalRoute.of(context)!.settings.arguments as Map?;
               final avatarId = (args?['avatarId'] as String?) ?? '';
               final fromScreen = args?['fromScreen'] as String?;
-              return SharedMomentsScreen(
-                avatarId: avatarId,
-                fromScreen: fromScreen,
-              );
+              return BolScreen(avatarId: avatarId, fromScreen: fromScreen);
             },
+            // Neuer Moments-Screen (Bottom‑Nav rechts)
+            '/moments': (context) => const MomentsScreen(),
+            // Altpfad bleibt erhalten und zeigt nun auf den neuen Moments-Screen
+            '/shared-moments': (context) => const MomentsScreen(),
             '/avatar-review-facts': (context) {
               final args = ModalRoute.of(context)!.settings.arguments as Map?;
               final avatarId = (args?['avatarId'] as String?) ?? '';

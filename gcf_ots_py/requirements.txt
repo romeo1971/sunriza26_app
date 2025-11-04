@@ -1,0 +1,6 @@
+flask==3.0.2
+opentimestamps-client==0.7.0
+opentimestamps==0.4.3
+google-cloud-storage==2.16.0
+gunicorn==21.2.0
+

@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 class AvatarBottomNavBar extends StatelessWidget {
   final String avatarId;
   final String
-  currentScreen; // 'details' | 'media' | 'playlists' | 'moments' | 'facts'
+  currentScreen; // 'details' | 'media' | 'playlists' | 'bol' | 'facts'
   const AvatarBottomNavBar({
     super.key,
     required this.avatarId,
@@ -65,8 +65,8 @@ class AvatarBottomNavBar extends StatelessWidget {
               active: currentScreen == 'moments',
               iconFilled: Icons.collections_bookmark,
               iconOutlined: Icons.collections_bookmark_outlined,
-              label: loc.t('sharedMoments.title'),
-              route: '/shared-moments',
+              label: 'Momente',
+              route: '/moments',
               args: {'avatarId': avatarId},
             ),
             _item(

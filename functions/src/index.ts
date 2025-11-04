@@ -1206,8 +1206,8 @@ export const llm = onRequest({
       throw new Error(`OpenAI API Error: ${response.status} ${errorText}`);
     }
     
-    const data = await response.json();
-    const answer = (data.choices?.[0]?.message?.content || '').trim();
+    const data: any = await response.json();
+    const answer = (data?.choices?.[0]?.message?.content || '').trim();
     
     res.status(200).json({ answer });
   } catch (error) {

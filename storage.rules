@@ -67,6 +67,14 @@ service firebase.storage {
       allow write, delete: if isOwner(userId) && isValidFileType() && isValidFileSize();
     }
 
+    // User Moments (angenommene/gekaufte Media-Kopien)
+    match /users/{userId}/moments/{allPaths=**} {
+      // Private Bibliothek: nur Owner darf lesen
+      allow read: if isOwner(userId);
+      // Owner darf schreiben/löschen, mit Typ-/Größen-Checks
+      allow write, delete: if isOwner(userId) && isValidFileType() && isValidFileSize();
+    }
+
     // Chat Files (Struppi-System)
     match /chats/{chatId}/files/{allPaths=**} {
       allow read, write: if signedIn() && isValidFileType() && isValidFileSize();

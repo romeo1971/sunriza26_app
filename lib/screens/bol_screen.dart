@@ -8,20 +8,20 @@ import 'package:provider/provider.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 
-class SharedMomentsScreen extends StatefulWidget {
+class BolScreen extends StatefulWidget {
   final String avatarId;
   final String? fromScreen; // 'avatar-list' oder null
-  const SharedMomentsScreen({
+  const BolScreen({
     super.key,
     required this.avatarId,
     this.fromScreen,
   });
 
   @override
-  State<SharedMomentsScreen> createState() => _SharedMomentsScreenState();
+  State<BolScreen> createState() => _BolScreenState();
 }
 
-class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
+class _BolScreenState extends State<BolScreen> {
   final _svc = SharedMomentsService();
   final _mediaSvc = MediaService();
   final _scrollController = ScrollController();
@@ -69,14 +69,12 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
 
   void _handleBackNavigation(BuildContext context) async {
     if (widget.fromScreen == 'avatar-list') {
-      // Von "Meine Avatare" → zurück zu "Meine Avatare" (ALLE Screens schließen)
       Navigator.pushNamedAndRemoveUntil(
         context,
         '/avatar-list',
         (route) => false,
       );
     } else {
-      // Von anderen Screens → zurück zu Avatar Details
       final nav = Navigator.of(context);
       final avatarService = AvatarService();
       final avatar = await avatarService.getAvatar(widget.avatarId);
@@ -93,9 +91,7 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          context.read<LocalizationService>().t('sharedMoments.title'),
-        ),
+        title: const Text('BOL – Book of life'),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         scrolledUnderElevation: 0,
@@ -111,52 +107,46 @@ class _SharedMomentsScreenState extends State<SharedMomentsScreen> {
       body: Column(
         children: [
           const SizedBox.shrink(),
-          // Content
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _items.isEmpty
-                ? Center(
-                    child: Text(
-                      context.read<LocalizationService>().t(
-                        'sharedMoments.empty',
+                    ? const Center(
+                        child: Text(
+                          'Keine Einträge',
+                          style: TextStyle(color: Colors.white70),
+                        ),
+                      )
+                    : ListView.separated(
+                        controller: _scrollController,
+                        itemCount: _items.length,
+                        separatorBuilder: (context, index) => const Divider(height: 1),
+                        itemBuilder: (context, i) {
+                          final it = _items[i];
+                          final media = _media[it.mediaId];
+                          return ListTile(
+                            leading: Icon(
+                              (media?.type == AvatarMediaType.video)
+                                  ? Icons.videocam
+                                  : Icons.photo,
+                            ),
+                            title: Text(media?.url.split('/').last ?? it.mediaId),
+                            subtitle: Text(
+                              it.decision == 'rejected'
+                                  ? 'Abgelehnt'
+                                  : 'Gezeigt',
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                  )
-                : ListView.separated(
-                    controller: _scrollController,
-                    itemCount: _items.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1),
-                    itemBuilder: (context, i) {
-                      final it = _items[i];
-                      final media = _media[it.mediaId];
-                      return ListTile(
-                        leading: Icon(
-                          (media?.type == AvatarMediaType.video)
-                              ? Icons.videocam
-                              : Icons.photo,
-                        ),
-                        title: Text(media?.url.split('/').last ?? it.mediaId),
-                        subtitle: Text(
-                          it.decision == 'rejected'
-                              ? context.read<LocalizationService>().t(
-                                  'sharedMoments.rejected',
-                                )
-                              : context.read<LocalizationService>().t(
-                                  'sharedMoments.shown',
-                                ),
-                        ),
-                      );
-                    },
-                  ),
           ),
         ],
       ),
       bottomNavigationBar: AvatarBottomNavBar(
         avatarId: widget.avatarId,
-        currentScreen: 'moments',
+        currentScreen: 'bol',
       ),
+      backgroundColor: Colors.black,
     );
   }
 }
