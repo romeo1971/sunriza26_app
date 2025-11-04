@@ -4928,7 +4928,7 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
     try {
         // Für kostenlose Items: Direkt speichern und als bestätigt markieren
       if (widget.isFree) {
-        await _momentsService.saveMoment(
+        final saved = await _momentsService.saveMoment(
           media: widget.media,
           price: 0.0,
           paymentMethod: 'free',
@@ -4971,15 +4971,42 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
         // Schließe Dialog
         Navigator.pop(context);
 
-        // Zeige Erfolgs-Meldung
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '✅ ${widget.media.originalFileName ?? 'Item'} wurde zu Moments hinzugefügt!',
+        // Erfolg: Download-Hinweis anzeigen und Direktlink öffnen können
+        final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+        final avatarName = chatState?._avatarData?.displayName 
+            ?? chatState?._avatarData?.fullName 
+            ?? 'Avatar';
+        if (mounted) {
+          await showDialog(
+            context: context,
+            builder: (_) => AlertDialog(
+              backgroundColor: AppColors.darkSurface,
+              title: const Text('Erfolg', style: TextStyle(color: Colors.white)),
+              content: Text(
+                'Du hast "${widget.media.originalFileName ?? 'Media'}" von "$avatarName" erfolgreich angenommen. Bitte jetzt downloaden.',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Später', style: TextStyle(color: Colors.white70)),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      final uri = Uri.parse(saved.storedUrl);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                      }
+                    } catch (_) {}
+                    if (Navigator.canPop(context)) Navigator.pop(context);
+                  },
+                  child: const Text('Jetzt downloaden', style: TextStyle(color: AppColors.lightBlue)),
+                ),
+              ],
             ),
-            backgroundColor: AppColors.lightBlue,
-          ),
-        );
+          );
+        }
       } else {
         // Für kostenpflichtige Items: Credits oder Stripe
         final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -5016,7 +5043,7 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
           }
 
           // Speichere in Moments und markiere als bestätigt
-          await _momentsService.saveMoment(
+          final saved = await _momentsService.saveMoment(
             media: widget.media,
             price: widget.price,
             paymentMethod: 'credits',
@@ -5056,15 +5083,43 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
 
           if (!mounted) return;
           Navigator.pop(context);
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '✅ ${widget.media.originalFileName ?? 'Item'} gekauft! ($requiredCredits Credits)',
+
+          // Erfolg: Download-Hinweis (ohne Credits-Text)
+          final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+          final avatarName = chatState?._avatarData?.displayName 
+              ?? chatState?._avatarData?.fullName 
+              ?? 'Avatar';
+          if (mounted) {
+            await showDialog(
+              context: context,
+              builder: (_) => AlertDialog(
+                backgroundColor: AppColors.darkSurface,
+                title: const Text('Erfolg', style: TextStyle(color: Colors.white)),
+                content: Text(
+                  'Du hast "${widget.media.originalFileName ?? 'Media'}" von "$avatarName" erfolgreich gekauft. Bitte jetzt downloaden.',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Später', style: TextStyle(color: Colors.white70)),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      try {
+                        final uri = Uri.parse(saved.storedUrl);
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }
+                      } catch (_) {}
+                      if (Navigator.canPop(context)) Navigator.pop(context);
+                    },
+                    child: const Text('Jetzt downloaden', style: TextStyle(color: AppColors.lightBlue)),
+                  ),
+                ],
               ),
-              backgroundColor: AppColors.lightBlue,
-            ),
-          );
+            );
+          }
         } else {
           // Stripe Checkout (nach Erfolg als bestätigt markieren)
           final checkoutUrl = await _purchaseService.purchaseMediaWithStripe(

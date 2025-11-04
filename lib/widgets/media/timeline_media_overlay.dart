@@ -33,6 +33,9 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
   Duration _duration = Duration.zero;
   Duration _position = Duration.zero;
   bool _isPlaying = false;
+  // Preview-Logik für Audio
+  Duration? _audioPreviewCap; // maximale Vorspielzeit
+  bool _isLoopingAudio = false; // Guard gegen Mehrfach-Loop
   List<AudioCoverImage>? _covers;
   final PageController _coverController = PageController();
   Timer? _coverTimer;
@@ -196,16 +199,26 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
         break;
     }
 
-    // Kostenlos: niemals blurren; kostenpflichtig nur blurren, wenn nicht gekauft
+    // Kostenlos: niemals blurren; kostenpflichtig: Vorschau-Regeln
     final price = widget.media.price ?? 0.0;
     final isFree = price == 0.0;
-    if (!widget.isPurchased && !isFree) {
-      content = BlurPixelationFilter(
-        isBlurred: true,
-        blurAmount: 20.0,
-        showLockIcon: true,
-        child: content,
-      );
+    final isPreview = !widget.isPurchased && !isFree;
+
+    if (isPreview) {
+      if (widget.media.type == AvatarMediaType.image ||
+          widget.media.type == AvatarMediaType.document) {
+        // Bilder/Dokumente stark blurren, kein Schloss
+        content = BlurPixelationFilter(
+          isBlurred: true,
+          blurAmount: 20.0,
+          showLockIcon: false,
+          child: content,
+        );
+      } else if (widget.media.type == AvatarMediaType.audio) {
+        // Audio: Preview-Dauer wird in _ensureAudio berechnet und durchgesetzt
+      } else if (widget.media.type == AvatarMediaType.video) {
+        // Video: Preview handled im Player-Widget (per Listener)
+      }
     }
 
     return Container(
@@ -238,7 +251,12 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
   Widget _buildVideoContent() {
     return Column(
       children: [
-        Expanded(child: _VideoPlayerWidget(url: widget.media.url)),
+        Expanded(
+          child: _VideoPlayerWidget(
+            url: widget.media.url,
+            preview: (!widget.isPurchased && (widget.media.price ?? 0.0) > 0.0),
+          ),
+        ),
         const SizedBox(height: 8),
         _buildControlsRow(isVideo: true),
       ],
@@ -320,9 +338,10 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
             builder: (context, constraints) {
               final totalW = constraints.maxWidth * 0.9;
               final totalH = constraints.maxHeight * 0.7;
-              final progress = _duration.inMilliseconds == 0
+              final effectiveDur = _audioPreviewCap ?? _duration;
+              final progress = effectiveDur.inMilliseconds == 0
                   ? 0.0
-                  : _position.inMilliseconds / _duration.inMilliseconds;
+                  : _position.inMilliseconds / effectiveDur.inMilliseconds;
 
               return Center(
                 child: SizedBox(
@@ -350,10 +369,20 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
                                 if (player == null) {
                                   await _ensureAudio();
                                   player = _audioPlayer;
-                                  return;
+                                  if (player == null) return;
                                 }
 
-                                if (_hasCompleted) {
+                                // Liegen wir am Preview‑Limit? → immer harter Replay
+                                bool atLimit = false;
+                                if (_audioPreviewCap != null) {
+                                  final cap = _audioPreviewCap!;
+                                  final safeCap = Duration(
+                                    milliseconds: cap.inMilliseconds > 300 ? cap.inMilliseconds - 300 : cap.inMilliseconds,
+                                  );
+                                  atLimit = _position >= safeCap;
+                                }
+
+                                if (_hasCompleted || atLimit) {
                                   try {
                                     await player.stop();
                                   } catch (_) {}
@@ -369,7 +398,9 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
                                 if (_isPlaying) {
                                   await player.pause();
                                 } else {
-                                  await player.resume();
+                                  try {
+                                    await player.resume();
+                                  } catch (_) {}
                                 }
                               } finally {
                                 _audioBusy = false;
@@ -466,19 +497,27 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
             ),
             child: Slider(
               value: () {
-                final durMs = _duration.inMilliseconds;
+                final durMs = (_audioPreviewCap ?? _duration).inMilliseconds;
                 final posMs = _position.inMilliseconds;
                 if (durMs <= 0) return 0.0;
                 return (posMs / durMs).clamp(0.0, 1.0);
               }(),
               onChanged: (value) async {
-                final durMs = _duration.inMilliseconds;
+                final durMs = (_audioPreviewCap ?? _duration).inMilliseconds;
                 if (durMs <= 0) return;
                 final player = _audioPlayer;
                 if (player == null) return;
                 
                 setState(() => _hasCompleted = false);
-                final newPos = Duration(milliseconds: (value * durMs).toInt());
+                Duration newPos = Duration(milliseconds: (value * durMs).toInt());
+                // Sicher: nicht direkt auf das harte Ende springen
+                if (_audioPreviewCap != null) {
+                  final cap = _audioPreviewCap!;
+                  final safeCap = Duration(
+                    milliseconds: cap.inMilliseconds > 300 ? cap.inMilliseconds - 300 : cap.inMilliseconds,
+                  );
+                  if (newPos >= safeCap) newPos = safeCap;
+                }
                 if (_audioBusy) return;
                 _audioBusy = true;
                 try {
@@ -489,9 +528,22 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
                         .timeout(const Duration(seconds: 3))
                         .catchError((_) {}),
                   );
-                  if (player.state != PlayerState.playing) {
-                    // Resume unabhängig vom Seek-Ergebnis, um Hänger zu vermeiden
-                    unawaited(player.resume().catchError((_) {}));
+                  // Nur fortsetzen wenn wir NICHT am safeCap sind (Preview-Limit)
+                  final shouldResume = () {
+                    if (_audioPreviewCap == null) return true;
+                    final cap = _audioPreviewCap!;
+                    final safeCap = Duration(
+                      milliseconds: cap.inMilliseconds > 300 ? cap.inMilliseconds - 300 : cap.inMilliseconds,
+                    );
+                    return newPos < safeCap;
+                  }();
+                  if (shouldResume) {
+                    if (player.state != PlayerState.playing) {
+                      unawaited(player.resume().catchError((_) {}));
+                    }
+                  } else {
+                    // Am Limit: sicherstellen, dass pausiert bleibt
+                    unawaited(player.pause().catchError((_) {}));
                   }
                 } finally {
                   _audioBusy = false;
@@ -502,7 +554,7 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
         ),
         // Zeit-Anzeige
         Text(
-          '${_formatTime(_position)} / ${_formatTime(_duration)}',
+          '${_formatTime(_position)} / ${_formatTime(_audioPreviewCap ?? _duration)}',
           style: const TextStyle(color: Colors.white70, fontSize: 11),
         ),
         const SizedBox(height: 4),
@@ -546,24 +598,59 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
     p.onDurationChanged.listen((d) {
       if (!mounted) return;
       setState(() => _duration = d);
+      // Preview-Cap berechnen: 15% der Länge, min 5s, max 45s
+      final isPreview = !widget.isPurchased && (widget.media.price ?? 0.0) > 0.0;
+      if (isPreview && d.inMilliseconds > 0) {
+        final secs = d.inSeconds;
+        final cap = (secs * 0.15).clamp(5, 25);
+        _audioPreviewCap = Duration(seconds: cap.toInt());
+      } else {
+        _audioPreviewCap = null;
+      }
     });
     p.onPositionChanged.listen((pos) {
       if (!mounted) return;
       setState(() => _position = pos);
+      // Preview-Limit erzwingen: statt Pause → LOOP auf 00:00
+      if (_audioPreviewCap != null) {
+        final ms = _audioPreviewCap!.inMilliseconds;
+        final safeCap = Duration(milliseconds: ms > 200 ? ms - 200 : ms);
+        if (pos >= safeCap) {
+          _loopAudioToStart();
+        }
+      }
     });
     p.onPlayerStateChanged.listen((s) {
       if (!mounted) return;
       setState(() => _isPlaying = s == PlayerState.playing);
     });
     p.onPlayerComplete.listen((_) {
-      if (!mounted) return;
-      setState(() {
-        _hasCompleted = true;
-        _isPlaying = false;
-        _position = Duration.zero;
-      });
+      // Natürliches Ende → ebenfalls loopen
+      _loopAudioToStart();
     });
     await p.play(UrlSource(widget.media.url));
+  }
+
+  void _loopAudioToStart() {
+    final p = _audioPlayer;
+    if (p == null || _isLoopingAudio) return;
+    _isLoopingAudio = true;
+    () async {
+      try {
+        try { await p.pause(); } catch (_) {}
+        try { await p.seek(Duration.zero).timeout(const Duration(milliseconds: 500)); } catch (_) {}
+        try { await p.resume(); } catch (_) {}
+        if (mounted) {
+          setState(() {
+            _hasCompleted = false;
+            _position = Duration.zero;
+            _isPlaying = true;
+          });
+        }
+      } finally {
+        _isLoopingAudio = false;
+      }
+    }();
   }
 
   // 1:1 Waveform wie Galerie
@@ -806,8 +893,9 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
 // Video Player Widget
 class _VideoPlayerWidget extends StatefulWidget {
   final String url;
+  final bool preview; // true = auf Vorschaudauer begrenzen
 
-  const _VideoPlayerWidget({required this.url});
+  const _VideoPlayerWidget({required this.url, this.preview = false});
 
   @override
   State<_VideoPlayerWidget> createState() => _VideoPlayerWidgetState();
@@ -816,6 +904,7 @@ class _VideoPlayerWidget extends StatefulWidget {
 class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
   late VideoPlayerController _controller;
   bool _isInitialized = false;
+  Duration? _previewCap;
 
   @override
   void initState() {
@@ -825,14 +914,43 @@ class _VideoPlayerWidgetState extends State<_VideoPlayerWidget> {
         if (mounted) {
           setState(() => _isInitialized = true);
           _controller.play();
+          if (widget.preview) {
+            final d = _controller.value.duration;
+            if (d.inMilliseconds > 0) {
+              final secs = d.inSeconds;
+              final cap = (secs * 0.15).clamp(5, 25);
+              _previewCap = Duration(seconds: cap.toInt());
+              _controller.addListener(_enforcePreview);
+            }
+          }
         }
       });
   }
 
   @override
   void dispose() {
+    _controller.removeListener(_enforcePreview);
     _controller.dispose();
     super.dispose();
+  }
+
+  void _enforcePreview() {
+    if (!mounted) return;
+    if (_previewCap == null) return;
+    if (!_controller.value.isInitialized) return;
+    final pos = _controller.value.position;
+    final dur = _controller.value.duration;
+    // Sicherheitsabstand 200ms und nie über tatsächliche Dauer
+    final rawCap = _previewCap!;
+    final capBase = (dur.inMilliseconds > 0 && rawCap > dur) ? dur : rawCap;
+    final cap = Duration(milliseconds: capBase.inMilliseconds > 200 ? capBase.inMilliseconds - 200 : capBase.inMilliseconds);
+    if (pos >= cap) {
+      try {
+        // LOOP: auf 0 setzen und weiter abspielen
+        _controller.seekTo(Duration.zero);
+        _controller.play();
+      } catch (_) {}
+    }
   }
 
   @override

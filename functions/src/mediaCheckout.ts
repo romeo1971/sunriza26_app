@@ -44,8 +44,8 @@ export const createMediaCheckoutSession = functions
           },
         ],
         mode: 'payment',
-        success_url: `${process.env.APP_URL || 'http://localhost:4202'}/media/checkout?success=true&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.APP_URL || 'http://localhost:4202'}/media/checkout?cancelled=true`,
+        success_url: `${process.env.APP_URL || 'http://localhost:4202'}/media/checkout?success=true&type=media&avatarId=${encodeURIComponent(avatarId || '')}&mediaId=${encodeURIComponent(mediaId)}&mediaType=${encodeURIComponent(mediaType || '')}&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.APP_URL || 'http://localhost:4202'}/media/checkout?cancelled=true&type=media`,
         metadata: { mediaId, avatarId: avatarId || '' },
       });
       return { sessionId: session.id, url: session.url };

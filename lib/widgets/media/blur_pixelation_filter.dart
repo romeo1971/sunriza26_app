@@ -6,14 +6,14 @@ import 'package:flutter/material.dart';
 class BlurPixelationFilter extends StatelessWidget {
   final Widget child;
   final bool isBlurred; // true = Blur aktiv, false = kein Blur
-  final double blurAmount; // Blur-Stärke (default: 10.0)
+  final double blurAmount; // Blur-Stärke (default: 1.0 – sehr dezent)
   final bool showLockIcon; // Zeige Schloss-Icon über dem Blur
 
   const BlurPixelationFilter({
     super.key,
     required this.child,
     this.isBlurred = true,
-    this.blurAmount = 10.0,
+    this.blurAmount = 1.0,
     this.showLockIcon = true,
   });
 

@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'models/media_models.dart';
+import 'services/moments_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
@@ -40,7 +44,6 @@ import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform, kDebugMode;
 import 'l10n/app_localizations.dart';
 import 'package:flutter_localized_locales/flutter_localized_locales.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Deaktiviert jegliche Page-Transitions (kein Slide/Fade) für Navigator-Routen - das ist gut ok sehr gut!!
@@ -563,9 +566,89 @@ class _ResumeRouterState extends State<_ResumeRouter> with WidgetsBindingObserve
       if (_lastHandledSessionId == sessionId) return; // doppelte Navigation vermeiden
       _lastHandledSessionId = sessionId;
 
-      // Wenn wir nicht bereits auf Credits-Shop/Payment-Overview sind → zur Übersicht navigieren
+      // Spezieller Flow: Media Checkout → sofortige Kopie + Download‑Dialog, keine Navigation weg vom Chat
+      final flowType = uri.queryParameters['type'];
+      if (uri.path.contains('/media/checkout') || flowType == 'media') {
+        _handleMediaCheckoutSuccess(uri, sessionId);
+        return;
+      }
+
+      // Sonst Standard: Zahlungsübersicht
       final navigator = Navigator.of(context);
       navigator.pushNamed('/payment-overview', arguments: { 'sessionId': sessionId });
+    } catch (_) {}
+  }
+
+  Future<void> _handleMediaCheckoutSuccess(Uri uri, String sessionId) async {
+    try {
+      final avatarId = uri.queryParameters['avatarId'] ?? '';
+      final mediaId = uri.queryParameters['mediaId'] ?? '';
+      final mediaType = uri.queryParameters['mediaType'] ?? '';
+
+      AvatarMedia? media;
+      if (avatarId.isNotEmpty && mediaId.isNotEmpty && mediaType.isNotEmpty) {
+        final folder = switch (mediaType) {
+          'image' => 'images',
+          'video' => 'videos',
+          'audio' => 'audios',
+          'document' => 'documents',
+          _ => 'images',
+        };
+        final snap = await FirebaseFirestore.instance
+            .collection('avatars').doc(avatarId)
+            .collection(folder).doc(mediaId).get();
+        if (snap.exists) {
+          final map = {'id': snap.id, ...snap.data()!};
+          media = AvatarMedia.fromMap(map);
+        }
+      }
+
+      String? storedUrl;
+      String mediaName = 'Media';
+      String avatarName = 'Avatar';
+      if (media != null) {
+        mediaName = media.originalFileName ?? mediaName;
+        final moment = await MomentsService().saveMoment(
+          media: media,
+          price: media.price ?? 0.0,
+          paymentMethod: 'stripe',
+          stripePaymentIntentId: sessionId,
+        );
+        storedUrl = moment.storedUrl;
+      }
+
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text('Erfolg', style: TextStyle(color: Colors.white)),
+          content: Text(
+            'Du hast "$mediaName" von "$avatarName" erfolgreich gekauft. Bitte jetzt downloaden.',
+            style: const TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Später', style: TextStyle(color: Colors.white70)),
+            ),
+            TextButton(
+              onPressed: () async {
+                if (storedUrl != null && storedUrl.isNotEmpty) {
+                  try {
+                    final uri = Uri.parse(storedUrl);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  } catch (_) {}
+                }
+                if (Navigator.canPop(context)) Navigator.pop(context);
+              },
+              child: const Text('Jetzt downloaden', style: TextStyle(color: Color(0xFF00FF94))),
+            ),
+          ],
+        ),
+      );
     } catch (_) {}
   }
 
