@@ -43,7 +43,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateMissingVideoThumbs = exports.trimVideo = exports.extractVideoFrameAtPosition = exports.backfillVideoDocuments = exports.backfillOriginalFileNames = exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.fixVideoAspectRatios = exports.onMediaCreateSetDocumentThumb = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = void 0;
+exports.generateMissingVideoThumbs = exports.trimVideo = exports.extractVideoFrameAtPosition = exports.backfillVideoDocuments = exports.backfillOriginalFileNames = exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.fixVideoAspectRatios = exports.onMediaCreateSetDocumentThumb = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = exports.handleMediaPurchaseWebhook = exports.mediaCheckoutWebhook = exports.createMediaCheckoutSession = exports.copyMediaToMoments = void 0;
 require("dotenv/config");
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
@@ -71,6 +71,12 @@ __exportStar(require("./invoiceGenerator"), exports);
 __exportStar(require("./mediaCheckout"), exports);
 __exportStar(require("./stripeConnect"), exports);
 __exportStar(require("./paymentMethods"), exports);
+// Explizite Re-Exports für mediaCheckout
+var mediaCheckout_1 = require("./mediaCheckout");
+Object.defineProperty(exports, "copyMediaToMoments", { enumerable: true, get: function () { return mediaCheckout_1.copyMediaToMoments; } });
+Object.defineProperty(exports, "createMediaCheckoutSession", { enumerable: true, get: function () { return mediaCheckout_1.createMediaCheckoutSession; } });
+Object.defineProperty(exports, "mediaCheckoutWebhook", { enumerable: true, get: function () { return mediaCheckout_1.mediaCheckoutWebhook; } });
+Object.defineProperty(exports, "handleMediaPurchaseWebhook", { enumerable: true, get: function () { return mediaCheckout_1.handleMediaPurchaseWebhook; } });
 // Admin init (falls notwendig)
 if (!admin.apps.length) {
     try {

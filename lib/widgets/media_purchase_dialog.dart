@@ -490,6 +490,28 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
 
       // ignore: avoid_print
       print('✅✅✅ [MediaPurchase] Success-Dialog geschlossen');
+      
+      // Markiere als confirmed im Chat (für Timeline-Filter)
+      try {
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid != null && widget.media.avatarId.isNotEmpty) {
+          // Versuche playlistId aus Context zu holen (optional)
+          // Falls kein Playlist-Kontext: überspringen
+          await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(widget.media.avatarId)
+              .collection('confirmedItems')
+              .doc('${uid}_${widget.media.id}')
+              .set({
+            'userId': uid,
+            'mediaId': widget.media.id,
+            'confirmedAt': FieldValue.serverTimestamp(),
+          });
+        }
+      } catch (e) {
+        debugPrint('⚠️ Confirmed-Item konnte nicht gesetzt werden: $e');
+      }
+      
       widget.onPurchaseSuccess?.call();
       debugPrint('✅ [MediaPurchase] Credit-Kauf abgeschlossen');
     } else {

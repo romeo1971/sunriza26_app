@@ -48,25 +48,33 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
       try {
         final prefs = await SharedPreferences.getInstance();
         final pendingAvatarId = prefs.getString('pending_open_chat_avatar_id');
+        debugPrint('🔵 [HomeNav] pendingAvatarId: $pendingAvatarId');
         if (pendingAvatarId != null && pendingAvatarId.isNotEmpty) {
           if (mounted) {
+            debugPrint('🔵 [HomeNav] Opening chat for avatarId: $pendingAvatarId');
             openChat(pendingAvatarId);
             // Nach kurzem Delay: Success-Dialog anzeigen falls Media-Kauf
             Future.delayed(const Duration(milliseconds: 500), () async {
               final mediaName = prefs.getString('pending_media_success_name');
               final avatarName = prefs.getString('pending_media_success_avatar');
               final mediaUrl = prefs.getString('pending_media_success_url');
+              debugPrint('🔵 [HomeNav] Media success data: name=$mediaName, avatar=$avatarName, url=$mediaUrl');
               if (mediaName != null && mediaName.isNotEmpty && mounted) {
+                debugPrint('✅ [HomeNav] Showing media success dialog');
                 await prefs.remove('pending_media_success_name');
                 await prefs.remove('pending_media_success_avatar');
                 await prefs.remove('pending_media_success_url');
                 _showMediaSuccessDialog(mediaName, avatarName ?? 'Avatar', mediaUrl ?? '');
+              } else {
+                debugPrint('❌ [HomeNav] No media success data to show');
               }
             });
           }
           await prefs.remove('pending_open_chat_avatar_id');
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('❌ [HomeNav] Error in postFrameCallback: $e');
+      }
     });
   }
 

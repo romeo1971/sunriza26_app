@@ -5024,162 +5024,46 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
           );
         }
       } else {
-        // Für kostenpflichtige Items: Credits oder Stripe
+        // Für kostenpflichtige Items: Stripe Checkout
         final uid = FirebaseAuth.instance.currentUser?.uid;
         if (uid == null) {
           throw Exception('Nicht angemeldet');
         }
 
-        if (_paymentMethod == 'credits') {
-          // Credits-basierter Kauf
-          final requiredCredits = (widget.price / 0.1).round();
+        // Stripe Checkout (nach Erfolg als bestätigt markieren)
+        final checkoutUrl = await _purchaseService.purchaseMediaWithStripe(
+          userId: uid,
+          media: widget.media,
+        );
+
+        if (checkoutUrl == null) {
+          throw Exception('Stripe Checkout URL nicht verfügbar');
+        }
+
+        if (!mounted) return;
+        Navigator.pop(context);
+
+        // Öffne Stripe Checkout URL IM SELBEN TAB, damit der Redirect
+        // mit session_id von unserer App abgefangen wird
+        final uri = Uri.parse(checkoutUrl);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(
+            uri,
+            mode: LaunchMode.platformDefault,
+            webOnlyWindowName: '_self',
+          );
           
-          // Prüfe ob genug Credits vorhanden
-          final hasCredits = await _purchaseService.hasEnoughCredits(uid, requiredCredits);
-          if (!hasCredits) {
-            if (!mounted) return;
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('❌ Nicht genug Credits! Benötigt: $requiredCredits'),
-                backgroundColor: Colors.red,
-              ),
-            );
-            return;
-          }
-
-          // Kaufe mit Credits
-          final success = await _purchaseService.purchaseMediaWithCredits(
-            userId: uid,
-            media: widget.media,
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('💳 Stripe Checkout geöffnet...'),
+              backgroundColor: AppColors.magenta,
+            ),
           );
-
-          if (!success) {
-            throw Exception('Credits-Kauf fehlgeschlagen');
-          }
-
-          // Speichere in Moments und markiere als bestätigt
-          final saved = await _momentsService.saveMoment(
-            media: widget.media,
-            price: widget.price,
-            paymentMethod: 'credits',
-          );
-
-          // Markiere als confirmed für diesen Nutzer
-          try {
-            final uid = FirebaseAuth.instance.currentUser?.uid;
-            final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
-            final avatarId = chatState?._avatarData?.id;
-            final playlistId = chatState?._timelineItemsMetadata.isNotEmpty == true
-                ? (chatState!._timelineItemsMetadata[chatState._timelineCurrentIndex]['playlistId'] as String?)
-                : null;
-            if (uid != null && avatarId != null && playlistId != null) {
-              await FirebaseFirestore.instance
-                  .collection('avatars')
-                  .doc(avatarId)
-                  .collection('playlists')
-                  .doc(playlistId)
-                  .collection('confirmedItems')
-                  .add({
-                'userId': uid,
-                'mediaId': widget.media.id,
-                'confirmedAt': FieldValue.serverTimestamp(),
-              });
-            }
-          } catch (_) {}
-
-          // Update Purchase Status Cache
-          if (context.mounted) {
-            final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
-            if (chatState != null) {
-              chatState._purchaseStatusCache[widget.media.id] = true;
-              chatState.setState(() {}); // UI refresh
-            }
-          }
-
-          if (!mounted) return;
-          Navigator.pop(context);
-
-          // Erfolg: Download automatisch starten und Hinweis (ohne Credits-Text)
-          final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
-          final avatarName = chatState?._avatarData?.displayName 
-              ?? chatState?._avatarData?.fullName 
-              ?? 'Avatar';
-          // Auto-Download
-          try {
-            final uri = Uri.parse(saved.storedUrl);
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(uri, mode: LaunchMode.externalApplication);
-            }
-          } catch (_) {}
-
-          if (mounted) {
-            await showDialog(
-              context: context,
-              builder: (_) => AlertDialog(
-                backgroundColor: AppColors.darkSurface,
-                title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
-                content: Text(
-                  '"${widget.media.originalFileName ?? 'Media'}" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.',
-                  style: const TextStyle(color: Colors.white70),
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: const Text('Später', style: TextStyle(color: Colors.white70)),
-                  ),
-                  TextButton(
-                    onPressed: () async {
-                      try {
-                        final uri = Uri.parse(saved.storedUrl);
-                        if (await canLaunchUrl(uri)) {
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
-                        }
-                      } catch (_) {}
-                      if (Navigator.canPop(context)) Navigator.pop(context);
-                    },
-                    child: const Text('Nochmal herunterladen', style: TextStyle(color: AppColors.lightBlue)),
-                  ),
-                ],
-              ),
-            );
-          }
+          // Hinweis: Nach Redirect zurück kann der Erfolg nicht hier erkannt werden.
+          // Wir markieren daher NICHT sofort confirmed; der Erfolg wird im
+          // Webhook/Backend in Moments gespeichert. Optional später listener-basiert filtern.
         } else {
-          // Stripe Checkout (nach Erfolg als bestätigt markieren)
-          final checkoutUrl = await _purchaseService.purchaseMediaWithStripe(
-            userId: uid,
-            media: widget.media,
-          );
-
-          if (checkoutUrl == null) {
-            throw Exception('Stripe Checkout URL nicht verfügbar');
-          }
-
-          if (!mounted) return;
-          Navigator.pop(context);
-
-          // Öffne Stripe Checkout URL IM SELBEN TAB, damit der Redirect
-          // mit session_id von unserer App abgefangen wird
-          final uri = Uri.parse(checkoutUrl);
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(
-              uri,
-              mode: LaunchMode.platformDefault,
-              webOnlyWindowName: '_self',
-            );
-            
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('💳 Stripe Checkout geöffnet...'),
-                backgroundColor: AppColors.magenta,
-              ),
-            );
-            // Hinweis: Nach Redirect zurück kann der Erfolg nicht hier erkannt werden.
-            // Wir markieren daher NICHT sofort confirmed; der Erfolg wird im
-            // Webhook/Backend in Moments gespeichert. Optional später listener-basiert filtern.
-          } else {
-            throw Exception('Checkout URL konnte nicht geöffnet werden');
-          }
+          throw Exception('Checkout URL konnte nicht geöffnet werden');
         }
       }
     } catch (e) {
