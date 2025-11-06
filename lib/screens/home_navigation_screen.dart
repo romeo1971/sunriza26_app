@@ -121,7 +121,12 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
                         child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
                       ),
                       TextButton(
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () {
+                          final nLocal = Navigator.of(context, rootNavigator: false);
+                          if (nLocal.canPop()) nLocal.pop();
+                          final nRoot = Navigator.of(context, rootNavigator: true);
+                          if (nRoot.canPop()) nRoot.pop();
+                        },
                         child: const Text('Schließen', style: TextStyle(color: Color(0xFF00FF94))),
                       ),
                     ],

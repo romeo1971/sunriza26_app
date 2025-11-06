@@ -4167,7 +4167,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(dlgCtx),
+                onPressed: () {
+                  final navLocal = Navigator.of(dlgCtx, rootNavigator: false);
+                  if (navLocal.canPop()) navLocal.pop();
+                  final navRoot = Navigator.of(dlgCtx, rootNavigator: true);
+                  if (navRoot.canPop()) navRoot.pop();
+                },
                 child: const Text('Schließen', style: TextStyle(color: Colors.white70)),
               ),
               TextButton(
@@ -5098,7 +5103,12 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.pop(context),
+                  onPressed: () {
+                    final navLocal = Navigator.of(context, rootNavigator: false);
+                    if (navLocal.canPop()) navLocal.pop();
+                    final navRoot = Navigator.of(context, rootNavigator: true);
+                    if (navRoot.canPop()) navRoot.pop();
+                  },
                   child: const Text('Schließen', style: TextStyle(color: Colors.white70)),
                 ),
                 TextButton(

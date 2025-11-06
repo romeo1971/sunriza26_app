@@ -704,7 +704,12 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
                 child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
               ),
               TextButton(
-                onPressed: () => Navigator.of(context, rootNavigator: false).pop(),
+                onPressed: () {
+                  final nLocal = Navigator.of(context, rootNavigator: false);
+                  if (nLocal.canPop()) nLocal.pop();
+                  final nRoot = Navigator.of(context, rootNavigator: true);
+                  if (nRoot.canPop()) nRoot.pop();
+                },
                 child: const Text('Schließen', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             ],

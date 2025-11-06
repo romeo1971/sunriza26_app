@@ -20,6 +20,9 @@ class _MomentsScreenState extends State<MomentsScreen> {
   bool _loading = true;
   List<Moment> _items = [];
   final TextEditingController _searchCtrl = TextEditingController();
+  // Pagination
+  final int _pageSize = 10;
+  int _page = 0; // 0-based
 
   // Filterzustände
   String? _selectedAvatarId; // null = alle
@@ -124,6 +127,13 @@ class _MomentsScreenState extends State<MomentsScreen> {
     }).toList();
   }
 
+  List<Moment> get _visibleItems {
+    final list = _filteredItems;
+    final start = (_page * _pageSize).clamp(0, list.length);
+    final end = (start + _pageSize).clamp(0, list.length);
+    return list.sublist(start, end);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -214,7 +224,7 @@ class _MomentsScreenState extends State<MomentsScreen> {
                             flex: 2,
                             child: TextField(
                               controller: _searchCtrl,
-                              onChanged: (_) => setState(() {}),
+                              onChanged: (_) => setState(() { _page = 0; }),
                               style: const TextStyle(color: Colors.white),
                               decoration: const InputDecoration(
                                 hintText: 'Suche (Name, Tags, URL)',
@@ -245,47 +255,74 @@ class _MomentsScreenState extends State<MomentsScreen> {
                     // Liste
                     Expanded(
                       child: ListView.separated(
-                        itemCount: _filteredItems.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.white12),
-                  itemBuilder: (context, i) {
-                    final m = _filteredItems[i];
-                    final avatarName = _avatarNames[m.avatarId] ?? 'Avatar';
-                    final dt = DateTime.fromMillisecondsSinceEpoch(m.acquiredAt).toLocal();
-                    final subtitle = DateFormat('yyyy-MM-dd HH:mm').format(dt);
-                    
-                    return FutureBuilder<String?>(
-                      future: _getAvatarImage(m.avatarId),
-                      builder: (context, snapshot) {
-                        final avatarImg = snapshot.data;
-                        return ListTile(
-                          leading: CircleAvatar(
-                            radius: 18,
-                            backgroundColor: Colors.white12,
-                            backgroundImage: (avatarImg != null && avatarImg.isNotEmpty)
-                                ? NetworkImage(avatarImg)
-                                : null,
-                            child: (avatarImg == null || avatarImg.isEmpty)
-                                ? const Icon(Icons.person, color: Colors.white54)
-                                : null,
+                        itemCount: _visibleItems.length,
+                        separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.white12),
+                        itemBuilder: (context, i) {
+                          final m = _visibleItems[i];
+                          final avatarName = _avatarNames[m.avatarId] ?? 'Avatar';
+                          final dt = DateTime.fromMillisecondsSinceEpoch(m.acquiredAt).toLocal();
+                          final subtitle = DateFormat('yyyy-MM-dd HH:mm').format(dt);
+
+                          return FutureBuilder<String?>(
+                            future: _getAvatarImage(m.avatarId),
+                            builder: (context, snapshot) {
+                              final avatarImg = snapshot.data;
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: Colors.white12,
+                                  backgroundImage: (avatarImg != null && avatarImg.isNotEmpty)
+                                      ? NetworkImage(avatarImg)
+                                      : null,
+                                  child: (avatarImg == null || avatarImg.isEmpty)
+                                      ? const Icon(Icons.person, color: Colors.white54)
+                                      : null,
+                                ),
+                                title: Text(
+                                  m.originalFileName ?? m.storedUrl.split('/').last,
+                                  style: const TextStyle(color: Colors.white),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  '$avatarName  •  $subtitle',
+                                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                                ),
+                                trailing: const Icon(Icons.chevron_right, color: Colors.white54),
+                                onTap: () {
+                                  // Optional: Später Detail/Preview öffnen
+                                },
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    // Pagination-Leiste
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 6, 12, 12),
+                      child: Row(
+                        children: [
+                          TextButton(
+                            onPressed: _page > 0 ? () => setState(() => _page--) : null,
+                            child: const Text('Zurück'),
                           ),
-                      title: Text(
-                        m.originalFileName ?? m.storedUrl.split('/').last,
-                        style: const TextStyle(color: Colors.white),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(
-                        '$avatarName  •  $subtitle',
-                        style: const TextStyle(color: Colors.white38, fontSize: 12),
-                      ),
-                      trailing: const Icon(Icons.chevron_right, color: Colors.white54),
-                      onTap: () {
-                        // Optional: Später Detail/Preview öffnen
-                      },
-                        );
-                      },
-                    );
-                  },
+                          const SizedBox(width: 8),
+                          Builder(builder: (_) {
+                            final total = _filteredItems.length;
+                            if (total == 0) return const SizedBox();
+                            final start = (_page * _pageSize) + 1;
+                            final end = ((_page * _pageSize) + _pageSize).clamp(1, total);
+                            return Text('$start–$end/$total', style: const TextStyle(color: Colors.white70));
+                          }),
+                          const SizedBox(width: 8),
+                          TextButton(
+                            onPressed: ((_page + 1) * _pageSize) < _filteredItems.length
+                                ? () => setState(() => _page++)
+                                : null,
+                            child: const Text('Weiter'),
+                          ),
+                        ],
                       ),
                     ),
                   ],

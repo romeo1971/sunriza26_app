@@ -18,6 +18,9 @@ class TransactionsScreen extends StatefulWidget {
 class _TransactionsScreenState extends State<TransactionsScreen> {
   final _dateFormat = DateFormat('dd.MM.yyyy HH:mm');
   String _filter = 'all'; // all, credits, media
+  // Pagination
+  final int _pageSize = 10;
+  int _page = 0; // 0-based
   // OTS-Status je Transaktion (stamped/pending/…)
   final Map<String, String> _anchorStatus = {};
   final Set<String> _anchorStamped = {};
@@ -140,13 +143,41 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             );
           }
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: transactions.length,
-            itemBuilder: (context, index) {
-              final tx = transactions[index];
-              return _buildTransactionCard(tx);
-            },
+          final start = (_page * _pageSize).clamp(0, transactions.length);
+          final end = (start + _pageSize).clamp(0, transactions.length);
+          final pageItems = transactions.sublist(start, end);
+
+          return Column(
+            children: [
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: pageItems.length,
+                  itemBuilder: (context, index) {
+                    final tx = pageItems[index];
+                    return _buildTransactionCard(tx);
+                  },
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: Row(
+                  children: [
+                    TextButton(
+                      onPressed: _page > 0 ? () => setState(() => _page--) : null,
+                      child: const Text('Zurück'),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('${start + 1}–$end/${transactions.length}', style: const TextStyle(color: Colors.white70)),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: end < transactions.length ? () => setState(() => _page++) : null,
+                      child: const Text('Weiter'),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           );
         },
       ),
