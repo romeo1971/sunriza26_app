@@ -7,6 +7,8 @@ import '../models/user_profile.dart';
 import '../services/media_purchase_service.dart';
 import '../services/moments_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:html' as html;
+import 'dart:ui' as ui;
 
 /// Dialog für Media-Kauf (Credits oder Stripe)
 class MediaPurchaseDialog extends StatefulWidget {
@@ -543,20 +545,33 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
       if (checkoutUrl == null) throw Exception('Keine Checkout-URL erhalten');
 
       if (!mounted) return;
-      Navigator.pop(context);
+      Navigator.pop(context); // Schließe Purchase-Dialog
 
-      final uri = Uri.parse(checkoutUrl);
-      if (await canLaunchUrl(uri)) {
-        // In SELBEM TAB öffnen, damit der Redirect zurück inkl. session_id
-        // sicher von unserer App abgefangen wird
-        await launchUrl(
-          uri,
-          mode: LaunchMode.platformDefault,
-          webOnlyWindowName: '_self',
-        );
-      } else {
-        throw Exception('Kann URL nicht öffnen');
-      }
+      // Hole Avatar-Name
+      String avatarName = 'Avatar';
+      try {
+        final avatarDoc = await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(widget.media.avatarId)
+            .get();
+        if (avatarDoc.exists) {
+          final data = avatarDoc.data()!;
+          final nickname = (data['nickname'] as String?)?.trim();
+          final firstName = (data['firstName'] as String?)?.trim();
+          avatarName = (nickname != null && nickname.isNotEmpty) ? nickname : (firstName ?? 'Avatar');
+        }
+      } catch (_) {}
+
+      // Zeige Stripe Checkout in iframe IM CHAT
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => _StripeCheckoutDialog(
+          checkoutUrl: checkoutUrl,
+          mediaName: widget.media.originalFileName ?? 'Media',
+          avatarName: avatarName,
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
       setState(() => _purchasing = false);
@@ -577,5 +592,119 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
       case AvatarMediaType.document:
         return Icons.description;
     }
+  }
+}
+
+/// Stripe Checkout Dialog mit iframe
+class _StripeCheckoutDialog extends StatefulWidget {
+  final String checkoutUrl;
+  final String mediaName;
+  final String avatarName;
+
+  const _StripeCheckoutDialog({
+    required this.checkoutUrl,
+    required this.mediaName,
+    required this.avatarName,
+  });
+
+  @override
+  State<_StripeCheckoutDialog> createState() => _StripeCheckoutDialogState();
+}
+
+class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(20),
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        height: MediaQuery.of(context).size.height * 0.9,
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A1A),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.3),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+              ),
+              child: Row(
+                children: [
+                  const Text(
+                    'Stripe Checkout',
+                    style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+            // iframe
+            Expanded(
+              child: HtmlElementView(
+                viewType: 'stripe-checkout-${widget.checkoutUrl.hashCode}',
+                onPlatformViewCreated: (id) => _createIframe(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _createIframe() {
+    // Lausche auf postMessage von Stripe-Success-URL
+    html.window.onMessage.listen((event) {
+      debugPrint('🔵🔵🔵 [StripeIframe] Message: ${event.data}');
+      
+      if (event.data.toString().contains('stripe-success')) {
+        debugPrint('✅✅✅ [StripeIframe] SUCCESS erkannt!');
+        
+        if (mounted) {
+          Navigator.pop(context);
+          
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => AlertDialog(
+              backgroundColor: const Color(0xFF1A1A1A),
+              title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
+              content: Text(
+                '"${widget.mediaName}" von "${widget.avatarName}" wurde zu deinen Momenten hinzugefügt.',
+                style: const TextStyle(color: Colors.white70),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK', style: TextStyle(color: Color(0xFF00FF94))),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    });
+
+    // ignore: undefined_prefixed_name
+    ui.platformViewRegistry.registerViewFactory(
+      'stripe-checkout-${widget.checkoutUrl.hashCode}',
+      (int viewId) {
+        final iframe = html.IFrameElement()
+          ..src = widget.checkoutUrl
+          ..style.border = 'none'
+          ..style.width = '100%'
+          ..style.height = '100%';
+
+        return iframe;
+      },
+    );
   }
 }

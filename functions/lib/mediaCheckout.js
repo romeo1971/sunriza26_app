@@ -59,7 +59,7 @@ exports.createMediaCheckoutSession = functions
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
     }
-    const { mediaId, avatarId, amount, currency, mediaName, mediaType, mediaUrl, returnUrl } = data || {};
+    const { mediaId, avatarId, amount, currency, mediaName, mediaType, mediaUrl } = data || {};
     if (!mediaId || !amount || !currency) {
         throw new functions.https.HttpsError('invalid-argument', 'mediaId, amount, currency erforderlich');
     }
@@ -81,8 +81,8 @@ exports.createMediaCheckoutSession = functions
                 },
             ],
             mode: 'payment',
-            // Hash-Routing für Flutter Web, damit die Route sicher erkannt wird
-            success_url: `${process.env.APP_URL || 'http://localhost:4202'}/#/media/checkout?success=true&type=media&avatarId=${encodeURIComponent(avatarId || '')}&mediaId=${encodeURIComponent(mediaId)}&mediaType=${encodeURIComponent(mediaType || '')}&mediaUrl=${encodeURIComponent(mediaUrl || '')}&session_id={CHECKOUT_SESSION_ID}${returnUrl ? `&return=${encodeURIComponent(returnUrl)}` : ''}`,
+            // Success-Seite die postMessage an iframe parent sendet
+            success_url: `${process.env.APP_URL || 'http://localhost:4202'}/stripe_success.html?avatarId=${encodeURIComponent(avatarId || '')}&mediaId=${encodeURIComponent(mediaId)}&mediaName=${encodeURIComponent(mediaName || 'Media')}&session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${process.env.APP_URL || 'http://localhost:4202'}/#/media/checkout?cancelled=true&type=media`,
             metadata: {
                 type: 'media_purchase',

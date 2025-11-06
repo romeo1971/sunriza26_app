@@ -53,10 +53,11 @@ class AvatarChatScreen extends StatefulWidget {
 }
 
 class _AvatarChatScreenState extends State<AvatarChatScreen>
-    with AutomaticKeepAliveClientMixin {
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   final TextEditingController _messageController = TextEditingController();
   bool _inputFocused = false;
   bool _firstValidSend = false; // vermeidet Kosten vor erstem echten Senden
+  bool _stripeSuccessShown = false; // Flag damit Dialog nur 1x erscheint
   final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [];
   final Map<String, Timer> _deleteTimers = {}; // Hero Chat Lösch-Timer
@@ -757,6 +758,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // Initialize Lipsync Strategy (Streaming bevorzugt; fallback per Flag)
     final useOrch = EnvService.orchestratorEnabled();
@@ -767,8 +769,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       orchestratorUrl: AppConfig.orchestratorUrl,
     );
 
-    // Einmaliger Warmup-Ping vor erster Eingabe (kein permanentes Warmhalten)
+    // Prüfe sofort beim Laden ob Stripe-Success vorliegt
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkForStripeSuccess();
+      
       try {
         _lipsync.warmUp();
       } catch (e) {
@@ -4098,7 +4102,77 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkForStripeSuccess();
+    }
+  }
+
+  Future<void> _checkForStripeSuccess() async {
+    try {
+      final uri = Uri.base;
+      final success = uri.queryParameters['success'];
+      final sessionId = uri.queryParameters['session_id'];
+      final type = uri.queryParameters['type'];
+      
+      debugPrint('🔵🔵🔵 [ChatScreen] Check URL, success=$success, type=$type, sessionId=$sessionId');
+      
+      if (success == 'true' && type == 'media' && sessionId != null && sessionId.isNotEmpty && !_stripeSuccessShown) {
+        debugPrint('✅✅✅ [ChatScreen] Stripe-Success erkannt!');
+        _stripeSuccessShown = true; // Verhindere doppelte Anzeige
+        
+        final mediaName = uri.queryParameters['mediaName'] ?? 'Media';
+        final nickname = _avatarData?.nickname?.trim();
+        final firstName = _avatarData?.firstName?.trim();
+        final avatarName = (nickname != null && nickname.isNotEmpty) ? nickname : (firstName ?? 'Avatar');
+        final mediaUrl = uri.queryParameters['mediaUrl'] ?? '';
+        
+        // Warte kurz, damit Chat vollständig geladen ist
+        await Future.delayed(const Duration(milliseconds: 800));
+        
+        if (!mounted) return;
+        
+        debugPrint('🔵🔵🔵 [ChatScreen] Zeige Success-Dialog');
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (_) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
+            content: Text(
+              '"$mediaName" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.',
+              style: const TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Später', style: TextStyle(color: Colors.white70)),
+              ),
+              if (mediaUrl.isNotEmpty)
+                TextButton(
+                  onPressed: () async {
+                    try {
+                      final uri = Uri.parse(mediaUrl);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                      }
+                    } catch (_) {}
+                    if (Navigator.canPop(context)) Navigator.pop(context);
+                  },
+                  child: const Text('Nochmal herunterladen', style: TextStyle(color: Color(0xFF00FF94))),
+                ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('🔴🔴🔴 [ChatScreen] Fehler in _checkForStripeSuccess: $e');
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // _videoService.dispose(); // entfernt – kein lokales Lipsync mehr
     _playerStateSub?.cancel();
     _playerPositionSub?.cancel();

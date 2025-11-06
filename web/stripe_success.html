@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Zahlung erfolgreich</title>
+    <style>
+        body {
+            background: #1A1A1A;
+            color: white;
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .success {
+            text-align: center;
+        }
+        .checkmark {
+            font-size: 64px;
+            color: #00FF94;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="success">
+        <div class="checkmark">✓</div>
+        <h1>Zahlung erfolgreich!</h1>
+        <p>Einen Moment bitte...</p>
+    </div>
+    <script>
+        // Sende Message an parent window
+        if (window.parent !== window) {
+            console.log('📤 Sende stripe-success an parent');
+            window.parent.postMessage('stripe-success', '*');
+        }
+        
+        // Warte 1 Sekunde, dann redirect zurück zur App (Fallback)
+        setTimeout(() => {
+            const params = new URLSearchParams(window.location.search);
+            const avatarId = params.get('avatarId');
+            if (avatarId) {
+                window.location.href = '/#/home';
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
+

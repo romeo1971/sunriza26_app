@@ -182,8 +182,6 @@ class MediaPurchaseService {
         'mediaName': media.originalFileName ?? 'Media',
         'mediaType': _getMediaTypeString(media.type),
         'mediaUrl': media.url,
-        // Für Web: aktuelle URL zurückgeben, damit nach Erfolg wiederhergestellt werden kann
-        if (kIsWeb) 'returnUrl': Uri.base.toString(),
       });
 
       return result.data['url'] as String?;
