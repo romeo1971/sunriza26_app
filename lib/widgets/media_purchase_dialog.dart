@@ -317,6 +317,10 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
     );
   }
 
+  
+
+  
+
   Future<void> _purchaseWithCredits() async {
     debugPrint('🔵 [MediaPurchase] Credit-Kauf gestartet für mediaId=${widget.media.id}, avatarId=${widget.media.avatarId}');
     setState(() => _purchasing = true);
@@ -644,14 +648,7 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
           final url = await _findMomentDownloadUrl();
           if (url != null && url.isNotEmpty) {
             setState(() => _downloadUrl = url);
-            final uri = Uri.parse(url);
-            if (await canLaunchUrl(uri)) {
-              await launchUrl(
-                uri,
-                mode: LaunchMode.externalApplication,
-                webOnlyWindowName: '_blank',
-              );
-            }
+            _triggerBrowserDownload(url);
           }
         } catch (_) {}
         
@@ -688,23 +685,14 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
                 onPressed: () async {
                   final url = _downloadUrl ?? await _findMomentDownloadUrl();
                   if (url != null && url.isNotEmpty) {
-                    try {
-                      final uri = Uri.parse(url);
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(
-                          uri,
-                          mode: LaunchMode.externalApplication,
-                          webOnlyWindowName: '_blank',
-                        );
-                      }
-                    } catch (_) {}
+                    _triggerBrowserDownload(url);
                   }
                 },
                 child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
               ),
               TextButton(
                 onPressed: () => Navigator.of(context, rootNavigator: false).pop(),
-                child: const Text('Fertig', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
+                child: const Text('Schließen', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
               ),
             ],
           ),
@@ -764,6 +752,40 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
         ),
       ),
     );
+  }
+
+  void _triggerBrowserDownload(String url, {String? filename}) async {
+    // Erzwinge Download-Header für Firebase-URLs
+    try {
+      if (url.contains('firebasestorage.googleapis.com')) {
+        final hasQuery = url.contains('?');
+        final encoded = Uri.encodeComponent('attachment; filename="${filename ?? 'download'}"');
+        final param = 'response-content-disposition=$encoded';
+        if (!url.contains('response-content-disposition=')) {
+          url = url + (hasQuery ? '&' : '?') + param;
+        }
+      }
+    } catch (_) {}
+    try {
+      final a = html.AnchorElement(href: url)
+        ..target = '_blank'
+        ..rel = 'noopener'
+        ..download = filename ?? '';
+      html.document.body?.append(a);
+      a.click();
+      a.remove();
+    } catch (_) {
+      try {
+        final uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+        } else {
+          html.window.location.href = url;
+        }
+      } catch (_) {
+        html.window.location.href = url;
+      }
+    }
   }
 
   Future<String?> _findMomentDownloadUrl() async {

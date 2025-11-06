@@ -160,20 +160,45 @@ async function handleMediaPurchaseWebhook(session, admin) {
             invoiceNumber,
         }, { merge: true });
         console.log(`✅ Media-Transaktion geschrieben: users/${userId}/transactions/${session.id}`);
-        // Zusätzlich: Moment-Dokument anlegen (robust, ohne Storage-Kopie)
+        // Zusätzlich: Moment-Dokument anlegen und Datei in Nutzer‑Ordner kopieren (wenn Firebase-URL)
         try {
             const momentsCol = admin.firestore().collection('users').doc(userId).collection('moments');
             const momentId = momentsCol.doc().id;
             const nowMs = Date.now();
             const type = md.mediaType || 'image';
+            let storedUrl = md.mediaUrl || '';
+            let originalFileName = md.mediaName || 'Media';
+            try {
+                const mediaUrl = md.mediaUrl || '';
+                const avatarId = md.avatarId || '';
+                const m = mediaUrl.match(/\/o\/(.*?)\?/);
+                if (m && m[1]) {
+                    const srcPath = decodeURIComponent(m[1]);
+                    const ts = Date.now();
+                    const baseName = originalFileName || srcPath.split('/').pop() || `moment_${ts}`;
+                    const destPath = `users/${userId}/moments/${avatarId}/${ts}_${baseName}`;
+                    const bucket = admin.storage().bucket();
+                    await bucket.file(srcPath).copy(bucket.file(destPath));
+                    const [signedUrl] = await bucket.file(destPath).getSignedUrl({
+                        action: 'read',
+                        expires: Date.now() + 30 * 24 * 3600 * 1000,
+                        responseDisposition: `attachment; filename="${baseName}"`,
+                    });
+                    storedUrl = signedUrl;
+                    originalFileName = baseName;
+                }
+            }
+            catch (copyErr) {
+                console.error('⚠️ Storage-Kopie im Webhook fehlgeschlagen, verwende Original-URL:', copyErr);
+            }
             await momentsCol.doc(momentId).set({
                 id: momentId,
                 userId,
                 avatarId: md.avatarId || '',
                 type,
                 originalUrl: md.mediaUrl || '',
-                storedUrl: md.mediaUrl || '',
-                originalFileName: md.mediaName || 'Media',
+                storedUrl,
+                originalFileName,
                 acquiredAt: nowMs, // als Zahl, kompatibel zum Client
                 price: (amount || 0) / 100.0,
                 currency: currency === 'usd' ? '$' : '€',

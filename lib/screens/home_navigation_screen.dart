@@ -68,24 +68,11 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
               
               await Future.delayed(const Duration(milliseconds: 800));
               
-              // Auto-Download versuchen: neuestes Moment (oder passender Dateiname)
-              String? downloadUrl;
-              try {
-                final moments = await MomentsService().listMoments(avatarId: avatarId);
-                if (moments.isNotEmpty) {
-                  final byName = moments.firstWhere(
-                    (m) => (m.originalFileName ?? '').trim() == mediaName.trim(),
-                    orElse: () => moments.first,
-                  );
-                  downloadUrl = byName.storedUrl.isNotEmpty ? byName.storedUrl : byName.originalUrl;
-                }
-                if (downloadUrl != null && downloadUrl.isNotEmpty) {
-                  final uri = Uri.parse(downloadUrl);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-                  }
-                }
-              } catch (_) {}
+              // Auto-Download: Polling bis Moment geschrieben ist (Webhook-Delay)
+              String? downloadUrl = await _resolveDownloadUrl(avatarId: avatarId, mediaName: mediaName);
+              if (downloadUrl != null && downloadUrl.isNotEmpty) {
+                _triggerBrowserDownload(downloadUrl);
+              }
 
               if (mounted) {
                 await showDialog(
@@ -96,24 +83,20 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
                     title: const Text('Zahlung bestätigt ✓', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     content: Text('$mediaName wurde zu deinen Momenten hinzugefügt.', style: const TextStyle(color: Colors.white70)),
                     actions: [
-                      if (downloadUrl != null && downloadUrl.isNotEmpty)
-                        TextButton(
-                          onPressed: () async {
-                            try {
-                              final url = downloadUrl; // capture
-                              if (url != null && url.isNotEmpty) {
-                                final uri = Uri.parse(url);
-                                if (await canLaunchUrl(uri)) {
-                                  await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-                                }
-                              }
-                            } catch (_) {}
-                          },
-                          child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
-                        ),
+                      TextButton(
+                        onPressed: () async {
+                          try {
+                            final url = downloadUrl ?? await _resolveDownloadUrl(avatarId: avatarId, mediaName: mediaName);
+                            if (url != null && url.isNotEmpty) {
+                              _triggerBrowserDownload(url);
+                            }
+                          } catch (_) {}
+                        },
+                        child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
+                      ),
                       TextButton(
                         onPressed: () => Navigator.pop(context),
-                        child: const Text('OK', style: TextStyle(color: Color(0xFF00FF94))),
+                        child: const Text('Schließen', style: TextStyle(color: Color(0xFF00FF94))),
                       ),
                     ],
                   ),
@@ -342,6 +325,58 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
         ),
       ),
     );
+  }
+
+  Future<String?> _resolveDownloadUrl({required String avatarId, required String mediaName, int tries = 6, Duration delay = const Duration(milliseconds: 600)}) async {
+    for (int i = 0; i < tries; i++) {
+      try {
+        final moments = await MomentsService().listMoments(avatarId: avatarId);
+        if (moments.isNotEmpty) {
+          final byName = moments.firstWhere(
+            (m) => (m.originalFileName ?? '').trim() == mediaName.trim(),
+            orElse: () => moments.first,
+          );
+          final url = byName.storedUrl.isNotEmpty ? byName.storedUrl : byName.originalUrl;
+          if (url.isNotEmpty) return url;
+        }
+      } catch (_) {}
+      await Future.delayed(delay);
+    }
+    return null;
+  }
+
+  Future<void> _triggerBrowserDownload(String url, {String? filename}) async {
+    // Erzwinge Download-Header für Firebase-URLs
+    try {
+      if (url.contains('firebasestorage.googleapis.com')) {
+        final hasQuery = url.contains('?');
+        final encoded = Uri.encodeComponent('attachment; filename="${filename ?? 'download'}"');
+        final param = 'response-content-disposition=$encoded';
+        if (!url.contains('response-content-disposition=')) {
+          url = url + (hasQuery ? '&' : '?') + param;
+        }
+      }
+    } catch (_) {}
+    try {
+      final anchor = html.AnchorElement(href: url)
+        ..target = '_blank'
+        ..rel = 'noopener'
+        ..download = filename ?? '';
+      html.document.body?.append(anchor);
+      anchor.click();
+      anchor.remove();
+    } catch (_) {
+      try {
+        final uri = Uri.parse(url);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+        } else {
+          html.window.location.href = url;
+        }
+      } catch (_) {
+        html.window.location.href = url;
+      }
+    }
   }
 
   void _showMediaSuccessDialog(String mediaName, String avatarName, String mediaUrl) {
