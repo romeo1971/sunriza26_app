@@ -18,9 +18,6 @@ class TimelineItemsSheet extends StatefulWidget {
 }
 
 class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
-  // Simpler In-Memory-Cache pro Avatar für die aktuelle App-Session
-  static final Map<String, List<_TimelineVm>> _itemsCacheByAvatar = {};
-
   final FirebaseFirestore _fs = FirebaseFirestore.instance;
   int _userCredits = 0;
 
@@ -40,15 +37,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
   @override
   void initState() {
     super.initState();
-    final cached = _itemsCacheByAvatar[widget.avatarId];
-    if (cached != null) {
-      _items = List<_TimelineVm>.from(cached);
-      _loading = false;
-      // Falls nötig, später Hintergrund-Refresh optional ergänzen
-      setState(() {});
-    } else {
-      _loadData();
-    }
+    _loadData();
     _loadUserCredits();
   }
 
@@ -69,6 +58,11 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   // Credits-Summe und Verfügbarkeit
@@ -281,7 +275,32 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         }
       }
 
-      // 6) Auflösen: assetId -> mediaId -> AvatarMedia
+      // 6) Bereits vorhandene Moments (User) laden → nicht erneut anzeigen
+      Set<String> existingUrls = <String>{};
+      Set<String> existingNames = <String>{};
+      Set<String> existingBaseNames = <String>{}; // fallback: Dateiname aus URL
+      try {
+        final moments = await MomentsService().listMoments();
+        existingUrls = moments.map((m) => m.originalUrl).whereType<String>().toSet();
+        existingNames = moments
+            .map((m) => (m.originalFileName ?? '').trim().toLowerCase())
+            .where((s) => s.isNotEmpty)
+            .toSet();
+        existingBaseNames = moments
+            .map((m) {
+              try {
+                final u = Uri.parse(m.originalUrl);
+                final seg = u.pathSegments.isNotEmpty ? u.pathSegments.last : '';
+                return seg.toLowerCase();
+              } catch (_) {
+                return '';
+              }
+            })
+            .where((s) => s.isNotEmpty)
+            .toSet();
+      } catch (_) {}
+
+      // 7) Auflösen: assetId -> mediaId -> AvatarMedia
       final List<_TimelineVm> built = <_TimelineVm>[];
       for (final item in allItems) {
         final assetId = item['assetId'] as String?;
@@ -319,6 +338,18 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         final map = {'id': mediaId, ...data};
         AvatarMedia media = AvatarMedia.fromMap(map);
         if (confirmedIds.contains(media.id)) continue;
+        // Filter: bereits in Moments vorhanden (nach URL oder Dateiname)
+        final nameTrim = (media.originalFileName ?? '').trim().toLowerCase();
+        String urlBase = '';
+        try {
+          final u = Uri.parse(media.url);
+          urlBase = u.pathSegments.isNotEmpty ? u.pathSegments.last.toLowerCase() : '';
+        } catch (_) {}
+        if (existingUrls.contains(media.url) ||
+            (nameTrim.isNotEmpty && existingNames.contains(nameTrim)) ||
+            (urlBase.isNotEmpty && existingBaseNames.contains(urlBase))) {
+          continue;
+        }
 
         // Audio-Cover nachladen (wie im Chat)
         if (media.type == AvatarMediaType.audio) {
@@ -354,8 +385,6 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         built.add(_TimelineVm(id: media.id, media: media, playlistId: item['playlistId'] as String?));
       }
 
-      // Cache aktualisieren
-      _itemsCacheByAvatar[widget.avatarId] = List<_TimelineVm>.from(built);
       setState(() { _items = built; _loading = false; });
     } catch (e) {
       setState(() {
@@ -377,11 +406,6 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
       _items.removeWhere((e) => e.id == id);
       _selected.remove(id);
     });
-    // Cache synchron halten
-    final cached = _itemsCacheByAvatar[widget.avatarId];
-    if (cached != null) {
-      cached.removeWhere((e) => e.id == id);
-    }
   }
 
   
