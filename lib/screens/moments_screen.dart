@@ -34,14 +34,21 @@ class _MomentsScreenState extends State<MomentsScreen> {
   void initState() {
     super.initState();
     _load();
+    // Auto-Refresh wenn neue Momente erstellt/gelöscht wurden
+    MomentsService.refreshTicker.addListener(_onMomentsChanged);
   }
 
   @override
   void dispose() {
+    MomentsService.refreshTicker.removeListener(_onMomentsChanged);
     _searchCtrl.dispose();
     super.dispose();
   }
 
+  void _onMomentsChanged() {
+    if (!mounted) return;
+    _load();
+  }
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
@@ -145,12 +152,6 @@ class _MomentsScreenState extends State<MomentsScreen> {
         title: const Text('Momente'),
         backgroundColor: Colors.black,
         elevation: 0,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _load,
-          ),
-        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())

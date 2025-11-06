@@ -5,6 +5,7 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
+import 'package:flutter/foundation.dart';
 import '../models/moment.dart';
 import '../models/media_models.dart';
 
@@ -13,6 +14,9 @@ class MomentsService {
   final _fs = FirebaseFirestore.instance;
   final _auth = FirebaseAuth.instance;
   final _storage = FirebaseStorage.instance;
+
+  /// Globaler Refresh-Ticker: UI hört darauf und lädt neu
+  static final ValueNotifier<int> refreshTicker = ValueNotifier<int>(0);
 
   /// Moment Collection für User
   CollectionReference<Map<String, dynamic>> _momentsCol(String userId) {
@@ -201,6 +205,8 @@ class MomentsService {
     }
 
     debugPrint('✅ Moment saved: $momentId ($storedUrl)');
+    // UI benachrichtigen
+    try { refreshTicker.value = refreshTicker.value + 1; } catch (_) {}
     return moment;
   }
 
@@ -407,6 +413,8 @@ class MomentsService {
     // Lösche Firestore Doc
     await _momentsCol(uid).doc(momentId).delete();
     debugPrint('✅ Moment deleted: $momentId');
+    // UI benachrichtigen
+    try { refreshTicker.value = refreshTicker.value + 1; } catch (_) {}
   }
 
   void debugPrint(String message) {

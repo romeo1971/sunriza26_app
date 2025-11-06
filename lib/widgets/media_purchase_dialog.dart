@@ -634,6 +634,8 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
         debugPrint('✅✅✅ [StripeIframe] SUCCESS erkannt!');
         
         if (!mounted) return;
+        // Informiere Momente-UI (serverseitig angelegter Moment)
+        try { MomentsService.refreshTicker.value = MomentsService.refreshTicker.value + 1; } catch (_) {}
         
         // Schließe iframe-Dialog
         Navigator.of(context, rootNavigator: false).pop();
