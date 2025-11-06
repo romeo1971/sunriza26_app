@@ -168,6 +168,7 @@ export async function handleMediaPurchaseWebhook(session: Stripe.Checkout.Sessio
         userId,
         avatarId: (md.avatarId as string | undefined) || '',
         type,
+        mediaId: (md.mediaId as string | undefined) || null,
         originalUrl: (md.mediaUrl as string | undefined) || '',
         storedUrl,
         originalFileName,

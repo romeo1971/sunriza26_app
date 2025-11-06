@@ -275,27 +275,13 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         }
       }
 
-      // 6) Bereits vorhandene Moments (User) laden → nicht erneut anzeigen
-      Set<String> existingUrls = <String>{};
-      Set<String> existingNames = <String>{};
-      Set<String> existingBaseNames = <String>{}; // fallback: Dateiname aus URL
+      // 6) Bereits vorhandene Moments (User) laden → nicht erneut anzeigen (Filter nach mediaId)
+      Set<String> existingMediaIds = <String>{};
       try {
         final moments = await MomentsService().listMoments();
-        existingUrls = moments.map((m) => m.originalUrl).whereType<String>().toSet();
-        existingNames = moments
-            .map((m) => (m.originalFileName ?? '').trim().toLowerCase())
-            .where((s) => s.isNotEmpty)
-            .toSet();
-        existingBaseNames = moments
-            .map((m) {
-              try {
-                final u = Uri.parse(m.originalUrl);
-                final seg = u.pathSegments.isNotEmpty ? u.pathSegments.last : '';
-                return seg.toLowerCase();
-              } catch (_) {
-                return '';
-              }
-            })
+        existingMediaIds = moments
+            .map((m) => m.mediaId)
+            .whereType<String>()
             .where((s) => s.isNotEmpty)
             .toSet();
       } catch (_) {}
@@ -338,16 +324,8 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         final map = {'id': mediaId, ...data};
         AvatarMedia media = AvatarMedia.fromMap(map);
         if (confirmedIds.contains(media.id)) continue;
-        // Filter: bereits in Moments vorhanden (nach URL oder Dateiname)
-        final nameTrim = (media.originalFileName ?? '').trim().toLowerCase();
-        String urlBase = '';
-        try {
-          final u = Uri.parse(media.url);
-          urlBase = u.pathSegments.isNotEmpty ? u.pathSegments.last.toLowerCase() : '';
-        } catch (_) {}
-        if (existingUrls.contains(media.url) ||
-            (nameTrim.isNotEmpty && existingNames.contains(nameTrim)) ||
-            (urlBase.isNotEmpty && existingBaseNames.contains(urlBase))) {
+        // Filter: bereits in Moments vorhanden (nach mediaId)
+        if (existingMediaIds.contains(media.id)) {
           continue;
         }
 

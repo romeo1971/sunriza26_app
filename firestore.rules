@@ -86,7 +86,7 @@ service cloud.firestore {
       match /moments/{momentId} {
         allow read: if signedIn() && uid == request.auth.uid;
         allow create: if signedIn() && uid == request.auth.uid
-          && request.resource.data.keys().hasOnly(['id', 'userId', 'avatarId', 'type', 'originalUrl', 'storedUrl', 'thumbUrl', 'originalFileName', 'acquiredAt', 'price', 'currency', 'receiptId', 'tags'])
+          && request.resource.data.keys().hasOnly(['id', 'userId', 'avatarId', 'type', 'mediaId', 'originalUrl', 'storedUrl', 'thumbUrl', 'originalFileName', 'acquiredAt', 'price', 'currency', 'receiptId', 'tags'])
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.type in ['image', 'video', 'audio', 'document']
           && request.resource.data.originalUrl is string

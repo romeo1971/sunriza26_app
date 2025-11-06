@@ -196,6 +196,7 @@ async function handleMediaPurchaseWebhook(session, admin) {
                 userId,
                 avatarId: md.avatarId || '',
                 type,
+                mediaId: md.mediaId || null,
                 originalUrl: md.mediaUrl || '',
                 storedUrl,
                 originalFileName,

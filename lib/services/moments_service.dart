@@ -118,11 +118,13 @@ class MomentsService {
 
     // 5. Create Moment
     final momentId = _momentsCol(uid).doc().id;
+    debugPrint('🔵 [MomentsService] Create Moment: mediaId=${media.id}');
     final moment = Moment(
       id: momentId,
       userId: uid,
       avatarId: media.avatarId,
       type: _typeToString(media.type),
+      mediaId: media.id,
       originalUrl: media.url,
       storedUrl: storedUrl,
       thumbUrl: storedThumbUrl,
@@ -135,7 +137,17 @@ class MomentsService {
     );
 
     // 6. Save to Firestore
-    await _momentsCol(uid).doc(momentId).set(moment.toMap());
+    debugPrint('🔵 [MomentsService] Save Moment to Firestore...');
+    try {
+      final momentMap = moment.toMap();
+      debugPrint('🔵 [MomentsService] Moment Map: $momentMap');
+      await _momentsCol(uid).doc(momentId).set(momentMap);
+      debugPrint('🔵 [MomentsService] Moment saved to Firestore');
+    } catch (e, stack) {
+      debugPrint('❌ [MomentsService] FIRESTORE WRITE FAILED: $e');
+      debugPrint('❌ [MomentsService] Stack: $stack');
+      rethrow;
+    }
 
     // 7. Receipt (falls Preis > 0) und Transaktionseintrag (immer)
     String? receiptId;
@@ -344,6 +356,7 @@ class MomentsService {
               userId: uid,
               avatarId: (m['avatarId'] as String?) ?? '',
               type: type,
+              mediaId: (m['mediaId'] as String?),
               originalUrl: (m['mediaUrl'] as String?) ?? '',
               storedUrl: (m['mediaUrl'] as String?) ?? '',
               thumbUrl: null,

@@ -5,6 +5,7 @@ class Moment {
   final String userId;
   final String avatarId;
   final String type; // 'image', 'video', 'audio', 'document'
+  final String? mediaId; // Media ID vom Timeline Item
   final String originalUrl; // Original-URL vom Timeline Item
   final String storedUrl; // Gespeicherte URL in Moments
   final String? thumbUrl; // Optional: Thumbnail
@@ -20,6 +21,7 @@ class Moment {
     required this.userId,
     required this.avatarId,
     required this.type,
+    this.mediaId,
     required this.originalUrl,
     required this.storedUrl,
     this.thumbUrl,
@@ -37,6 +39,7 @@ class Moment {
       userId: (map['userId'] as String?) ?? '',
       avatarId: (map['avatarId'] as String?) ?? '',
       type: (map['type'] as String?) ?? 'image',
+      mediaId: map['mediaId'] as String?,
       originalUrl: (map['originalUrl'] as String?) ?? '',
       storedUrl: (map['storedUrl'] as String?) ?? '',
       thumbUrl: map['thumbUrl'] as String?,
@@ -55,6 +58,7 @@ class Moment {
       'userId': userId,
       'avatarId': avatarId,
       'type': type,
+      if (mediaId != null) 'mediaId': mediaId,
       'originalUrl': originalUrl,
       'storedUrl': storedUrl,
       if (thumbUrl != null) 'thumbUrl': thumbUrl,
