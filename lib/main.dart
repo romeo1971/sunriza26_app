@@ -577,8 +577,8 @@ class _ResumeRouterState extends State<_ResumeRouter> with WidgetsBindingObserve
       print('🔵🔵🔵 [ResumeRouter] flowType: $flowType, path: ${uri.path}');
       if (uri.path.contains('/media/checkout') || flowType == 'media') {
         // ignore: avoid_print
-        print('✅✅✅ [ResumeRouter] Media-Checkout erkannt, starte Handler');
-        _handleMediaCheckoutSuccess(uri, sessionId);
+        print('✅✅✅ [ResumeRouter] Media-Checkout erkannt, Route /media/checkout übernimmt');
+        // NICHT hier verarbeiten - lasse _MediaCheckoutPage das übernehmen
         return;
       }
 
@@ -593,179 +593,6 @@ class _ResumeRouterState extends State<_ResumeRouter> with WidgetsBindingObserve
     }
   }
 
-  Future<void> _handleMediaCheckoutSuccess(Uri uri, String sessionId) async {
-    try {
-      // ignore: avoid_print
-      print('🔵🔵🔵 [MediaSuccess] ENTER with uri=$uri, sessionId=$sessionId');
-      final avatarId = uri.queryParameters['avatarId'] ?? '';
-      final mediaId = uri.queryParameters['mediaId'] ?? '';
-      final mediaType = uri.queryParameters['mediaType'] ?? '';
-      // ignore: avoid_print
-      print('🔵🔵🔵 [MediaSuccess] avatarId=$avatarId mediaId=$mediaId mediaType=$mediaType');
-
-      AvatarMedia? media;
-      if (avatarId.isNotEmpty && mediaId.isNotEmpty && mediaType.isNotEmpty) {
-        final folder = switch (mediaType) {
-          'image' => 'images',
-          'video' => 'videos',
-          'audio' => 'audios',
-          'document' => 'documents',
-          _ => 'images',
-        };
-        // ignore: avoid_print
-        print('🔵🔵🔵 [MediaSuccess] Lade Media aus Firestore: /avatars/$avatarId/$folder/$mediaId');
-        final snap = await FirebaseFirestore.instance
-            .collection('avatars').doc(avatarId)
-            .collection(folder).doc(mediaId).get();
-        // ignore: avoid_print
-        print('🔵🔵🔵 [MediaSuccess] Firestore exists=${snap.exists}');
-        if (snap.exists) {
-          final map = {'id': snap.id, ...snap.data()!};
-          media = AvatarMedia.fromMap(map);
-        }
-      }
-
-      if (media == null) {
-        final mediaUrl = uri.queryParameters['mediaUrl'];
-        // ignore: avoid_print
-        print('🔵🔵🔵 [MediaSuccess] Fallback build from URL: $mediaUrl');
-        if (mediaUrl != null && mediaUrl.isNotEmpty) {
-          final type = switch (mediaType) {
-            'video' => AvatarMediaType.video,
-            'audio' => AvatarMediaType.audio,
-            'document' => AvatarMediaType.document,
-            _ => AvatarMediaType.image,
-          };
-          media = AvatarMedia(
-            id: mediaId.isNotEmpty ? mediaId : DateTime.now().millisecondsSinceEpoch.toString(),
-            avatarId: avatarId,
-            type: type,
-            url: mediaUrl,
-            createdAt: DateTime.now().millisecondsSinceEpoch,
-          );
-        }
-      }
-
-      String? storedUrl;
-      String mediaName = 'Media';
-      String avatarName = 'Avatar';
-      if (media != null) {
-        mediaName = media.originalFileName ?? _guessNameFromUrl(media.url) ?? mediaName;
-        // ignore: avoid_print
-        print('🔵🔵🔵 [MediaSuccess] Rufe MomentsService.saveMoment()');
-        final moment = await MomentsService().saveMoment(
-          media: media,
-          price: media.price ?? 0.0,
-          paymentMethod: 'stripe',
-          stripePaymentIntentId: sessionId,
-        );
-        storedUrl = moment.storedUrl;
-        // ignore: avoid_print
-        print('✅✅✅ [MediaSuccess] Moment gespeichert: ${moment.id}, storedUrl=$storedUrl');
-      } else {
-        // ignore: avoid_print
-        print('🔴🔴🔴 [MediaSuccess] media ist null – Abbruch');
-      }
-
-      if (avatarId.isNotEmpty) {
-        try {
-          final avatarDoc = await FirebaseFirestore.instance
-              .collection('avatars')
-              .doc(avatarId)
-              .get();
-          if (avatarDoc.exists) {
-            final data = avatarDoc.data()!;
-            final nickname = (data['nickname'] as String?)?.trim();
-            final firstName = (data['firstName'] as String?)?.trim();
-            final lastName = (data['lastName'] as String?)?.trim();
-            final nicknamePublic = (data['nicknamePublic'] as String?)?.trim();
-            final firstNamePublic = (data['firstNamePublic'] as String?)?.trim();
-            final lastNamePublic = (data['lastNamePublic'] as String?)?.trim();
-
-            String computedName = (nickname != null && nickname.isNotEmpty) ? nickname : (firstName ?? '');
-            if (computedName.isEmpty) {
-              final parts = <String>[];
-              if (firstName != null && firstName.isNotEmpty) parts.add(firstName);
-              if (lastName != null && lastName.isNotEmpty) parts.add(lastName);
-              if (parts.isEmpty) {
-                if (nicknamePublic != null && nicknamePublic.isNotEmpty) {
-                  parts.add(nicknamePublic);
-                } else {
-                  if (firstNamePublic != null && firstNamePublic.isNotEmpty) parts.add(firstNamePublic);
-                  if (lastNamePublic != null && lastNamePublic.isNotEmpty) parts.add(lastNamePublic);
-                }
-              }
-              computedName = parts.join(' ').trim();
-            }
-            if (computedName.isNotEmpty) avatarName = computedName;
-          }
-        } catch (_) {}
-      }
-
-      if (storedUrl != null && storedUrl.isNotEmpty) {
-        try {
-          final uri = Uri.parse(storedUrl);
-          // ignore: avoid_print
-          print('🔵🔵🔵 [MediaSuccess] Versuche Download zu starten: $storedUrl');
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(
-              uri,
-              mode: LaunchMode.externalApplication,
-              webOnlyWindowName: '_blank',
-            );
-            // ignore: avoid_print
-            print('✅✅✅ [MediaSuccess] Download gestartet');
-          } else {
-            // ignore: avoid_print
-            print('⚠️⚠️⚠️ [MediaSuccess] canLaunchUrl false');
-          }
-        } catch (e) {
-          // ignore: avoid_print
-          print('⚠️⚠️⚠️ [MediaSuccess] Download Fehler: $e');
-        }
-      }
-
-      if (!mounted) return;
-      await showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
-          title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
-          content: Text('"$mediaName" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.', style: const TextStyle(color: Colors.white70)),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Später', style: TextStyle(color: Colors.white70))),
-            TextButton(onPressed: () async {
-              if (storedUrl != null && storedUrl.isNotEmpty) {
-                try {
-                  final uri = Uri.parse(storedUrl);
-                  if (await canLaunchUrl(uri)) {
-                    await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-                  }
-                } catch (_) {}
-              }
-              if (Navigator.canPop(context)) Navigator.pop(context);
-            }, child: const Text('Nochmal herunterladen', style: TextStyle(color: Color(0xFF00FF94)))),
-          ],
-        ),
-      );
-
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        if (avatarId.isNotEmpty) {
-          await prefs.setString('pending_open_chat_avatar_id', avatarId);
-        }
-      } catch (_) {}
-
-      if (mounted) {
-        // Zurück zur Home/Chat-Ansicht; Chat wird via pending_open_chat_avatar_id geöffnet
-        Navigator.of(context).pushNamed('/home');
-      }
-    } catch (e, st) {
-      // ignore: avoid_print
-      print('🔴🔴🔴 [MediaSuccess] ERROR: $e');
-      print(st);
-    }
-  }
 
   @override
   Widget build(BuildContext context) => widget.child;
@@ -879,19 +706,27 @@ class _MediaCheckoutPageState extends State<_MediaCheckoutPage> {
 
       try {
         final prefs = await SharedPreferences.getInstance();
+        debugPrint('🔵🔵🔵 [MediaCheckout] Speichere avatarId: $avatarId');
         if (avatarId.isNotEmpty) {
           await prefs.setString('pending_open_chat_avatar_id', avatarId);
           await prefs.setString('pending_media_success_name', mediaName);
           await prefs.setString('pending_media_success_avatar', avatarName);
           await prefs.setString('pending_media_success_url', storedUrl ?? '');
+          debugPrint('✅✅✅ [MediaCheckout] Daten gespeichert');
+        } else {
+          debugPrint('🔴🔴🔴 [MediaCheckout] avatarId ist LEER!');
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('🔴🔴🔴 [MediaCheckout] Fehler beim Speichern: $e');
+      }
 
       if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/home');
+        debugPrint('🔵🔵🔵 [MediaCheckout] Navigiere zu /home');
+        Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
       }
-    } catch (_) {
-      if (mounted) Navigator.of(context).pushReplacementNamed('/home');
+    } catch (e) {
+      debugPrint('🔴🔴🔴 [MediaCheckout] Fehler in _process: $e');
+      if (mounted) Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
     }
   }
 
