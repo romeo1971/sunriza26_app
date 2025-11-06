@@ -483,7 +483,7 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
                   } catch (_) {}
                 }
               },
-              child: const Text('Download2', style: TextStyle(color: Color(0xFF00FF94))),
+              child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
             ),
           ],
         ),
@@ -701,7 +701,7 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
                     }
                   }
                 },
-                child: const Text('Download3', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
+                child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
               ),
               TextButton(
                 onPressed: () => Navigator.of(context, rootNavigator: false).pop(),

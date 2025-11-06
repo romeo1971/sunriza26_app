@@ -4172,15 +4172,6 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               ),
               TextButton(
                 onPressed: () async {
-                  showDialog(
-                    context: dlgCtx,
-                    barrierDismissible: false,
-                    builder: (_) => AlertDialog(
-                      backgroundColor: const Color(0xFF1A1A1A),
-                      title: const Text('Download läuft', style: TextStyle(color: Colors.white)),
-                      content: const Text('Der Download wurde gestartet...', style: TextStyle(color: Colors.white70)),
-                    ),
-                  );
                   if (downloadUrl != null && downloadUrl.isNotEmpty) {
                     try {
                       final uri = Uri.parse(downloadUrl);
@@ -4192,7 +4183,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                   await Future.delayed(const Duration(milliseconds: 800));
                   if (Navigator.canPop(dlgCtx)) Navigator.pop(dlgCtx);
                 },
-                child: const Text('Download6', style: TextStyle(color: Color(0xFF00FF94))),
+                child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
               ),
             ],
           ),
@@ -5124,7 +5115,7 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
                     } catch (_) {}
                     if (Navigator.canPop(context)) Navigator.pop(context);
                   },
-                  child: const Text('Download5', style: TextStyle(color: AppColors.lightBlue)),
+                  child: const Text('Download', style: TextStyle(color: AppColors.lightBlue)),
                 ),
               ],
             ),
