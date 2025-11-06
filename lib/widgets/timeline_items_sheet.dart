@@ -24,6 +24,13 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
   final FirebaseFirestore _fs = FirebaseFirestore.instance;
   int _userCredits = 0;
 
+  // Confirm-Progress State
+  bool _confirmProcessing = false;
+  final Map<String, String> _confirmStatusById = <String, String>{}; // pending|running|done|error
+  List<_TimelineVm> _confirmItems = <_TimelineVm>[];
+  int _confirmDone = 0;
+  int _confirmTotal = 0;
+
   bool _loading = true;
   String? _error;
   List<_TimelineVm> _items = <_TimelineVm>[];
@@ -88,6 +95,94 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         .where((vm) => (vm.media.price ?? 0.0) > 0.0 && isCash[vm.id] != true)
         .fold(0, (s, vm) => s + ((vm.media.price ?? 0.0) / 0.1).round());
     return _userCredits >= needed;
+  }
+
+  Widget _buildProcessingList() {
+    final double progress = _confirmTotal == 0 ? 0 : _confirmDone / _confirmTotal;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8),
+          child: Row(
+            children: [
+              _gmbcSpinner(size: 24, strokeWidth: 3),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Annahme läuft...', style: TextStyle(color: Colors.white)),
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 6,
+                        color: AppColors.lightBlue,
+                        backgroundColor: Colors.white12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text('${(_confirmDone)}/${_confirmTotal}', style: const TextStyle(color: Colors.white70)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _confirmItems.length,
+            itemBuilder: (_, i) {
+              final vm = _confirmItems[i];
+              final st = _confirmStatusById[vm.id] ?? 'pending';
+              Color border = Colors.white12;
+              Widget trailing;
+              if (st == 'running') {
+                trailing = const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2));
+              } else if (st == 'done') {
+                border = Colors.green.withOpacity(0.4);
+                trailing = const Icon(Icons.check_circle, color: Colors.green);
+              } else if (st == 'error') {
+                border = Colors.red.withOpacity(0.4);
+                trailing = const Icon(Icons.error, color: Colors.redAccent);
+              } else {
+                trailing = const Icon(Icons.more_horiz, color: Colors.white24);
+              }
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1E1E1E),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: border),
+                ),
+                child: Row(
+                  children: [
+                    _buildThumb(vm.media),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        vm.media.originalFileName ?? 'Media',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: st == 'done' ? Colors.green : Colors.white70),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    trailing,
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
   }
   Future<void> _loadUserCredits() async {
     try {
@@ -256,7 +351,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
           } catch (_) {}
         }
 
-        built.add(_TimelineVm(id: media.id, media: media));
+        built.add(_TimelineVm(id: media.id, media: media, playlistId: item['playlistId'] as String?));
       }
 
       // Cache aktualisieren
@@ -316,7 +411,6 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
       ),
       builder: (bCtx) {
         return StatefulBuilder(builder: (bCtx, setStateConfirm) {
-          bool processing = false;
           final cashItems = selectedItems.where((vm) => isCash[vm.id] == true).toList();
           final creditItems = selectedItems.where((vm) => isCash[vm.id] != true).toList();
           return SafeArea(
@@ -380,7 +474,9 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
 
                   if (cashItems.isNotEmpty) const SizedBox(height: 12),
                   Expanded(
-                    child: ListView(
+                    child: _confirmProcessing
+                        ? _buildProcessingList()
+                        : ListView(
                       children: [
                         // CASH-Liste
                         if (cashItems.isNotEmpty)
@@ -428,39 +524,124 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                         ),
                         const Spacer(),
                         ElevatedButton(
-                          onPressed: (selectedItems.isEmpty || !_canConfirm(selectedItems, isCash) || processing)
+                          onPressed: (selectedItems.isEmpty || !_canConfirm(selectedItems, isCash) || _confirmProcessing)
                               ? null
                               : () async {
-                                  setStateConfirm(() => processing = true);
-                                  // Credits/Gratis zuerst
+                                  // Nur Credits/Free → zeige Fortschritt
+                                  final onlyCreditsOrFree = !selectedItems.any((vm) => isCash[vm.id] == true);
+                                  if (onlyCreditsOrFree) {
+                                    _confirmProcessing = true;
+                                    _confirmItems = List<_TimelineVm>.from(selectedItems);
+                                    _confirmStatusById
+                                      ..clear()
+                                      ..addEntries(_confirmItems.map((e) => MapEntry(e.id, 'pending')));
+                                    _confirmDone = 0;
+                                    _confirmTotal = _confirmItems.length;
+                                    setStateConfirm(() {});
+
+                                    for (final vm in _confirmItems) {
+                                      _confirmStatusById[vm.id] = 'running';
+                                      setStateConfirm(() {});
+                                      try {
+                                        final price = vm.media.price ?? 0.0;
+                                        final method = price <= 0.0 ? 'free' : 'credits';
+                                        await MomentsService().saveMoment(media: vm.media, price: price, paymentMethod: method);
+                                        await _removeById(vm.id);
+                                        // bestätige im playlist-spezifischen Pfad (für Filter)
+                                        try {
+                                          final uid = FirebaseAuth.instance.currentUser?.uid;
+                                          if (uid != null && vm.playlistId != null) {
+                                            await _fs
+                                                .collection('avatars')
+                                                .doc(widget.avatarId)
+                                                .collection('playlists')
+                                                .doc(vm.playlistId)
+                                                .collection('confirmedItems')
+                                                .add({
+                                              'userId': uid,
+                                              'mediaId': vm.id,
+                                              'confirmedAt': FieldValue.serverTimestamp(),
+                                            });
+                                          }
+                                        } catch (_) {}
+                                        _confirmStatusById[vm.id] = 'done';
+                                      } catch (_) {
+                                        _confirmStatusById[vm.id] = 'error';
+                                      }
+                                      _confirmDone += 1;
+                                      setStateConfirm(() {});
+                                    }
+
+                                    if (mounted) setState(() {});
+                                    if (mounted && Navigator.canPop(context)) {
+                                      Navigator.of(context).pop();
+                                    }
+                                    _confirmProcessing = false;
+                                    setStateConfirm(() {});
+                                    return;
+                                  }
+
+                                  // Mit Cash → gleiches Verhalten wie zuvor
                                   for (final vm in List<_TimelineVm>.from(selectedItems.where((e) => isCash[e.id] != true))) {
                                     try {
                                       final price = vm.media.price ?? 0.0;
                                       final method = price <= 0.0 ? 'free' : 'credits';
                                       await MomentsService().saveMoment(media: vm.media, price: price, paymentMethod: method);
                                       await _removeById(vm.id);
+                                      try {
+                                        final uid = FirebaseAuth.instance.currentUser?.uid;
+                                        if (uid != null && vm.playlistId != null) {
+                                          await _fs
+                                              .collection('avatars')
+                                              .doc(widget.avatarId)
+                                              .collection('playlists')
+                                              .doc(vm.playlistId)
+                                              .collection('confirmedItems')
+                                              .add({
+                                            'userId': uid,
+                                            'mediaId': vm.id,
+                                            'confirmedAt': FieldValue.serverTimestamp(),
+                                          });
+                                        }
+                                      } catch (_) {}
                                     } catch (_) {}
                                   }
-                                  // Cash: nacheinander Dialoge
                                   for (final vm in List<_TimelineVm>.from(selectedItems.where((e) => isCash[e.id] == true))) {
                                     if (!mounted) break;
                                     await showDialog(
                                       context: context,
                                       builder: (_) => MediaPurchaseDialog(
                                         media: vm.media,
-                                        onPurchaseSuccess: () async { await _removeById(vm.id); },
+                                        onPurchaseSuccess: () async {
+                                          await _removeById(vm.id);
+                                          // playlist-confirmed auch bei Cash setzen
+                                          try {
+                                            final uid = FirebaseAuth.instance.currentUser?.uid;
+                                            if (uid != null && vm.playlistId != null) {
+                                              await _fs
+                                                  .collection('avatars')
+                                                  .doc(widget.avatarId)
+                                                  .collection('playlists')
+                                                  .doc(vm.playlistId)
+                                                  .collection('confirmedItems')
+                                                  .add({
+                                                'userId': uid,
+                                                'mediaId': vm.id,
+                                                'confirmedAt': FieldValue.serverTimestamp(),
+                                              });
+                                            }
+                                          } catch (_) {}
+                                        },
                                       ),
                                     );
                                   }
                                   if (mounted) setState(() {});
-                                  // Schließe Sheet über State-Context (sicherer Navigator)
                                   if (mounted && Navigator.canPop(context)) {
                                     Navigator.of(context).pop();
                                   }
-                                  setStateConfirm(() => processing = false);
                                 },
                           style: ElevatedButton.styleFrom(backgroundColor: AppColors.lightBlue),
-                          child: processing
+                          child: _confirmProcessing
                               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                               : Text(
                                   selectedItems.any((vm) => isCash[vm.id] == true)
@@ -748,9 +929,10 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
 }
 
 class _TimelineVm {
-  final String id;
+  final String id; // mediaId
   final AvatarMedia media;
-  _TimelineVm({required this.id, required this.media});
+  final String? playlistId; // für confirmedItems Pfad
+  _TimelineVm({required this.id, required this.media, this.playlistId});
 }
 
 

@@ -118,7 +118,10 @@ class _MomentsScreenState extends State<MomentsScreen> {
     final q = _searchCtrl.text.trim().toLowerCase();
     return _items.where((m) {
       if (_selectedAvatarId != null && m.avatarId != _selectedAvatarId) return false;
-      if (!_selectedTypes.contains(m.type)) return false;
+      // Typ-Defensiv: akzeptiere Aliasse (pdf/doc/documents)
+      final t = (m.type).toLowerCase();
+      final norm = (t == 'documents' || t == 'pdf' || t == 'doc') ? 'document' : t;
+      if (!_selectedTypes.contains(norm)) return false;
       if (q.isEmpty) return true;
       final inName = (m.originalFileName ?? '').toLowerCase().contains(q);
       final inTags = (m.tags ?? const []).any((t) => t.toLowerCase().contains(q));
