@@ -4993,7 +4993,7 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
             context: context,
             builder: (_) => AlertDialog(
               backgroundColor: AppColors.darkSurface,
-              title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
+              title: const Text('Annahme bestätigt', style: TextStyle(color: Colors.white)),
               content: Text(
                 '"${widget.media.originalFileName ?? 'Media'}" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.',
                 style: const TextStyle(color: Colors.white70),

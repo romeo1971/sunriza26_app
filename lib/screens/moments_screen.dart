@@ -46,7 +46,9 @@ class _MomentsScreenState extends State<MomentsScreen> {
       if (!mounted) return;
       setState(() => _items = list);
 
-      // Avatar-Namen laden für Dropdown
+      // Avatar-Namen laden für Dropdown (Cache vorher löschen für frische Daten)
+      _avatarNames.clear();
+      _avatarImageUrls.clear();
       final ids = list.map((e) => e.avatarId).toSet();
       await _loadAvatarNames(ids);
     } catch (_) {
@@ -63,12 +65,19 @@ class _MomentsScreenState extends State<MomentsScreen> {
 
   Future<void> _loadAvatarNames(Set<String> ids) async {
     try {
+      debugPrint('🔵 [Moments] Loading avatar names for IDs: $ids');
       for (final id in ids) {
-        if (_avatarNames.containsKey(id)) continue;
+        if (id.isEmpty) continue;
+        if (_avatarNames.containsKey(id) && _avatarImageUrls.containsKey(id)) {
+          debugPrint('🔵 [Moments] Skipping cached avatar: $id');
+          continue;
+        }
+        debugPrint('🔵 [Moments] Fetching avatar doc: $id');
         final doc = await FirebaseFirestore.instance.collection('avatars').doc(id).get();
         if (doc.exists) {
           final d = doc.data() ?? {};
           _avatarImageUrls[id] = (d['avatarImageUrl'] as String?);
+          debugPrint('✅ [Moments] Avatar $id → image: ${_avatarImageUrls[id]}');
           final nickname = (d['nickname'] as String?)?.trim();
           final firstName = (d['firstName'] as String?)?.trim();
           final lastName = (d['lastName'] as String?)?.trim();
@@ -148,47 +157,55 @@ class _MomentsScreenState extends State<MomentsScreen> {
                         children: [
                           // Avatar Dropdown
                           Expanded(
-                            child: DropdownButtonFormField<String?>(
-                              value: _selectedAvatarId,
-                              dropdownColor: Colors.black87,
-                              decoration: const InputDecoration(
-                                labelText: 'Avatar',
-                                labelStyle: TextStyle(color: Colors.white70),
-                                enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
-                                focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
-                              ),
-                              items: [
-                                const DropdownMenuItem<String?>(
-                                  value: null,
-                                  child: Text('Alle', style: TextStyle(color: Colors.white)),
-                                ),
-                                ..._avatarNames.entries.map((e) {
-                                  final img = _avatarImageUrls[e.key];
-                                  return DropdownMenuItem<String?>(
-                                    value: e.key,
-                                    child: Row(
-                                      children: [
-                                        CircleAvatar(
-                                          radius: 12,
-                                          backgroundColor: Colors.white12,
-                                          backgroundImage: (img != null && img.isNotEmpty)
-                                              ? NetworkImage(img)
-                                              : null,
-                                          child: (img == null || img.isEmpty)
-                                              ? const Icon(Icons.person, size: 16, color: Colors.white54)
-                                              : null,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          (e.value.isEmpty ? 'Avatar' : e.value),
-                                          style: const TextStyle(color: Colors.white),
-                                        ),
-                                      ],
+                            child: FutureBuilder<List<MapEntry<String, String>>>(
+                              future: _getAvatarDropdownItems(),
+                              builder: (context, snapshot) {
+                                final avatars = snapshot.data ?? [];
+                                return DropdownButtonFormField<String?>(
+                                  value: _selectedAvatarId,
+                                  dropdownColor: Colors.black87,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Avatar',
+                                    labelStyle: TextStyle(color: Colors.white70),
+                                    enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                                    focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
+                                  ),
+                                  items: [
+                                    const DropdownMenuItem<String?>(
+                                      value: null,
+                                      child: Text('Alle', style: TextStyle(color: Colors.white)),
                                     ),
-                                  );
-                                }),
-                              ],
-                              onChanged: (v) => setState(() => _selectedAvatarId = v),
+                                    ...avatars.map((e) {
+                                      return DropdownMenuItem<String?>(
+                                        value: e.key,
+                                        child: FutureBuilder<String?>(
+                                          future: _getAvatarImage(e.key),
+                                          builder: (context, imgSnap) {
+                                            final img = imgSnap.data;
+                                            return Row(
+                                              children: [
+                                                CircleAvatar(
+                                                  radius: 12,
+                                                  backgroundColor: Colors.white12,
+                                                  backgroundImage: (img != null && img.isNotEmpty)
+                                                      ? NetworkImage(img)
+                                                      : null,
+                                                  child: (img == null || img.isEmpty)
+                                                      ? const Icon(Icons.person, size: 16, color: Colors.white54)
+                                                      : null,
+                                                ),
+                                                const SizedBox(width: 8),
+                                                Text(e.value, style: const TextStyle(color: Colors.white)),
+                                              ],
+                                            );
+                                          },
+                                        ),
+                                      );
+                                    }),
+                                  ],
+                                  onChanged: (v) => setState(() => _selectedAvatarId = v),
+                                );
+                              },
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -232,21 +249,25 @@ class _MomentsScreenState extends State<MomentsScreen> {
                   separatorBuilder: (_, __) => const Divider(height: 1, color: Colors.white12),
                   itemBuilder: (context, i) {
                     final m = _filteredItems[i];
-                    final avatarImg = _avatarImageUrls[m.avatarId];
                     final avatarName = _avatarNames[m.avatarId] ?? 'Avatar';
                     final dt = DateTime.fromMillisecondsSinceEpoch(m.acquiredAt).toLocal();
                     final subtitle = DateFormat('yyyy-MM-dd HH:mm').format(dt);
-                    return ListTile(
-                      leading: CircleAvatar(
-                        radius: 18,
-                        backgroundColor: Colors.white12,
-                        backgroundImage: (avatarImg != null && avatarImg.isNotEmpty)
-                            ? NetworkImage(avatarImg)
-                            : null,
-                        child: (avatarImg == null || avatarImg.isEmpty)
-                            ? const Icon(Icons.person, color: Colors.white54)
-                            : null,
-                      ),
+                    
+                    return FutureBuilder<String?>(
+                      future: _getAvatarImage(m.avatarId),
+                      builder: (context, snapshot) {
+                        final avatarImg = snapshot.data;
+                        return ListTile(
+                          leading: CircleAvatar(
+                            radius: 18,
+                            backgroundColor: Colors.white12,
+                            backgroundImage: (avatarImg != null && avatarImg.isNotEmpty)
+                                ? NetworkImage(avatarImg)
+                                : null,
+                            child: (avatarImg == null || avatarImg.isEmpty)
+                                ? const Icon(Icons.person, color: Colors.white54)
+                                : null,
+                          ),
                       title: Text(
                         m.originalFileName ?? m.storedUrl.split('/').last,
                         style: const TextStyle(color: Colors.white),
@@ -261,6 +282,8 @@ class _MomentsScreenState extends State<MomentsScreen> {
                       onTap: () {
                         // Optional: Später Detail/Preview öffnen
                       },
+                        );
+                      },
                     );
                   },
                       ),
@@ -268,6 +291,38 @@ class _MomentsScreenState extends State<MomentsScreen> {
                   ],
                 ),
     );
+  }
+
+  Future<String?> _getAvatarImage(String avatarId) async {
+    if (avatarId.isEmpty) return null;
+    if (_avatarImageUrls.containsKey(avatarId)) return _avatarImageUrls[avatarId];
+    try {
+      final doc = await FirebaseFirestore.instance.collection('avatars').doc(avatarId).get();
+      if (doc.exists) {
+        final img = doc.data()?['avatarImageUrl'] as String?;
+        _avatarImageUrls[avatarId] = img;
+        return img;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<List<MapEntry<String, String>>> _getAvatarDropdownItems() async {
+    final ids = _items.map((e) => e.avatarId).where((id) => id.isNotEmpty).toSet();
+    final List<MapEntry<String, String>> result = [];
+    for (final id in ids) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('avatars').doc(id).get();
+        if (doc.exists) {
+          final d = doc.data() ?? {};
+          final nickname = (d['nickname'] as String?)?.trim();
+          final firstName = (d['firstName'] as String?)?.trim();
+          final name = (nickname?.isNotEmpty ?? false) ? nickname! : (firstName ?? 'Avatar');
+          result.add(MapEntry(id, name));
+        }
+      } catch (_) {}
+    }
+    return result;
   }
 
   Widget _typeChip(String key, String label) {

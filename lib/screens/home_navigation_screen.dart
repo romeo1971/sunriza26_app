@@ -290,7 +290,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.darkSurface,
-        title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
+        title: const Text('Kauf bestätigt', style: TextStyle(color: Colors.white)),
         content: Text(
           '"$mediaName" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.',
           style: const TextStyle(color: Colors.white70),

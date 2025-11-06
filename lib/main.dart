@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'models/media_models.dart';
 import 'services/moments_service.dart';
@@ -844,6 +845,15 @@ class _MediaCheckoutPageState extends State<_MediaCheckoutPage> {
           stripePaymentIntentId: sessionId,
         );
         storedUrl = moment.storedUrl;
+        
+        // Rechnung für Stripe-Transaktion generieren
+        try {
+          final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
+          await fns.httpsCallable('ensureInvoiceFiles').call({'transactionId': sessionId});
+          debugPrint('✅ Rechnung generiert für Stripe-Kauf');
+        } catch (e) {
+          debugPrint('⚠️ Rechnung-Generierung fehlgeschlagen: $e');
+        }
       }
 
       if (avatarId.isNotEmpty) {
