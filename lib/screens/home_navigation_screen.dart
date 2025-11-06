@@ -11,6 +11,7 @@ import 'avatar_list_screen.dart';
 import 'moments_screen.dart';
 import 'avatar_chat_screen.dart';
 import '../theme/app_theme.dart';
+import '../services/moments_service.dart';
 
 /// Home Navigation mit TikTok-Style Bottom Bar
 class HomeNavigationScreen extends StatefulWidget {
@@ -67,6 +68,25 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
               
               await Future.delayed(const Duration(milliseconds: 800));
               
+              // Auto-Download versuchen: neuestes Moment (oder passender Dateiname)
+              String? downloadUrl;
+              try {
+                final moments = await MomentsService().listMoments(avatarId: avatarId);
+                if (moments.isNotEmpty) {
+                  final byName = moments.firstWhere(
+                    (m) => (m.originalFileName ?? '').trim() == mediaName.trim(),
+                    orElse: () => moments.first,
+                  );
+                  downloadUrl = byName.storedUrl.isNotEmpty ? byName.storedUrl : byName.originalUrl;
+                }
+                if (downloadUrl != null && downloadUrl.isNotEmpty) {
+                  final uri = Uri.parse(downloadUrl);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                  }
+                }
+              } catch (_) {}
+
               if (mounted) {
                 await showDialog(
                   context: context,
@@ -76,6 +96,21 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
                     title: const Text('Zahlung bestätigt ✓', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                     content: Text('$mediaName wurde zu deinen Momenten hinzugefügt.', style: const TextStyle(color: Colors.white70)),
                     actions: [
+                      if (downloadUrl != null && downloadUrl.isNotEmpty)
+                        TextButton(
+                          onPressed: () async {
+                            try {
+                              final url = downloadUrl; // capture
+                              if (url != null && url.isNotEmpty) {
+                                final uri = Uri.parse(url);
+                                if (await canLaunchUrl(uri)) {
+                                  await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                                }
+                              }
+                            } catch (_) {}
+                          },
+                          child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
+                        ),
                       TextButton(
                         onPressed: () => Navigator.pop(context),
                         child: const Text('OK', style: TextStyle(color: Color(0xFF00FF94))),

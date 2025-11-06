@@ -612,6 +612,7 @@ class _StripeCheckoutDialog extends StatefulWidget {
 }
 
 class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
+  String? _downloadUrl;
   @override
   void initState() {
     super.initState();
@@ -637,6 +638,22 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
         await Future.delayed(const Duration(milliseconds: 300));
         
         if (!mounted) return;
+        
+        // Versuche automatisch die zuletzt erworbene Datei zu finden und Download zu starten
+        try {
+          final url = await _findMomentDownloadUrl();
+          if (url != null && url.isNotEmpty) {
+            setState(() => _downloadUrl = url);
+            final uri = Uri.parse(url);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(
+                uri,
+                mode: LaunchMode.externalApplication,
+                webOnlyWindowName: '_blank',
+              );
+            }
+          }
+        } catch (_) {}
         
         // Zeige Success-Dialog
         await showDialog(
@@ -667,6 +684,24 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
               ],
             ),
             actions: [
+              TextButton(
+                onPressed: () async {
+                  final url = _downloadUrl ?? await _findMomentDownloadUrl();
+                  if (url != null && url.isNotEmpty) {
+                    try {
+                      final uri = Uri.parse(url);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                          webOnlyWindowName: '_blank',
+                        );
+                      }
+                    } catch (_) {}
+                  }
+                },
+                child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
               TextButton(
                 onPressed: () => Navigator.of(context, rootNavigator: false).pop(),
                 child: const Text('Fertig', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
@@ -729,6 +764,30 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
         ),
       ),
     );
+  }
+
+  Future<String?> _findMomentDownloadUrl() async {
+    try {
+      String? avatarId;
+      try {
+        final raw = html.window.sessionStorage['stripe_media_success'];
+        if (raw != null && raw.isNotEmpty) {
+          final data = raw;
+          // primitive parse to avoid bringing in dart:convert just for small read
+          final aidMatch = RegExp(r'"avatarId"\s*:\s*"(.*?)"').firstMatch(data);
+          if (aidMatch != null) avatarId = aidMatch.group(1);
+        }
+      } catch (_) {}
+      final moments = await MomentsService().listMoments(avatarId: avatarId);
+      if (moments.isEmpty) return null;
+      final byName = moments.firstWhere(
+        (m) => (m.originalFileName ?? '').trim() == widget.mediaName.trim(),
+        orElse: () => moments.first,
+      );
+      return (byName.storedUrl.isNotEmpty) ? byName.storedUrl : byName.originalUrl;
+    } catch (_) {
+      return null;
+    }
   }
 
   void _createIframe() {
