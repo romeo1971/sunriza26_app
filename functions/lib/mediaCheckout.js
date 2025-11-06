@@ -41,6 +41,7 @@ exports.handleMediaPurchaseWebhook = handleMediaPurchaseWebhook;
 const functions = __importStar(require("firebase-functions/v1"));
 const stripe_1 = __importDefault(require("stripe"));
 const admin = __importStar(require("firebase-admin"));
+// Stripe nur initialisieren wenn Secret Key vorhanden
 const getStripe = () => {
     var _a;
     const secretKey = (process.env.STRIPE_SECRET_KEY || ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.secret_key) || '').trim();
@@ -49,6 +50,9 @@ const getStripe = () => {
     }
     return new stripe_1.default(secretKey, { apiVersion: '2025-09-30.clover' });
 };
+/**
+ * Cloud Function: Stripe Checkout Session für Media-Kauf
+ */
 exports.createMediaCheckoutSession = functions
     .region('us-central1')
     .https.onCall(async (data, context) => {
@@ -63,7 +67,8 @@ exports.createMediaCheckoutSession = functions
         const stripe = getStripe();
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
-            line_items: [{
+            line_items: [
+                {
                     price_data: {
                         currency,
                         product_data: {
@@ -73,8 +78,10 @@ exports.createMediaCheckoutSession = functions
                         unit_amount: amount,
                     },
                     quantity: 1,
-                }],
+                },
+            ],
             mode: 'payment',
+            // Hash-Routing für Flutter Web, damit die Route sicher erkannt wird
             success_url: `${process.env.APP_URL || 'http://localhost:4202'}/#/media/checkout?success=true&type=media&avatarId=${encodeURIComponent(avatarId || '')}&mediaId=${encodeURIComponent(mediaId)}&mediaType=${encodeURIComponent(mediaType || '')}&mediaUrl=${encodeURIComponent(mediaUrl || '')}&session_id={CHECKOUT_SESSION_ID}${returnUrl ? `&return=${encodeURIComponent(returnUrl)}` : ''}`,
             cancel_url: `${process.env.APP_URL || 'http://localhost:4202'}/#/media/checkout?cancelled=true&type=media`,
             metadata: {
@@ -93,6 +100,9 @@ exports.createMediaCheckoutSession = functions
         throw new functions.https.HttpsError('internal', e.message || 'Stripe Fehler');
     }
 });
+/**
+ * Webhook-Handler für Media-Kauf (optional)
+ */
 exports.mediaCheckoutWebhook = functions
     .region('us-central1')
     .https.onRequest(async (req, res) => {
@@ -105,14 +115,20 @@ exports.mediaCheckoutWebhook = functions
     }
     const stripe = getStripe();
     try {
+        // @ts-ignore
         stripe.webhooks.constructEvent(req.rawBody || req.body, sig, webhookSecret);
     }
     catch (err) {
         res.status(400).send(`Webhook Error: ${err.message}`);
         return;
     }
+    // Hier Payment-Resultate verarbeiten
     res.json({ received: true });
 });
+/**
+ * Wird vom allgemeinen Stripe-Webhook (stripeCheckout.ts) aufgerufen,
+ * wenn md.type === 'media_purchase'. Schreibt eine Transaktion für den Nutzer.
+ */
 async function handleMediaPurchaseWebhook(session, admin) {
     try {
         const md = session.metadata || {};
@@ -121,9 +137,11 @@ async function handleMediaPurchaseWebhook(session, admin) {
             console.error('handleMediaPurchaseWebhook: userId fehlt');
             return;
         }
-        const amount = session.amount_total || 0;
+        const amount = session.amount_total || 0; // cents
         const currency = (session.currency || 'eur').toLowerCase();
-        const invoiceNumber = `20${String(Date.now()).slice(-6)}-D${String(Date.now()).slice(-5)}`;
+        // Rechnungsnummer generieren
+        const now = Date.now();
+        const invoiceNumber = `20${String(now).slice(-6)}-D${String(now).slice(-5)}`;
         const txRef = admin.firestore().collection('users').doc(userId).collection('transactions').doc(String(session.id));
         await txRef.set({
             userId,
@@ -141,7 +159,8 @@ async function handleMediaPurchaseWebhook(session, admin) {
             paymentIntent: session.payment_intent || null,
             invoiceNumber,
         }, { merge: true });
-        console.log(`✅ Media-Transaktion mit Rechnung ${invoiceNumber} geschrieben`);
+        console.log(`✅ Media-Transaktion geschrieben: users/${userId}/transactions/${session.id}`);
+        // Zusätzlich: Moment-Dokument anlegen (robust, ohne Storage-Kopie)
         try {
             const momentsCol = admin.firestore().collection('users').doc(userId).collection('moments');
             const momentId = momentsCol.doc().id;
@@ -155,7 +174,7 @@ async function handleMediaPurchaseWebhook(session, admin) {
                 originalUrl: md.mediaUrl || '',
                 storedUrl: md.mediaUrl || '',
                 originalFileName: md.mediaName || 'Media',
-                acquiredAt: nowMs,
+                acquiredAt: nowMs, // als Zahl, kompatibel zum Client
                 price: (amount || 0) / 100.0,
                 currency: currency === 'usd' ? '$' : '€',
                 receiptId: null,
@@ -164,13 +183,32 @@ async function handleMediaPurchaseWebhook(session, admin) {
             console.log(`✅ Moment erstellt: users/${userId}/moments/${momentId}`);
         }
         catch (e) {
-            console.error('⚠️ Moment anlegen fehlgeschlagen:', e);
+            console.error('⚠️ Moment anlegen im Webhook fehlgeschlagen:', e);
+        }
+        // PDF-Rechnung erzeugen
+        try {
+            const ensureInvoiceFiles = require('./invoicing').ensureInvoiceFiles;
+            const result = await ensureInvoiceFiles({ transactionId: String(session.id) }, { auth: { uid: userId } });
+            if ((result === null || result === void 0 ? void 0 : result.invoicePdfUrl) || (result === null || result === void 0 ? void 0 : result.invoiceNumber)) {
+                await txRef.set({
+                    ...(result.invoicePdfUrl && { invoicePdfUrl: result.invoicePdfUrl }),
+                    ...(result.invoiceNumber && { invoiceNumber: result.invoiceNumber }),
+                }, { merge: true });
+                console.log(`✅ PDF-Rechnung erzeugt für ${session.id}`);
+            }
+        }
+        catch (e) {
+            console.error('⚠️ PDF-Rechnung fehlgeschlagen:', e);
         }
     }
     catch (e) {
         console.error('handleMediaPurchaseWebhook error', e);
     }
 }
+/**
+ * Kopiert eine vorhandene Datei im Firebase Storage in den Moments‑Ordner des Nutzers.
+ * Vermeidet Client‑Download/CORS‑Probleme.
+ */
 exports.copyMediaToMoments = functions
     .region('us-central1')
     .https.onCall(async (data, context) => {
@@ -184,6 +222,7 @@ exports.copyMediaToMoments = functions
     if (!mediaUrl || !avatarId) {
         throw new functions.https.HttpsError('invalid-argument', 'mediaUrl und avatarId erforderlich');
     }
+    // Quelle aus Download-URL extrahieren: nach "/o/" bis '?' und URL‑decoden
     const m = mediaUrl.match(/\/o\/(.*?)\?/);
     if (!m || !m[1]) {
         throw new functions.https.HttpsError('invalid-argument', 'Ungültige mediaUrl');
@@ -195,6 +234,7 @@ exports.copyMediaToMoments = functions
     const destPath = `users/${userId}/moments/${avatarId}/${ts}_${baseName}`;
     try {
         await bucket.file(srcPath).copy(bucket.file(destPath));
+        // Signierte URL für direkten Download erzeugen (30 Tage gültig)
         const [signedUrl] = await bucket.file(destPath).getSignedUrl({
             action: 'read',
             expires: Date.now() + 30 * 24 * 3600 * 1000,

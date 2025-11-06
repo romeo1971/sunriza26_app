@@ -92,16 +92,21 @@ class MediaPurchaseService {
 
       // 2. Transaktion anlegen
       final transactionRef = userRef.collection('transactions').doc();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final invoiceNumber = '20${now.toString().substring(now.toString().length - 6)}-D${now.toString().substring(now.toString().length - 5)}';
       final transactionData = {
         'userId': userId,
         'type': 'credit_spent',
         'credits': requiredCredits,
+        'amount': (price * 100).round(),
+        'currency': currency == '\$' ? 'usd' : 'eur',
         'mediaId': media.id,
         'mediaType': _getMediaTypeString(media.type),
         'mediaUrl': media.url,
         'mediaName': media.originalFileName ?? 'Media',
         'avatarId': media.avatarId,
         'status': 'completed',
+        'invoiceNumber': invoiceNumber,
         'createdAt': FieldValue.serverTimestamp(),
       };
       debugPrint('🔵 [PurchaseService] Erstelle Transaktion: ${transactionRef.id}');
@@ -124,6 +129,27 @@ class MediaPurchaseService {
       debugPrint('🔵 [PurchaseService] Committe Batch...');
       await batch.commit();
       debugPrint('✅ [PurchaseService] Batch erfolgreich committed!');
+      
+      // PDF-Rechnung erzeugen
+      try {
+        debugPrint('🔵 [PurchaseService] Erzeuge PDF-Rechnung...');
+        final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
+        final ensure = fns.httpsCallable('ensureInvoiceFiles');
+        final res = await ensure.call({'transactionId': transactionRef.id});
+        final data = Map<String, dynamic>.from(res.data as Map? ?? {});
+        final pdf = data['invoicePdfUrl'] as String?;
+        final nr = data['invoiceNumber'] as String?;
+        if ((pdf != null && pdf.isNotEmpty) || (nr != null && nr.isNotEmpty)) {
+          await transactionRef.set({
+            if (pdf != null && pdf.isNotEmpty) 'invoicePdfUrl': pdf,
+            if (nr != null && nr.isNotEmpty) 'invoiceNumber': nr,
+          }, SetOptions(merge: true));
+          debugPrint('✅ [PurchaseService] Rechnung gespeichert (nr=${nr ?? '-'}).');
+        }
+      } catch (e) {
+        debugPrint('⚠️ [PurchaseService] ensureInvoiceFiles fehlgeschlagen: $e');
+      }
+      
       return true;
     } catch (e, stackTrace) {
       debugPrint('🔴 [PurchaseService] Fehler beim Media-Kauf: $e');
@@ -196,14 +222,19 @@ class MediaPurchaseService {
 
       // 2. Transaktion anlegen (Bundle)
       final transactionRef = userRef.collection('transactions').doc();
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final invoiceNumber = '20${now.toString().substring(now.toString().length - 6)}-D${now.toString().substring(now.toString().length - 5)}';
       batch.set(transactionRef, {
         'userId': userId,
         'type': 'credit_spent',
         'credits': requiredCredits,
+        'amount': (totalPrice * 100).round(),
+        'currency': 'eur',
         'mediaIds': mediaList.map((m) => m.id).toList(),
         'mediaType': 'bundle',
         'mediaName': 'Bundle (${mediaList.length} Medien)',
         'status': 'completed',
+        'invoiceNumber': invoiceNumber,
         'createdAt': FieldValue.serverTimestamp(),
       });
 
@@ -223,6 +254,27 @@ class MediaPurchaseService {
       }
 
       await batch.commit();
+      
+      // PDF-Rechnung erzeugen
+      try {
+        debugPrint('🔵 [PurchaseService] Erzeuge Bundle-Rechnung...');
+        final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
+        final ensure = fns.httpsCallable('ensureInvoiceFiles');
+        final res = await ensure.call({'transactionId': transactionRef.id});
+        final data = Map<String, dynamic>.from(res.data as Map? ?? {});
+        final pdf = data['invoicePdfUrl'] as String?;
+        final nr = data['invoiceNumber'] as String?;
+        if ((pdf != null && pdf.isNotEmpty) || (nr != null && nr.isNotEmpty)) {
+          await transactionRef.set({
+            if (pdf != null && pdf.isNotEmpty) 'invoicePdfUrl': pdf,
+            if (nr != null && nr.isNotEmpty) 'invoiceNumber': nr,
+          }, SetOptions(merge: true));
+          debugPrint('✅ [PurchaseService] Bundle-Rechnung gespeichert.');
+        }
+      } catch (e) {
+        debugPrint('⚠️ [PurchaseService] ensureInvoiceFiles (Bundle) fehlgeschlagen: $e');
+      }
+      
       return true;
     } catch (e) {
       debugPrint('Fehler beim Bundle-Kauf: $e');

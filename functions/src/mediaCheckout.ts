@@ -105,6 +105,10 @@ export async function handleMediaPurchaseWebhook(session: Stripe.Checkout.Sessio
 
     const amount = session.amount_total || 0; // cents
     const currency = (session.currency || 'eur').toLowerCase();
+    
+    // Rechnungsnummer generieren
+    const now = Date.now();
+    const invoiceNumber = `20${String(now).slice(-6)}-D${String(now).slice(-5)}`;
 
     const txRef = admin.firestore().collection('users').doc(userId).collection('transactions').doc(String(session.id));
     await txRef.set({
@@ -121,6 +125,7 @@ export async function handleMediaPurchaseWebhook(session: Stripe.Checkout.Sessio
       avatarId: md.avatarId || null,
       stripeSessionId: session.id,
       paymentIntent: session.payment_intent || null,
+      invoiceNumber,
     }, { merge: true });
 
     console.log(`✅ Media-Transaktion geschrieben: users/${userId}/transactions/${session.id}`);
@@ -148,6 +153,21 @@ export async function handleMediaPurchaseWebhook(session: Stripe.Checkout.Sessio
       console.log(`✅ Moment erstellt: users/${userId}/moments/${momentId}`);
     } catch (e) {
       console.error('⚠️ Moment anlegen im Webhook fehlgeschlagen:', e);
+    }
+
+    // PDF-Rechnung erzeugen
+    try {
+      const ensureInvoiceFiles = require('./invoicing').ensureInvoiceFiles;
+      const result = await ensureInvoiceFiles({ transactionId: String(session.id) }, { auth: { uid: userId } });
+      if (result?.invoicePdfUrl || result?.invoiceNumber) {
+        await txRef.set({
+          ...(result.invoicePdfUrl && { invoicePdfUrl: result.invoicePdfUrl }),
+          ...(result.invoiceNumber && { invoiceNumber: result.invoiceNumber }),
+        }, { merge: true });
+        console.log(`✅ PDF-Rechnung erzeugt für ${session.id}`);
+      }
+    } catch (e) {
+      console.error('⚠️ PDF-Rechnung fehlgeschlagen:', e);
     }
   } catch (e) {
     console.error('handleMediaPurchaseWebhook error', e);
