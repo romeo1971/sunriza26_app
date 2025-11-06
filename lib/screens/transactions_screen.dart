@@ -44,6 +44,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     );
   }
 
+  IconData _iconForTxType(app.TransactionType type) {
+    switch (type) {
+      case app.TransactionType.creditPurchase:
+        return Icons.credit_card;
+      case app.TransactionType.creditSpent:
+        return Icons.diamond;
+      case app.TransactionType.mediaPurchase:
+        return Icons.shopping_bag;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -179,10 +190,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         ),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: Text(
-                        transaction.typeIcon,
-                        style: const TextStyle(fontSize: 24),
-                      ),
+                      child: Icon(_iconForTxType(transaction.type), color: Colors.white, size: 24),
                     ),
                     const SizedBox(width: 16),
 
@@ -226,7 +234,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           ),
                         if (transaction.credits != null)
                           Text(
-                            transaction.formattedCredits,
+                            '${transaction.credits} Credits',
                             style: TextStyle(
                               color: Colors.white.withValues(alpha: 0.8),
                               fontSize: 14,
@@ -393,8 +401,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     _buildDetailRow('Credits', transaction.formattedCredits),
                   if (transaction.currency != null)
                     _buildDetailRow('Währung', transaction.currency!.toUpperCase()),
-                  if (transaction.exchangeRate != null && transaction.exchangeRate != 1.0)
-                    _buildDetailRow('Wechselkurs', '1 EUR = ${transaction.exchangeRate!.toStringAsFixed(4)} USD'),
                   if (transaction.invoiceNumber != null)
                     _buildDetailRow('Rechnungsnr.', transaction.invoiceNumber!),
                   if (transaction.stripeSessionId != null)

@@ -5,6 +5,7 @@ import '../theme/app_theme.dart';
 import '../models/media_models.dart';
 import '../models/user_profile.dart';
 import '../services/media_purchase_service.dart';
+import '../services/moments_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Dialog für Media-Kauf (Credits oder Stripe)
@@ -316,10 +317,18 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
   }
 
   Future<void> _purchaseWithCredits() async {
+    debugPrint('🔵 [MediaPurchase] Credit-Kauf gestartet für mediaId=${widget.media.id}, avatarId=${widget.media.avatarId}');
     setState(() => _purchasing = true);
 
     final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
+    if (userId == null) {
+      debugPrint('🔴 [MediaPurchase] User nicht eingeloggt');
+      return;
+    }
+
+    final price = widget.media.price ?? 0.0;
+    final requiredCredits = (price / 0.1).round();
+    debugPrint('🔵 [MediaPurchase] Preis: $price, Credits benötigt: $requiredCredits');
 
     final success = await _purchaseService.purchaseMediaWithCredits(
       userId: userId,
@@ -329,15 +338,165 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
     if (!mounted) return;
 
     if (success) {
+      // ignore: avoid_print
+      print('✅✅✅ [MediaPurchase] Credits abgebucht, erstelle Moment...');
+      debugPrint('✅ [MediaPurchase] Credits abgebucht, erstelle Moment...');
+      
+      // CRITICAL FIX: Moment anlegen + Download starten (wie beim Stripe-Flow)
+      String? storedUrl;
+      String mediaName = widget.media.originalFileName ?? 'Media';
+      String avatarName = 'Avatar';
+
+      try {
+        // 1. Moment anlegen
+        // ignore: avoid_print
+        print('🔵🔵🔵 [MediaPurchase] Rufe saveMoment()...');
+        final moment = await MomentsService().saveMoment(
+          media: widget.media,
+          price: price,
+          paymentMethod: 'credits',
+        );
+        storedUrl = moment.storedUrl;
+        // ignore: avoid_print
+        print('✅✅✅ [MediaPurchase] Moment angelegt: ${moment.id}, URL: $storedUrl');
+        debugPrint('✅ [MediaPurchase] Moment angelegt: ${moment.id}, URL: $storedUrl');
+
+        // 2. Avatar-Name laden für bessere Success-Message
+        // ignore: avoid_print
+        print('🔵🔵🔵 [MediaPurchase] Lade Avatar-Name...');
+        if (widget.media.avatarId.isNotEmpty) {
+          try {
+            final avatarDoc = await FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(widget.media.avatarId)
+                .get();
+            if (avatarDoc.exists) {
+              final data = avatarDoc.data()!;
+              final nickname = (data['nickname'] as String?)?.trim();
+              final firstName = (data['firstName'] as String?)?.trim();
+              avatarName = (nickname != null && nickname.isNotEmpty) ? nickname : (firstName ?? 'Avatar');
+              // ignore: avoid_print
+              print('✅✅✅ [MediaPurchase] Avatar-Name: $avatarName');
+            }
+          } catch (e) {
+            // ignore: avoid_print
+            print('⚠️⚠️⚠️ [MediaPurchase] Avatar-Name Fehler: $e');
+            debugPrint('⚠️ [MediaPurchase] Avatar-Name konnte nicht geladen werden: $e');
+          }
+        }
+
+        // 3. Download automatisch starten
+        // ignore: avoid_print
+        print('🔵🔵🔵 [MediaPurchase] Starte Download... URL: $storedUrl, isEmpty: ${storedUrl?.isEmpty ?? true}');
+        if (storedUrl != null && storedUrl.isNotEmpty) {
+          try {
+            final uri = Uri.parse(storedUrl);
+            // ignore: avoid_print
+            print('🔵🔵🔵 [MediaPurchase] canLaunchUrl check...');
+            if (await canLaunchUrl(uri)) {
+              // ignore: avoid_print
+              print('🔵🔵🔵 [MediaPurchase] Launching URL...');
+              await launchUrl(
+                uri,
+                mode: LaunchMode.externalApplication,
+                webOnlyWindowName: '_blank',
+              );
+              // ignore: avoid_print
+              print('✅✅✅ [MediaPurchase] Download gestartet!');
+              debugPrint('✅ [MediaPurchase] Download gestartet');
+            } else {
+              // ignore: avoid_print
+              print('⚠️⚠️⚠️ [MediaPurchase] canLaunchUrl = false');
+            }
+          } catch (e, stackTrace) {
+            // ignore: avoid_print
+            print('⚠️⚠️⚠️ [MediaPurchase] Download fehlgeschlagen: $e');
+            print('StackTrace: $stackTrace');
+            debugPrint('⚠️ [MediaPurchase] Download fehlgeschlagen: $e');
+          }
+        } else {
+          // ignore: avoid_print
+          print('⚠️⚠️⚠️ [MediaPurchase] storedUrl ist null oder leer!');
+        }
+      } catch (e, stackTrace) {
+        // ignore: avoid_print
+        print('🔴🔴🔴 [MediaPurchase] FEHLER beim Moment anlegen: $e');
+        print('StackTrace: $stackTrace');
+        debugPrint('🔴 [MediaPurchase] Fehler beim Moment anlegen: $e');
+        if (!mounted) {
+          // ignore: avoid_print
+          print('🔴🔴🔴 [MediaPurchase] Widget not mounted, return');
+          return;
+        }
+        setState(() => _purchasing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Fehler beim Speichern: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
+
+      // ignore: avoid_print
+      print('🔵🔵🔵 [MediaPurchase] Check mounted: $mounted');
+      if (!mounted) {
+        // ignore: avoid_print
+        print('🔴🔴🔴 [MediaPurchase] Widget not mounted vor Navigator.pop, return');
+        return;
+      }
+      
+      // ignore: avoid_print
+      print('🔵🔵🔵 [MediaPurchase] Schließe Purchase-Dialog...');
       Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('✅ Kauf erfolgreich!'),
-          backgroundColor: Colors.green,
+
+      // ignore: avoid_print
+      print('🔵🔵🔵 [MediaPurchase] Zeige Success-Dialog...');
+      // 4. Success-Dialog mit echten Daten (wie beim Stripe-Flow)
+      await showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
+          content: Text(
+            '"$mediaName" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.',
+            style: const TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Später', style: TextStyle(color: Colors.white70)),
+            ),
+            TextButton(
+              onPressed: () async {
+                if (storedUrl != null && storedUrl.isNotEmpty) {
+                  try {
+                    final uri = Uri.parse(storedUrl);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(
+                        uri,
+                        mode: LaunchMode.externalApplication,
+                        webOnlyWindowName: '_blank',
+                      );
+                    }
+                  } catch (_) {}
+                }
+                if (Navigator.canPop(context)) Navigator.pop(context);
+              },
+              child: const Text('Nochmal herunterladen', style: TextStyle(color: Color(0xFF00FF94))),
+        ),
+          ],
         ),
       );
+
+      // ignore: avoid_print
+      print('✅✅✅ [MediaPurchase] Success-Dialog geschlossen');
       widget.onPurchaseSuccess?.call();
+      debugPrint('✅ [MediaPurchase] Credit-Kauf abgeschlossen');
     } else {
+      // ignore: avoid_print
+      print('🔴🔴🔴 [MediaPurchase] Credit-Kauf fehlgeschlagen (success=false)');
+      debugPrint('🔴 [MediaPurchase] Credit-Kauf fehlgeschlagen');
       setState(() => _purchasing = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -367,7 +526,13 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
 
       final uri = Uri.parse(checkoutUrl);
       if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        // In SELBEM TAB öffnen, damit der Redirect zurück inkl. session_id
+        // sicher von unserer App abgefangen wird
+        await launchUrl(
+          uri,
+          mode: LaunchMode.platformDefault,
+          webOnlyWindowName: '_self',
+        );
       } else {
         throw Exception('Kann URL nicht öffnen');
       }

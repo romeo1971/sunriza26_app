@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'explore_screen.dart';
 import 'favorites_screen.dart';
 import 'avatar_list_screen.dart';
@@ -43,6 +44,20 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
     _favoritesScreen = const FavoritesScreen();
     _profileScreen = const UserProfilePublicScreen();
     _momentsScreen = const MomentsScreen();
+
+    // Prüfe, ob ein Chat nach Resume geöffnet werden soll
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final pendingAvatarId = prefs.getString('pending_open_chat_avatar_id');
+        if (pendingAvatarId != null && pendingAvatarId.isNotEmpty) {
+          if (mounted) {
+            openChat(pendingAvatarId);
+          }
+          await prefs.remove('pending_open_chat_avatar_id');
+        }
+      } catch (_) {}
+    });
   }
 
   Future<void> _toggleFavoriteInExplore(

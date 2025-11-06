@@ -207,3 +207,4 @@ const apiKey = process.env.API_KEY?.trim(); // ← .trim() hinzugefügt
 
 **Notiz:** Dieser Fehler war vollständig vermeidbar durch Standard-Entwicklungspraktiken (Testing, Staging, Code Review). In einem Live-System wäre der Schaden verheerend gewesen.
 
+

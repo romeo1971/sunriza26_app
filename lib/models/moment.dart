@@ -13,6 +13,7 @@ class Moment {
   final double? price; // Preis (0.0 = kostenlos)
   final String? currency; // '€' oder '$'
   final String? receiptId; // Link zur Rechnung (falls gekauft)
+  final List<String>? tags; // optional: Tags aus Media für Suche/Filter
 
   const Moment({
     required this.id,
@@ -27,6 +28,7 @@ class Moment {
     this.price,
     this.currency,
     this.receiptId,
+    this.tags,
   });
 
   factory Moment.fromMap(Map<String, dynamic> map) {
@@ -43,6 +45,7 @@ class Moment {
       price: (map['price'] as num?)?.toDouble(),
       currency: map['currency'] as String?,
       receiptId: map['receiptId'] as String?,
+      tags: (map['tags'] as List<dynamic>?)?.cast<String>(),
     );
   }
 
@@ -60,6 +63,7 @@ class Moment {
       if (price != null) 'price': price,
       if (currency != null) 'currency': currency,
       if (receiptId != null) 'receiptId': receiptId,
+      if (tags != null && tags!.isNotEmpty) 'tags': tags,
     };
   }
 }

@@ -60,15 +60,22 @@ class MediaPurchaseService {
     required String userId,
     required AvatarMedia media,
   }) async {
+    debugPrint('🔵 [PurchaseService] START purchaseMediaWithCredits: userId=$userId, mediaId=${media.id}');
+    
     final price = media.price ?? 0.0;
     final currency = media.currency ?? '€';
 
     // Preis in Credits umrechnen (1 Credit = 0,1 €)
     final requiredCredits = (price / 0.1).round();
+    debugPrint('🔵 [PurchaseService] Preis: $price, Credits: $requiredCredits');
 
     // Prüfen ob genug Credits vorhanden
     final hasCredits = await hasEnoughCredits(userId, requiredCredits);
-    if (!hasCredits) return false;
+    if (!hasCredits) {
+      debugPrint('🔴 [PurchaseService] Nicht genug Credits');
+      return false;
+    }
+    debugPrint('✅ [PurchaseService] Credits verfügbar');
 
     try {
       final userRef = _firestore.collection('users').doc(userId);
@@ -77,6 +84,7 @@ class MediaPurchaseService {
       final batch = _firestore.batch();
 
       // 1. Credits abziehen
+      debugPrint('🔵 [PurchaseService] Ziehe $requiredCredits Credits ab...');
       batch.update(userRef, {
         'credits': FieldValue.increment(-requiredCredits),
         'creditsSpent': FieldValue.increment(requiredCredits),
@@ -84,7 +92,7 @@ class MediaPurchaseService {
 
       // 2. Transaktion anlegen
       final transactionRef = userRef.collection('transactions').doc();
-      batch.set(transactionRef, {
+      final transactionData = {
         'userId': userId,
         'type': 'credit_spent',
         'credits': requiredCredits,
@@ -95,10 +103,14 @@ class MediaPurchaseService {
         'avatarId': media.avatarId,
         'status': 'completed',
         'createdAt': FieldValue.serverTimestamp(),
-      });
+      };
+      debugPrint('🔵 [PurchaseService] Erstelle Transaktion: ${transactionRef.id}');
+      debugPrint('🔵 [PurchaseService] Transaction Data: $transactionData');
+      batch.set(transactionRef, transactionData);
 
       // 3. Media als gekauft markieren
       final purchaseRef = userRef.collection('purchased_media').doc(media.id);
+      debugPrint('🔵 [PurchaseService] Markiere Media als gekauft: ${media.id}');
       batch.set(purchaseRef, {
         'mediaId': media.id,
         'avatarId': media.avatarId,
@@ -109,10 +121,13 @@ class MediaPurchaseService {
         'purchasedAt': FieldValue.serverTimestamp(),
       });
 
+      debugPrint('🔵 [PurchaseService] Committe Batch...');
       await batch.commit();
+      debugPrint('✅ [PurchaseService] Batch erfolgreich committed!');
       return true;
-    } catch (e) {
-      debugPrint('Fehler beim Media-Kauf: $e');
+    } catch (e, stackTrace) {
+      debugPrint('🔴 [PurchaseService] Fehler beim Media-Kauf: $e');
+      debugPrint('🔴 [PurchaseService] StackTrace: $stackTrace');
       return false;
     }
   }
@@ -140,6 +155,9 @@ class MediaPurchaseService {
         'currency': currency == '\$' ? 'usd' : 'eur',
         'mediaName': media.originalFileName ?? 'Media',
         'mediaType': _getMediaTypeString(media.type),
+        'mediaUrl': media.url,
+        // Für Web: aktuelle URL zurückgeben, damit nach Erfolg wiederhergestellt werden kann
+        if (kIsWeb) 'returnUrl': Uri.base.toString(),
       });
 
       return result.data['url'] as String?;

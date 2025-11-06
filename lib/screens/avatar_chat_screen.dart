@@ -4971,19 +4971,31 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
         // Schließe Dialog
         Navigator.pop(context);
 
-        // Erfolg: Download-Hinweis anzeigen und Direktlink öffnen können
+        // Erfolg: Download automatisch starten und Hinweis anzeigen
         final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
         final avatarName = chatState?._avatarData?.displayName 
             ?? chatState?._avatarData?.fullName 
             ?? 'Avatar';
+        // Auto-Download
+        try {
+          final uri = Uri.parse(saved.storedUrl);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(
+              uri,
+              mode: LaunchMode.externalApplication,
+              webOnlyWindowName: '_blank',
+            );
+          }
+        } catch (_) {}
+
         if (mounted) {
           await showDialog(
             context: context,
             builder: (_) => AlertDialog(
               backgroundColor: AppColors.darkSurface,
-              title: const Text('Erfolg', style: TextStyle(color: Colors.white)),
+              title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
               content: Text(
-                'Du hast "${widget.media.originalFileName ?? 'Media'}" von "$avatarName" erfolgreich angenommen. Bitte jetzt downloaden.',
+                '"${widget.media.originalFileName ?? 'Media'}" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.',
                 style: const TextStyle(color: Colors.white70),
               ),
               actions: [
@@ -4996,12 +5008,16 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
                     try {
                       final uri = Uri.parse(saved.storedUrl);
                       if (await canLaunchUrl(uri)) {
-                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        await launchUrl(
+                          uri,
+                          mode: LaunchMode.externalApplication,
+                          webOnlyWindowName: '_blank',
+                        );
                       }
                     } catch (_) {}
                     if (Navigator.canPop(context)) Navigator.pop(context);
                   },
-                  child: const Text('Jetzt downloaden', style: TextStyle(color: AppColors.lightBlue)),
+                  child: const Text('Nochmal herunterladen', style: TextStyle(color: AppColors.lightBlue)),
                 ),
               ],
             ),
@@ -5084,19 +5100,27 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
           if (!mounted) return;
           Navigator.pop(context);
 
-          // Erfolg: Download-Hinweis (ohne Credits-Text)
+          // Erfolg: Download automatisch starten und Hinweis (ohne Credits-Text)
           final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
           final avatarName = chatState?._avatarData?.displayName 
               ?? chatState?._avatarData?.fullName 
               ?? 'Avatar';
+          // Auto-Download
+          try {
+            final uri = Uri.parse(saved.storedUrl);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+            }
+          } catch (_) {}
+
           if (mounted) {
             await showDialog(
               context: context,
               builder: (_) => AlertDialog(
                 backgroundColor: AppColors.darkSurface,
-                title: const Text('Erfolg', style: TextStyle(color: Colors.white)),
+                title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
                 content: Text(
-                  'Du hast "${widget.media.originalFileName ?? 'Media'}" von "$avatarName" erfolgreich gekauft. Bitte jetzt downloaden.',
+                  '"${widget.media.originalFileName ?? 'Media'}" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.',
                   style: const TextStyle(color: Colors.white70),
                 ),
                 actions: [
@@ -5114,7 +5138,7 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
                       } catch (_) {}
                       if (Navigator.canPop(context)) Navigator.pop(context);
                     },
-                    child: const Text('Jetzt downloaden', style: TextStyle(color: AppColors.lightBlue)),
+                    child: const Text('Nochmal herunterladen', style: TextStyle(color: AppColors.lightBlue)),
                   ),
                 ],
               ),
@@ -5134,10 +5158,15 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
           if (!mounted) return;
           Navigator.pop(context);
 
-          // Öffne Stripe Checkout URL
+          // Öffne Stripe Checkout URL IM SELBEN TAB, damit der Redirect
+          // mit session_id von unserer App abgefangen wird
           final uri = Uri.parse(checkoutUrl);
           if (await canLaunchUrl(uri)) {
-            await launchUrl(uri, mode: LaunchMode.externalApplication);
+            await launchUrl(
+              uri,
+              mode: LaunchMode.platformDefault,
+              webOnlyWindowName: '_self',
+            );
             
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -5383,7 +5412,9 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
               icon: Icons.monetization_on,
               title: 'Credits',
               subtitle: '${(widget.price / 0.1).round()} Credits (1 Credit = 0,10 €)',
-              enabled: widget.price < 2.0 || _paymentMethod == 'credits',
+              // Credits sollen IMMER anwählbar sein; Verfügbarkeit wird
+              // beim Kauf geprüft und ggf. mit Snackbar gemeldet
+              enabled: true,
             ),
             
             const SizedBox(height: 8),

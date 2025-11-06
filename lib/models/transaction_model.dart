@@ -186,11 +186,13 @@ class Transaction {
     };
   }
 
-  /// Formatiert Betrag für Anzeige
+  /// Betrag in Hauptwährungseinheit (z. B. EUR) – Firestore speichert Cents
+  double get amountMajorUnit => (amount ?? 0.0) / 100.0;
+
+  /// Formatiert Betrag für Anzeige (aus Cents → EUR/USD)
   String get formattedAmount {
-    if (amount == null) return '-';
     final symbol = currency == 'usd' ? '\$' : '€';
-    return '${amount!.toStringAsFixed(2)} $symbol';
+    return '${amountMajorUnit.toStringAsFixed(2)} $symbol';
   }
 
   /// Formatiert Credits für Anzeige

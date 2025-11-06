@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
 import '../models/moment.dart';
@@ -30,29 +31,49 @@ class MomentsService {
     required String paymentMethod, // 'free', 'credits', 'stripe'
     String? stripePaymentIntentId,
   }) async {
+    debugPrint('🔵 [MomentsService] START saveMoment: mediaId=${media.id}, price=$price, method=$paymentMethod');
+    
     final uid = _auth.currentUser?.uid;
-    if (uid == null) throw Exception('User not authenticated');
+    if (uid == null) {
+      debugPrint('🔴 [MomentsService] User nicht authentifiziert');
+      throw Exception('User not authenticated');
+    }
+    debugPrint('🔵 [MomentsService] User ID: $uid');
 
-    // 1. Download Original File
-    final fileBytes = await _downloadFile(media.url);
-
-    // 2. Determine File Extension
-    final ext = _getExtensionFromUrl(media.url) ?? _getExtensionFromType(media.type);
-
-    // 3. Upload to Moments Storage
+    // 1-3. Versuche Kopie ins Nutzer-Moments-Storage, fallback auf Original-URL
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final storagePath = 'users/$uid/moments/${media.avatarId}/$timestamp$ext';
-    final ref = _storage.ref().child(storagePath);
+    String storedUrl;
+    try {
+      debugPrint('🔵 [MomentsService] Download File von: ${media.url}');
+      // 1. Download Original File
+      final fileBytes = await _downloadFile(media.url);
+      debugPrint('✅ [MomentsService] File geladen: ${fileBytes.length} bytes');
 
-    await ref.putData(
-      fileBytes,
-      SettableMetadata(
-        contentType: _getContentType(media.type),
-        contentDisposition: 'attachment; filename="${media.originalFileName ?? 'moment$ext'}"',
-      ),
-    );
+      // 2. Determine File Extension
+      final ext = _getExtensionFromUrl(media.url) ?? _getExtensionFromType(media.type);
+      debugPrint('🔵 [MomentsService] Extension: $ext');
 
-    final storedUrl = await ref.getDownloadURL();
+      // 3. Upload to Moments Storage
+      final storagePath = 'users/$uid/moments/${media.avatarId}/$timestamp$ext';
+      debugPrint('🔵 [MomentsService] Upload zu: $storagePath');
+      final ref = _storage.ref().child(storagePath);
+
+      await ref.putData(
+        fileBytes,
+        SettableMetadata(
+          contentType: _getContentType(media.type),
+          contentDisposition: 'attachment; filename="${media.originalFileName ?? 'moment$ext'}"',
+        ),
+      );
+
+      storedUrl = await ref.getDownloadURL();
+      debugPrint('✅ [MomentsService] Upload erfolgreich: $storedUrl');
+    } catch (e, stackTrace) {
+      // Fallback: Speichere ohne Kopie, referenziere Original-URL
+      debugPrint('⚠️ [MomentsService] Copy to moments failed, using originalUrl. Error: $e');
+      debugPrint('⚠️ [MomentsService] StackTrace: $stackTrace');
+      storedUrl = media.url;
+    }
 
     // 4. Optional: Copy Thumbnail
     String? storedThumbUrl;
@@ -87,12 +108,14 @@ class MomentsService {
       price: price,
       currency: media.currency ?? '€',
       receiptId: null, // Wird später gesetzt wenn Receipt erstellt wird
+      tags: media.tags,
     );
 
     // 6. Save to Firestore
     await _momentsCol(uid).doc(momentId).set(moment.toMap());
 
-    // 7. Create Receipt (wenn nicht kostenlos)
+    // 7. Receipt (falls Preis > 0) und Transaktionseintrag (immer)
+    String? receiptId;
     if (price > 0.0) {
       final receipt = await _createReceipt(
         momentId: momentId,
@@ -107,9 +130,55 @@ class MomentsService {
           'type': _typeToString(media.type),
         },
       );
-
-      // Update Moment mit Receipt ID
+      receiptId = receipt.id;
       await _momentsCol(uid).doc(momentId).update({'receiptId': receipt.id});
+    }
+
+    // Zusätzlich: Transaktions-Dokument für UI (users/{uid}/transactions) – IMMER anlegen
+    try {
+      final transactionsCol = _fs.collection('users').doc(uid).collection('transactions');
+      final txRef = transactionsCol.doc();
+      final rawCurrency = (media.currency ?? 'eur').toLowerCase();
+      final currencyCode = (rawCurrency.contains('usd') || rawCurrency.contains('\$') || rawCurrency.contains('\u000024'))
+          ? 'usd'
+          : 'eur';
+      await txRef.set({
+        'userId': uid,
+        'type': 'media_purchase',
+        'amount': (price * 100).round(), // 0 bei kostenlos
+        'currency': currencyCode,
+        'status': 'completed',
+        'createdAt': FieldValue.serverTimestamp(),
+        'mediaId': media.id,
+        'mediaType': _typeToString(media.type),
+        'mediaUrl': media.url,
+        'mediaName': media.originalFileName ?? 'Media',
+        'avatarId': media.avatarId,
+        if (stripePaymentIntentId != null) 'stripeSessionId': stripePaymentIntentId,
+        if (receiptId != null) 'receiptId': receiptId,
+      });
+      debugPrint('✅ [MomentsService] UI-Transaction gespeichert: ${txRef.id}');
+
+      // Versuche direkt Rechnung/PDF zu erzeugen, damit die UI einen Download-Link hat
+      try {
+        final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
+        final ensure = fns.httpsCallable('ensureInvoiceFiles');
+        final res = await ensure.call({ 'transactionId': txRef.id });
+        final data = Map<String, dynamic>.from(res.data as Map? ?? {});
+        final pdf = data['invoicePdfUrl'] as String?;
+        final nr = data['invoiceNumber'] as String?;
+        if ((pdf != null && pdf.isNotEmpty) || (nr != null && nr.isNotEmpty)) {
+          await txRef.set({
+            if (pdf != null && pdf.isNotEmpty) 'invoicePdfUrl': pdf,
+            if (nr != null && nr.isNotEmpty) 'invoiceNumber': nr,
+          }, SetOptions(merge: true));
+          debugPrint('✅ [MomentsService] Rechnung gespeichert (nr=${nr ?? '-'}).');
+        }
+      } catch (e) {
+        debugPrint('⚠️ [MomentsService] ensureInvoiceFiles fehlgeschlagen: $e');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Transaction create failed: $e');
     }
 
     debugPrint('✅ Moment saved: $momentId ($storedUrl)');
@@ -126,10 +195,15 @@ class MomentsService {
     String? stripePaymentIntentId,
     Map<String, dynamic>? metadata,
   }) async {
+    debugPrint('🔵 [MomentsService] START _createReceipt');
     final uid = _auth.currentUser?.uid;
-    if (uid == null) throw Exception('User not authenticated');
+    if (uid == null) {
+      debugPrint('🔴 [MomentsService] Receipt: User nicht authentifiziert');
+      throw Exception('User not authenticated');
+    }
 
     final receiptId = _receiptsCol(uid).doc().id;
+    debugPrint('🔵 [MomentsService] Receipt ID: $receiptId');
     final receipt = Receipt(
       id: receiptId,
       userId: uid,
@@ -143,8 +217,9 @@ class MomentsService {
       metadata: metadata,
     );
 
+    debugPrint('🔵 [MomentsService] Speichere Receipt...');
     await _receiptsCol(uid).doc(receiptId).set(receipt.toMap());
-    debugPrint('✅ Receipt created: $receiptId');
+    debugPrint('✅ [MomentsService] Receipt created: $receiptId');
     return receipt;
   }
 
@@ -228,7 +303,38 @@ class MomentsService {
         .limit(500)
         .get();
 
-    return snapshot.docs.map((d) => Moment.fromMap(d.data())).toList();
+    List<Moment> items = snapshot.docs.map((d) => Moment.fromMap(d.data())).toList();
+    // Fallback: Falls (noch) keine Moments vorhanden, versuche aus purchased_media
+    if (items.isEmpty) {
+      try {
+        Query<Map<String, dynamic>> p = _fs.collection('users').doc(uid).collection('purchased_media');
+        if (avatarId != null) p = p.where('avatarId', isEqualTo: avatarId);
+        final ps = await p.orderBy('purchasedAt', descending: true).limit(500).get();
+        if (ps.docs.isNotEmpty) {
+          items = ps.docs.map((d) {
+            final m = d.data();
+            final type = (m['type'] as String?) ?? 'image';
+            return Moment(
+              id: d.id,
+              userId: uid,
+              avatarId: (m['avatarId'] as String?) ?? '',
+              type: type,
+              originalUrl: (m['mediaUrl'] as String?) ?? '',
+              storedUrl: (m['mediaUrl'] as String?) ?? '',
+              thumbUrl: null,
+              originalFileName: (m['mediaName'] as String?) ?? 'Media',
+              acquiredAt: ((m['purchasedAt'] as Timestamp?)?.millisecondsSinceEpoch) ?? DateTime.now().millisecondsSinceEpoch,
+              price: (m['price'] as num?)?.toDouble(),
+              currency: (m['currency'] as String?) ?? '€',
+              receiptId: null,
+              tags: const [],
+            );
+          }).toList();
+        }
+      } catch (_) {}
+    }
+    debugPrint('🔵 [MomentsService] listMoments: ${items.length} items');
+    return items;
   }
 
   /// Liste alle Receipts für User

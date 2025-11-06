@@ -31,3 +31,4 @@ echo ""
 
 echo "✅ Alle Apps geprüft!"
 
+

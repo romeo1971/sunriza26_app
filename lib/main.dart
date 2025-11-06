@@ -483,6 +483,8 @@ class SunrizaApp extends StatelessWidget {
             '/moments': (context) => const MomentsScreen(),
             // Altpfad bleibt erhalten und zeigt nun auf den neuen Moments-Screen
             '/shared-moments': (context) => const MomentsScreen(),
+            // Stripe-Return-Ziel – wichtig, damit Uri (inkl. session_id) NICHT verloren geht
+            '/media/checkout': (context) => const _MediaCheckoutPage(),
             '/avatar-review-facts': (context) {
               final args = ModalRoute.of(context)!.settings.arguments as Map?;
               final avatarId = (args?['avatarId'] as String?) ?? '';
@@ -560,30 +562,242 @@ class _ResumeRouterState extends State<_ResumeRouter> with WidgetsBindingObserve
   void _handleResumeDeepLink() {
     try {
       final uri = Uri.base;
-      final success = uri.queryParameters['success'] == 'true';
+      // ignore: avoid_print
+      print('🔵🔵🔵 [ResumeRouter] current URI: $uri');
       final sessionId = uri.queryParameters['session_id'];
-      if (!success || sessionId == null || sessionId.isEmpty) return;
+      // ignore: avoid_print
+      print('🔵🔵🔵 [ResumeRouter] session_id: $sessionId');
+      if (sessionId == null || sessionId.isEmpty) return;
       if (_lastHandledSessionId == sessionId) return; // doppelte Navigation vermeiden
       _lastHandledSessionId = sessionId;
 
-      // Spezieller Flow: Media Checkout → sofortige Kopie + Download‑Dialog, keine Navigation weg vom Chat
       final flowType = uri.queryParameters['type'];
+      // ignore: avoid_print
+      print('🔵🔵🔵 [ResumeRouter] flowType: $flowType, path: ${uri.path}');
       if (uri.path.contains('/media/checkout') || flowType == 'media') {
+        // ignore: avoid_print
+        print('✅✅✅ [ResumeRouter] Media-Checkout erkannt, starte Handler');
         _handleMediaCheckoutSuccess(uri, sessionId);
         return;
       }
 
-      // Sonst Standard: Zahlungsübersicht
+      // ignore: avoid_print
+      print('🔵🔵🔵 [ResumeRouter] Standard Payment Overview Navigation');
       final navigator = Navigator.of(context);
       navigator.pushNamed('/payment-overview', arguments: { 'sessionId': sessionId });
-    } catch (_) {}
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('🔴🔴🔴 [ResumeRouter] Fehler: $e');
+      print(st);
+    }
   }
 
   Future<void> _handleMediaCheckoutSuccess(Uri uri, String sessionId) async {
     try {
+      // ignore: avoid_print
+      print('🔵🔵🔵 [MediaSuccess] ENTER with uri=$uri, sessionId=$sessionId');
       final avatarId = uri.queryParameters['avatarId'] ?? '';
       final mediaId = uri.queryParameters['mediaId'] ?? '';
       final mediaType = uri.queryParameters['mediaType'] ?? '';
+      final returnUrl = uri.queryParameters['return']; // aktuell nicht genutzt
+      // ignore: avoid_print
+      print('🔵🔵🔵 [MediaSuccess] avatarId=$avatarId mediaId=$mediaId mediaType=$mediaType');
+
+      AvatarMedia? media;
+      if (avatarId.isNotEmpty && mediaId.isNotEmpty && mediaType.isNotEmpty) {
+        final folder = switch (mediaType) {
+          'image' => 'images',
+          'video' => 'videos',
+          'audio' => 'audios',
+          'document' => 'documents',
+          _ => 'images',
+        };
+        // ignore: avoid_print
+        print('🔵🔵🔵 [MediaSuccess] Lade Media aus Firestore: /avatars/$avatarId/$folder/$mediaId');
+        final snap = await FirebaseFirestore.instance
+            .collection('avatars').doc(avatarId)
+            .collection(folder).doc(mediaId).get();
+        // ignore: avoid_print
+        print('🔵🔵🔵 [MediaSuccess] Firestore exists=${snap.exists}');
+        if (snap.exists) {
+          final map = {'id': snap.id, ...snap.data()!};
+          media = AvatarMedia.fromMap(map);
+        }
+      }
+
+      if (media == null) {
+        final mediaUrl = uri.queryParameters['mediaUrl'];
+        // ignore: avoid_print
+        print('🔵🔵🔵 [MediaSuccess] Fallback build from URL: $mediaUrl');
+        if (mediaUrl != null && mediaUrl.isNotEmpty) {
+          final type = switch (mediaType) {
+            'video' => AvatarMediaType.video,
+            'audio' => AvatarMediaType.audio,
+            'document' => AvatarMediaType.document,
+            _ => AvatarMediaType.image,
+          };
+          media = AvatarMedia(
+            id: mediaId.isNotEmpty ? mediaId : DateTime.now().millisecondsSinceEpoch.toString(),
+            avatarId: avatarId,
+            type: type,
+            url: mediaUrl,
+            createdAt: DateTime.now().millisecondsSinceEpoch,
+          );
+        }
+      }
+
+      String? storedUrl;
+      String mediaName = 'Media';
+      String avatarName = 'Avatar';
+      if (media != null) {
+        mediaName = media.originalFileName ?? _guessNameFromUrl(media.url) ?? mediaName;
+        // ignore: avoid_print
+        print('🔵🔵🔵 [MediaSuccess] Rufe MomentsService.saveMoment()');
+        final moment = await MomentsService().saveMoment(
+          media: media,
+          price: media.price ?? 0.0,
+          paymentMethod: 'stripe',
+          stripePaymentIntentId: sessionId,
+        );
+        storedUrl = moment.storedUrl;
+        // ignore: avoid_print
+        print('✅✅✅ [MediaSuccess] Moment gespeichert: ${moment.id}, storedUrl=$storedUrl');
+      } else {
+        // ignore: avoid_print
+        print('🔴🔴🔴 [MediaSuccess] media ist null – Abbruch');
+      }
+
+      if (avatarId.isNotEmpty) {
+        try {
+          final avatarDoc = await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(avatarId)
+              .get();
+          if (avatarDoc.exists) {
+            final data = avatarDoc.data()!;
+            final nickname = (data['nickname'] as String?)?.trim();
+            final firstName = (data['firstName'] as String?)?.trim();
+            final lastName = (data['lastName'] as String?)?.trim();
+            final nicknamePublic = (data['nicknamePublic'] as String?)?.trim();
+            final firstNamePublic = (data['firstNamePublic'] as String?)?.trim();
+            final lastNamePublic = (data['lastNamePublic'] as String?)?.trim();
+
+            String computedName = (nickname != null && nickname.isNotEmpty) ? nickname : (firstName ?? '');
+            if (computedName.isEmpty) {
+              final parts = <String>[];
+              if (firstName != null && firstName.isNotEmpty) parts.add(firstName);
+              if (lastName != null && lastName.isNotEmpty) parts.add(lastName);
+              if (parts.isEmpty) {
+                if (nicknamePublic != null && nicknamePublic.isNotEmpty) {
+                  parts.add(nicknamePublic);
+                } else {
+                  if (firstNamePublic != null && firstNamePublic.isNotEmpty) parts.add(firstNamePublic);
+                  if (lastNamePublic != null && lastNamePublic.isNotEmpty) parts.add(lastNamePublic);
+                }
+              }
+              computedName = parts.join(' ').trim();
+            }
+            if (computedName.isNotEmpty) avatarName = computedName;
+          }
+        } catch (_) {}
+      }
+
+      if (storedUrl != null && storedUrl.isNotEmpty) {
+        try {
+          final uri = Uri.parse(storedUrl);
+          // ignore: avoid_print
+          print('🔵🔵🔵 [MediaSuccess] Versuche Download zu starten: $storedUrl');
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(
+              uri,
+              mode: LaunchMode.externalApplication,
+              webOnlyWindowName: '_blank',
+            );
+            // ignore: avoid_print
+            print('✅✅✅ [MediaSuccess] Download gestartet');
+          } else {
+            // ignore: avoid_print
+            print('⚠️⚠️⚠️ [MediaSuccess] canLaunchUrl false');
+          }
+        } catch (e) {
+          // ignore: avoid_print
+          print('⚠️⚠️⚠️ [MediaSuccess] Download Fehler: $e');
+        }
+      }
+
+      if (!mounted) return;
+      await showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+          backgroundColor: const Color(0xFF1A1A1A),
+          title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
+          content: Text('"$mediaName" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.', style: const TextStyle(color: Colors.white70)),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Später', style: TextStyle(color: Colors.white70))),
+            TextButton(onPressed: () async {
+              if (storedUrl != null && storedUrl.isNotEmpty) {
+                try {
+                  final uri = Uri.parse(storedUrl);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                  }
+                } catch (_) {}
+              }
+              if (Navigator.canPop(context)) Navigator.pop(context);
+            }, child: const Text('Nochmal herunterladen', style: TextStyle(color: Color(0xFF00FF94)))),
+          ],
+        ),
+      );
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (avatarId.isNotEmpty) {
+          await prefs.setString('pending_open_chat_avatar_id', avatarId);
+        }
+      } catch (_) {}
+
+      if (mounted) {
+        // Zurück zur Home/Chat-Ansicht; Chat wird via pending_open_chat_avatar_id geöffnet
+        Navigator.of(context).pushNamed('/home');
+      }
+    } catch (e, st) {
+      // ignore: avoid_print
+      print('🔴🔴🔴 [MediaSuccess] ERROR: $e');
+      print(st);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
+}
+
+class _MediaCheckoutPage extends StatefulWidget {
+  const _MediaCheckoutPage();
+
+  @override
+  State<_MediaCheckoutPage> createState() => _MediaCheckoutPageState();
+}
+
+class _MediaCheckoutPageState extends State<_MediaCheckoutPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _process());
+  }
+
+  Future<void> _process() async {
+    try {
+      final uri = Uri.base;
+      final sessionId = uri.queryParameters['session_id'];
+      final avatarId = uri.queryParameters['avatarId'] ?? '';
+      final mediaId = uri.queryParameters['mediaId'] ?? '';
+      final mediaType = uri.queryParameters['mediaType'] ?? '';
+      final mediaUrlParam = uri.queryParameters['mediaUrl'];
+
+      if (sessionId == null || sessionId.isEmpty) {
+        if (mounted) Navigator.of(context).pushReplacementNamed('/home');
+        return;
+      }
 
       AvatarMedia? media;
       if (avatarId.isNotEmpty && mediaId.isNotEmpty && mediaType.isNotEmpty) {
@@ -603,11 +817,27 @@ class _ResumeRouterState extends State<_ResumeRouter> with WidgetsBindingObserve
         }
       }
 
+      if (media == null && mediaUrlParam != null && mediaUrlParam.isNotEmpty) {
+        final type = switch (mediaType) {
+          'video' => AvatarMediaType.video,
+          'audio' => AvatarMediaType.audio,
+          'document' => AvatarMediaType.document,
+          _ => AvatarMediaType.image,
+        };
+        media = AvatarMedia(
+          id: mediaId.isNotEmpty ? mediaId : DateTime.now().millisecondsSinceEpoch.toString(),
+          avatarId: avatarId,
+          type: type,
+          url: mediaUrlParam,
+          createdAt: DateTime.now().millisecondsSinceEpoch,
+        );
+      }
+
       String? storedUrl;
       String mediaName = 'Media';
       String avatarName = 'Avatar';
       if (media != null) {
-        mediaName = media.originalFileName ?? mediaName;
+        mediaName = media.originalFileName ?? _guessNameFromUrl(media.url) ?? mediaName;
         final moment = await MomentsService().saveMoment(
           media: media,
           price: media.price ?? 0.0,
@@ -617,41 +847,84 @@ class _ResumeRouterState extends State<_ResumeRouter> with WidgetsBindingObserve
         storedUrl = moment.storedUrl;
       }
 
+      if (avatarId.isNotEmpty) {
+        try {
+          final doc = await FirebaseFirestore.instance.collection('avatars').doc(avatarId).get();
+          if (doc.exists) {
+            final d = doc.data()!;
+            final nickname = (d['nickname'] as String?)?.trim();
+            final firstName = (d['firstName'] as String?)?.trim();
+            avatarName = (nickname != null && nickname.isNotEmpty) ? nickname : (firstName ?? avatarName);
+          }
+        } catch (_) {}
+      }
+
+      if (storedUrl != null && storedUrl.isNotEmpty) {
+        try {
+          final dUri = Uri.parse(storedUrl);
+          if (await canLaunchUrl(dUri)) {
+            await launchUrl(dUri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+          }
+        } catch (_) {}
+      }
+
       if (!mounted) return;
       await showDialog(
         context: context,
         builder: (_) => AlertDialog(
           backgroundColor: const Color(0xFF1A1A1A),
-          title: const Text('Erfolg', style: TextStyle(color: Colors.white)),
-          content: Text(
-            'Du hast "$mediaName" von "$avatarName" erfolgreich gekauft. Bitte jetzt downloaden.',
-            style: const TextStyle(color: Colors.white70),
-          ),
+          title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
+          content: Text('"$mediaName" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.', style: const TextStyle(color: Colors.white70)),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Später', style: TextStyle(color: Colors.white70)),
-            ),
-            TextButton(
-              onPressed: () async {
-                if (storedUrl != null && storedUrl.isNotEmpty) {
-                  try {
-                    final uri = Uri.parse(storedUrl);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
-                  } catch (_) {}
-                }
-                if (Navigator.canPop(context)) Navigator.pop(context);
-              },
-              child: const Text('Jetzt downloaden', style: TextStyle(color: Color(0xFF00FF94))),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Später', style: TextStyle(color: Colors.white70))),
+            TextButton(onPressed: () async {
+              if (storedUrl != null && storedUrl.isNotEmpty) {
+                try {
+                  final u = Uri.parse(storedUrl);
+                  if (await canLaunchUrl(u)) {
+                    await launchUrl(u, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                  }
+                } catch (_) {}
+              }
+              if (Navigator.canPop(context)) Navigator.pop(context);
+            }, child: const Text('Nochmal herunterladen', style: TextStyle(color: Color(0xFF00FF94)))),
           ],
         ),
       );
-    } catch (_) {}
+
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        if (avatarId.isNotEmpty) {
+          await prefs.setString('pending_open_chat_avatar_id', avatarId);
+        }
+      } catch (_) {}
+
+      if (mounted) {
+        Navigator.of(context).pushNamed('/home');
+      }
+    } catch (_) {
+      if (mounted) Navigator.of(context).pushReplacementNamed('/home');
+    }
   }
 
   @override
-  Widget build(BuildContext context) => widget.child;
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      backgroundColor: Colors.black,
+      body: Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+// Hilfsfunktion: Dateiname aus URL ableiten
+String? _guessNameFromUrl(String url) {
+  try {
+    final u = Uri.parse(url);
+    final path = u.path;
+    if (path.isEmpty) return null;
+    final last = path.split('/').last;
+    return last.isEmpty ? null : last;
+  } catch (_) {
+    return null;
+  }
 }

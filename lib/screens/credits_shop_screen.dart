@@ -224,13 +224,13 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildBulletPoint('💳 Keine Transaktionsgebühren pro Kauf'),
+          _buildBulletPoint('Keine Transaktionsgebühren pro Kauf'),
           const SizedBox(height: 8),
-          _buildBulletPoint('⚡ Schnelle Zahlung ohne erneute Stripe-Gebühr'),
+          _buildBulletPoint('Schnelle Zahlung ohne erneute Stripe-Gebühr'),
           const SizedBox(height: 8),
-          _buildBulletPoint('💰 Mehr Geld für dich - spare Gebühren!'),
+          _buildBulletPoint('Mehr Geld für dich – spare Gebühren!'),
           const SizedBox(height: 8),
-          _buildBulletPoint('🛡️ Sicher & bequem im Chat/Avatar zahlen'),
+          _buildBulletPoint('Sicher & bequem im Chat/Avatar zahlen'),
           const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(12),
@@ -239,7 +239,7 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Text(
-              '💡 Wichtig: Einzelkäufe unter 2 € sind NUR mit Credits möglich. '
+              'Wichtig: Einzelkäufe unter 2 € sind NUR mit Credits möglich. '
               'Ab 2 € kannst du zwischen Credits und direkter Zahlung wählen.',
               style: TextStyle(color: Colors.white, fontSize: 13, height: 1.4),
             ),
@@ -615,10 +615,8 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
       final callable = functions.httpsCallable('createCreditsCheckoutSession');
 
       final result = await callable.call({
-        'euroAmount': euroAmount,
         'amount': (totalPrice * 100).toInt(), // in Cents
         'currency': _currency == '€' ? 'eur' : 'usd',
-        'exchangeRate': _exchangeRate,
         'credits': credits,
       });
 

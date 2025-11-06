@@ -27,9 +27,9 @@ export const createCreditsCheckoutSession = onCall({ region: 'us-central1' }, as
   const data = req.data || {} as any;
   if (!auth) throw new HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
   const userId = auth.uid;
-  const { euroAmount, amount, currency, exchangeRate, credits } = data;
-  if (!amount || !currency || !credits || !euroAmount) {
-    throw new HttpsError('invalid-argument', 'Fehlende Parameter: amount, currency, credits, euroAmount erforderlich');
+  const { amount, currency, credits } = data;
+  if (!amount || !currency || !credits) {
+    throw new HttpsError('invalid-argument', 'Fehlende Parameter: amount, currency, credits erforderlich');
   }
   if (currency !== 'eur' && currency !== 'usd') {
     throw new HttpsError('invalid-argument', 'Währung muss eur oder usd sein');
@@ -41,7 +41,7 @@ export const createCreditsCheckoutSession = onCall({ region: 'us-central1' }, as
       line_items: [{
         price_data: {
           currency,
-          product_data: { name: `${credits} Credits`, description: `${credits} Credits für Sunriza (Basis: ${euroAmount} EUR)` },
+          product_data: { name: `${credits} Credits` },
           unit_amount: amount,
         },
         quantity: 1,
@@ -50,7 +50,7 @@ export const createCreditsCheckoutSession = onCall({ region: 'us-central1' }, as
       success_url: `${process.env.APP_URL || 'http://localhost:4202'}/credits-shop?success=true&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${process.env.APP_URL || 'http://localhost:4202'}/credits-shop?cancelled=true`,
       client_reference_id: userId,
-      metadata: { userId, credits: String(credits), euroAmount: String(euroAmount), exchangeRate: exchangeRate ? String(exchangeRate) : '1.0', type: 'credits_purchase' },
+      metadata: { userId, credits: String(credits), type: 'credits_purchase' },
     });
     return { sessionId: session.id, url: session.url };
   } catch (error: any) {
@@ -109,15 +109,13 @@ export const stripeWebhook = functions
         res.json({ received: true });
         return;
       }
-      const { userId, credits, euroAmount, exchangeRate } = md;
+      const { userId, credits } = md;
       if (!userId || !credits) { 
         console.error('Fehlende Metadata:', md);
         res.status(400).send('Fehlende Metadata'); 
         return; 
       }
       const creditsNum = parseInt(String(credits));
-      const euroAmountNum = parseFloat(String(euroAmount || '0'));
-      const exchangeRateNum = parseFloat(String(exchangeRate || '1.0'));
       try {
         console.log(`Credits gutschreiben: ${creditsNum} für User ${userId}`);
         const userRef = admin.firestore().collection('users').doc(userId);
@@ -127,8 +125,8 @@ export const stripeWebhook = functions
         });
         const invoiceNumber = generateInvoiceNumber();
         await userRef.collection('transactions').add({
-          userId, type: 'credit_purchase', credits: creditsNum, euroAmount: euroAmountNum,
-          amount: session.amount_total || 0, currency: session.currency || 'eur', exchangeRate: exchangeRateNum,
+          userId, type: 'credit_purchase', credits: creditsNum,
+          amount: session.amount_total || 0, currency: session.currency || 'eur',
           stripeSessionId: session.id, paymentIntent: session.payment_intent, status: 'completed',
           invoiceNumber,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),

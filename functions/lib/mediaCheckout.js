@@ -37,6 +37,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.mediaCheckoutWebhook = exports.createMediaCheckoutSession = void 0;
+exports.handleMediaPurchaseWebhook = handleMediaPurchaseWebhook;
 const functions = __importStar(require("firebase-functions/v1"));
 const stripe_1 = __importDefault(require("stripe"));
 // Stripe nur initialisieren wenn Secret Key vorhanden
@@ -57,7 +58,7 @@ exports.createMediaCheckoutSession = functions
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
     }
-    const { mediaId, avatarId, amount, currency, mediaName, mediaType } = data || {};
+    const { mediaId, avatarId, amount, currency, mediaName, mediaType, mediaUrl, returnUrl } = data || {};
     if (!mediaId || !amount || !currency) {
         throw new functions.https.HttpsError('invalid-argument', 'mediaId, amount, currency erforderlich');
     }
@@ -79,9 +80,18 @@ exports.createMediaCheckoutSession = functions
                 },
             ],
             mode: 'payment',
-            success_url: `${process.env.APP_URL || 'http://localhost:4202'}/media/checkout?success=true&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${process.env.APP_URL || 'http://localhost:4202'}/media/checkout?cancelled=true`,
-            metadata: { mediaId, avatarId: avatarId || '' },
+            // Hash-Routing für Flutter Web, damit die Route sicher erkannt wird
+            success_url: `${process.env.APP_URL || 'http://localhost:4202'}/#/media/checkout?success=true&type=media&avatarId=${encodeURIComponent(avatarId || '')}&mediaId=${encodeURIComponent(mediaId)}&mediaType=${encodeURIComponent(mediaType || '')}&mediaUrl=${encodeURIComponent(mediaUrl || '')}&session_id={CHECKOUT_SESSION_ID}${returnUrl ? `&return=${encodeURIComponent(returnUrl)}` : ''}`,
+            cancel_url: `${process.env.APP_URL || 'http://localhost:4202'}/#/media/checkout?cancelled=true&type=media`,
+            metadata: {
+                type: 'media_purchase',
+                userId: context.auth.uid,
+                mediaId,
+                avatarId: avatarId || '',
+                mediaName: mediaName || 'Media',
+                mediaType: mediaType || '',
+                mediaUrl: mediaUrl || '',
+            },
         });
         return { sessionId: session.id, url: session.url };
     }
@@ -114,4 +124,65 @@ exports.mediaCheckoutWebhook = functions
     // Hier Payment-Resultate verarbeiten
     res.json({ received: true });
 });
+/**
+ * Wird vom allgemeinen Stripe-Webhook (stripeCheckout.ts) aufgerufen,
+ * wenn md.type === 'media_purchase'. Schreibt eine Transaktion für den Nutzer.
+ */
+async function handleMediaPurchaseWebhook(session, admin) {
+    try {
+        const md = session.metadata || {};
+        const userId = md.userId;
+        if (!userId) {
+            console.error('handleMediaPurchaseWebhook: userId fehlt');
+            return;
+        }
+        const amount = session.amount_total || 0; // cents
+        const currency = (session.currency || 'eur').toLowerCase();
+        const txRef = admin.firestore().collection('users').doc(userId).collection('transactions').doc(String(session.id));
+        await txRef.set({
+            userId,
+            type: 'media_purchase',
+            amount,
+            currency,
+            status: 'completed',
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            mediaId: md.mediaId || null,
+            mediaType: md.mediaType || null,
+            mediaUrl: md.mediaUrl || null,
+            mediaName: md.mediaName || 'Media',
+            avatarId: md.avatarId || null,
+            stripeSessionId: session.id,
+            paymentIntent: session.payment_intent || null,
+        }, { merge: true });
+        console.log(`✅ Media-Transaktion geschrieben: users/${userId}/transactions/${session.id}`);
+        // Zusätzlich: Moment-Dokument anlegen (robust, ohne Storage-Kopie)
+        try {
+            const momentsCol = admin.firestore().collection('users').doc(userId).collection('moments');
+            const momentId = momentsCol.doc().id;
+            const nowMs = Date.now();
+            const type = md.mediaType || 'image';
+            await momentsCol.doc(momentId).set({
+                id: momentId,
+                userId,
+                avatarId: md.avatarId || '',
+                type,
+                originalUrl: md.mediaUrl || '',
+                storedUrl: md.mediaUrl || '',
+                originalFileName: md.mediaName || 'Media',
+                acquiredAt: nowMs, // als Zahl, kompatibel zum Client
+                price: (amount || 0) / 100.0,
+                currency: currency === 'usd' ? '$' : '€',
+                receiptId: null,
+                tags: [],
+            });
+            console.log(`✅ Moment erstellt: users/${userId}/moments/${momentId}`);
+        }
+        catch (e) {
+            console.error('⚠️ Moment anlegen im Webhook fehlgeschlagen:', e);
+        }
+    }
+    catch (e) {
+        console.error('handleMediaPurchaseWebhook error', e);
+    }
+}
 //# sourceMappingURL=mediaCheckout.js.map
