@@ -1,5 +1,6 @@
 import * as functions from 'firebase-functions/v1';
 import Stripe from 'stripe';
+import * as admin from 'firebase-admin';
 
 // Stripe nur initialisieren wenn Secret Key vorhanden
 const getStripe = () => {
@@ -152,4 +153,49 @@ export async function handleMediaPurchaseWebhook(session: Stripe.Checkout.Sessio
     console.error('handleMediaPurchaseWebhook error', e);
   }
 }
+
+/**
+ * Kopiert eine vorhandene Datei im Firebase Storage in den Moments‑Ordner des Nutzers.
+ * Vermeidet Client‑Download/CORS‑Probleme.
+ */
+export const copyMediaToMoments = functions
+  .region('us-central1')
+  .https.onCall(async (data: any, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
+    }
+    const userId = context.auth.uid;
+    const mediaUrl: string = (data?.mediaUrl || '').toString();
+    const avatarId: string = (data?.avatarId || '').toString();
+    const fileName: string | undefined = (data?.fileName || '').toString() || undefined;
+    if (!mediaUrl || !avatarId) {
+      throw new functions.https.HttpsError('invalid-argument', 'mediaUrl und avatarId erforderlich');
+    }
+
+    // Quelle aus Download-URL extrahieren: nach "/o/" bis '?' und URL‑decoden
+    const m = mediaUrl.match(/\/o\/(.*?)\?/);
+    if (!m || !m[1]) {
+      throw new functions.https.HttpsError('invalid-argument', 'Ungültige mediaUrl');
+    }
+    const srcPath = decodeURIComponent(m[1]);
+
+    const bucket = admin.storage().bucket();
+
+    const ts = Date.now();
+    const baseName = fileName || srcPath.split('/').pop() || `moment_${ts}`;
+    const destPath = `users/${userId}/moments/${avatarId}/${ts}_${baseName}`;
+
+    try {
+      await bucket.file(srcPath).copy(bucket.file(destPath));
+      // Signierte URL für direkten Download erzeugen (30 Tage gültig)
+      const [signedUrl] = await bucket.file(destPath).getSignedUrl({
+        action: 'read',
+        expires: Date.now() + 30 * 24 * 3600 * 1000,
+        responseDisposition: `attachment; filename="${baseName}"`,
+      } as any);
+      return { storagePath: destPath, downloadUrl: signedUrl };
+    } catch (e: any) {
+      throw new functions.https.HttpsError('internal', e?.message || 'Copy fehlgeschlagen');
+    }
+  });
 

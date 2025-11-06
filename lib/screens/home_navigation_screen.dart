@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'explore_screen.dart';
 import 'favorites_screen.dart';
 import 'avatar_list_screen.dart';
-import 'user_profile_public_screen.dart';
 import 'moments_screen.dart';
 import 'avatar_chat_screen.dart';
 import '../theme/app_theme.dart';
@@ -30,7 +30,6 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
   late final Widget _exploreScreen;
   late final Widget _avatarListScreen;
   late final Widget _favoritesScreen;
-  late final Widget _profileScreen;
   late final Widget _momentsScreen;
 
   @override
@@ -42,7 +41,6 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
     _exploreScreen = ExploreScreen(key: _exploreKey);
     _avatarListScreen = const AvatarListScreen();
     _favoritesScreen = const FavoritesScreen();
-    _profileScreen = const UserProfilePublicScreen();
     _momentsScreen = const MomentsScreen();
 
     // Prüfe, ob ein Chat nach Resume geöffnet werden soll
@@ -53,6 +51,18 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
         if (pendingAvatarId != null && pendingAvatarId.isNotEmpty) {
           if (mounted) {
             openChat(pendingAvatarId);
+            // Nach kurzem Delay: Success-Dialog anzeigen falls Media-Kauf
+            Future.delayed(const Duration(milliseconds: 500), () async {
+              final mediaName = prefs.getString('pending_media_success_name');
+              final avatarName = prefs.getString('pending_media_success_avatar');
+              final mediaUrl = prefs.getString('pending_media_success_url');
+              if (mediaName != null && mediaName.isNotEmpty && mounted) {
+                await prefs.remove('pending_media_success_name');
+                await prefs.remove('pending_media_success_avatar');
+                await prefs.remove('pending_media_success_url');
+                _showMediaSuccessDialog(mediaName, avatarName ?? 'Avatar', mediaUrl ?? '');
+              }
+            });
           }
           await prefs.remove('pending_open_chat_avatar_id');
         }
@@ -263,6 +273,38 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  void _showMediaSuccessDialog(String mediaName, String avatarName, String mediaUrl) {
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: AppColors.darkSurface,
+        title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
+        content: Text(
+          '"$mediaName" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Später', style: TextStyle(color: Colors.white70)),
+          ),
+          TextButton(
+            onPressed: () async {
+              if (mediaUrl.isNotEmpty) {
+                try {
+                  final uri = Uri.parse(mediaUrl);
+                  await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                } catch (_) {}
+              }
+              if (Navigator.canPop(context)) Navigator.pop(context);
+            },
+            child: const Text('Nochmal herunterladen', style: TextStyle(color: AppColors.lightBlue)),
+          ),
+        ],
       ),
     );
   }

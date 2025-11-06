@@ -41,7 +41,7 @@ import 'screens/language_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'theme/app_theme.dart';
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform, kDebugMode;
+    show defaultTargetPlatform, TargetPlatform;
 import 'l10n/app_localizations.dart';
 import 'package:flutter_localized_locales/flutter_localized_locales.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -599,7 +599,6 @@ class _ResumeRouterState extends State<_ResumeRouter> with WidgetsBindingObserve
       final avatarId = uri.queryParameters['avatarId'] ?? '';
       final mediaId = uri.queryParameters['mediaId'] ?? '';
       final mediaType = uri.queryParameters['mediaType'] ?? '';
-      final returnUrl = uri.queryParameters['return']; // aktuell nicht genutzt
       // ignore: avoid_print
       print('🔵🔵🔵 [MediaSuccess] avatarId=$avatarId mediaId=$mediaId mediaType=$mediaType');
 
@@ -868,39 +867,18 @@ class _MediaCheckoutPageState extends State<_MediaCheckoutPage> {
         } catch (_) {}
       }
 
-      if (!mounted) return;
-      await showDialog(
-        context: context,
-        builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
-          title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
-          content: Text('"$mediaName" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.', style: const TextStyle(color: Colors.white70)),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Später', style: TextStyle(color: Colors.white70))),
-            TextButton(onPressed: () async {
-              if (storedUrl != null && storedUrl.isNotEmpty) {
-                try {
-                  final u = Uri.parse(storedUrl);
-                  if (await canLaunchUrl(u)) {
-                    await launchUrl(u, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-                  }
-                } catch (_) {}
-              }
-              if (Navigator.canPop(context)) Navigator.pop(context);
-            }, child: const Text('Nochmal herunterladen', style: TextStyle(color: Color(0xFF00FF94)))),
-          ],
-        ),
-      );
-
       try {
         final prefs = await SharedPreferences.getInstance();
         if (avatarId.isNotEmpty) {
           await prefs.setString('pending_open_chat_avatar_id', avatarId);
+          await prefs.setString('pending_media_success_name', mediaName);
+          await prefs.setString('pending_media_success_avatar', avatarName);
+          await prefs.setString('pending_media_success_url', storedUrl ?? '');
         }
       } catch (_) {}
 
       if (mounted) {
-        Navigator.of(context).pushNamed('/home');
+        Navigator.of(context).pushReplacementNamed('/home');
       }
     } catch (_) {
       if (mounted) Navigator.of(context).pushReplacementNamed('/home');

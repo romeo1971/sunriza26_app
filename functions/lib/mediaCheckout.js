@@ -36,10 +36,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.mediaCheckoutWebhook = exports.createMediaCheckoutSession = void 0;
+exports.copyMediaToMoments = exports.mediaCheckoutWebhook = exports.createMediaCheckoutSession = void 0;
 exports.handleMediaPurchaseWebhook = handleMediaPurchaseWebhook;
 const functions = __importStar(require("firebase-functions/v1"));
 const stripe_1 = __importDefault(require("stripe"));
+const admin = __importStar(require("firebase-admin"));
 // Stripe nur initialisieren wenn Secret Key vorhanden
 const getStripe = () => {
     var _a;
@@ -185,4 +186,45 @@ async function handleMediaPurchaseWebhook(session, admin) {
         console.error('handleMediaPurchaseWebhook error', e);
     }
 }
+/**
+ * Kopiert eine vorhandene Datei im Firebase Storage in den Moments‑Ordner des Nutzers.
+ * Vermeidet Client‑Download/CORS‑Probleme.
+ */
+exports.copyMediaToMoments = functions
+    .region('us-central1')
+    .https.onCall(async (data, context) => {
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Nicht angemeldet');
+    }
+    const userId = context.auth.uid;
+    const mediaUrl = ((data === null || data === void 0 ? void 0 : data.mediaUrl) || '').toString();
+    const avatarId = ((data === null || data === void 0 ? void 0 : data.avatarId) || '').toString();
+    const fileName = ((data === null || data === void 0 ? void 0 : data.fileName) || '').toString() || undefined;
+    if (!mediaUrl || !avatarId) {
+        throw new functions.https.HttpsError('invalid-argument', 'mediaUrl und avatarId erforderlich');
+    }
+    // Quelle aus Download-URL extrahieren: nach "/o/" bis '?' und URL‑decoden
+    const m = mediaUrl.match(/\/o\/(.*?)\?/);
+    if (!m || !m[1]) {
+        throw new functions.https.HttpsError('invalid-argument', 'Ungültige mediaUrl');
+    }
+    const srcPath = decodeURIComponent(m[1]);
+    const bucket = admin.storage().bucket();
+    const ts = Date.now();
+    const baseName = fileName || srcPath.split('/').pop() || `moment_${ts}`;
+    const destPath = `users/${userId}/moments/${avatarId}/${ts}_${baseName}`;
+    try {
+        await bucket.file(srcPath).copy(bucket.file(destPath));
+        // Signierte URL für direkten Download erzeugen (30 Tage gültig)
+        const [signedUrl] = await bucket.file(destPath).getSignedUrl({
+            action: 'read',
+            expires: Date.now() + 30 * 24 * 3600 * 1000,
+            responseDisposition: `attachment; filename="${baseName}"`,
+        });
+        return { storagePath: destPath, downloadUrl: signedUrl };
+    }
+    catch (e) {
+        throw new functions.https.HttpsError('internal', (e === null || e === void 0 ? void 0 : e.message) || 'Copy fehlgeschlagen');
+    }
+});
 //# sourceMappingURL=mediaCheckout.js.map

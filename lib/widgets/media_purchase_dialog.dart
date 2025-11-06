@@ -277,23 +277,22 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
           child: const Text('Abbrechen'),
         ),
 
-        // Mit Credits zahlen
-        if (hasEnoughCredits)
-          ElevatedButton.icon(
-            onPressed: _purchasing ? null : _purchaseWithCredits,
-            icon: _purchasing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.diamond),
-            label: Text(_purchasing ? 'Kaufe...' : 'Mit Credits zahlen'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.lightBlue,
-              disabledBackgroundColor: Colors.grey,
-            ),
+        // Mit Credits zahlen (immer verfügbar, aber disabled wenn nicht genug Credits)
+        ElevatedButton.icon(
+          onPressed: (_purchasing || !hasEnoughCredits) ? null : _purchaseWithCredits,
+          icon: _purchasing
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.diamond),
+          label: Text(_purchasing ? 'Kaufe...' : 'Mit Credits zahlen'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.lightBlue,
+            disabledBackgroundColor: Colors.grey,
           ),
+        ),
 
         // Mit Karte zahlen (Stripe)
         if (canUseStripe)
@@ -387,8 +386,8 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
 
         // 3. Download automatisch starten
         // ignore: avoid_print
-        print('🔵🔵🔵 [MediaPurchase] Starte Download... URL: $storedUrl, isEmpty: ${storedUrl?.isEmpty ?? true}');
-        if (storedUrl != null && storedUrl.isNotEmpty) {
+        print('🔵🔵🔵 [MediaPurchase] Starte Download... URL: $storedUrl, isEmpty: ${storedUrl.isEmpty}');
+        if (storedUrl.isNotEmpty) {
           try {
             final uri = Uri.parse(storedUrl);
             // ignore: avoid_print

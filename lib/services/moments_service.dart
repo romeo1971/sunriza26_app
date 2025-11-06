@@ -69,10 +69,29 @@ class MomentsService {
       storedUrl = await ref.getDownloadURL();
       debugPrint('✅ [MomentsService] Upload erfolgreich: $storedUrl');
     } catch (e, stackTrace) {
-      // Fallback: Speichere ohne Kopie, referenziere Original-URL
-      debugPrint('⚠️ [MomentsService] Copy to moments failed, using originalUrl. Error: $e');
+      // Versuche serverseitige Kopie per Cloud Function (robust, kein CORS)
+      debugPrint('⚠️ [MomentsService] Client copy failed, try server copy: $e');
       debugPrint('⚠️ [MomentsService] StackTrace: $stackTrace');
-      storedUrl = media.url;
+      try {
+        final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
+        final fn = fns.httpsCallable('copyMediaToMoments');
+        final res = await fn.call({
+          'mediaUrl': media.url,
+          'avatarId': media.avatarId,
+          'fileName': media.originalFileName,
+        });
+        final data = Map<String, dynamic>.from(res.data as Map);
+        final url = data['downloadUrl'] as String?;
+        if (url != null && url.isNotEmpty) {
+          storedUrl = url;
+          debugPrint('✅ [MomentsService] Server copy success');
+        } else {
+          storedUrl = media.url; // letzter Fallback
+        }
+      } catch (e) {
+        debugPrint('⚠️ [MomentsService] Server copy failed: $e');
+        storedUrl = media.url; // letzter Fallback
+      }
     }
 
     // 4. Optional: Copy Thumbnail
