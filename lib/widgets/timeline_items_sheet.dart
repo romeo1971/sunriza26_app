@@ -18,7 +18,11 @@ class TimelineItemsSheet extends StatefulWidget {
 }
 
 class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
+  // Simpler In-Memory-Cache pro Avatar für die aktuelle App-Session
+  static final Map<String, List<_TimelineVm>> _itemsCacheByAvatar = {};
+
   final FirebaseFirestore _fs = FirebaseFirestore.instance;
+  int _userCredits = 0;
 
   bool _loading = true;
   String? _error;
@@ -29,7 +33,72 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    final cached = _itemsCacheByAvatar[widget.avatarId];
+    if (cached != null) {
+      _items = List<_TimelineVm>.from(cached);
+      _loading = false;
+      // Falls nötig, später Hintergrund-Refresh optional ergänzen
+      setState(() {});
+    } else {
+      _loadData();
+    }
+    _loadUserCredits();
+  }
+
+  // GMBC Spinner (Magenta → LightBlue → Cyan)
+  Widget _gmbcSpinner({double size = 32, double strokeWidth = 3}) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: ShaderMask(
+        blendMode: BlendMode.srcIn,
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
+          stops: [0.0, 0.5, 1.0],
+        ).createShader(Rect.fromLTWH(0, 0, bounds.width, bounds.height)),
+        child: CircularProgressIndicator(
+          strokeWidth: strokeWidth,
+          valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      ),
+    );
+  }
+
+  // Credits-Summe und Verfügbarkeit
+  Widget _creditsSummary(List<_TimelineVm> selected, Map<String, bool> isCash) {
+    final int needed = selected
+        .where((vm) => (vm.media.price ?? 0.0) > 0.0 && isCash[vm.id] != true)
+        .fold(0, (s, vm) => s + ((vm.media.price ?? 0.0) / 0.1).round());
+    if (needed == 0) return const SizedBox.shrink();
+    final bool enough = _userCredits >= needed;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text('Benötigt', style: TextStyle(color: Colors.white70)),
+        Text(
+          '$needed Credits',
+          style: TextStyle(color: enough ? Colors.white : Colors.redAccent),
+        ),
+      ],
+    );
+  }
+
+  bool _canConfirm(List<_TimelineVm> selected, Map<String, bool> isCash) {
+    final int needed = selected
+        .where((vm) => (vm.media.price ?? 0.0) > 0.0 && isCash[vm.id] != true)
+        .fold(0, (s, vm) => s + ((vm.media.price ?? 0.0) / 0.1).round());
+    return _userCredits >= needed;
+  }
+  Future<void> _loadUserCredits() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final doc = await _fs.collection('users').doc(uid).get();
+      final data = doc.data();
+      if (data != null) {
+        setState(() => _userCredits = (data['credits'] as int?) ?? 0);
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadData() async {
@@ -190,6 +259,8 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         built.add(_TimelineVm(id: media.id, media: media));
       }
 
+      // Cache aktualisieren
+      _itemsCacheByAvatar[widget.avatarId] = List<_TimelineVm>.from(built);
       setState(() { _items = built; _loading = false; });
     } catch (e) {
       setState(() {
@@ -211,6 +282,11 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
       _items.removeWhere((e) => e.id == id);
       _selected.remove(id);
     });
+    // Cache synchron halten
+    final cached = _itemsCacheByAvatar[widget.avatarId];
+    if (cached != null) {
+      cached.removeWhere((e) => e.id == id);
+    }
   }
 
   
@@ -219,8 +295,9 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
     final selectedItems = _filtered().where((e) => _selected.contains(e.id)).toList();
     if (selectedItems.isEmpty) return;
 
+    // Default: Credits (kein Stripe), Cash nur wenn explizit umgeschaltet
     final Map<String, bool> isCash = {
-      for (final vm in selectedItems) vm.id: (vm.media.price ?? 0.0) > 0.0
+      for (final vm in selectedItems) vm.id: false
     };
 
     double subtotalCash() => selectedItems
@@ -239,6 +316,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
       ),
       builder: (bCtx) {
         return StatefulBuilder(builder: (bCtx, setStateConfirm) {
+          bool processing = false;
           final cashItems = selectedItems.where((vm) => isCash[vm.id] == true).toList();
           final creditItems = selectedItems.where((vm) => isCash[vm.id] != true).toList();
           return SafeArea(
@@ -258,7 +336,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                   const SizedBox(height: 8),
 
                   // Stripe (Cash) Zusammenfassung
-                  Padding(
+                  if (cashItems.isNotEmpty) Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Container(
                       padding: const EdgeInsets.all(12),
@@ -300,7 +378,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                     ),
                   ),
 
-                  const SizedBox(height: 12),
+                  if (cashItems.isNotEmpty) const SizedBox(height: 12),
                   Expanded(
                     child: ListView(
                       children: [
@@ -324,7 +402,9 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              const Text('Credits', style: TextStyle(color: Colors.white70)),
+                              Text('Credits (Konto: $_userCredits)', style: const TextStyle(color: Colors.white70)),
+                              const SizedBox(height: 8),
+                              _creditsSummary(selectedItems, isCash),
                               const SizedBox(height: 8),
                               if (creditItems.isEmpty)
                                 const Text('Keine Items ausgewählt', style: TextStyle(color: Colors.white38))
@@ -348,32 +428,45 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                         ),
                         const Spacer(),
                         ElevatedButton(
-                          onPressed: selectedItems.isEmpty ? null : () async {
-                            // Credits zuerst
-                            for (final vm in selectedItems.where((e) => isCash[e.id] != true)) {
-                              try {
-                                final price = vm.media.price ?? 0.0;
-                                final method = price <= 0.0 ? 'free' : 'credits';
-                                await MomentsService().saveMoment(media: vm.media, price: price, paymentMethod: method);
-                                await _removeById(vm.id);
-                              } catch (_) {}
-                            }
-                            // Cash: nacheinander Dialoge
-                            for (final vm in selectedItems.where((e) => isCash[e.id] == true)) {
-                              if (!Navigator.of(ctx).mounted) break;
-                              await showDialog(
-                                context: ctx,
-                                builder: (_) => MediaPurchaseDialog(
-                                  media: vm.media,
-                                  onPurchaseSuccess: () async { await _removeById(vm.id); },
-                                ),
-                              );
-                            }
-                            if (mounted) setState(() {});
-                            if (Navigator.of(bCtx).canPop()) Navigator.of(bCtx).pop();
-                          },
+                          onPressed: (selectedItems.isEmpty || !_canConfirm(selectedItems, isCash) || processing)
+                              ? null
+                              : () async {
+                                  setStateConfirm(() => processing = true);
+                                  // Credits/Gratis zuerst
+                                  for (final vm in List<_TimelineVm>.from(selectedItems.where((e) => isCash[e.id] != true))) {
+                                    try {
+                                      final price = vm.media.price ?? 0.0;
+                                      final method = price <= 0.0 ? 'free' : 'credits';
+                                      await MomentsService().saveMoment(media: vm.media, price: price, paymentMethod: method);
+                                      await _removeById(vm.id);
+                                    } catch (_) {}
+                                  }
+                                  // Cash: nacheinander Dialoge
+                                  for (final vm in List<_TimelineVm>.from(selectedItems.where((e) => isCash[e.id] == true))) {
+                                    if (!mounted) break;
+                                    await showDialog(
+                                      context: context,
+                                      builder: (_) => MediaPurchaseDialog(
+                                        media: vm.media,
+                                        onPurchaseSuccess: () async { await _removeById(vm.id); },
+                                      ),
+                                    );
+                                  }
+                                  if (mounted) setState(() {});
+                                  // Schließe Sheet über State-Context (sicherer Navigator)
+                                  if (mounted && Navigator.canPop(context)) {
+                                    Navigator.of(context).pop();
+                                  }
+                                  setStateConfirm(() => processing = false);
+                                },
                           style: ElevatedButton.styleFrom(backgroundColor: AppColors.lightBlue),
-                          child: const Text('Bestätigen'),
+                          child: processing
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                              : Text(
+                                  selectedItems.any((vm) => isCash[vm.id] == true)
+                                      ? 'Kaufen'
+                                      : 'Annehmen',
+                                ),
                         ),
                       ],
                     ),
@@ -390,7 +483,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
   Widget _buildConfirmRow(_TimelineVm vm, Map<String, bool> isCash, void Function(void Function()) setStateConfirm) {
     final price = vm.media.price ?? 0.0;
     final currency = vm.media.currency ?? '€';
-    final canToggle = price > 0.0; // Gratis → kein Cash möglich
+    final canToggle = price > 0.0 && _userCredits > 0; // Gratis oder keine Credits → kein Toggle
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(8),
@@ -409,24 +502,32 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
               children: [
                 Text(vm.media.originalFileName ?? 'Media', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white)),
                 const SizedBox(height: 2),
-                Text(price <= 0.0 ? 'Gratis' : '${price.toStringAsFixed(2)} $currency', style: const TextStyle(color: Colors.white60)),
+                Text(
+                  price <= 0.0
+                      ? 'Gratis'
+                      : (isCash[vm.id] == true
+                          ? '${price.toStringAsFixed(2)} $currency inkl. MwSt'
+                          : '${price.toStringAsFixed(2)} $currency'),
+                  style: const TextStyle(color: Colors.white60),
+                ),
               ],
             ),
           ),
           const SizedBox(width: 8),
-          Row(
-            children: [
-              Text('Credits', style: TextStyle(color: Colors.white.withOpacity(canToggle ? 0.6 : 0.9))),
-              const SizedBox(width: 6),
-              Switch(
-                value: isCash[vm.id] == true,
-                onChanged: canToggle ? (v) => setStateConfirm(() => isCash[vm.id] = v) : null,
-                activeColor: AppColors.lightBlue,
-              ),
-              const SizedBox(width: 6),
-              const Text('Cash', style: TextStyle(color: Colors.white70)),
-            ],
-          ),
+          if (price > 0.0)
+            Row(
+              children: [
+                Text('Credits', style: TextStyle(color: Colors.white.withOpacity(canToggle ? 0.6 : 0.3))),
+                const SizedBox(width: 6),
+                Switch(
+                  value: isCash[vm.id] == true,
+                  onChanged: canToggle ? (v) => setStateConfirm(() => isCash[vm.id] = v) : null,
+                  activeColor: AppColors.lightBlue,
+                ),
+                const SizedBox(width: 6),
+                const Text('Cash', style: TextStyle(color: Colors.white70)),
+              ],
+            ),
         ],
       ),
     );
@@ -499,8 +600,10 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
 
             // Content area: loading, error, empty, list
             if (_loading)
-              const Expanded(
-                child: Center(child: CircularProgressIndicator()),
+              Expanded(
+                child: Center(
+                  child: _gmbcSpinner(size: 42, strokeWidth: 3),
+                ),
               )
             else if (_error != null)
               Expanded(
