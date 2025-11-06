@@ -31,20 +31,24 @@
         <p>Einen Moment bitte...</p>
     </div>
     <script>
-        // Sende Message an parent window
-        if (window.parent !== window) {
-            console.log('📤 Sende stripe-success an parent');
-            window.parent.postMessage('stripe-success', '*');
+        // Extrahiere Parameter
+        const params = new URLSearchParams(window.location.search);
+        const avatarId = params.get('avatarId');
+        const mediaName = params.get('mediaName');
+        
+        // Speichere Success-Daten
+        if (avatarId && mediaName) {
+            sessionStorage.setItem('stripe_media_success', JSON.stringify({
+                avatarId: avatarId,
+                mediaName: mediaName,
+                timestamp: Date.now()
+            }));
         }
         
-        // Warte 1 Sekunde, dann redirect zurück zur App (Fallback)
+        // Nach 2 Sekunden zurück zum Chat
         setTimeout(() => {
-            const params = new URLSearchParams(window.location.search);
-            const avatarId = params.get('avatarId');
-            if (avatarId) {
-                window.location.href = '/#/home';
-            }
-        }, 1000);
+            window.location.href = '/#/home';
+        }, 2000);
     </script>
 </body>
 </html>

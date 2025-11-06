@@ -613,6 +613,74 @@ class _StripeCheckoutDialog extends StatefulWidget {
 
 class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
   @override
+  void initState() {
+    super.initState();
+    _setupMessageListener();
+  }
+  
+  void _setupMessageListener() {
+    debugPrint('🔵🔵🔵 [StripeIframe] Setup listener...');
+    // Lausche auf postMessage von Stripe-Success-URL
+    html.window.onMessage.listen((event) async {
+      debugPrint('🔵🔵🔵 [StripeIframe] Message received: ${event.data}');
+      debugPrint('🔵🔵🔵 [StripeIframe] Origin: ${event.origin}');
+      
+      if (event.data.toString().contains('stripe-success')) {
+        debugPrint('✅✅✅ [StripeIframe] SUCCESS erkannt!');
+        
+        if (!mounted) return;
+        
+        // Schließe iframe-Dialog
+        Navigator.of(context, rootNavigator: false).pop();
+        
+        // Warte kurz damit Dialog geschlossen ist
+        await Future.delayed(const Duration(milliseconds: 300));
+        
+        if (!mounted) return;
+        
+        // Zeige Success-Dialog
+        await showDialog(
+          context: context,
+          barrierDismissible: false,
+          useRootNavigator: false,
+          builder: (_) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            title: const Text('Zahlung bestätigt ✓', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '"${widget.mediaName}"',
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'von ${widget.avatarName}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'wurde zu deinen Momenten hinzugefügt.',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context, rootNavigator: false).pop(),
+                child: const Text('Fertig', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+            ],
+          ),
+        );
+        
+        debugPrint('✅✅✅ [StripeIframe] Success-Dialog geschlossen');
+      }
+    });
+  }
+  
+  @override
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -651,7 +719,10 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
             Expanded(
               child: HtmlElementView(
                 viewType: 'stripe-checkout-${widget.checkoutUrl.hashCode}',
-                onPlatformViewCreated: (id) => _createIframe(),
+                onPlatformViewCreated: (id) {
+                  debugPrint('🔵🔵🔵 [StripeIframe] Platform view created, id=$id');
+                  _createIframe();
+                },
               ),
             ),
           ],
@@ -661,38 +732,6 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
   }
 
   void _createIframe() {
-    // Lausche auf postMessage von Stripe-Success-URL
-    html.window.onMessage.listen((event) {
-      debugPrint('🔵🔵🔵 [StripeIframe] Message: ${event.data}');
-      
-      if (event.data.toString().contains('stripe-success')) {
-        debugPrint('✅✅✅ [StripeIframe] SUCCESS erkannt!');
-        
-        if (mounted) {
-          Navigator.pop(context);
-          
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => AlertDialog(
-              backgroundColor: const Color(0xFF1A1A1A),
-              title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
-              content: Text(
-                '"${widget.mediaName}" von "${widget.avatarName}" wurde zu deinen Momenten hinzugefügt.',
-                style: const TextStyle(color: Colors.white70),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK', style: TextStyle(color: Color(0xFF00FF94))),
-                ),
-              ],
-            ),
-          );
-        }
-      }
-    });
-
     // ignore: undefined_prefixed_name
     ui.platformViewRegistry.registerViewFactory(
       'stripe-checkout-${widget.checkoutUrl.hashCode}',

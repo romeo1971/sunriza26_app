@@ -3,6 +3,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'dart:html' as html;
+import 'dart:convert';
 import 'explore_screen.dart';
 import 'favorites_screen.dart';
 import 'avatar_list_screen.dart';
@@ -43,47 +45,59 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
     _favoritesScreen = const FavoritesScreen();
     _momentsScreen = const MomentsScreen();
 
-    // Prüfe, ob ein Chat nach Resume geöffnet werden soll
+    // Prüfe Stripe-Success aus sessionStorage
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       try {
         final prefs = await SharedPreferences.getInstance();
-        final pendingAvatarId = prefs.getString('pending_open_chat_avatar_id');
-        debugPrint('🔵 [HomeNav] pendingAvatarId: $pendingAvatarId');
-        if (pendingAvatarId != null && pendingAvatarId.isNotEmpty) {
-          if (mounted) {
-            debugPrint('🔵 [HomeNav] Opening chat for avatarId: $pendingAvatarId');
+        
+        // Prüfe sessionStorage für Stripe-Success
+        final stripeData = html.window.sessionStorage['stripe_media_success'];
+        
+        if (stripeData != null && stripeData.isNotEmpty) {
+          debugPrint('✅✅✅ [HomeNav] Stripe-Success gefunden: $stripeData');
+          html.window.sessionStorage.remove('stripe_media_success');
+          
+          try {
+            final data = json.decode(stripeData);
+            final avatarId = data['avatarId'] as String?;
+            final mediaName = data['mediaName'] as String?;
             
-            // ERST Daten auslesen, DANN pending_open_chat_avatar_id löschen
-            final mediaName = prefs.getString('pending_media_success_name');
-            final avatarName = prefs.getString('pending_media_success_avatar');
-            final mediaUrl = prefs.getString('pending_media_success_url');
-            debugPrint('🔵🔵🔵 [HomeNav] Gelesene Success-Daten: name=$mediaName, avatar=$avatarName');
-            
-            await prefs.remove('pending_open_chat_avatar_id');
-            
-            openChat(pendingAvatarId);
-            
-            // Nach Delay: Success-Dialog anzeigen falls Media-Kauf
-            if (mediaName != null && mediaName.isNotEmpty) {
-              Future.delayed(const Duration(milliseconds: 1500), () async {
-                debugPrint('🔵🔵🔵 [HomeNav] Delay vorbei, mounted=$mounted');
-                if (!mounted) {
-                  debugPrint('🔴🔴🔴 [HomeNav] Widget not mounted!');
-                  return;
-                }
-                debugPrint('✅✅✅ [HomeNav] Zeige Success-Dialog: $mediaName');
-                await prefs.remove('pending_media_success_name');
-                await prefs.remove('pending_media_success_avatar');
-                await prefs.remove('pending_media_success_url');
-                _showMediaSuccessDialog(mediaName, avatarName ?? 'Avatar', mediaUrl ?? '');
-              });
-            } else {
-              debugPrint('❌❌❌ [HomeNav] Keine Success-Daten vorhanden');
+            if (avatarId != null && mediaName != null && mounted) {
+              openChat(avatarId);
+              
+              await Future.delayed(const Duration(milliseconds: 800));
+              
+              if (mounted) {
+                await showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (_) => AlertDialog(
+                    backgroundColor: const Color(0xFF1A1A1A),
+                    title: const Text('Zahlung bestätigt ✓', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                    content: Text('$mediaName wurde zu deinen Momenten hinzugefügt.', style: const TextStyle(color: Colors.white70)),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('OK', style: TextStyle(color: Color(0xFF00FF94))),
+                      ),
+                    ],
+                  ),
+                );
+              }
             }
+          } catch (e) {
+            debugPrint('🔴 [HomeNav] JSON parse error: $e');
           }
         }
+        
+        // Alt: pending_open_chat_avatar_id
+        final pendingAvatarId = prefs.getString('pending_open_chat_avatar_id');
+        if (pendingAvatarId != null && pendingAvatarId.isNotEmpty && mounted) {
+          openChat(pendingAvatarId);
+          await prefs.remove('pending_open_chat_avatar_id');
+        }
       } catch (e) {
-        debugPrint('❌ [HomeNav] Error in postFrameCallback: $e');
+        debugPrint('❌ [HomeNav] Error: $e');
       }
     });
   }
