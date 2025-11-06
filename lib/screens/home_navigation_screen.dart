@@ -71,7 +71,16 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
               // Auto-Download: Polling bis Moment geschrieben ist (Webhook-Delay)
               String? downloadUrl = await _resolveDownloadUrl(avatarId: avatarId, mediaName: mediaName);
               if (downloadUrl != null && downloadUrl.isNotEmpty) {
-                _triggerBrowserDownload(downloadUrl);
+                try {
+                  final uri = Uri.parse(downloadUrl);
+                  if (await canLaunchUrl(uri)) {
+                    await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                  } else {
+                    await _triggerBrowserDownload(downloadUrl);
+                  }
+                } catch (_) {
+                  await _triggerBrowserDownload(downloadUrl);
+                }
               }
 
               if (mounted) {
@@ -85,14 +94,98 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
                     actions: [
                       TextButton(
                         onPressed: () async {
+                          debugPrint('🔵 [Download4] Click start');
+                          debugPrint('🔵 [Download4] avatarId=$avatarId, mediaName=$mediaName');
+                          // 1) storedUrl ermitteln (neuester Moment)
+                          String? url;
                           try {
-                            final url = downloadUrl ?? await _resolveDownloadUrl(avatarId: avatarId, mediaName: mediaName);
-                            if (url != null && url.isNotEmpty) {
-                              _triggerBrowserDownload(url);
+                            List moments = await MomentsService().listMoments(avatarId: avatarId);
+                            debugPrint('🔵 [Download4] moments(len,filtered)=${moments.length}');
+                            if (moments.isNotEmpty) {
+                              final latest = moments.first; // neuestes Moment
+                              debugPrint('🔵 [Download4] latest.storedUrl=${latest.storedUrl}');
+                              debugPrint('🔵 [Download4] latest.originalUrl=${latest.originalUrl}');
+                              url = latest.storedUrl.isNotEmpty ? latest.storedUrl : latest.originalUrl;
                             }
-                          } catch (_) {}
+                          } catch (e) {
+                            debugPrint('🔴 [Download4] listMoments error: $e');
+                          }
+                          
+                          // 1b) Direkter Firestore-Fetch falls url leer
+                          if (url == null || url.isEmpty) {
+                            try {
+                              final uid = FirebaseAuth.instance.currentUser?.uid;
+                              if (uid != null) {
+                                final qs = await FirebaseFirestore.instance
+                                    .collection('users').doc(uid)
+                                    .collection('moments')
+                                    .orderBy('acquiredAt', descending: true)
+                                    .limit(10)
+                                    .get();
+                                String? candidate;
+                                for (final d in qs.docs) {
+                                  final data = d.data();
+                                  if (avatarId == null || avatarId.isEmpty || data['avatarId'] == avatarId) {
+                                    candidate = (data['storedUrl'] as String?)?.trim();
+                                    candidate ??= (data['originalUrl'] as String?)?.trim();
+                                    if (candidate != null && candidate.isNotEmpty) break;
+                                  }
+                                }
+                                if (candidate != null && candidate.isNotEmpty) {
+                                  url = candidate;
+                                  debugPrint('✅ [Download4] Firestore direct URL: $url');
+                                } else {
+                                  debugPrint('🔴 [Download4] Firestore direct fetch returned no URL');
+                                }
+                              } else {
+                                debugPrint('🔴 [Download4] No UID');
+                              }
+                            } catch (e) {
+                              debugPrint('🔴 [Download4] Firestore direct error: $e');
+                            }
+                          }
+                          
+                          url ??= downloadUrl; // Fallback aus Auto-Resolve
+                          debugPrint('🔵 [Download4] final url=${url ?? '(null)'}');
+
+                          if (url == null || url.isEmpty) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Keine Download-URL gefunden'), backgroundColor: Colors.red),
+                              );
+                            }
+                            return;
+                          }
+
+                          // 2) SOFORT öffnen (Nutzer-Geste beibehalten)
+                          try {
+                            final a = html.AnchorElement(href: url)
+                              ..target = '_blank'
+                              ..rel = 'noopener'
+                              ..download = '';
+                            html.document.body?.append(a);
+                            a.click();
+                            a.remove();
+                            debugPrint('✅ [Download4] Anchor click triggered');
+                          } catch (e) {
+                            debugPrint('⚠️ [Download4] Anchor click failed: $e');
+                            try { html.window.open(url, '_blank'); debugPrint('✅ [Download4] window.open fallback'); } catch (e2) { debugPrint('🔴 [Download4] window.open failed: $e2'); }
+                          }
+
+                          // 3) Kurzer Hinweis danach
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (_) => const AlertDialog(
+                              backgroundColor: Color(0xFF1A1A1A),
+                              title: Text('Download läuft', style: TextStyle(color: Colors.white)),
+                              content: Text('Der Download wird gestartet...', style: TextStyle(color: Colors.white70)),
+                            ),
+                          );
+                          await Future.delayed(const Duration(milliseconds: 600));
+                          if (Navigator.canPop(context)) Navigator.pop(context);
                         },
-                        child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
+                        child: const Text('Download4', style: TextStyle(color: Color(0xFF00FF94))),
                       ),
                       TextButton(
                         onPressed: () => Navigator.pop(context),
@@ -357,6 +450,26 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
         }
       }
     } catch (_) {}
+    // 1) Versuche als Blob zu laden und direkt zu speichern (zuverlässigster Weg)
+    try {
+      final req = await html.HttpRequest.request(
+        url,
+        method: 'GET',
+        responseType: 'blob',
+        requestHeaders: {'Accept': 'application/octet-stream'},
+      );
+      final blob = req.response as html.Blob;
+      final objUrl = html.Url.createObjectUrlFromBlob(blob);
+      final a = html.AnchorElement(href: objUrl)
+        ..download = filename ?? 'download';
+      html.document.body?.append(a);
+      a.click();
+      a.remove();
+      html.Url.revokeObjectUrl(objUrl);
+      return;
+    } catch (_) {}
+
+    // 2) Fallback: normaler Anchor-Click
     try {
       final anchor = html.AnchorElement(href: url)
         ..target = '_blank'

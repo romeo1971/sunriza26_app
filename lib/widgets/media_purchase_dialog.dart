@@ -470,7 +470,7 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: const Text('Später', style: TextStyle(color: Colors.white70)),
+              child: const Text('Schließen', style: TextStyle(color: Colors.white70)),
             ),
             TextButton(
               onPressed: () async {
@@ -478,18 +478,13 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
                   try {
                     final uri = Uri.parse(storedUrl);
                     if (await canLaunchUrl(uri)) {
-                      await launchUrl(
-                        uri,
-                        mode: LaunchMode.externalApplication,
-                        webOnlyWindowName: '_blank',
-                      );
+                      await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
                     }
                   } catch (_) {}
                 }
-                if (Navigator.canPop(context)) Navigator.pop(context);
               },
-              child: const Text('Nochmal herunterladen', style: TextStyle(color: Color(0xFF00FF94))),
-        ),
+              child: const Text('Download2', style: TextStyle(color: Color(0xFF00FF94))),
+            ),
           ],
         ),
       );
@@ -648,7 +643,16 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
           final url = await _findMomentDownloadUrl();
           if (url != null && url.isNotEmpty) {
             setState(() => _downloadUrl = url);
-            _triggerBrowserDownload(url);
+            try {
+              final uri = Uri.parse(url);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+              } else {
+                _triggerBrowserDownload(url);
+              }
+            } catch (_) {
+              _triggerBrowserDownload(url);
+            }
           }
         } catch (_) {}
         
@@ -685,10 +689,19 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
                 onPressed: () async {
                   final url = _downloadUrl ?? await _findMomentDownloadUrl();
                   if (url != null && url.isNotEmpty) {
-                    _triggerBrowserDownload(url);
+                    try {
+                      final uri = Uri.parse(url);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                      } else {
+                        _triggerBrowserDownload(url);
+                      }
+                    } catch (_) {
+                      _triggerBrowserDownload(url);
+                    }
                   }
                 },
-                child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
+                child: const Text('Download3', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
               ),
               TextButton(
                 onPressed: () => Navigator.of(context, rootNavigator: false).pop(),
@@ -766,6 +779,26 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
         }
       }
     } catch (_) {}
+    // 1) Versuche als Blob zu laden und direkt zu speichern (zuverlässigster Weg)
+    try {
+      final req = await html.HttpRequest.request(
+        url,
+        method: 'GET',
+        responseType: 'blob',
+        requestHeaders: {'Accept': 'application/octet-stream'},
+      );
+      final blob = req.response as html.Blob;
+      final objUrl = html.Url.createObjectUrlFromBlob(blob);
+      final a = html.AnchorElement(href: objUrl)
+        ..download = filename ?? 'download';
+      html.document.body?.append(a);
+      a.click();
+      a.remove();
+      html.Url.revokeObjectUrl(objUrl);
+      return;
+    } catch (_) {}
+
+    // 2) Fallback: normaler Anchor-Click
     try {
       final a = html.AnchorElement(href: url)
         ..target = '_blank'

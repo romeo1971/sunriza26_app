@@ -4125,10 +4125,32 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         final nickname = _avatarData?.nickname?.trim();
         final firstName = _avatarData?.firstName?.trim();
         final avatarName = (nickname != null && nickname.isNotEmpty) ? nickname : (firstName ?? 'Avatar');
-        final mediaUrl = uri.queryParameters['mediaUrl'] ?? '';
         
         // Warte kurz, damit Chat vollständig geladen ist
         await Future.delayed(const Duration(milliseconds: 800));
+        
+        // Download-URL aus Moments holen
+        String? downloadUrl;
+        try {
+          final moments = await MomentsService().listMoments(avatarId: _avatarData?.id);
+          if (moments.isNotEmpty) {
+            final byName = moments.firstWhere(
+              (m) => (m.originalFileName ?? '').trim() == mediaName.trim(),
+              orElse: () => moments.first,
+            );
+            downloadUrl = byName.storedUrl.isNotEmpty ? byName.storedUrl : byName.originalUrl;
+          }
+        } catch (_) {}
+        
+        // Auto-Download starten
+        if (downloadUrl != null && downloadUrl.isNotEmpty) {
+          try {
+            final uri = Uri.parse(downloadUrl);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+            }
+          } catch (_) {}
+        }
         
         if (!mounted) return;
         
@@ -4136,7 +4158,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         await showDialog(
           context: context,
           barrierDismissible: false,
-          builder: (_) => AlertDialog(
+          builder: (dlgCtx) => AlertDialog(
             backgroundColor: const Color(0xFF1A1A1A),
             title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
             content: Text(
@@ -4145,22 +4167,33 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Später', style: TextStyle(color: Colors.white70)),
+                onPressed: () => Navigator.pop(dlgCtx),
+                child: const Text('Schließen', style: TextStyle(color: Colors.white70)),
               ),
-              if (mediaUrl.isNotEmpty)
-                TextButton(
-                  onPressed: () async {
+              TextButton(
+                onPressed: () async {
+                  showDialog(
+                    context: dlgCtx,
+                    barrierDismissible: false,
+                    builder: (_) => AlertDialog(
+                      backgroundColor: const Color(0xFF1A1A1A),
+                      title: const Text('Download läuft', style: TextStyle(color: Colors.white)),
+                      content: const Text('Der Download wurde gestartet...', style: TextStyle(color: Colors.white70)),
+                    ),
+                  );
+                  if (downloadUrl != null && downloadUrl.isNotEmpty) {
                     try {
-                      final uri = Uri.parse(mediaUrl);
+                      final uri = Uri.parse(downloadUrl);
                       if (await canLaunchUrl(uri)) {
                         await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
                       }
                     } catch (_) {}
-                    if (Navigator.canPop(context)) Navigator.pop(context);
-                  },
-                  child: const Text('Nochmal herunterladen', style: TextStyle(color: Color(0xFF00FF94))),
-                ),
+                  }
+                  await Future.delayed(const Duration(milliseconds: 800));
+                  if (Navigator.canPop(dlgCtx)) Navigator.pop(dlgCtx);
+                },
+                child: const Text('Download6', style: TextStyle(color: Color(0xFF00FF94))),
+              ),
             ],
           ),
         );
@@ -5075,7 +5108,7 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text('Später', style: TextStyle(color: Colors.white70)),
+                  child: const Text('Schließen', style: TextStyle(color: Colors.white70)),
                 ),
                 TextButton(
                   onPressed: () async {
@@ -5091,7 +5124,7 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
                     } catch (_) {}
                     if (Navigator.canPop(context)) Navigator.pop(context);
                   },
-                  child: const Text('Nochmal herunterladen', style: TextStyle(color: AppColors.lightBlue)),
+                  child: const Text('Download5', style: TextStyle(color: AppColors.lightBlue)),
                 ),
               ],
             ),
