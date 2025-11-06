@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/moments_service.dart';
+import '../services/audio_cover_service.dart';
 import '../models/media_models.dart';
 import '../theme/app_theme.dart';
 import 'media_purchase_dialog.dart';
@@ -152,8 +153,39 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         if (data == null) continue;
 
         final map = {'id': mediaId, ...data};
-        final media = AvatarMedia.fromMap(map);
+        AvatarMedia media = AvatarMedia.fromMap(map);
         if (confirmedIds.contains(media.id)) continue;
+
+        // Audio-Cover nachladen (wie im Chat)
+        if (media.type == AvatarMediaType.audio) {
+          try {
+            final covers = await AudioCoverService().getCoverImages(
+              avatarId: widget.avatarId,
+              audioId: media.id,
+              audioUrl: media.url,
+            );
+            if (covers.isNotEmpty) {
+              media = AvatarMedia(
+                id: media.id,
+                avatarId: media.avatarId,
+                type: media.type,
+                url: media.url,
+                thumbUrl: media.thumbUrl,
+                createdAt: media.createdAt,
+                durationMs: media.durationMs,
+                aspectRatio: media.aspectRatio,
+                tags: media.tags,
+                originalFileName: media.originalFileName,
+                isFree: media.isFree,
+                price: media.price,
+                currency: media.currency,
+                platformFeePercent: media.platformFeePercent,
+                voiceClone: media.voiceClone,
+                coverImages: covers,
+              );
+            }
+          } catch (_) {}
+        }
 
         built.add(_TimelineVm(id: media.id, media: media));
       }
@@ -181,115 +213,271 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
     });
   }
 
-  IconData _iconFor(AvatarMediaType t) {
-    switch (t) {
-      case AvatarMediaType.image:
-        return Icons.image;
-      case AvatarMediaType.video:
-        return Icons.videocam;
-      case AvatarMediaType.audio:
-        return Icons.audiotrack;
-      case AvatarMediaType.document:
-        return Icons.description;
-    }
-  }
+  
 
   Future<void> _confirmAndProcess(BuildContext ctx) async {
     final selectedItems = _filtered().where((e) => _selected.contains(e.id)).toList();
     if (selectedItems.isEmpty) return;
 
-    final Set<String> tempSel = Set.of(_selected);
-    await showDialog(
+    final Map<String, bool> isCash = {
+      for (final vm in selectedItems) vm.id: (vm.media.price ?? 0.0) > 0.0
+    };
+
+    double subtotalCash() => selectedItems
+        .where((vm) => isCash[vm.id] == true)
+        .fold(0.0, (s, vm) => s + (vm.media.price ?? 0.0));
+    const double vatRate = 0.19; // MwSt
+    double vatCash() => subtotalCash() * vatRate;
+    double totalCash() => subtotalCash() + vatCash();
+
+    await showModalBottomSheet(
       context: ctx,
-      builder: (dCtx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A1A),
-        title: Text(
-          _filter == _TimelineFilter.free ? 'Annehmen bestätigen' : 'Kauf bestätigen',
-          style: const TextStyle(color: Colors.white),
-        ),
-        content: SizedBox(
-          width: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              SizedBox(
-                height: 260,
-                child: ListView.builder(
-                  itemCount: selectedItems.length,
-                  itemBuilder: (_, i) {
-                    final vm = selectedItems[i];
-                    final isChecked = tempSel.contains(vm.id);
-                    return CheckboxListTile(
-                      value: isChecked,
-                      onChanged: (v) {
-                        (v == true) ? tempSel.add(vm.id) : tempSel.remove(vm.id);
-                        (dCtx as Element).markNeedsBuild();
-                      },
-                      activeColor: AppColors.lightBlue,
-                      title: Text(vm.media.originalFileName ?? 'Media', style: const TextStyle(color: Colors.white)),
-                      subtitle: Text(
-                        (vm.media.price ?? 0.0) <= 0.0
-                            ? 'Gratis'
-                            : '${(vm.media.price ?? 0).toStringAsFixed(2)} ${vm.media.currency ?? '€'}',
-                        style: const TextStyle(color: Colors.white54),
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (bCtx) {
+        return StatefulBuilder(builder: (bCtx, setStateConfirm) {
+          final cashItems = selectedItems.where((vm) => isCash[vm.id] == true).toList();
+          final creditItems = selectedItems.where((vm) => isCash[vm.id] != true).toList();
+          return SafeArea(
+            child: SizedBox(
+              height: MediaQuery.of(bCtx).size.height * 0.8,
+              width: double.infinity,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  Container(width: 36, height: 4, decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2))),
+                  const SizedBox(height: 12),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text('Bestätigung', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Stripe (Cash) Zusammenfassung
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF222222),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.white12),
                       ),
-                    );
-                  },
-                ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const Text('Stripe (Kauf)', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600)),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Zwischensumme', style: TextStyle(color: Colors.white70)),
+                              Text('${subtotalCash().toStringAsFixed(2)} €', style: const TextStyle(color: Colors.white)),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('MwSt (19%)', style: TextStyle(color: Colors.white70)),
+                              Text('${vatCash().toStringAsFixed(2)} €', style: const TextStyle(color: Colors.white)),
+                            ],
+                          ),
+                          const Divider(height: 16, color: Colors.white12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Gesamt', style: TextStyle(color: Colors.white)),
+                              Text('${totalCash().toStringAsFixed(2)} €', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: ListView(
+                      children: [
+                        // CASH-Liste
+                        if (cashItems.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const Text('Kauf (Stripe)', style: TextStyle(color: Colors.white70)),
+                                const SizedBox(height: 8),
+                                ...cashItems.map((vm) => _buildConfirmRow(vm, isCash, setStateConfirm)),
+                              ],
+                            ),
+                          ),
+                        const SizedBox(height: 12),
+                        // CREDITS-Liste
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const Text('Credits', style: TextStyle(color: Colors.white70)),
+                              const SizedBox(height: 8),
+                              if (creditItems.isEmpty)
+                                const Text('Keine Items ausgewählt', style: TextStyle(color: Colors.white38))
+                              else ...creditItems.map((vm) => _buildConfirmRow(vm, isCash, setStateConfirm)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Bottom-Bar
+                  Container(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                    decoration: const BoxDecoration(color: Color(0xFF121212), boxShadow: [BoxShadow(color: Colors.black54, blurRadius: 6)]),
+                    child: Row(
+                      children: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(bCtx),
+                          child: const Text('Abbrechen'),
+                        ),
+                        const Spacer(),
+                        ElevatedButton(
+                          onPressed: selectedItems.isEmpty ? null : () async {
+                            // Credits zuerst
+                            for (final vm in selectedItems.where((e) => isCash[e.id] != true)) {
+                              try {
+                                final price = vm.media.price ?? 0.0;
+                                final method = price <= 0.0 ? 'free' : 'credits';
+                                await MomentsService().saveMoment(media: vm.media, price: price, paymentMethod: method);
+                                await _removeById(vm.id);
+                              } catch (_) {}
+                            }
+                            // Cash: nacheinander Dialoge
+                            for (final vm in selectedItems.where((e) => isCash[e.id] == true)) {
+                              if (!Navigator.of(ctx).mounted) break;
+                              await showDialog(
+                                context: ctx,
+                                builder: (_) => MediaPurchaseDialog(
+                                  media: vm.media,
+                                  onPurchaseSuccess: () async { await _removeById(vm.id); },
+                                ),
+                              );
+                            }
+                            if (mounted) setState(() {});
+                            if (Navigator.of(bCtx).canPop()) Navigator.of(bCtx).pop();
+                          },
+                          style: ElevatedButton.styleFrom(backgroundColor: AppColors.lightBlue),
+                          child: const Text('Bestätigen'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
+            ),
+          );
+        });
+      },
+    );
+  }
+
+  Widget _buildConfirmRow(_TimelineVm vm, Map<String, bool> isCash, void Function(void Function()) setStateConfirm) {
+    final price = vm.media.price ?? 0.0;
+    final currency = vm.media.currency ?? '€';
+    final canToggle = price > 0.0; // Gratis → kein Cash möglich
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        children: [
+          _buildThumb(vm.media),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(vm.media.originalFileName ?? 'Media', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white)),
+                const SizedBox(height: 2),
+                Text(price <= 0.0 ? 'Gratis' : '${price.toStringAsFixed(2)} $currency', style: const TextStyle(color: Colors.white60)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Row(
+            children: [
+              Text('Credits', style: TextStyle(color: Colors.white.withOpacity(canToggle ? 0.6 : 0.9))),
+              const SizedBox(width: 6),
+              Switch(
+                value: isCash[vm.id] == true,
+                onChanged: canToggle ? (v) => setStateConfirm(() => isCash[vm.id] = v) : null,
+                activeColor: AppColors.lightBlue,
+              ),
+              const SizedBox(width: 6),
+              const Text('Cash', style: TextStyle(color: Colors.white70)),
             ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dCtx),
-            child: const Text('Zurück'),
-          ),
-          TextButton(
-            onPressed: () {
-              _selected
-                ..clear()
-                ..addAll(tempSel);
-              Navigator.pop(dCtx);
-            },
-            child: const Text('Bestätigen'),
           ),
         ],
       ),
     );
+  }
 
-    final toProcess = _filtered().where((e) => _selected.contains(e.id)).toList();
-    if (toProcess.isEmpty) return;
-
-    if (_filter == _TimelineFilter.free) {
-      for (final vm in toProcess) {
-        try {
-          await MomentsService().saveMoment(
-            media: vm.media,
-            price: 0.0,
-            paymentMethod: 'free',
-          );
-          await _removeById(vm.id);
-        } catch (_) {}
-      }
-      setState(() {});
-      return;
+  Widget _buildThumb(AvatarMedia media) {
+    String? url;
+    if (media.coverImages != null && media.coverImages!.isNotEmpty) {
+      url = media.coverImages!.first.thumbUrl.isNotEmpty == true
+          ? media.coverImages!.first.thumbUrl
+          : media.coverImages!.first.url;
+    } else if (media.thumbUrl != null && media.thumbUrl!.isNotEmpty) {
+      url = media.thumbUrl;
+    } else if (media.type == AvatarMediaType.image) {
+      url = media.url;
     }
-
-    for (final vm in toProcess) {
-      if (!Navigator.of(ctx).mounted) break;
-      await showDialog(
-        context: ctx,
-        builder: (_) => MediaPurchaseDialog(
-          media: vm.media,
-          onPurchaseSuccess: () async {
-            await _removeById(vm.id);
-          },
-        ),
-      );
-    }
-    setState(() {});
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        color: Colors.black,
+        width: 80,
+        height: 80,
+        child: (url != null && url.isNotEmpty)
+            ? Image.network(
+                url,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Center(
+                  child: Icon(
+                    media.type == AvatarMediaType.video
+                        ? Icons.videocam
+                        : (media.type == AvatarMediaType.audio
+                            ? Icons.audiotrack
+                            : (media.type == AvatarMediaType.document ? Icons.description : Icons.image)),
+                    color: Colors.white38,
+                    size: 28,
+                  ),
+                ),
+              )
+            : Center(
+                child: Icon(
+                  media.type == AvatarMediaType.video
+                      ? Icons.videocam
+                      : (media.type == AvatarMediaType.audio
+                          ? Icons.audiotrack
+                          : (media.type == AvatarMediaType.document ? Icons.description : Icons.image)),
+                  color: Colors.white38,
+                  size: 28,
+                ),
+              ),
+      ),
+    );
   }
 
   @override
@@ -386,30 +574,43 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                         itemBuilder: (_, i) {
                           final vm = _filtered()[i];
                           final isFree = (vm.media.price ?? 0.0) <= 0.0;
-                          return ListTile(
-                            leading: Checkbox(
-                              value: _selected.contains(vm.id),
-                              onChanged: (v) {
-                                setState(() {
-                                  v == true ? _selected.add(vm.id) : _selected.remove(vm.id);
-                                });
-                              },
-                              activeColor: AppColors.lightBlue,
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                _selected.contains(vm.id) ? _selected.remove(vm.id) : _selected.add(vm.id);
+                              });
+                            },
+                            child: Container(
+                              height: 80,
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              child: Row(
+                                children: [
+                                  _buildThumb(vm.media),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Text(vm.media.originalFileName ?? 'Media', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white)),
+                                        const SizedBox(height: 4),
+                                        Text(isFree ? 'Gratis' : '${(vm.media.price ?? 0).toStringAsFixed(2)} ${vm.media.currency ?? '€'}', style: const TextStyle(color: Colors.white60)),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Checkbox(
+                                    value: _selected.contains(vm.id),
+                                    onChanged: (v) {
+                                      setState(() {
+                                        v == true ? _selected.add(vm.id) : _selected.remove(vm.id);
+                                      });
+                                    },
+                                    activeColor: AppColors.lightBlue,
+                                  ),
+                                ],
+                              ),
                             ),
-                            title: Row(
-                              children: [
-                                Icon(_iconFor(vm.media.type), color: Colors.white70, size: 18),
-                                const SizedBox(width: 8),
-                                Expanded(child: Text(vm.media.originalFileName ?? 'Media', style: const TextStyle(color: Colors.white))),
-                              ],
-                            ),
-                            subtitle: Text(
-                              isFree
-                                  ? 'Gratis'
-                                  : '${(vm.media.price ?? 0).toStringAsFixed(2)} ${vm.media.currency ?? '€'}',
-                              style: const TextStyle(color: Colors.white60),
-                            ),
-                            trailing: const SizedBox.shrink(),
                           );
                         },
                       ),
