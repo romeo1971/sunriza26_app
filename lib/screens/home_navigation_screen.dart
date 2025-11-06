@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:html' as html;
+import '../web/web_helpers.dart' as web;
 import 'dart:convert';
 import 'explore_screen.dart';
 import 'favorites_screen.dart';
@@ -52,11 +52,11 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
         final prefs = await SharedPreferences.getInstance();
         
         // Prüfe sessionStorage für Stripe-Success
-        final stripeData = html.window.sessionStorage['stripe_media_success'];
+        final stripeData = web.getSessionStorage('stripe_media_success');
         
         if (stripeData != null && stripeData.isNotEmpty) {
           debugPrint('✅✅✅ [HomeNav] Stripe-Success gefunden: $stripeData');
-          html.window.sessionStorage.remove('stripe_media_success');
+          web.removeSessionStorage('stripe_media_success');
           
           try {
             final data = json.decode(stripeData);
@@ -115,7 +115,7 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
                             final uri = Uri.parse(url);
                             await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
                           } catch (_) {
-                            try { html.window.open(url, '_blank'); } catch (_) {}
+                            try { await web.openNewTab(url); } catch (_) {}
                           }
                         },
                         child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
@@ -388,46 +388,8 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
         }
       }
     } catch (_) {}
-    // 1) Versuche als Blob zu laden und direkt zu speichern (zuverlässigster Weg)
-    try {
-      final req = await html.HttpRequest.request(
-        url,
-        method: 'GET',
-        responseType: 'blob',
-        requestHeaders: {'Accept': 'application/octet-stream'},
-      );
-      final blob = req.response as html.Blob;
-      final objUrl = html.Url.createObjectUrlFromBlob(blob);
-      final a = html.AnchorElement(href: objUrl)
-        ..download = filename ?? 'download';
-      html.document.body?.append(a);
-      a.click();
-      a.remove();
-      html.Url.revokeObjectUrl(objUrl);
-      return;
-    } catch (_) {}
-
-    // 2) Fallback: normaler Anchor-Click
-    try {
-      final anchor = html.AnchorElement(href: url)
-        ..target = '_blank'
-        ..rel = 'noopener'
-        ..download = filename ?? '';
-      html.document.body?.append(anchor);
-      anchor.click();
-      anchor.remove();
-    } catch (_) {
-      try {
-        final uri = Uri.parse(url);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-        } else {
-          html.window.location.href = url;
-        }
-      } catch (_) {
-        html.window.location.href = url;
-      }
-    }
+    // Übergib Download an Web-Helper (Web) bzw. Launcher (Mobile)
+    await web.downloadUrlCompat(url, filename: filename);
   }
 
   void _showMediaSuccessDialog(String mediaName, String avatarName, String mediaUrl) {

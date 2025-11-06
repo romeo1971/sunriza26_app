@@ -7,8 +7,7 @@ import '../models/user_profile.dart';
 import '../services/media_purchase_service.dart';
 import '../services/moments_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dart:html' as html;
-import 'dart:ui' as ui;
+import '../web/web_helpers.dart' as web;
 
 /// Dialog für Media-Kauf (Credits oder Stripe)
 class MediaPurchaseDialog extends StatefulWidget {
@@ -469,7 +468,13 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              // onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                  final nLocal = Navigator.of(context, rootNavigator: false);
+                  if (nLocal.canPop()) nLocal.pop();
+                  final nRoot = Navigator.of(context, rootNavigator: true);
+                  if (nRoot.canPop()) nRoot.pop();
+                },
               child: const Text('Schließen', style: TextStyle(color: Colors.white70)),
             ),
             TextButton(
@@ -621,9 +626,9 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
   void _setupMessageListener() {
     debugPrint('🔵🔵🔵 [StripeIframe] Setup listener...');
     // Lausche auf postMessage von Stripe-Success-URL
-    html.window.onMessage.listen((event) async {
-      debugPrint('🔵🔵🔵 [StripeIframe] Message received: ${event.data}');
-      debugPrint('🔵🔵🔵 [StripeIframe] Origin: ${event.origin}');
+    web.windowMessages().listen((event) async {
+      debugPrint('🔵🔵🔵 [StripeIframe] Message received: ${event?.data}');
+      debugPrint('🔵🔵🔵 [StripeIframe] Origin: ${event?.origin}');
       
       if (event.data.toString().contains('stripe-success')) {
         debugPrint('✅✅✅ [StripeIframe] SUCCESS erkannt!');
@@ -758,13 +763,7 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
             ),
             // iframe
             Expanded(
-              child: HtmlElementView(
-                viewType: 'stripe-checkout-${widget.checkoutUrl.hashCode}',
-                onPlatformViewCreated: (id) {
-                  debugPrint('🔵🔵🔵 [StripeIframe] Platform view created, id=$id');
-                  _createIframe();
-                },
-              ),
+              child: web.buildIframeView('stripe-checkout-${widget.checkoutUrl.hashCode}'),
             ),
           ],
         ),
@@ -785,52 +784,14 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
       }
     } catch (_) {}
     // 1) Versuche als Blob zu laden und direkt zu speichern (zuverlässigster Weg)
-    try {
-      final req = await html.HttpRequest.request(
-        url,
-        method: 'GET',
-        responseType: 'blob',
-        requestHeaders: {'Accept': 'application/octet-stream'},
-      );
-      final blob = req.response as html.Blob;
-      final objUrl = html.Url.createObjectUrlFromBlob(blob);
-      final a = html.AnchorElement(href: objUrl)
-        ..download = filename ?? 'download';
-      html.document.body?.append(a);
-      a.click();
-      a.remove();
-      html.Url.revokeObjectUrl(objUrl);
-      return;
-    } catch (_) {}
-
-    // 2) Fallback: normaler Anchor-Click
-    try {
-      final a = html.AnchorElement(href: url)
-        ..target = '_blank'
-        ..rel = 'noopener'
-        ..download = filename ?? '';
-      html.document.body?.append(a);
-      a.click();
-      a.remove();
-    } catch (_) {
-      try {
-        final uri = Uri.parse(url);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-        } else {
-          html.window.location.href = url;
-        }
-      } catch (_) {
-        html.window.location.href = url;
-      }
-    }
+    await web.downloadUrlCompat(url, filename: filename);
   }
 
   Future<String?> _findMomentDownloadUrl() async {
     try {
       String? avatarId;
       try {
-        final raw = html.window.sessionStorage['stripe_media_success'];
+        final raw = web.getSessionStorage('stripe_media_success');
         if (raw != null && raw.isNotEmpty) {
           final data = raw;
           // primitive parse to avoid bringing in dart:convert just for small read
@@ -851,18 +812,9 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
   }
 
   void _createIframe() {
-    // ignore: undefined_prefixed_name
-    ui.platformViewRegistry.registerViewFactory(
+    web.registerViewFactory(
       'stripe-checkout-${widget.checkoutUrl.hashCode}',
-      (int viewId) {
-        final iframe = html.IFrameElement()
-          ..src = widget.checkoutUrl
-          ..style.border = 'none'
-          ..style.width = '100%'
-          ..style.height = '100%';
-
-        return iframe;
-      },
+      (int viewId) => web.createIFrame(widget.checkoutUrl),
     );
   }
 }

@@ -31,24 +31,27 @@
         <p>Einen Moment bitte...</p>
     </div>
     <script>
+        // Einmal-Garde: Bei Back-Navigation NICHT erneut triggern
+        const now = Date.now();
+        const lastTs = Number(sessionStorage.getItem('stripe_media_success_ts') || 0);
+        const tooRecent = (now - lastTs) < 60_000; // 60s Schutz
+
         // Extrahiere Parameter
         const params = new URLSearchParams(window.location.search);
         const avatarId = params.get('avatarId');
         const mediaName = params.get('mediaName');
-        
-        // Speichere Success-Daten
-        if (avatarId && mediaName) {
+
+        if (!tooRecent && avatarId && mediaName) {
             sessionStorage.setItem('stripe_media_success', JSON.stringify({
-                avatarId: avatarId,
-                mediaName: mediaName,
-                timestamp: Date.now()
+                avatarId, mediaName, timestamp: now
             }));
+            sessionStorage.setItem('stripe_media_success_ts', String(now));
         }
-        
-        // Nach 2 Sekunden zurück zum Chat
+
+        // Nach kurzer Zeit zurück zum App-Home – replace verhindert History-Eintrag
         setTimeout(() => {
-            window.location.href = '/#/home';
-        }, 2000);
+            window.location.replace('/#/home');
+        }, 1000);
     </script>
 </body>
 </html>

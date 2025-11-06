@@ -5,6 +5,11 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
 import '../widgets/app_drawer.dart';
 import 'home_navigation_screen.dart';
+// app_theme not needed here after extraction
+// removed unused service/model/purchase imports after extracting widget
+import '../widgets/timeline_items_sheet.dart';
+
+//
 
 /// Entdecken Screen - Öffentliche Avatare im Feed-Style
 class ExploreScreen extends StatefulWidget {
@@ -568,30 +573,55 @@ class ExploreScreenState extends State<ExploreScreen> {
                 bottom: 16,
                 left: 16,
                 right: 16,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    final homeNav = context
-                        .findAncestorStateOfType<HomeNavigationScreenState>();
-                    if (homeNav != null) {
-                      homeNav.openChat(avatar.id);
-                    } else {
-                      Navigator.pushNamed(
-                        context,
-                        '/avatar-chat',
-                        arguments: avatar,
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.chat_bubble_outline),
-                  label: const Text('Conversation starten'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.black.withValues(alpha: 0.7),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 48),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
+                child: Row(
+                  children: [
+                    // Chat starten (breit)
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          final homeNav = context
+                              .findAncestorStateOfType<HomeNavigationScreenState>();
+                          if (homeNav != null) {
+                            homeNav.openChat(avatar.id);
+                          } else {
+                            Navigator.pushNamed(
+                              context,
+                              '/avatar-chat',
+                              arguments: avatar,
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.chat_bubble_outline),
+                        label: const Text('Chat starten'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black.withValues(alpha: 0.7),
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size(double.infinity, 48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 10),
+                    // Timeline-Icon (öffnet Overlay)
+                    SizedBox(
+                      width: 56,
+                      height: 48,
+                      child: ElevatedButton(
+                        onPressed: () => _openTimelineOverlay(avatar.id),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black.withValues(alpha: 0.7),
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: EdgeInsets.zero,
+                        ),
+                        child: const Icon(Icons.timeline, size: 22),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -600,6 +630,20 @@ class ExploreScreenState extends State<ExploreScreen> {
       ),
     );
   }
+
+  Future<void> _openTimelineOverlay(String avatarId) async {
+    if (!mounted) return;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF121212),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (ctx) => TimelineItemsSheet(avatarId: avatarId),
+    );
+  }
+
 }
 
 /// Search Delegate für Avatar-Suche
