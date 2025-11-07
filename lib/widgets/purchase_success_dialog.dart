@@ -36,7 +36,7 @@ Future<void> showPurchaseSuccessDialog({
       actionText = 'kostenlos hinzugefügt';
   }
 
-  final String body = '"${data.mediaName}" von "${data.avatarName}" wurde ${actionText} und zu deinen Momenten hinzugefügt.';
+  final String body = '"${data.mediaName}" von "${data.avatarName}" wurde $actionText und zu deinen Momenten hinzugefügt.';
 
   await showDialog(
     context: context,

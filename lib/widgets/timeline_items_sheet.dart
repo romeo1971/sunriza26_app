@@ -34,6 +34,10 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
   _TimelineFilter _filter = _TimelineFilter.free;
   final Set<String> _selected = <String>{};
 
+  // Schneller Cache pro Avatar – verhindert langes Laden beim erneuten Öffnen
+  static final Map<String, _CacheEntry> _cacheByAvatar = <String, _CacheEntry>{};
+  static const Duration _cacheTtl = Duration(minutes: 5);
+
   @override
   void initState() {
     super.initState();
@@ -121,7 +125,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                 ),
               ),
               const SizedBox(width: 8),
-              Text('${(_confirmDone)}/${_confirmTotal}', style: const TextStyle(color: Colors.white70)),
+              Text('${(_confirmDone)}/$_confirmTotal', style: const TextStyle(color: Colors.white70)),
             ],
           ),
         ),
@@ -198,6 +202,19 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
       _selected.clear();
       _filter = _TimelineFilter.free;
     });
+
+    // 0) Sofortiger Cache‑Hit: zeige alte Liste (nach Moments gefiltert), lade im Hintergrund neu
+    final cache = _cacheByAvatar[widget.avatarId];
+    if (cache != null && DateTime.now().difference(cache.timestamp) < _cacheTtl) {
+      try {
+        final filtered = await _filterByExistingMoments(cache.items);
+        if (mounted) setState(() { _items = filtered; _loading = false; });
+      } catch (_) {}
+      // Hintergrund‑Refresh (nicht blockierend)
+      // ignore: discarded_futures
+      _refreshFromNetwork();
+      return;
+    }
     try {
       final now = DateTime.now();
       final weekday = now.weekday; // 1=Mo..7=So
@@ -363,12 +380,185 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         built.add(_TimelineVm(id: media.id, media: media, playlistId: item['playlistId'] as String?));
       }
 
-      setState(() { _items = built; _loading = false; });
+      // Cache speichern (UNGEFILTERT; Moments‑Abgleich erfolgt beim Anzeigen)
+      _cacheByAvatar[widget.avatarId] = _CacheEntry(items: built, timestamp: DateTime.now());
+      final filtered = await _filterByExistingMoments(built);
+      setState(() { _items = filtered; _loading = false; });
     } catch (e) {
       setState(() {
         _loading = false;
         _error = 'Fehler beim Laden';
       });
+    }
+  }
+
+  // Hintergrund‑Refresh, aktualisiert Cache und sichtbare Liste
+  Future<void> _refreshFromNetwork() async {
+    try {
+      // identisch zu Netz‑Teil von _loadData; rufe _loadData intern auf, aber ohne Cache‑Pfad
+      final now = DateTime.now();
+      final weekday = now.weekday;
+
+      final playlistsSnap = await _fs
+          .collection('avatars')
+          .doc(widget.avatarId)
+          .collection('playlists')
+          .get();
+
+      final List<String> activePlaylistIds = [];
+      for (final d in playlistsSnap.docs) {
+        final m = d.data();
+        final weekly = m['weeklySchedules'] as List?;
+        if (weekly == null) continue;
+        bool isActiveToday = false;
+        for (final s in weekly) {
+          if (s is Map && (s['weekday'] as int?) == weekday) { isActiveToday = true; break; }
+        }
+        if (isActiveToday) activePlaylistIds.add(d.id);
+      }
+      if (activePlaylistIds.isEmpty) return;
+
+      final List<Map<String, dynamic>> allItems = [];
+      for (final pid in activePlaylistIds) {
+        final itemsSnap = await _fs
+            .collection('avatars')
+            .doc(widget.avatarId)
+            .collection('playlists')
+            .doc(pid)
+            .collection('timelineItems')
+            .orderBy('order')
+            .get();
+        for (final it in itemsSnap.docs) {
+          final m = it.data();
+          final isActive = (m['activity'] as bool?) ?? true;
+          if (!isActive) continue;
+          m['id'] = it.id;
+          m['playlistId'] = pid;
+          allItems.add(m);
+        }
+      }
+      if (allItems.isEmpty) return;
+
+      allItems.sort((a, b) => (a['order'] as int? ?? 0).compareTo(b['order'] as int? ?? 0));
+
+      // Confirmed laden
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      final confirmedIds = <String>{};
+      if (uid != null) {
+        for (final pid in activePlaylistIds) {
+          try {
+            final confSnap = await _fs
+                .collection('avatars')
+                .doc(widget.avatarId)
+                .collection('playlists')
+                .doc(pid)
+                .collection('confirmedItems')
+                .where('userId', isEqualTo: uid)
+                .get();
+            for (final d in confSnap.docs) {
+              final mid = d.data()['mediaId'] as String?;
+              if (mid != null && mid.isNotEmpty) confirmedIds.add(mid);
+            }
+          } catch (_) {}
+        }
+      }
+
+      // Moments lesen für harte Filterung
+      Set<String> existingMediaIds = <String>{};
+      try {
+        final moments = await MomentsService().listMoments();
+        existingMediaIds = moments
+            .map((m) => m.mediaId)
+            .whereType<String>()
+            .where((s) => s.isNotEmpty)
+            .toSet();
+      } catch (_) {}
+
+      final List<_TimelineVm> built = <_TimelineVm>[];
+      for (final item in allItems) {
+        final assetId = item['assetId'] as String?;
+        if (assetId == null) continue;
+        String mediaId = assetId;
+        try {
+          final assetSnap = await _fs
+              .collection('avatars')
+              .doc(widget.avatarId)
+              .collection('playlists')
+              .doc(item['playlistId'] as String)
+              .collection('timelineAssets')
+              .doc(assetId)
+              .get();
+          final asset = assetSnap.data();
+          final mid = asset != null ? (asset['mediaId'] as String?) : null;
+          if (mid != null && mid.isNotEmpty) mediaId = mid;
+        } catch (_) {}
+
+        Map<String, dynamic>? data;
+        for (final col in const ['images', 'videos', 'audios', 'documents']) {
+          final snap = await _fs
+              .collection('avatars')
+              .doc(widget.avatarId)
+              .collection(col)
+              .doc(mediaId)
+              .get();
+          if (snap.exists) { data = snap.data(); break; }
+        }
+        if (data == null) continue;
+        final map = {'id': mediaId, ...data};
+        var media = AvatarMedia.fromMap(map);
+        if (confirmedIds.contains(media.id)) continue;
+        if (existingMediaIds.contains(media.id)) continue;
+        if (media.type == AvatarMediaType.audio) {
+          try {
+            final covers = await AudioCoverService().getCoverImages(
+              avatarId: widget.avatarId,
+              audioId: media.id,
+              audioUrl: media.url,
+            );
+            if (covers.isNotEmpty) {
+              media = AvatarMedia(
+                id: media.id,
+                avatarId: media.avatarId,
+                type: media.type,
+                url: media.url,
+                thumbUrl: media.thumbUrl,
+                createdAt: media.createdAt,
+                durationMs: media.durationMs,
+                aspectRatio: media.aspectRatio,
+                tags: media.tags,
+                originalFileName: media.originalFileName,
+                isFree: media.isFree,
+                price: media.price,
+                currency: media.currency,
+                platformFeePercent: media.platformFeePercent,
+                voiceClone: media.voiceClone,
+                coverImages: covers,
+              );
+            }
+          } catch (_) {}
+        }
+        built.add(_TimelineVm(id: media.id, media: media, playlistId: item['playlistId'] as String?));
+      }
+
+      // Cache aktualisieren und, falls UI sichtbar, Liste ersetzen
+      _cacheByAvatar[widget.avatarId] = _CacheEntry(items: built, timestamp: DateTime.now());
+      if (!mounted) return;
+      final filtered = await _filterByExistingMoments(built);
+      setState(() { _items = filtered; });
+    } catch (_) {}
+  }
+
+  Future<List<_TimelineVm>> _filterByExistingMoments(List<_TimelineVm> list) async {
+    try {
+      final moments = await MomentsService().listMoments();
+      final ids = moments
+          .map((m) => m.mediaId)
+          .whereType<String>()
+          .where((s) => s.isNotEmpty)
+          .toSet();
+      return list.where((e) => !ids.contains(e.id)).toList();
+    } catch (_) {
+      return list;
     }
   }
 
@@ -722,7 +912,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                 Switch(
                   value: isCash[vm.id] == true,
                   onChanged: canToggle ? (v) => setStateConfirm(() => isCash[vm.id] = v) : null,
-                  activeColor: AppColors.lightBlue,
+                  activeThumbColor: AppColors.lightBlue,
                 ),
                 const SizedBox(width: 6),
                 const Text('Cash', style: TextStyle(color: Colors.white70)),
@@ -884,7 +1074,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                               });
                             },
                             child: Container(
-                              height: 80,
+                              constraints: const BoxConstraints(minHeight: 80),
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                               child: Row(
                                 children: [
@@ -895,8 +1085,13 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       mainAxisAlignment: MainAxisAlignment.center,
                                       children: [
-                                        Text(vm.media.originalFileName ?? 'Media', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white)),
-                                        const SizedBox(height: 4),
+                                        Text(
+                                          vm.media.originalFileName ?? 'Media',
+                                          maxLines: 3,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: Colors.white),
+                                        ),
+                                        const SizedBox(height: 6),
                                         if (isFree)
                                           const Text('Gratis', style: TextStyle(color: Colors.white60))
                                         else
@@ -968,6 +1163,12 @@ class _TimelineVm {
   final AvatarMedia media;
   final String? playlistId; // für confirmedItems Pfad
   _TimelineVm({required this.id, required this.media, this.playlistId});
+}
+
+class _CacheEntry {
+  final List<_TimelineVm> items;
+  final DateTime timestamp;
+  _CacheEntry({required this.items, required this.timestamp});
 }
 
 

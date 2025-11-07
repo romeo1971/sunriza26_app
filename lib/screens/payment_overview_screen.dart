@@ -196,27 +196,27 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
                   ),
                   const SizedBox(height: 16),
 
-                  _buildActionCard(
-                    icon: Icons.payment,
-                    title: 'Zahlungsmethoden',
-                    subtitle: 'Kreditkarten verwalten',
-                    onTap: () {
-                      Navigator.pushNamed(context, '/payment-methods');
-                    },
-                  ),
-                  const SizedBox(height: 16),
+                  // _buildActionCard(
+                  //   icon: Icons.payment,
+                  //   title: 'Zahlungsmethoden',
+                  //   subtitle: 'Kreditkarten verwalten',
+                  //   onTap: () {
+                  //     Navigator.pushNamed(context, '/payment-methods');
+                  //   },
+                  // ),
+                  // const SizedBox(height: 16),
 
-                  _buildActionCard(
-                    icon: Icons.shopping_cart,
-                    title: 'Warenkorb',
-                    subtitle: 'Vorgemerkte Medien (0)',
-                    onTap: () {
-                      // FEHLT NOCH Warenkorb-Screen
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Warenkorb folgt bald')),
-                      );
-                    },
-                  ),
+                  // _buildActionCard(
+                  //   icon: Icons.shopping_cart,
+                  //   title: 'Warenkorb',
+                  //   subtitle: 'Vorgemerkte Medien (0)',
+                  //   onTap: () {
+                  //     // FEHLT NOCH Warenkorb-Screen
+                  //     ScaffoldMessenger.of(context).showSnackBar(
+                  //       const SnackBar(content: Text('Warenkorb folgt bald')),
+                  //     );
+                  //   },
+                  // ),
                 ],
               ),
             ),

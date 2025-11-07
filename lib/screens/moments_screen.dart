@@ -8,6 +8,7 @@ import '../theme/app_theme.dart';
 import '../services/localization_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../widgets/app_drawer.dart';
+import '../widgets/moment_viewer.dart';
 
 /// MomentsScreen – zeigt die vom Nutzer angenommenen/gekauften Medien
 class MomentsScreen extends StatefulWidget {
@@ -152,9 +153,15 @@ class _MomentsScreenState extends State<MomentsScreen> {
       backgroundColor: Colors.black,
       drawer: const AppDrawer(),
       appBar: AppBar(
-        title: const Text('Momente'),
         backgroundColor: Colors.black,
         elevation: 0,
+        leading: Builder(
+          builder: (context) => IconButton(
+            icon: const Icon(Icons.menu, color: Colors.white),
+            onPressed: () => Scaffold.of(context).openDrawer(),
+          ),
+        ),
+        title: const Text('Momente', style: TextStyle(color: Colors.white)),
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -172,8 +179,9 @@ class _MomentsScreenState extends State<MomentsScreen> {
                       padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
                       child: Row(
                         children: [
-                          // Avatar Dropdown
-                          Expanded(
+                          // Avatar Dropdown (fixe Breite, um Overflow zu vermeiden)
+                          SizedBox(
+                            width: 140,
                             child: FutureBuilder<List<MapEntry<String, String>>>(
                               future: _getAvatarDropdownItems(),
                               builder: (context, snapshot) {
@@ -184,6 +192,8 @@ class _MomentsScreenState extends State<MomentsScreen> {
                                   decoration: const InputDecoration(
                                     labelText: 'Avatar',
                                     labelStyle: TextStyle(color: Colors.white70),
+                                    isDense: true,
+                                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                                     enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                                     focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
                                   ),
@@ -225,7 +235,7 @@ class _MomentsScreenState extends State<MomentsScreen> {
                               },
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 4),
                           // Suche
                           Expanded(
                             flex: 2,
@@ -237,6 +247,8 @@ class _MomentsScreenState extends State<MomentsScreen> {
                                 hintText: 'Suche (Name, Tags, URL)',
                                 hintStyle: TextStyle(color: Colors.white38),
                                 prefixIcon: Icon(Icons.search, color: Colors.white54),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                                 enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
                                 focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white54)),
                               ),
@@ -245,17 +257,24 @@ class _MomentsScreenState extends State<MomentsScreen> {
                         ],
                       ),
                     ),
-                    // Typenfilter
+                    // Typenfilter (nur Icons) – mobil horizontal scrollbar, mehr Abstand
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      child: Wrap(
-                        spacing: 8,
-                        children: [
-                          _typeChip('image', 'Bilder'),
-                          _typeChip('video', 'Videos'),
-                          _typeChip('audio', 'Audio'),
-                          _typeChip('document', 'Dokumente'),
-                        ],
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _typeIcon('image', Icons.image, 'Bilder'),
+                            const SizedBox(width: 16),
+                            _typeIcon('video', Icons.videocam, 'Videos'),
+                            const SizedBox(width: 16),
+                            _typeIcon('document', Icons.description, 'Dokumente'),
+                            const SizedBox(width: 16),
+                            _typeIcon('audio', Icons.audiotrack, 'Audio'),
+                            const SizedBox(width: 8),
+                          ],
+                        ),
                       ),
                     ),
                     const Divider(height: 1, color: Colors.white12),
@@ -349,7 +368,17 @@ class _MomentsScreenState extends State<MomentsScreen> {
                                   ],
                                 ),
                                 onTap: () {
-                                  // Optional: Später Detail/Preview öffnen
+                                  // Fullscreen Viewer über aktuell gefilterte Liste
+                                  final all = _filteredItems; // gesamte Ansicht (nicht nur Seite)
+                                  final idx = all.indexWhere((e) => e.id == m.id);
+                                  if (idx >= 0) {
+                                    Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => MomentViewer(moments: all, initialIndex: idx),
+                                        fullscreenDialog: true,
+                                      ),
+                                    );
+                                  }
                                 },
                               );
                             },
@@ -440,6 +469,45 @@ class _MomentsScreenState extends State<MomentsScreen> {
       selectedColor: AppColors.lightBlue,
       backgroundColor: Colors.white12,
       checkmarkColor: Colors.black,
+    );
+  }
+
+  // Icon-basierter Typ-Filter (ohne Haken):
+  // unselected → transparenter Hintergrund, graue Icons, graue Border
+  // selected → GMBC Gradient, Icon weiß
+  Widget _typeIcon(String key, IconData icon, String tooltip) {
+    final selected = _selectedTypes.contains(key);
+    return Tooltip(
+      message: tooltip,
+      child: GestureDetector(
+        onTap: () => setState(() {
+          if (selected) {
+            _selectedTypes.remove(key);
+            if (_selectedTypes.isEmpty) {
+              _selectedTypes.add(key); // mindestens ein Typ aktiv
+            }
+          } else {
+            _selectedTypes.add(key);
+          }
+        }),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            gradient: selected
+                ? const LinearGradient(
+                    colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
+                  )
+                : null,
+            color: selected ? null : Colors.transparent,
+            border: Border.all(
+              color: selected ? Colors.white70 : Colors.white38,
+              width: 1,
+            ),
+            borderRadius: BorderRadius.circular(22),
+          ),
+          child: Icon(icon, color: selected ? Colors.white : Colors.white60, size: 20),
+        ),
+      ),
     );
   }
 

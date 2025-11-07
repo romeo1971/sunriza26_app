@@ -12,6 +12,8 @@ import '../services/localization_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_date_field.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -607,8 +609,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
                   const SizedBox(height: 6),
 
-                  // Zahlungseinstellungen - ExpansionTile wie im Details Screen
-                  _buildExpandableSection('Zahlungseinstellungen', [
+                  // Zahlungsmoethoden - ExpansionTile wie im Details Screen
+                  _buildExpandableSection('Zahlungsmoethoden', [
                     _buildPaymentSection(),
                   ]),
 
@@ -709,15 +711,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
         ),
         const SizedBox(height: 12),
         ElevatedButton(
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(
-                  context.read<LocalizationService>().t('profile.stripeTodo'),
-                ),
-              ),
-            );
-          },
+          onPressed: _manageStripeConnect,
           style:
               ElevatedButton.styleFrom(
                 backgroundColor: Colors.transparent,
@@ -750,8 +744,75 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             ),
           ),
         ),
+        if (_profile?.stripeConnectAccountId != null) ...[
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: _openStripeDashboard,
+            icon: const Icon(Icons.open_in_new, color: Colors.white70),
+            label: const Text('Stripe Dashboard öffnen', style: TextStyle(color: Colors.white70)),
+          ),
+        ],
       ],
     );
+  }
+
+  Future<void> _manageStripeConnect() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final countryRaw = _countryController.text.trim();
+      final country = (countryRaw.isNotEmpty ? countryRaw : (_profile?.country ?? 'DE')).toUpperCase();
+      final email = user.email ?? _profile?.email ?? '';
+
+      final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
+      final fn = fns.httpsCallable('createConnectedAccount');
+
+      final res = await fn.call({
+        'country': country,
+        'email': email,
+        'businessType': 'individual',
+      });
+
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final url = data['url'] as String?;
+      if (url == null || url.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kein Onboarding-Link erhalten')));
+        }
+        return;
+      }
+
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kann Link nicht öffnen: $url')));
+        }
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+    }
+  }
+
+  Future<void> _openStripeDashboard() async {
+    try {
+      final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
+      final fn = fns.httpsCallable('createSellerDashboardLink');
+      final res = await fn.call();
+      final data = Map<String, dynamic>.from(res.data as Map);
+      final url = data['url'] as String?;
+      if (url == null || url.isEmpty) return;
+      final uri = Uri.parse(url);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Dashboard-Link fehlgeschlagen: $e')));
+    }
   }
 
   @override

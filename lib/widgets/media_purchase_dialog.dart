@@ -587,6 +587,7 @@ class _StripeCheckoutDialog extends StatefulWidget {
 
 class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
   String? _downloadUrl;
+  bool _handledSuccess = false;
   @override
   void initState() {
     super.initState();
@@ -747,17 +748,22 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
                       ),
                       shouldOverrideUrlLoading: (controller, action) async {
                         final url = action.request.url?.toString() ?? '';
-                        // Erkenne Success ohne die Zielseite zu laden (z.B. localhost)
-                        if (url.contains('stripe_success.html') || url.contains('success=true') || url.contains('session_id=')) {
-                          await _onStripeSuccess();
-                          return NavigationActionPolicy.CANCEL;
-                        }
-                        if (url.contains('cancelled=true')) {
-                          // Einfach Dialog schließen
-                          if (mounted) Navigator.of(context, rootNavigator: false).pop();
+                        if (_maybeHandleSuccess(url)) {
                           return NavigationActionPolicy.CANCEL;
                         }
                         return NavigationActionPolicy.ALLOW;
+                      },
+                      onLoadStart: (controller, url) async {
+                        final u = url?.toString() ?? '';
+                        _maybeHandleSuccess(u);
+                      },
+                      onLoadStop: (controller, url) async {
+                        final u = url?.toString() ?? '';
+                        _maybeHandleSuccess(u);
+                      },
+                      onUpdateVisitedHistory: (controller, url, androidIsReload) async {
+                        final u = url?.toString() ?? '';
+                        _maybeHandleSuccess(u);
                       },
                     ),
             ),
@@ -848,5 +854,23 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
         content: Text('Dein Kauf wurde zu deinen Momenten hinzugefügt.', style: TextStyle(color: Colors.white70, fontSize: 14)),
       ),
     );
+  }
+
+  bool _maybeHandleSuccess(String url) {
+    if (_handledSuccess) return true;
+    final u = url.toLowerCase();
+    final isSuccess = u.contains('stripe_success.html') || u.contains('success=true') || u.contains('session_id=');
+    if (u.contains('cancelled=true')) {
+      if (mounted) Navigator.of(context, rootNavigator: false).pop();
+      return true;
+    }
+    if (isSuccess) {
+      _handledSuccess = true;
+      // Fire and forget; Dialog schließt sich und Success-Dialog erscheint
+      // ignore: discarded_futures
+      _onStripeSuccess();
+      return true;
+    }
+    return false;
   }
 }
