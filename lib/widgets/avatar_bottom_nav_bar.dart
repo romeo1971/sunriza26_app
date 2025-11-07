@@ -62,11 +62,11 @@ class AvatarBottomNavBar extends StatelessWidget {
             ),
             _item(
               context,
-              active: currentScreen == 'moments',
+              active: currentScreen == 'bol',
               iconFilled: Icons.collections_bookmark,
               iconOutlined: Icons.collections_bookmark_outlined,
-              label: 'Momente',
-              route: '/moments',
+              label: 'BOL',
+              route: '/bol',
               args: {'avatarId': avatarId},
             ),
             _item(

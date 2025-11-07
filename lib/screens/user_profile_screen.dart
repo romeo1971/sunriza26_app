@@ -724,7 +724,24 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             : _profileImageUrl != null
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(11),
-                child: Image.network(_profileImageUrl!, fit: BoxFit.cover),
+                child: Image.network(
+                  _profileImageUrl!,
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) {
+                    // Fallback bei 404/Token-Fehlern
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
+                      setState(() => _profileImageUrl = null);
+                    });
+                    return const Center(
+                      child: Icon(
+                        Icons.add_photo_alternate,
+                        size: 40,
+                        color: Colors.white54,
+                      ),
+                    );
+                  },
+                ),
               )
             : const Center(
                 child: Icon(

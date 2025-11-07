@@ -110,7 +110,29 @@ class UserService {
 
   // Erweiterte Profil-Update-Methode
   Future<void> updateUserProfile(UserProfile profile) async {
-    await _col.doc(profile.uid).set(profile.toMap(), SetOptions(merge: true));
+    // Nur erlaubte/ungefährliche Felder schreiben – keine Credit-Felder!
+    final Map<String, dynamic> allowed = {
+      // Basis-Profil
+      'displayName': profile.displayName,
+      'profileImageUrl': profile.profileImageUrl,
+      'email': profile.email,
+      // Erweiterte Personendaten
+      'firstName': profile.firstName,
+      'lastName': profile.lastName,
+      'street': profile.street,
+      'city': profile.city,
+      'postalCode': profile.postalCode,
+      'country': profile.country,
+      'phoneNumber': profile.phoneNumber,
+      // App-/Profil-Einstellungen
+      'language': profile.language,
+      'dob': profile.dob,
+      // Aktualisierungszeitstempel
+      'updatedAt': profile.updatedAt,
+    };
+    // Nullwerte entfernen, damit nur echte Änderungen gemergt werden
+    allowed.removeWhere((_, v) => v == null);
+    await _col.doc(profile.uid).set(allowed, SetOptions(merge: true));
   }
 
   Future<void> updateCurrentUserProfileImageUrl(String url) async {
