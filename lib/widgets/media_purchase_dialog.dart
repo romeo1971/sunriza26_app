@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'purchase_success_dialog.dart';
 import '../theme/app_theme.dart';
 import '../models/media_models.dart';
 import '../models/user_profile.dart';
@@ -450,47 +451,15 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
         return;
       }
       
-      // ignore: avoid_print
-      print('🔵🔵🔵 [MediaPurchase] Schließe Purchase-Dialog...');
-      Navigator.pop(context);
-
-      // ignore: avoid_print
-      print('🔵🔵🔵 [MediaPurchase] Zeige Success-Dialog...');
-      // 4. Success-Dialog mit echten Daten (wie beim Stripe-Flow)
-      await showDialog(
+      // Success-Dialog (vereinheitlichtes Widget)
+      await showPurchaseSuccessDialog(
         context: context,
-        builder: (_) => AlertDialog(
-          backgroundColor: const Color(0xFF1A1A1A),
-          title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
-          content: Text(
-            '"$mediaName" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.',
-            style: const TextStyle(color: Colors.white70),
-          ),
-          actions: [
-            TextButton(
-              // onPressed: () => Navigator.pop(context),
-              onPressed: () {
-                  final nLocal = Navigator.of(context, rootNavigator: false);
-                  if (nLocal.canPop()) nLocal.pop();
-                  final nRoot = Navigator.of(context, rootNavigator: true);
-                  if (nRoot.canPop()) nRoot.pop();
-                },
-              child: const Text('Schließen', style: TextStyle(color: Colors.white70)),
-            ),
-            TextButton(
-              onPressed: () async {
-                if (storedUrl != null && storedUrl.isNotEmpty) {
-                  try {
-                    final uri = Uri.parse(storedUrl);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-                    }
-                  } catch (_) {}
-                }
-              },
-              child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
-            ),
-          ],
+        data: PurchaseSuccessData(
+          mediaName: mediaName,
+          avatarName: avatarName,
+          source: 'dialog',
+          variant: 'credits',
+          downloadUrl: storedUrl,
         ),
       );
 
@@ -708,7 +677,7 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
                     }
                   }
                 },
-                child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
+                child: const Text('Download3', style: TextStyle(color: Color(0xFF00FF94), fontSize: 16, fontWeight: FontWeight.bold)),
               ),
               TextButton(
                 onPressed: () {

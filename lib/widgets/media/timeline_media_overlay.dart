@@ -816,13 +816,13 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
         children: [
           // Preis: Cash + Credits
           if (isFree)
-            Text(
+          Text(
               'KOSTENLOS',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
             )
           else
             Row(
@@ -867,7 +867,7 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
                   ],
                 ),
               ],
-            ),
+          ),
           
           const SizedBox(height: 12),
           

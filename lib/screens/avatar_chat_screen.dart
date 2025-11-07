@@ -38,6 +38,7 @@ import '../widgets/media/timeline_media_slider.dart';
 import '../widgets/media/timeline_media_overlay.dart';
 import 'hero_chat_screen.dart';
 import '../services/audio_cover_service.dart';
+import '../widgets/purchase_success_dialog.dart';
 
 // GLOBAL: Legacy MuseTalk Guard entfernt – MuseTalk wurde ausgebaut
 final Map<String, DateTime> _globalActiveMuseTalkRooms = {};
@@ -4155,42 +4156,14 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         if (!mounted) return;
         
         debugPrint('🔵🔵🔵 [ChatScreen] Zeige Success-Dialog');
-        await showDialog(
+        await showPurchaseSuccessDialog(
           context: context,
-          barrierDismissible: false,
-          builder: (dlgCtx) => AlertDialog(
-            backgroundColor: const Color(0xFF1A1A1A),
-            title: const Text('Zahlung bestätigt', style: TextStyle(color: Colors.white)),
-            content: Text(
-              '"$mediaName" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.',
-              style: const TextStyle(color: Colors.white70),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  final navLocal = Navigator.of(dlgCtx, rootNavigator: false);
-                  if (navLocal.canPop()) navLocal.pop();
-                  final navRoot = Navigator.of(dlgCtx, rootNavigator: true);
-                  if (navRoot.canPop()) navRoot.pop();
-                },
-                child: const Text('Schließen', style: TextStyle(color: Colors.white70)),
-              ),
-              TextButton(
-                onPressed: () async {
-                  if (downloadUrl != null && downloadUrl.isNotEmpty) {
-                    try {
-                      final uri = Uri.parse(downloadUrl);
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-                      }
-                    } catch (_) {}
-                  }
-                  await Future.delayed(const Duration(milliseconds: 800));
-                  if (Navigator.canPop(dlgCtx)) Navigator.pop(dlgCtx);
-                },
-                child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
-              ),
-            ],
+          data: PurchaseSuccessData(
+            mediaName: mediaName,
+            avatarName: avatarName,
+            source: 'chat',
+            variant: 'cash',
+            downloadUrl: downloadUrl,
           ),
         );
       }

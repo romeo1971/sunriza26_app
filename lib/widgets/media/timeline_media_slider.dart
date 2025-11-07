@@ -351,14 +351,14 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
                   const SizedBox(width: 2),
                   Text(
                     '${(price / 0.1).round()}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 10,
+            fontWeight: FontWeight.bold,
+          ),
                   ),
                 ],
-              ),
+        ),
       ),
     );
   }

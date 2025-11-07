@@ -275,13 +275,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                 child: const Icon(Icons.diamond, color: Colors.white, size: 16),
                               ),
                               const SizedBox(width: 4),
-                              Text(
+                          Text(
                                 '${transaction.credits}',
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.8),
-                                  fontSize: 14,
-                                ),
-                              ),
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              fontSize: 14,
+                            ),
+                          ),
                             ],
                           ),
                         ],

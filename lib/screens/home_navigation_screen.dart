@@ -12,6 +12,7 @@ import 'moments_screen.dart';
 import 'avatar_chat_screen.dart';
 import '../theme/app_theme.dart';
 import '../services/moments_service.dart';
+import '../widgets/purchase_success_dialog.dart';
 
 /// Home Navigation mit TikTok-Style Bottom Bar
 class HomeNavigationScreen extends StatefulWidget {
@@ -84,52 +85,14 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
               }
 
               if (mounted) {
-                await showDialog(
+                await showPurchaseSuccessDialog(
                   context: context,
-                  barrierDismissible: false,
-                  builder: (_) => AlertDialog(
-                    backgroundColor: const Color(0xFF1A1A1A),
-                    title: const Text('Zahlung bestätigt ✓', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    content: Text('$mediaName wurde zu deinen Momenten hinzugefügt.', style: const TextStyle(color: Colors.white70)),
-                    actions: [
-                      TextButton(
-                        onPressed: () async {
-                          // URL aus Moments holen (neuester Eintrag; ggf. ohne Avatar-Filter)
-                          String? url;
-                          try {
-                            var moments = await MomentsService().listMoments(avatarId: avatarId);
-                            if (moments.isEmpty) {
-                              moments = await MomentsService().listMoments();
-                            }
-                            if (moments.isNotEmpty) {
-                              final latest = moments.first;
-                              url = latest.storedUrl.isNotEmpty ? latest.storedUrl : latest.originalUrl;
-                            }
-                          } catch (_) {}
-                          url ??= downloadUrl;
-
-                          if (url == null || url.isEmpty) return;
-
-                          // Direkt öffnen (wie Download5)
-                          try {
-                            final uri = Uri.parse(url);
-                            await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
-                          } catch (_) {
-                            try { await web.openNewTab(url); } catch (_) {}
-                          }
-                        },
-                        child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
-                      ),
-                      TextButton(
-                        onPressed: () {
-                          final nLocal = Navigator.of(context, rootNavigator: false);
-                          if (nLocal.canPop()) nLocal.pop();
-                          final nRoot = Navigator.of(context, rootNavigator: true);
-                          if (nRoot.canPop()) nRoot.pop();
-                        },
-                        child: const Text('Schließen', style: TextStyle(color: Color(0xFF00FF94))),
-                      ),
-                    ],
+                  data: PurchaseSuccessData(
+                    mediaName: mediaName,
+                    avatarName: 'Avatar',
+                    source: 'home',
+                    variant: 'cash',
+                    downloadUrl: downloadUrl,
                   ),
                 );
               }
