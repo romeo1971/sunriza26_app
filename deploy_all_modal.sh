@@ -34,3 +34,4 @@ echo "  curl https://romeo1971--bithuman-worker-check-secrets.modal.run | python
 echo "  curl https://romeo1971--lipsync-orchestrator-check-secrets.modal.run | python3 -m json.tool"
 
 
+

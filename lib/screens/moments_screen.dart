@@ -7,6 +7,7 @@ import '../models/moment.dart';
 import '../theme/app_theme.dart';
 import '../services/localization_service.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../widgets/app_drawer.dart';
 
 /// MomentsScreen – zeigt die vom Nutzer angenommenen/gekauften Medien
 class MomentsScreen extends StatefulWidget {
@@ -149,6 +150,7 @@ class _MomentsScreenState extends State<MomentsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
+      drawer: const AppDrawer(),
       appBar: AppBar(
         title: const Text('Momente'),
         backgroundColor: Colors.black,
@@ -177,7 +179,7 @@ class _MomentsScreenState extends State<MomentsScreen> {
                               builder: (context, snapshot) {
                                 final avatars = snapshot.data ?? [];
                                 return DropdownButtonFormField<String?>(
-                                  value: _selectedAvatarId,
+                                  initialValue: _selectedAvatarId,
                                   dropdownColor: Colors.black87,
                                   decoration: const InputDecoration(
                                     labelText: 'Avatar',

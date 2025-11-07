@@ -9,6 +9,7 @@ import '../services/media_purchase_service.dart';
 import '../services/moments_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../web/web_helpers.dart' as web;
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 /// Dialog für Media-Kauf (Credits oder Stripe)
 class MediaPurchaseDialog extends StatefulWidget {
@@ -590,6 +591,8 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
   void initState() {
     super.initState();
     _setupMessageListener();
+    // Für Web: iframe registrieren
+    try { if (web.isWeb) _createIframe(); } catch (_) {}
   }
   
   void _setupMessageListener() {
@@ -732,9 +735,31 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
                 ],
               ),
             ),
-            // iframe
+            // Web (Browser): iframe, Mobile (iOS/Android): InAppWebView
             Expanded(
-              child: web.buildIframeView('stripe-checkout-${widget.checkoutUrl.hashCode}'),
+              child: web.isWeb
+                  ? web.buildIframeView('stripe-checkout-${widget.checkoutUrl.hashCode}')
+                  : InAppWebView(
+                      initialUrlRequest: URLRequest(url: WebUri(widget.checkoutUrl)),
+                      initialSettings: InAppWebViewSettings(
+                        javaScriptEnabled: true,
+                        allowsInlineMediaPlayback: true,
+                      ),
+                      shouldOverrideUrlLoading: (controller, action) async {
+                        final url = action.request.url?.toString() ?? '';
+                        // Erkenne Success ohne die Zielseite zu laden (z.B. localhost)
+                        if (url.contains('stripe_success.html') || url.contains('success=true') || url.contains('session_id=')) {
+                          await _onStripeSuccess();
+                          return NavigationActionPolicy.CANCEL;
+                        }
+                        if (url.contains('cancelled=true')) {
+                          // Einfach Dialog schließen
+                          if (mounted) Navigator.of(context, rootNavigator: false).pop();
+                          return NavigationActionPolicy.CANCEL;
+                        }
+                        return NavigationActionPolicy.ALLOW;
+                      },
+                    ),
             ),
           ],
         ),
@@ -786,6 +811,42 @@ class _StripeCheckoutDialogState extends State<_StripeCheckoutDialog> {
     web.registerViewFactory(
       'stripe-checkout-${widget.checkoutUrl.hashCode}',
       (int viewId) => web.createIFrame(widget.checkoutUrl),
+    );
+  }
+
+  Future<void> _onStripeSuccess() async {
+    try { MomentsService.refreshTicker.value = MomentsService.refreshTicker.value + 1; } catch (_) {}
+    if (!mounted) return;
+    Navigator.of(context, rootNavigator: false).pop();
+    await Future.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+    // Versuche URL für Download zu finden
+    try {
+      final url = await _findMomentDownloadUrl();
+      if (url != null && url.isNotEmpty) {
+        setState(() => _downloadUrl = url);
+        try {
+          final uri = Uri.parse(url);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+          } else {
+            _triggerBrowserDownload(url);
+          }
+        } catch (_) {
+          _triggerBrowserDownload(url);
+        }
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      useRootNavigator: false,
+      builder: (_) => const AlertDialog(
+        backgroundColor: Color(0xFF1A1A1A),
+        title: Text('Zahlung bestätigt ✓', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+        content: Text('Dein Kauf wurde zu deinen Momenten hinzugefügt.', style: TextStyle(color: Colors.white70, fontSize: 14)),
+      ),
     );
   }
 }

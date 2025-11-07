@@ -4124,7 +4124,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         
         final mediaName = uri.queryParameters['mediaName'] ?? 'Media';
         final nickname = _avatarData?.nickname?.trim();
-        final firstName = _avatarData?.firstName?.trim();
+        final firstName = _avatarData?.firstName.trim();
         final avatarName = (nickname != null && nickname.isNotEmpty) ? nickname : (firstName ?? 'Avatar');
         
         // Warte kurz, damit Chat vollständig geladen ist
@@ -4383,7 +4383,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         } catch (_) {}
       }
 
-      // 6. Konvertiere zu AvatarMedia und speichere (gefiltert: unbestätigt)
+      // 6. Lade bereits vorhandene Moments des Users, um Duplikate auszublenden
+      Set<String> existingMediaIds = <String>{};
+      try {
+        final moments = await MomentsService().listMoments();
+        existingMediaIds = moments
+            .map((m) => m.mediaId)
+            .whereType<String>()
+            .where((s) => s.isNotEmpty)
+            .toSet();
+      } catch (_) {}
+
+      // 7. Konvertiere zu AvatarMedia und speichere (gefiltert: unbestätigt + bereits in Moments)
       final List<AvatarMedia> mediaItems = [];
       final List<Map<String, dynamic>> itemMetadata = [];
 
@@ -4407,7 +4418,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           if (mid != null && mid.isNotEmpty) mediaIdFromAsset = mid;
         } catch (_) {}
 
-        // 2) Media Asset laden (neue Struktur)
+        // 2) Media Asset laden (neue Struktur) – vorher bereits vorhandene Moments filtern
         Future<DocumentSnapshot<Map<String, dynamic>>> get(String col) =>
             FirebaseFirestore.instance
                 .collection('avatars')
@@ -4415,6 +4426,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
                 .collection(col)
                 .doc(mediaIdFromAsset)
                 .get();
+
+        // Falls bereits in Moments vorhanden → komplett überspringen
+        if (existingMediaIds.contains(mediaIdFromAsset)) {
+          continue;
+        }
 
         DocumentSnapshot<Map<String, dynamic>> snap;
         Map<String, dynamic>? data;
@@ -4429,7 +4445,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         if (data != null) {
           final map = {'id': mediaIdFromAsset, ...data};
           final media = AvatarMedia.fromMap(map);
-          if (!confirmedIds.contains(media.id)) {
+          if (!confirmedIds.contains(media.id) && !existingMediaIds.contains(media.id)) {
             // Für Audio: Cover aus Storage laden
             if (media.type == AvatarMediaType.audio) {
               try {
