@@ -129,6 +129,8 @@ class MomentsService {
       currency: media.currency ?? '€',
       paymentMethod: paymentMethod,
       tags: media.tags,
+      downloadCount: 0,
+      maxDownloads: 5,
     );
 
     // 6. Save to Firestore
@@ -199,6 +201,27 @@ class MomentsService {
     // UI benachrichtigen
     try { refreshTicker.value = refreshTicker.value + 1; } catch (_) {}
     return moment;
+  }
+
+  /// Inkrementiert den Download-Zähler für einen Moment (max bis `maxDownloads`).
+  /// Gibt die verbleibenden Downloads zurück.
+  Future<int> incrementDownloadCount(String momentId) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return 0;
+    final docRef = _momentsCol(uid).doc(momentId);
+    return await _fs.runTransaction<int>((tx) async {
+      final snap = await tx.get(docRef);
+      if (!snap.exists) return 0;
+      final data = snap.data() as Map<String, dynamic>;
+      final current = (data['downloadCount'] as num?)?.toInt() ?? 0;
+      final max = (data['maxDownloads'] as num?)?.toInt() ?? 5;
+      if (current >= max) {
+        return 0;
+      }
+      final next = current + 1;
+      tx.update(docRef, {'downloadCount': next});
+      return (max - next);
+    });
   }
 
 

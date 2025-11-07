@@ -85,11 +85,22 @@ class HomeNavigationScreenState extends State<HomeNavigationScreen> {
               }
 
               if (mounted) {
+                // Anzeigename des Avatars ermitteln
+                String displayName = 'Avatar';
+                try {
+                  final doc = await FirebaseFirestore.instance.collection('avatars').doc(avatarId).get();
+                  if (doc.exists) {
+                    final d = doc.data() ?? {};
+                    final nickname = (d['nickname'] as String?)?.trim();
+                    final firstName = (d['firstName'] as String?)?.trim();
+                    displayName = (nickname != null && nickname.isNotEmpty) ? nickname : (firstName ?? 'Avatar');
+                  }
+                } catch (_) {}
                 await showPurchaseSuccessDialog(
                   context: context,
                   data: PurchaseSuccessData(
                     mediaName: mediaName,
-                    avatarName: 'Avatar',
+                    avatarName: displayName,
                     source: 'home',
                     variant: 'cash',
                     downloadUrl: downloadUrl,

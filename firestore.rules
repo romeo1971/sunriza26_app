@@ -86,14 +86,16 @@ service cloud.firestore {
       match /moments/{momentId} {
         allow read: if signedIn() && uid == request.auth.uid;
         allow create: if signedIn() && uid == request.auth.uid
-          && request.resource.data.keys().hasOnly(['id', 'userId', 'avatarId', 'type', 'mediaId', 'originalUrl', 'storedUrl', 'thumbUrl', 'originalFileName', 'acquiredAt', 'price', 'currency', 'paymentMethod', 'tags'])
+          && request.resource.data.keys().hasOnly(['id', 'userId', 'avatarId', 'type', 'mediaId', 'originalUrl', 'storedUrl', 'thumbUrl', 'originalFileName', 'acquiredAt', 'price', 'currency', 'paymentMethod', 'tags', 'downloadCount', 'maxDownloads'])
           && request.resource.data.userId == request.auth.uid
           && request.resource.data.type in ['image', 'video', 'audio', 'document']
           && request.resource.data.originalUrl is string
           && request.resource.data.storedUrl is string
           && request.resource.data.acquiredAt is int
           && (!('paymentMethod' in request.resource.data) || request.resource.data.paymentMethod in ['free', 'credits', 'stripe'])
-          && (!('tags' in request.resource.data) || request.resource.data.tags is list);
+          && (!('tags' in request.resource.data) || request.resource.data.tags is list)
+          && (!('downloadCount' in request.resource.data) || (request.resource.data.downloadCount is int && request.resource.data.downloadCount >= 0))
+          && (!('maxDownloads' in request.resource.data) || (request.resource.data.maxDownloads is int && request.resource.data.maxDownloads >= 1 && request.resource.data.maxDownloads <= 10));
         allow delete: if signedIn() && uid == request.auth.uid;
         allow update: if signedIn() && uid == request.auth.uid;
       }

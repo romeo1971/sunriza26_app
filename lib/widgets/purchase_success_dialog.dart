@@ -26,14 +26,14 @@ Future<void> showPurchaseSuccessDialog({
   String actionText;
   switch (data.variant) {
     case 'cash':
-      actionText = 'mit Cash bezahlt';
+      actionText = 'digital bezahlt';
       break;
     case 'credits':
       actionText = 'mit Credits bezahlt';
       break;
     case 'accept':
     default:
-      actionText = 'angenommen';
+      actionText = 'kostenlos hinzugefügt';
   }
 
   final String body = '"${data.mediaName}" von "${data.avatarName}" wurde ${actionText} und zu deinen Momenten hinzugefügt.';
@@ -51,10 +51,9 @@ Future<void> showPurchaseSuccessDialog({
       actions: [
         TextButton(
           onPressed: () {
-            final navLocal = Navigator.of(context, rootNavigator: false);
-            if (navLocal.canPop()) navLocal.pop();
-            final navRoot = Navigator.of(context, rootNavigator: true);
-            if (navRoot.canPop()) navRoot.pop();
+            if (Navigator.canPop(context)) {
+              Navigator.pop(context); // schließt nur den Dialog
+            }
           },
           child: const Text('Schließen', style: TextStyle(color: Colors.white70)),
         ),

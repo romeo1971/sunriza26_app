@@ -6,6 +6,7 @@ import '../services/moments_service.dart';
 import '../models/moment.dart';
 import '../theme/app_theme.dart';
 import '../services/localization_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// MomentsScreen – zeigt die vom Nutzer angenommenen/gekauften Medien
 class MomentsScreen extends StatefulWidget {
@@ -271,6 +272,8 @@ class _MomentsScreenState extends State<MomentsScreen> {
                             future: _getAvatarImage(m.avatarId),
                             builder: (context, snapshot) {
                               final avatarImg = snapshot.data;
+                              final remaining = (m.maxDownloads ?? 5) - (m.downloadCount ?? 0);
+                              final canDownload = remaining > 0;
                               return ListTile(
                                 leading: CircleAvatar(
                                   radius: 18,
@@ -298,6 +301,47 @@ class _MomentsScreenState extends State<MomentsScreen> {
                                     // Payment Badge
                                     if (m.price != null && m.price! > 0.0 && m.paymentMethod != null)
                                       _buildPaymentBadge(m.paymentMethod!),
+                                    const SizedBox(width: 8),
+                                    // Downloads verbleibend
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white12,
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        'DL: ${remaining.clamp(0, 5)}',
+                                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    // Download Icon
+                                    IconButton(
+                                      tooltip: canDownload ? 'Download' : 'Limit erreicht',
+                                      onPressed: canDownload
+                                          ? () async {
+                                              final url = (m.storedUrl.isNotEmpty) ? m.storedUrl : m.originalUrl;
+                                              try {
+                                                final uri = Uri.parse(url);
+                                                if (await canLaunchUrl(uri)) {
+                                                  await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
+                                                }
+                                              } catch (_) {}
+                                              // Zähler erhöhen
+                                              try {
+                                                final left = await _svc.incrementDownloadCount(m.id);
+                                                if (mounted) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(
+                                                    SnackBar(content: Text('Download gestartet • verbleibend: $left')),
+                                                  );
+                                                  _onMomentsChanged();
+                                                }
+                                              } catch (_) {}
+                                            }
+                                          : null,
+                                      icon: Icon(Icons.download,
+                                          color: canDownload ? Colors.lightBlueAccent : Colors.white24),
+                                    ),
                                     const SizedBox(width: 8),
                                     const Icon(Icons.chevron_right, color: Colors.white54),
                                   ],

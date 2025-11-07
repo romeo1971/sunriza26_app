@@ -15,6 +15,8 @@ class Moment {
   final String? currency; // '€' oder '$'
   final String? paymentMethod; // 'free', 'credits', 'stripe'
   final List<String>? tags; // optional: Tags aus Media für Suche/Filter
+  final int? downloadCount; // Anzahl bereits durchgeführter Downloads
+  final int? maxDownloads; // Maximale erlaubte Downloads (z.B. 5)
 
   const Moment({
     required this.id,
@@ -31,6 +33,8 @@ class Moment {
     this.currency,
     this.paymentMethod,
     this.tags,
+    this.downloadCount,
+    this.maxDownloads,
   });
 
   factory Moment.fromMap(Map<String, dynamic> map) {
@@ -49,6 +53,8 @@ class Moment {
       currency: map['currency'] as String?,
       paymentMethod: map['paymentMethod'] as String?,
       tags: (map['tags'] as List<dynamic>?)?.cast<String>(),
+      downloadCount: (map['downloadCount'] as num?)?.toInt(),
+      maxDownloads: (map['maxDownloads'] as num?)?.toInt(),
     );
   }
 
@@ -68,6 +74,8 @@ class Moment {
       if (currency != null) 'currency': currency,
       if (paymentMethod != null) 'paymentMethod': paymentMethod,
       if (tags != null && tags!.isNotEmpty) 'tags': tags,
+      if (downloadCount != null) 'downloadCount': downloadCount,
+      if (maxDownloads != null) 'maxDownloads': maxDownloads,
     };
   }
 }
