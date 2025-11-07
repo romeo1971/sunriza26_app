@@ -112,4 +112,12 @@ class UserService {
   Future<void> updateUserProfile(UserProfile profile) async {
     await _col.doc(profile.uid).set(profile.toMap(), SetOptions(merge: true));
   }
+
+  Future<void> updateCurrentUserProfileImageUrl(String url) async {
+    final u = _auth.currentUser!;
+    await _col.doc(u.uid).update({
+      'profileImageUrl': url,
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+    });
+  }
 }

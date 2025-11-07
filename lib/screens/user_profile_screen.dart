@@ -14,6 +14,10 @@ import '../widgets/custom_text_field.dart';
 import '../widgets/custom_date_field.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:io';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -159,9 +163,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
                         baseColor: Colors.black,
                         maskColor: Colors.black38,
                         onCropped: (cropped) {
-                          if (cropped is cyi.CropSuccess) {
-                            result = cropped.croppedImage;
-                          }
+                          try {
+                            final dynamic any = cropped; // API-kompatibel
+                            if (any is Uint8List) {
+                              result = any;
+                            } else if (any is cyi.CropSuccess) {
+                              result = any.croppedImage as Uint8List?;
+                            } else if (any?.bytes is Uint8List) {
+                              result = any.bytes as Uint8List?;
+                            }
+                          } catch (_) {}
                           Navigator.pop(ctx);
                         },
                       ),
@@ -265,12 +276,82 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     }
   }
 
-  Future<void> _uploadPhoto() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile == null) return;
+  Future<ImageSource?> _chooseImageSource() async {
+    return await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library, color: Colors.white),
+              title: const Text('Aus Galerie wählen', style: TextStyle(color: Colors.white)),
+              onTap: () => Navigator.pop(ctx, ImageSource.gallery),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera, color: Colors.white),
+              title: const Text('Mit Kamera aufnehmen', style: TextStyle(color: Colors.white)),
+              onTap: () => Navigator.pop(ctx, ImageSource.camera),
+            ),
+          ],
+        ),
+      ),
+      backgroundColor: const Color(0xFF1A1A1A),
+    );
+  }
 
-    File f = File(pickedFile.path);
+  Future<void> _uploadPhoto() async {
+    final source = await _chooseImageSource();
+    if (source == null) return;
+
+    // Berechtigungen anfragen
+    if (source == ImageSource.camera) {
+      final st = await Permission.camera.status;
+      if (st.isDenied || st.isRestricted) {
+        final req = await Permission.camera.request();
+        if (!req.isGranted) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kamera-Zugriff verweigert')));
+          }
+          return;
+        }
+      }
+    } else {
+      // iOS: Fotos, Android: Speicher – nur bei Bedarf anfragen
+      if (!kIsWeb && Platform.isIOS) {
+        final pst = await Permission.photos.status;
+        if (pst.isDenied || pst.isRestricted) {
+          await Permission.photos.request();
+        }
+      } else if (!kIsWeb && Platform.isAndroid) {
+        final sst = await Permission.storage.status;
+        if (sst.isDenied || sst.isRestricted) {
+          await Permission.storage.request();
+        }
+      }
+    }
+
+    File? file;
+    if (!kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
+      // Desktop: FilePicker
+      final res = await FilePicker.platform.pickFiles(type: FileType.image);
+      final path = res?.files.single.path;
+      if (path != null) file = File(path);
+    } else {
+      // Mobile/Web: ImagePicker
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(source: source, imageQuality: 90);
+      if (pickedFile != null) file = File(pickedFile.path);
+    }
+
+    if (file == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keine Datei ausgewählt')));
+      }
+      return;
+    }
+
+    File f = file;
     debugPrint('🖼️ Original file: ${f.path}');
 
     final cropped = await _cropToPortrait916(f);
@@ -291,17 +372,16 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
       if (!mounted) return;
 
-      // WICHTIG: Sofort in Firestore speichern
-      if (_profile != null && url != null) {
-        final updatedProfile = _profile!.copyWith(
-          profileImageUrl: url,
-          updatedAt: DateTime.now().millisecondsSinceEpoch,
-        );
-        await _userService.updateUserProfile(updatedProfile);
+      // WICHTIG: Sofort in Firestore speichern (nur erlaubte Felder)
+      if (url != null) {
+        await _userService.updateCurrentUserProfileImageUrl(url);
         debugPrint('✅ ProfileImageUrl saved to Firestore: $url');
-
-        // Profile neu laden
-        _profile = updatedProfile;
+        if (_profile != null) {
+          _profile = _profile!.copyWith(
+            profileImageUrl: url,
+            updatedAt: DateTime.now().millisecondsSinceEpoch,
+          );
+        }
       }
 
       setState(() {
