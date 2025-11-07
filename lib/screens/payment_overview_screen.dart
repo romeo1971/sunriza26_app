@@ -226,7 +226,7 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
   /// Credits-Übersichtskarte
   Widget _buildCreditsCard() {
     final credits = _userProfile?.credits ?? 0;
-    final purchased = _userProfile?.creditsPurchased ?? 0;
+    final earned = _userProfile?.creditsEarned ?? 0;
     final spent = _userProfile?.creditsSpent ?? 0;
 
     return Container(
@@ -284,13 +284,13 @@ class _PaymentOverviewScreenState extends State<PaymentOverviewScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildCreditStat('Gekauft', purchased),
+              _buildCreditStat('Ausgaben', spent),
               Container(
                 width: 1,
                 height: 40,
                 color: Colors.white.withValues(alpha: 0.3),
               ),
-              _buildCreditStat('Ausgegeben', spent),
+              _buildCreditStat('Einnahmen', earned),
             ],
           ),
         ],

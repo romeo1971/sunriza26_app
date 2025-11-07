@@ -263,14 +263,28 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                        if (transaction.credits != null)
-                          Text(
-                            '${transaction.credits} Credits',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.8),
-                              fontSize: 14,
-                            ),
+                        if (transaction.credits != null) ...[
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ShaderMask(
+                                shaderCallback: (bounds) => const LinearGradient(
+                                  colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
+                                ).createShader(bounds),
+                                child: const Icon(Icons.diamond, color: Colors.white, size: 16),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                '${transaction.credits}',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
                           ),
+                        ],
                       ],
                     ),
                   ],
@@ -429,7 +443,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   if (transaction.amount != null)
                     _buildDetailRow('Betrag', transaction.formattedAmount),
                   if (transaction.credits != null)
-                    _buildDetailRow('Credits', transaction.formattedCredits),
+                    _buildCreditsRow(transaction.credits!),
                   if (transaction.currency != null)
                     _buildDetailRow('Währung', transaction.currency!.toUpperCase()),
                   if (transaction.invoiceNumber != null)
@@ -485,6 +499,48 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                 fontWeight: FontWeight.w500,
                 fontFamily: mono ? 'monospace' : null,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCreditsRow(int credits) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              'Credits:',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.6),
+                fontSize: 14,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Row(
+              children: [
+                ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
+                  ).createShader(bounds),
+                  child: const Icon(Icons.diamond, color: Colors.white, size: 18),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  '$credits',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

@@ -26,6 +26,7 @@ class UserProfile {
   final int credits; // Verfügbare Credits
   final int creditsPurchased; // Gesamt gekaufte Credits
   final int creditsSpent; // Gesamt ausgegebene Credits
+  final int creditsEarned; // Verdiente Credits (auszahlbar)
 
   // Favoriten
   final List<String> favoriteAvatarIds; // IDs favorisierter Avatare
@@ -74,6 +75,7 @@ class UserProfile {
     this.credits = 0,
     this.creditsPurchased = 0,
     this.creditsSpent = 0,
+    this.creditsEarned = 0,
     this.favoriteAvatarIds = const [],
     this.isSeller = false,
     this.stripeConnectAccountId,
@@ -118,6 +120,7 @@ class UserProfile {
       credits: (map['credits'] as num?)?.toInt() ?? 0,
       creditsPurchased: (map['creditsPurchased'] as num?)?.toInt() ?? 0,
       creditsSpent: (map['creditsSpent'] as num?)?.toInt() ?? 0,
+      creditsEarned: (map['creditsEarned'] as num?)?.toInt() ?? 0,
       favoriteAvatarIds:
           (map['favoriteAvatarIds'] as List<dynamic>?)
               ?.map((e) => e as String)
@@ -167,6 +170,7 @@ class UserProfile {
       'credits': credits,
       'creditsPurchased': creditsPurchased,
       'creditsSpent': creditsSpent,
+      'creditsEarned': creditsEarned,
       'favoriteAvatarIds': favoriteAvatarIds,
       'isSeller': isSeller,
       if (stripeConnectAccountId != null)

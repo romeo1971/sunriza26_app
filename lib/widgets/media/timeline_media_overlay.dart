@@ -814,15 +814,60 @@ class _TimelineMediaOverlayState extends State<TimelineMediaOverlay> {
       ),
       child: Column(
         children: [
-          // Preis dezent ohne Icon
-          Text(
-            isFree ? 'KOSTENLOS' : '${price.toStringAsFixed(2)} €',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
+          // Preis: Cash + Credits
+          if (isFree)
+            Text(
+              'KOSTENLOS',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            )
+          else
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Cash-Preis
+                Text(
+                  '${price.toStringAsFixed(2)} €',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.7),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Credits-Preis mit GMBC Diamant
+                Row(
+                  children: [
+                    ShaderMask(
+                      shaderCallback: (bounds) => const LinearGradient(
+                        colors: [
+                          Color(0xFFE91E63), // Magenta
+                          AppColors.lightBlue, // Blue
+                          Color(0xFF00E5FF), // Cyan
+                        ],
+                      ).createShader(bounds),
+                      child: const Icon(
+                        Icons.diamond,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${(price / 0.1).round()}',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.7),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ),
           
           const SizedBox(height: 12),
           

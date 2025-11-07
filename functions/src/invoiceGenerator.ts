@@ -321,7 +321,7 @@ export const ensureInvoiceFiles = functions
     if (!pdfExists || !xmlExists) {
       const items = [
         {
-          description: tx.credits ? `${tx.credits} Credits` : (tx.mediaName || 'Kauf'),
+          description: (tx.mediaName || 'Kauf') + (tx.credits ? ` (💎 ${tx.credits} Credits)` : ''),
           quantity: 1,
           unitPrice: ((tx.amount || 0) / 100) || 0,
           total: ((tx.amount || 0) / 100) || 0,

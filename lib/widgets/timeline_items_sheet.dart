@@ -685,14 +685,31 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
               children: [
                 Text(vm.media.originalFileName ?? 'Media', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white)),
                 const SizedBox(height: 2),
-                Text(
-                  price <= 0.0
-                      ? 'Gratis'
-                      : (isCash[vm.id] == true
-                          ? '${price.toStringAsFixed(2)} $currency inkl. MwSt'
-                          : '${price.toStringAsFixed(2)} $currency'),
-                  style: const TextStyle(color: Colors.white60),
-                ),
+                if (price <= 0.0)
+                  const Text('Gratis', style: TextStyle(color: Colors.white60))
+                else
+                  Row(
+                    children: [
+                      Text(
+                        isCash[vm.id] == true
+                            ? '${price.toStringAsFixed(2)} $currency inkl. MwSt'
+                            : '${price.toStringAsFixed(2)} $currency',
+                        style: const TextStyle(color: Colors.white60),
+                      ),
+                      const SizedBox(width: 8),
+                      ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
+                        ).createShader(bounds),
+                        child: const Icon(Icons.diamond, color: Colors.white, size: 14),
+                      ),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${(price / 0.1).round()}',
+                        style: const TextStyle(color: Colors.white60),
+                      ),
+                    ],
+                  ),
               ],
             ),
           ),
@@ -880,7 +897,23 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                                       children: [
                                         Text(vm.media.originalFileName ?? 'Media', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white)),
                                         const SizedBox(height: 4),
-                                        Text(isFree ? 'Gratis' : '${(vm.media.price ?? 0).toStringAsFixed(2)} ${vm.media.currency ?? '€'}', style: const TextStyle(color: Colors.white60)),
+                                        if (isFree)
+                                          const Text('Gratis', style: TextStyle(color: Colors.white60))
+                                        else
+                                          Row(
+                                            children: [
+                                              Text('${(vm.media.price ?? 0).toStringAsFixed(2)} ${vm.media.currency ?? '€'}', style: const TextStyle(color: Colors.white60)),
+                                              const SizedBox(width: 8),
+                                              ShaderMask(
+                                                shaderCallback: (bounds) => const LinearGradient(
+                                                  colors: [Color(0xFFE91E63), AppColors.lightBlue, Color(0xFF00E5FF)],
+                                                ).createShader(bounds),
+                                                child: const Icon(Icons.diamond, color: Colors.white, size: 14),
+                                              ),
+                                              const SizedBox(width: 3),
+                                              Text('${((vm.media.price ?? 0) / 0.1).round()}', style: const TextStyle(color: Colors.white60)),
+                                            ],
+                                          ),
                                       ],
                                     ),
                                   ),

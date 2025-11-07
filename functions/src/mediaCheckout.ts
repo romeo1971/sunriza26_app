@@ -175,7 +175,6 @@ export async function handleMediaPurchaseWebhook(session: Stripe.Checkout.Sessio
         acquiredAt: nowMs, // als Zahl, kompatibel zum Client
         price: (amount || 0) / 100.0,
         currency: currency === 'usd' ? '$' : '€',
-        receiptId: null,
         tags: [],
       });
       console.log(`✅ Moment erstellt: users/${userId}/moments/${momentId}`);

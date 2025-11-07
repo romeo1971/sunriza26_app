@@ -292,7 +292,16 @@ class _MomentsScreenState extends State<MomentsScreen> {
                                   '$avatarName  •  $subtitle',
                                   style: const TextStyle(color: Colors.white38, fontSize: 12),
                                 ),
-                                trailing: const Icon(Icons.chevron_right, color: Colors.white54),
+                                trailing: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    // Payment Badge
+                                    if (m.price != null && m.price! > 0.0 && m.paymentMethod != null)
+                                      _buildPaymentBadge(m.paymentMethod!),
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.chevron_right, color: Colors.white54),
+                                  ],
+                                ),
                                 onTap: () {
                                   // Optional: Später Detail/Preview öffnen
                                 },
@@ -386,6 +395,33 @@ class _MomentsScreenState extends State<MomentsScreen> {
       backgroundColor: Colors.white12,
       checkmarkColor: Colors.black,
     );
+  }
+
+  /// Badge für Zahlungsmethode
+  Widget _buildPaymentBadge(String paymentMethod) {
+    if (paymentMethod == 'credits') {
+      return ShaderMask(
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [
+            Color(0xFFE91E63),
+            AppColors.lightBlue,
+            Color(0xFF00E5FF),
+          ],
+        ).createShader(bounds),
+        child: const Icon(
+          Icons.diamond,
+          color: Colors.white,
+          size: 20,
+        ),
+      );
+    } else if (paymentMethod == 'stripe') {
+      return const Icon(
+        Icons.attach_money,
+        color: Colors.green,
+        size: 20,
+      );
+    }
+    return const SizedBox.shrink();
   }
 }
 

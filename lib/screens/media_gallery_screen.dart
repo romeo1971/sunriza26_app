@@ -6729,10 +6729,21 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             ),
             if (!isEditing) ...[
               const SizedBox(width: 10),
-              // Credits-Anzeige (wie Audio-Pricing)
+              // Credits-Anzeige mit GMBC Diamant
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [
+                        Color(0xFFE91E63),
+                        AppColors.lightBlue,
+                        Color(0xFF00E5FF),
+                      ],
+                    ).createShader(bounds),
+                    child: const Icon(Icons.diamond, size: 12, color: Colors.white),
+                  ),
+                  const SizedBox(width: 3),
                   Text(
                     '$credits',
                     style: TextStyle(
@@ -6740,8 +6751,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       fontSize: 13,
                     ),
                   ),
-                  const SizedBox(width: 2),
-                  const Icon(Icons.diamond, size: 12, color: Colors.white),
                 ],
               ),
             ],

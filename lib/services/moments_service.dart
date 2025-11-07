@@ -23,11 +23,6 @@ class MomentsService {
     return _fs.collection('users').doc(userId).collection('moments');
   }
 
-  /// Receipts Collection für User
-  CollectionReference<Map<String, dynamic>> _receiptsCol(String userId) {
-    return _fs.collection('users').doc(userId).collection('receipts');
-  }
-
   /// Speichert Timeline Item als Moment (kopiert Originaldatei)
   Future<Moment> saveMoment({
     required AvatarMedia media,
@@ -132,7 +127,7 @@ class MomentsService {
       acquiredAt: timestamp,
       price: price,
       currency: media.currency ?? '€',
-      receiptId: null, // Wird später gesetzt wenn Receipt erstellt wird
+      paymentMethod: paymentMethod,
       tags: media.tags,
     );
 
@@ -149,24 +144,9 @@ class MomentsService {
       rethrow;
     }
 
-    // 7. Receipt (falls Preis > 0) und Transaktionseintrag (immer)
-    String? receiptId;
+    // 7. Moment ist fertig gespeichert
     if (price > 0.0) {
-      final receipt = await _createReceipt(
-        momentId: momentId,
-        avatarId: media.avatarId,
-        price: price,
-        currency: media.currency ?? '€',
-        paymentMethod: paymentMethod,
-        stripePaymentIntentId: stripePaymentIntentId,
-        metadata: {
-          'mediaId': media.id,
-          'originalFileName': media.originalFileName,
-          'type': _typeToString(media.type),
-        },
-      );
-      receiptId = receipt.id;
-      await _momentsCol(uid).doc(momentId).update({'receiptId': receipt.id});
+      debugPrint('✅ [MomentsService] Gekaufter Moment angelegt (Transaktion wird separat erstellt)');
     }
 
     // Zusätzlich: Transaktions-Dokument für UI (users/{uid}/transactions) – IMMER anlegen
@@ -190,7 +170,6 @@ class MomentsService {
         'mediaName': media.originalFileName ?? 'Media',
         'avatarId': media.avatarId,
         if (stripePaymentIntentId != null) 'stripeSessionId': stripePaymentIntentId,
-        if (receiptId != null) 'receiptId': receiptId,
       });
       debugPrint('✅ [MomentsService] UI-Transaction gespeichert: ${txRef.id}');
 
@@ -222,43 +201,6 @@ class MomentsService {
     return moment;
   }
 
-  /// Erstellt eine Rechnung
-  Future<Receipt> _createReceipt({
-    required String momentId,
-    required String avatarId,
-    required double price,
-    required String currency,
-    required String paymentMethod,
-    String? stripePaymentIntentId,
-    Map<String, dynamic>? metadata,
-  }) async {
-    debugPrint('🔵 [MomentsService] START _createReceipt');
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) {
-      debugPrint('🔴 [MomentsService] Receipt: User nicht authentifiziert');
-      throw Exception('User not authenticated');
-    }
-
-    final receiptId = _receiptsCol(uid).doc().id;
-    debugPrint('🔵 [MomentsService] Receipt ID: $receiptId');
-    final receipt = Receipt(
-      id: receiptId,
-      userId: uid,
-      avatarId: avatarId,
-      momentId: momentId,
-      price: price,
-      currency: currency,
-      paymentMethod: paymentMethod,
-      createdAt: DateTime.now().millisecondsSinceEpoch,
-      stripePaymentIntentId: stripePaymentIntentId,
-      metadata: metadata,
-    );
-
-    debugPrint('🔵 [MomentsService] Speichere Receipt...');
-    await _receiptsCol(uid).doc(receiptId).set(receipt.toMap());
-    debugPrint('✅ [MomentsService] Receipt created: $receiptId');
-    return receipt;
-  }
 
   /// Download File from URL
   Future<Uint8List> _downloadFile(String url) async {
@@ -364,7 +306,6 @@ class MomentsService {
               acquiredAt: ((m['purchasedAt'] as Timestamp?)?.millisecondsSinceEpoch) ?? DateTime.now().millisecondsSinceEpoch,
               price: (m['price'] as num?)?.toDouble(),
               currency: (m['currency'] as String?) ?? '€',
-              receiptId: null,
               tags: const [],
             );
           }).toList();
@@ -375,24 +316,6 @@ class MomentsService {
     return items;
   }
 
-  /// Liste alle Receipts für User
-  Future<List<Receipt>> listReceipts({String? avatarId}) async {
-    final uid = _auth.currentUser?.uid;
-    if (uid == null) return [];
-
-    Query<Map<String, dynamic>> query = _receiptsCol(uid);
-    
-    if (avatarId != null) {
-      query = query.where('avatarId', isEqualTo: avatarId);
-    }
-
-    final snapshot = await query
-        .orderBy('createdAt', descending: true)
-        .limit(500)
-        .get();
-
-    return snapshot.docs.map((d) => Receipt.fromMap(d.data())).toList();
-  }
 
   /// Lösche Moment
   Future<void> deleteMoment(String momentId) async {

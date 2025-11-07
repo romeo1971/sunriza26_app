@@ -313,14 +313,52 @@ class _TimelineMediaSliderState extends State<TimelineMediaSlider>
               : AppColors.magenta.withValues(alpha: 0.9),
           borderRadius: BorderRadius.circular(6),
         ),
-        child: Text(
-          isFree ? 'KOSTENLOS' : '${price.toStringAsFixed(2)} €',
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 10,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
+        child: isFree
+            ? const Text(
+                'KOSTENLOS',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '${price.toStringAsFixed(2)} €',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  ShaderMask(
+                    shaderCallback: (bounds) => const LinearGradient(
+                      colors: [
+                        Color(0xFFE91E63),
+                        AppColors.lightBlue,
+                        Color(0xFF00E5FF),
+                      ],
+                    ).createShader(bounds),
+                    child: const Icon(
+                      Icons.diamond,
+                      color: Colors.white,
+                      size: 12,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Text(
+                    '${(price / 0.1).round()}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }

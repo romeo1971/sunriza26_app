@@ -78,19 +78,30 @@ class MediaPurchaseService {
     debugPrint('✅ [PurchaseService] Credits verfügbar');
 
     try {
+      // Ermittle Avatar-Owner (Verkäufer)
+      String? sellerId;
+      try {
+        final avatarDoc = await _firestore.collection('avatars').doc(media.avatarId).get();
+        sellerId = (avatarDoc.data()?['userId'] as String?);
+      } catch (e) {
+        debugPrint('⚠️ [PurchaseService] Avatar-Owner konnte nicht geladen werden: $e');
+      }
+      
+      debugPrint('🔵 [PurchaseService] Verkäufer: $sellerId');
+      
       final userRef = _firestore.collection('users').doc(userId);
 
       // Batch-Operation für Atomarität
       final batch = _firestore.batch();
 
-      // 1. Credits abziehen
+      // 1. Credits abziehen (Käufer)
       debugPrint('🔵 [PurchaseService] Ziehe $requiredCredits Credits ab...');
-      batch.update(userRef, {
+      batch.set(userRef, {
         'credits': FieldValue.increment(-requiredCredits),
         'creditsSpent': FieldValue.increment(requiredCredits),
-      });
+      }, SetOptions(merge: true));
 
-      // 2. Transaktion anlegen
+      // 2. Transaktion anlegen (Käufer = Ausgabe)
       final transactionRef = userRef.collection('transactions').doc();
       final now = DateTime.now().millisecondsSinceEpoch;
       final invoiceNumber = '20${now.toString().substring(now.toString().length - 6)}-D${now.toString().substring(now.toString().length - 5)}';
@@ -105,6 +116,7 @@ class MediaPurchaseService {
         'mediaUrl': media.url,
         'mediaName': media.originalFileName ?? 'Media',
         'avatarId': media.avatarId,
+        'sellerId': sellerId,
         'status': 'completed',
         'invoiceNumber': invoiceNumber,
         'createdAt': FieldValue.serverTimestamp(),
@@ -126,13 +138,49 @@ class MediaPurchaseService {
         'purchasedAt': FieldValue.serverTimestamp(),
       });
 
+      // 4. Verkäufer Einnahmen gutschreiben (IMMER, auch bei Selbstkauf!)
+      String? sellerTxId;
+      if (sellerId != null && sellerId.isNotEmpty) {
+        debugPrint('🔵 [PurchaseService] Schreibe Einnahmen für Verkäufer $sellerId gut...');
+        final sellerRef = _firestore.collection('users').doc(sellerId);
+        
+        // Gutschrift Einnahmen
+        batch.set(sellerRef, {
+          'creditsEarned': FieldValue.increment(requiredCredits),
+        }, SetOptions(merge: true));
+        
+        // Transaktion für Verkäufer (Einnahme)
+        final sellerTxRef = sellerRef.collection('transactions').doc();
+        sellerTxId = sellerTxRef.id; // ID für später speichern
+        final sellerInvoiceNumber = '20${now.toString().substring(now.toString().length - 6)}-E${now.toString().substring(now.toString().length - 5)}';
+        batch.set(sellerTxRef, {
+          'userId': sellerId,
+          'type': 'credit_earned',
+          'credits': requiredCredits,
+          'amount': (price * 100).round(),
+          'currency': currency == '\$' ? 'usd' : 'eur',
+          'mediaId': media.id,
+          'mediaType': _getMediaTypeString(media.type),
+          'mediaUrl': media.url,
+          'mediaName': media.originalFileName ?? 'Media',
+          'avatarId': media.avatarId,
+          'buyerId': userId,
+          'status': 'completed',
+          'invoiceNumber': sellerInvoiceNumber,
+          'createdAt': FieldValue.serverTimestamp(),
+        });
+        debugPrint('✅ [PurchaseService] Verkäufer-Transaktion erstellt (ID: $sellerTxId)');
+      } else {
+        debugPrint('⚠️ [PurchaseService] Kein Verkäufer gefunden → keine Einnahmen-Gutschrift');
+      }
+
       debugPrint('🔵 [PurchaseService] Committe Batch...');
       await batch.commit();
       debugPrint('✅ [PurchaseService] Batch erfolgreich committed!');
       
-      // PDF-Rechnung erzeugen
+      // PDF-Rechnung erzeugen (KÄUFER)
       try {
-        debugPrint('🔵 [PurchaseService] Erzeuge PDF-Rechnung...');
+        debugPrint('🔵 [PurchaseService] Erzeuge PDF-Rechnung für Käufer...');
         final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
         final ensure = fns.httpsCallable('ensureInvoiceFiles');
         final res = await ensure.call({'transactionId': transactionRef.id});
@@ -144,10 +192,37 @@ class MediaPurchaseService {
             if (pdf != null && pdf.isNotEmpty) 'invoicePdfUrl': pdf,
             if (nr != null && nr.isNotEmpty) 'invoiceNumber': nr,
           }, SetOptions(merge: true));
-          debugPrint('✅ [PurchaseService] Rechnung gespeichert (nr=${nr ?? '-'}).');
+          debugPrint('✅ [PurchaseService] Käufer-Rechnung gespeichert (nr=${nr ?? '-'}).');
         }
       } catch (e) {
-        debugPrint('⚠️ [PurchaseService] ensureInvoiceFiles fehlgeschlagen: $e');
+        debugPrint('⚠️ [PurchaseService] ensureInvoiceFiles (Käufer) fehlgeschlagen: $e');
+      }
+      
+      // PDF-Rechnung erzeugen (VERKÄUFER)
+      if (sellerId != null && sellerId.isNotEmpty && sellerTxId != null) {
+        try {
+          debugPrint('🔵 [PurchaseService] Erzeuge PDF-Rechnung für Verkäufer...');
+          final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
+          final ensure = fns.httpsCallable('ensureInvoiceFiles');
+          final res = await ensure.call({'transactionId': sellerTxId});
+          final data = Map<String, dynamic>.from(res.data as Map? ?? {});
+          final pdf = data['invoicePdfUrl'] as String?;
+          final nr = data['invoiceNumber'] as String?;
+          if ((pdf != null && pdf.isNotEmpty) || (nr != null && nr.isNotEmpty)) {
+            await _firestore
+                .collection('users')
+                .doc(sellerId)
+                .collection('transactions')
+                .doc(sellerTxId)
+                .set({
+              if (pdf != null && pdf.isNotEmpty) 'invoicePdfUrl': pdf,
+              if (nr != null && nr.isNotEmpty) 'invoiceNumber': nr,
+            }, SetOptions(merge: true));
+            debugPrint('✅ [PurchaseService] Verkäufer-Rechnung gespeichert (nr=${nr ?? '-'}).');
+          }
+        } catch (e) {
+          debugPrint('⚠️ [PurchaseService] ensureInvoiceFiles (Verkäufer) fehlgeschlagen: $e');
+        }
       }
       
       return true;
@@ -213,10 +288,10 @@ class MediaPurchaseService {
       final batch = _firestore.batch();
 
       // 1. Credits abziehen
-      batch.update(userRef, {
+      batch.set(userRef, {
         'credits': FieldValue.increment(-requiredCredits),
         'creditsSpent': FieldValue.increment(requiredCredits),
-      });
+      }, SetOptions(merge: true));
 
       // 2. Transaktion anlegen (Bundle)
       final transactionRef = userRef.collection('transactions').doc();
