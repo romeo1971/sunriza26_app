@@ -246,8 +246,10 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
 
       // 3) Sammle timelineItems (aktiv) aus allen aktiven Playlists
       final List<Map<String, dynamic>> allItems = [];
-      for (final pid in activePlaylistIds) {
-        final itemsSnap = await _fs
+      // Parallel: timelineItems aller aktiven Playlists laden
+      final List<String> pidList = List<String>.from(activePlaylistIds);
+      final itemsFutures = pidList.map((pid) {
+        return _fs
             .collection('avatars')
             .doc(widget.avatarId)
             .collection('playlists')
@@ -255,6 +257,11 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
             .collection('timelineItems')
             .orderBy('order')
             .get();
+      }).toList();
+      final itemsSnaps = await Future.wait(itemsFutures);
+      for (int i = 0; i < itemsSnaps.length; i++) {
+        final pid = pidList[i];
+        final itemsSnap = itemsSnaps[i];
         for (final it in itemsSnap.docs) {
           final m = it.data();
           final isActive = (m['activity'] as bool?) ?? true;
@@ -274,22 +281,26 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       final confirmedIds = <String>{};
       if (uid != null) {
-        for (final pid in activePlaylistIds) {
-          try {
-            final confSnap = await _fs
-                .collection('avatars')
-                .doc(widget.avatarId)
-                .collection('playlists')
-                .doc(pid)
-                .collection('confirmedItems')
-                .where('userId', isEqualTo: uid)
-                .get();
+        // Parallel: confirmedItems je Playlist
+        final confFutures = pidList.map((pid) {
+          return _fs
+              .collection('avatars')
+              .doc(widget.avatarId)
+              .collection('playlists')
+              .doc(pid)
+              .collection('confirmedItems')
+              .where('userId', isEqualTo: uid)
+              .get();
+        }).toList();
+        try {
+          final confSnaps = await Future.wait(confFutures);
+          for (final confSnap in confSnaps) {
             for (final d in confSnap.docs) {
               final mid = d.data()['mediaId'] as String?;
               if (mid != null && mid.isNotEmpty) confirmedIds.add(mid);
             }
-          } catch (_) {}
-        }
+          }
+        } catch (_) {}
       }
 
       // 6) Bereits vorhandene Moments (User) laden → nicht erneut anzeigen (Filter nach mediaId)
@@ -305,6 +316,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
 
       // 7) Auflösen: assetId -> mediaId -> AvatarMedia
       final List<_TimelineVm> built = <_TimelineVm>[];
+      int lastUiFlushCount = 0;
       for (final item in allItems) {
         final assetId = item['assetId'] as String?;
         if (assetId == null) continue;
@@ -325,17 +337,25 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
           if (mid != null && mid.isNotEmpty) mediaId = mid;
         } catch (_) {}
 
-        // media laden
+        // media laden (parallel über mögliche Collections)
         Map<String, dynamic>? data;
-        for (final col in const ['images', 'videos', 'audios', 'documents']) {
-          final snap = await _fs
-              .collection('avatars')
-              .doc(widget.avatarId)
-              .collection(col)
-              .doc(mediaId)
-              .get();
-          if (snap.exists) { data = snap.data(); break; }
-        }
+        try {
+          final futures = const ['images', 'videos', 'audios', 'documents'].map((col) {
+            return _fs
+                .collection('avatars')
+                .doc(widget.avatarId)
+                .collection(col)
+                .doc(mediaId)
+                .get();
+          }).toList();
+          final snaps = await Future.wait(futures);
+          for (final snap in snaps) {
+            if (snap.exists) {
+              data = snap.data();
+              break;
+            }
+          }
+        } catch (_) {}
         if (data == null) continue;
 
         final map = {'id': mediaId, ...data};
@@ -378,6 +398,12 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         }
 
         built.add(_TimelineVm(id: media.id, media: media, playlistId: item['playlistId'] as String?));
+        // Inkrementelles Rendern: alle 8 Items UI updaten
+        if (mounted && built.length - lastUiFlushCount >= 8) {
+          lastUiFlushCount = built.length;
+          final interim = built.where((vm) => !confirmedIds.contains(vm.id) && !existingMediaIds.contains(vm.id)).toList();
+          setState(() { _items = interim; _loading = false; });
+        }
       }
 
       // Cache speichern (UNGEFILTERT; Moments‑Abgleich erfolgt beim Anzeigen)
@@ -419,8 +445,10 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
       if (activePlaylistIds.isEmpty) return;
 
       final List<Map<String, dynamic>> allItems = [];
-      for (final pid in activePlaylistIds) {
-        final itemsSnap = await _fs
+      // Parallel: timelineItems aller aktiven Playlists laden
+      final List<String> pidList = List<String>.from(activePlaylistIds);
+      final itemsFutures = pidList.map((pid) {
+        return _fs
             .collection('avatars')
             .doc(widget.avatarId)
             .collection('playlists')
@@ -428,6 +456,11 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
             .collection('timelineItems')
             .orderBy('order')
             .get();
+      }).toList();
+      final itemsSnaps = await Future.wait(itemsFutures);
+      for (int i = 0; i < itemsSnaps.length; i++) {
+        final pid = pidList[i];
+        final itemsSnap = itemsSnaps[i];
         for (final it in itemsSnap.docs) {
           final m = it.data();
           final isActive = (m['activity'] as bool?) ?? true;
@@ -445,22 +478,26 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
       final uid = FirebaseAuth.instance.currentUser?.uid;
       final confirmedIds = <String>{};
       if (uid != null) {
-        for (final pid in activePlaylistIds) {
-          try {
-            final confSnap = await _fs
-                .collection('avatars')
-                .doc(widget.avatarId)
-                .collection('playlists')
-                .doc(pid)
-                .collection('confirmedItems')
-                .where('userId', isEqualTo: uid)
-                .get();
+        // Parallel: confirmedItems je Playlist
+        final confFutures = pidList.map((pid) {
+          return _fs
+              .collection('avatars')
+              .doc(widget.avatarId)
+              .collection('playlists')
+              .doc(pid)
+              .collection('confirmedItems')
+              .where('userId', isEqualTo: uid)
+              .get();
+        }).toList();
+        try {
+          final confSnaps = await Future.wait(confFutures);
+          for (final confSnap in confSnaps) {
             for (final d in confSnap.docs) {
               final mid = d.data()['mediaId'] as String?;
               if (mid != null && mid.isNotEmpty) confirmedIds.add(mid);
             }
-          } catch (_) {}
-        }
+          }
+        } catch (_) {}
       }
 
       // Moments lesen für harte Filterung
@@ -475,6 +512,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
       } catch (_) {}
 
       final List<_TimelineVm> built = <_TimelineVm>[];
+      int lastUiFlushCount = 0;
       for (final item in allItems) {
         final assetId = item['assetId'] as String?;
         if (assetId == null) continue;
@@ -494,15 +532,23 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         } catch (_) {}
 
         Map<String, dynamic>? data;
-        for (final col in const ['images', 'videos', 'audios', 'documents']) {
-          final snap = await _fs
-              .collection('avatars')
-              .doc(widget.avatarId)
-              .collection(col)
-              .doc(mediaId)
-              .get();
-          if (snap.exists) { data = snap.data(); break; }
-        }
+        try {
+          final futures = const ['images', 'videos', 'audios', 'documents'].map((col) {
+            return _fs
+                .collection('avatars')
+                .doc(widget.avatarId)
+                .collection(col)
+                .doc(mediaId)
+                .get();
+          }).toList();
+          final snaps = await Future.wait(futures);
+          for (final snap in snaps) {
+            if (snap.exists) {
+              data = snap.data();
+              break;
+            }
+          }
+        } catch (_) {}
         if (data == null) continue;
         final map = {'id': mediaId, ...data};
         var media = AvatarMedia.fromMap(map);
@@ -538,6 +584,13 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
           } catch (_) {}
         }
         built.add(_TimelineVm(id: media.id, media: media, playlistId: item['playlistId'] as String?));
+        // Inkrementelles Rendern: alle 8 Items UI updaten
+        if (mounted && built.length - lastUiFlushCount >= 8) {
+          lastUiFlushCount = built.length;
+          final interim = built.where((vm) => !confirmedIds.contains(vm.id) && !existingMediaIds.contains(vm.id)).toList();
+          final filteredInterim = interim; // bereits gefiltert durch Sets
+          setState(() { _items = filteredInterim; });
+        }
       }
 
       // Cache aktualisieren und, falls UI sichtbar, Liste ersetzen
