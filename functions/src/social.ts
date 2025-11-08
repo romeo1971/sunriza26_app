@@ -141,63 +141,110 @@ export const socialEmbedPage = onRequest(
       res.status(400).send('<html><body><p>Bad request</p></body></html>');
       return;
     }
-    if (provider !== 'instagram') {
+    // Reuse logic per provider
+    const db = admin.firestore();
+    let posts: IgMedia[] = [];
+    if (provider === 'instagram') {
+      const cacheRef = db.collection('avatars').doc(avatarId).collection('social_cache').doc('instagram');
+      try {
+        const snap = await cacheRef.get();
+        const doc = snap.data();
+        if (doc && doc.posts && doc.fetchedAt && Date.now() - (doc.fetchedAt as number) <= 10 * 60 * 1000) {
+          posts = (doc.posts as IgMedia[]).slice(0, 5);
+        }
+      } catch {}
+      if (posts.length === 0) {
+        // Load tokens
+        let token: string | undefined;
+        let igUserId: string | undefined;
+        try {
+          const qs = await db
+            .collection('avatars')
+            .doc(avatarId)
+            .collection('social_accounts')
+            .where('providerName', '==', 'Instagram')
+            .where('connected', '==', true)
+            .limit(1)
+            .get();
+          if (!qs.empty) {
+            const m = qs.docs[0].data() as any;
+            token = (m['access_token'] as string) || (m['igLongLivedAccessToken'] as string);
+            igUserId = (m['ig_user_id'] as string) || (m['igUserId'] as string);
+          }
+        } catch {}
+        if (token && igUserId) {
+          try {
+            const url = new URL(`https://graph.facebook.com/v17.0/${igUserId}/media`);
+            url.searchParams.set('fields', 'id,caption,media_type,media_url,permalink,timestamp');
+            url.searchParams.set('limit', '5');
+            url.searchParams.set('access_token', token);
+            const resp = await fetch(url.toString());
+            if (resp.ok) {
+              const json = (await resp.json()) as { data?: IgMedia[] };
+              posts = (json.data ?? []).slice(0, 5);
+              try {
+                await cacheRef.set({ posts, fetchedAt: Date.now() }, { merge: true });
+              } catch {}
+            }
+          } catch {}
+        }
+      }
+    } else if (provider === 'facebook') {
+      const cacheRef = db.collection('avatars').doc(avatarId).collection('social_cache').doc('facebook');
+      try {
+        const snap = await cacheRef.get();
+        const doc = snap.data();
+        if (doc && doc.posts && doc.fetchedAt && Date.now() - (doc.fetchedAt as number) <= 10 * 60 * 1000) {
+          posts = (doc.posts as IgMedia[]).slice(0, 5);
+        }
+      } catch {}
+      if (posts.length === 0) {
+        let pageToken: string | undefined;
+        let pageId: string | undefined;
+        try {
+          const doc = await db
+            .collection('avatars')
+            .doc(avatarId)
+            .collection('social_accounts')
+            .doc('facebook')
+            .get();
+          const m = doc.data() as any;
+          pageToken = m?.page_access_token;
+          pageId = m?.page_id;
+        } catch {}
+        if (pageToken && pageId) {
+          try {
+            const url = new URL(`https://graph.facebook.com/v17.0/${pageId}/posts`);
+            url.searchParams.set('fields', 'id,full_picture,permalink_url,message,created_time');
+            url.searchParams.set('limit', '5');
+            url.searchParams.set('access_token', pageToken);
+            const resp = await fetch(url.toString());
+            if (resp.ok) {
+              const json = (await resp.json()) as any;
+              posts = (json.data ?? []).map((p: any) => ({
+                id: p.id,
+                caption: p.message,
+                media_type: 'IMAGE',
+                media_url: p.full_picture || '',
+                permalink: p.permalink_url,
+                timestamp: p.created_time,
+              })).filter((p: IgMedia) => p.media_url).slice(0, 5);
+              try {
+                await cacheRef.set({ posts, fetchedAt: Date.now() }, { merge: true });
+              } catch {}
+            }
+          } catch {}
+        }
+      }
+    } else {
       res.status(400).send('<html><body><p>Unsupported provider</p></body></html>');
       return;
     }
-    // Reuse logic: fetch IG posts (same as instagramFeed)
-    const db = admin.firestore();
-    // Try cache
-    const cacheRef = db.collection('avatars').doc(avatarId).collection('social_cache').doc('instagram');
-    let posts: IgMedia[] = [];
-    try {
-      const snap = await cacheRef.get();
-      const doc = snap.data();
-      if (doc && doc.posts && doc.fetchedAt && Date.now() - (doc.fetchedAt as number) <= 10 * 60 * 1000) {
-        posts = (doc.posts as IgMedia[]).slice(0, 5);
-      }
-    } catch {}
-    if (posts.length === 0) {
-      // Load tokens
-      let token: string | undefined;
-      let igUserId: string | undefined;
-      try {
-        const qs = await db
-          .collection('avatars')
-          .doc(avatarId)
-          .collection('social_accounts')
-          .where('providerName', '==', 'Instagram')
-          .where('connected', '==', true)
-          .limit(1)
-          .get();
-        if (!qs.empty) {
-          const m = qs.docs[0].data() as any;
-          token = (m['access_token'] as string) || (m['igLongLivedAccessToken'] as string);
-          igUserId = (m['ig_user_id'] as string) || (m['igUserId'] as string);
-        }
-      } catch {}
-      if (token && igUserId) {
-        try {
-          const url = new URL(`https://graph.facebook.com/v17.0/${igUserId}/media`);
-          url.searchParams.set('fields', 'id,caption,media_type,media_url,permalink,timestamp');
-          url.searchParams.set('limit', '5');
-          url.searchParams.set('access_token', token);
-          const resp = await fetch(url.toString());
-          if (resp.ok) {
-            const json = (await resp.json()) as { data?: IgMedia[] };
-            posts = (json.data ?? []).slice(0, 5);
-            try {
-              await cacheRef.set({ posts, fetchedAt: Date.now() }, { merge: true });
-            } catch {}
-          }
-        } catch {}
-      }
-    }
     // Wenn keine Posts: zeige CTA zum Verbinden (öffnet OAuth in neuem Tab)
     if (!posts || posts.length === 0) {
-      const connectUrl = `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net/igConnect?avatarId=${encodeURIComponent(
-        avatarId
-      )}`;
+      const base = `https://us-central1-${process.env.GCLOUD_PROJECT}.cloudfunctions.net`;
+      const endpoint = provider === 'facebook' ? 'fbConnect' : 'igConnect';
+      const connectUrl = `${base}/${endpoint}?avatarId=${encodeURIComponent(avatarId)}`;
       const htmlEmpty = `<!DOCTYPE html>
 <html lang="de">
 <head>

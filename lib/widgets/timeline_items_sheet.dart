@@ -284,13 +284,13 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         // Parallel: confirmedItems je Playlist
         final confFutures = pidList.map((pid) {
           return _fs
-              .collection('avatars')
-              .doc(widget.avatarId)
-              .collection('playlists')
-              .doc(pid)
-              .collection('confirmedItems')
-              .where('userId', isEqualTo: uid)
-              .get();
+                .collection('avatars')
+                .doc(widget.avatarId)
+                .collection('playlists')
+                .doc(pid)
+                .collection('confirmedItems')
+                .where('userId', isEqualTo: uid)
+                .get();
         }).toList();
         try {
           final confSnaps = await Future.wait(confFutures);
@@ -299,8 +299,8 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
               final mid = d.data()['mediaId'] as String?;
               if (mid != null && mid.isNotEmpty) confirmedIds.add(mid);
             }
-          }
-        } catch (_) {}
+            }
+          } catch (_) {}
       }
 
       // 6) Bereits vorhandene Moments (User) laden → nicht erneut anzeigen (Filter nach mediaId)
@@ -342,11 +342,11 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         try {
           final futures = const ['images', 'videos', 'audios', 'documents'].map((col) {
             return _fs
-                .collection('avatars')
-                .doc(widget.avatarId)
-                .collection(col)
-                .doc(mediaId)
-                .get();
+              .collection('avatars')
+              .doc(widget.avatarId)
+              .collection(col)
+              .doc(mediaId)
+              .get();
           }).toList();
           final snaps = await Future.wait(futures);
           for (final snap in snaps) {
@@ -354,7 +354,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
               data = snap.data();
               break;
             }
-          }
+        }
         } catch (_) {}
         if (data == null) continue;
 
@@ -481,13 +481,13 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         // Parallel: confirmedItems je Playlist
         final confFutures = pidList.map((pid) {
           return _fs
-              .collection('avatars')
-              .doc(widget.avatarId)
-              .collection('playlists')
-              .doc(pid)
-              .collection('confirmedItems')
-              .where('userId', isEqualTo: uid)
-              .get();
+                .collection('avatars')
+                .doc(widget.avatarId)
+                .collection('playlists')
+                .doc(pid)
+                .collection('confirmedItems')
+                .where('userId', isEqualTo: uid)
+                .get();
         }).toList();
         try {
           final confSnaps = await Future.wait(confFutures);
@@ -496,8 +496,8 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
               final mid = d.data()['mediaId'] as String?;
               if (mid != null && mid.isNotEmpty) confirmedIds.add(mid);
             }
-          }
-        } catch (_) {}
+            }
+          } catch (_) {}
       }
 
       // Moments lesen für harte Filterung
@@ -535,11 +535,11 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
         try {
           final futures = const ['images', 'videos', 'audios', 'documents'].map((col) {
             return _fs
-                .collection('avatars')
-                .doc(widget.avatarId)
-                .collection(col)
-                .doc(mediaId)
-                .get();
+              .collection('avatars')
+              .doc(widget.avatarId)
+              .collection(col)
+              .doc(mediaId)
+              .get();
           }).toList();
           final snaps = await Future.wait(futures);
           for (final snap in snaps) {
@@ -547,7 +547,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
               data = snap.data();
               break;
             }
-          }
+        }
         } catch (_) {}
         if (data == null) continue;
         final map = {'id': mediaId, ...data};

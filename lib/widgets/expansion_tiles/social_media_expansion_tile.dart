@@ -419,7 +419,7 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
     final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
     final encrypted = encrypter.encrypt(plain, iv: iv16);
     // Speichere iv:cipher als base64: iv|cipher
-    return base64Encode(iv16.bytes) + ':' + encrypted.base64;
+    return '${base64Encode(iv16.bytes)}:${encrypted.base64}';
   }
 
   Future<String> _decrypt(String data) async {

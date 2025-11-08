@@ -36,6 +36,7 @@ export * from './paymentMethods';
 export { copyMediaToMoments, createMediaCheckoutSession, mediaCheckoutWebhook, handleMediaPurchaseWebhook } from './mediaCheckout';
 export * from './social';
 export * from './social_oauth';
+export * from './social_oauth_facebook';
 
 // Admin init (falls notwendig)
 if (!admin.apps.length) {

@@ -41,6 +41,7 @@ const admin = __importStar(require("firebase-admin"));
 const https_1 = require("firebase-functions/v2/https");
 const params_1 = require("firebase-functions/params");
 const node_fetch_1 = __importDefault(require("node-fetch"));
+const social_oauth_facebook_1 = require("./social_oauth_facebook");
 if (!admin.apps.length) {
     try {
         admin.initializeApp();
@@ -83,7 +84,9 @@ exports.igConnect = (0, https_1.onRequest)({ region: 'us-central1', secrets: [IG
 exports.igCallback = (0, https_1.onRequest)({ region: 'us-central1', secrets: [IG_APP_ID, IG_APP_SECRET, IG_REDIRECT_URI] }, async (req, res) => {
     try {
         const code = String(req.query.code || '').trim();
-        const avatarId = String(req.query.state || '').trim();
+        const stateRaw = String(req.query.state || '').trim();
+        const isFb = stateRaw.startsWith('fb:');
+        const avatarId = isFb ? stateRaw.slice(3) : stateRaw;
         const appId = IG_APP_ID.value();
         const appSecret = IG_APP_SECRET.value();
         const redirect = IG_REDIRECT_URI.value();
@@ -119,6 +122,12 @@ exports.igCallback = (0, https_1.onRequest)({ region: 'us-central1', secrets: [I
             }
         }
         catch (_a) { }
+        // Facebook Pages Flow: wenn state "fb:" war → Page-Token speichern und fertig
+        if (isFb) {
+            await (0, social_oauth_facebook_1.handleFacebookTokenExchange)({ userAccessToken: shortToken, avatarId });
+            res.status(200).send('Facebook Seite verbunden. Du kannst dieses Fenster schließen.');
+            return;
+        }
         // 3) Try to get user info (Basic Display)
         let igBasicUser = undefined;
         try {

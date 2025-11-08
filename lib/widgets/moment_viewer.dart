@@ -212,7 +212,7 @@ class _MomentAudioState extends State<_MomentAudio> {
   void initState() {
     super.initState();
     _player.setUrl(widget.url).then((_) async {
-      _duration = await _player.duration ?? Duration.zero;
+      _duration = _player.duration ?? Duration.zero;
       if (mounted) setState(() => _ready = true);
     });
   }
@@ -262,7 +262,7 @@ class _MomentAudioState extends State<_MomentAudio> {
                         children: [
                           IconButton(
                             icon: const Icon(Icons.replay_10, color: Colors.white70),
-                            onPressed: () async { final p = await _player.position; await _player.seek(p - const Duration(seconds: 10)); },
+                            onPressed: () async { final p = _player.position; await _player.seek(p - const Duration(seconds: 10)); },
                           ),
                           IconButton(
                             icon: Icon(_player.playing ? Icons.pause_circle_filled : Icons.play_circle_fill, color: AppColors.lightBlue, size: 48),
@@ -270,7 +270,7 @@ class _MomentAudioState extends State<_MomentAudio> {
                           ),
                           IconButton(
                             icon: const Icon(Icons.forward_10, color: Colors.white70),
-                            onPressed: () async { final p = await _player.position; await _player.seek(p + const Duration(seconds: 10)); },
+                            onPressed: () async { final p = _player.position; await _player.seek(p + const Duration(seconds: 10)); },
                           ),
                         ],
                       ),

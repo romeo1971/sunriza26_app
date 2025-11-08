@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
-import '../theme/app_theme.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../models/avatar_data.dart';
 import '../widgets/app_drawer.dart';
@@ -612,6 +611,7 @@ class ExploreScreenState extends State<ExploreScreen> {
                 right: 16,
                 child: Row(
                   children: [
+                    // Einheitliche Höhe für alle drei Buttons (hier 56)
                     // Chat starten (Button, weißer Text)
                     Expanded(
                       child: ElevatedButton.icon(
@@ -644,7 +644,7 @@ class ExploreScreenState extends State<ExploreScreen> {
                     // Timeline-Button
                     SizedBox(
                       width: 56,
-                      height: 48,
+                      height: 40,
                       child: ElevatedButton(
                         onPressed: () => _openTimelineOverlay(avatar.id),
                         style: ElevatedButton.styleFrom(
@@ -660,7 +660,7 @@ class ExploreScreenState extends State<ExploreScreen> {
                     ),
                     const SizedBox(width: 10),
                     // Social Dropup (öffnet Menü nach oben)
-                    _buildSocialDropupButton(avatar.id),
+                    _buildSocialDropupButton(avatar.id, height: 40),
                   ],
                 ),
               ),
@@ -684,11 +684,11 @@ class ExploreScreenState extends State<ExploreScreen> {
     );
   }
 
-  Widget _buildSocialDropupButton(String avatarId) {
+  Widget _buildSocialDropupButton(String avatarId, {double height = 48}) {
     final GlobalKey openerKey = GlobalKey();
     return SizedBox(
       width: 56,
-      height: 48,
+      height: height,
       child: ElevatedButton(
         key: openerKey,
         onPressed: () => _openSocialMenu(openerKey, avatarId),
@@ -706,62 +706,76 @@ class ExploreScreenState extends State<ExploreScreen> {
   }
 
   void _openSocialMenu(GlobalKey openerKey, String avatarId) async {
-    final ctx = openerKey.currentContext;
-    if (ctx == null) return;
-    final RenderBox button = ctx.findRenderObject() as RenderBox;
-    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
-    final position = RelativeRect.fromRect(
-      Rect.fromPoints(
-        button.localToGlobal(Offset.zero, ancestor: overlay),
-        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
-      ),
-      Offset.zero & overlay.size,
-    );
-    // Lade verbundene Social Accounts dynamisch (connected==true)
+    // Lade verbundene Social Accounts (connected==true)
     final links = await _fetchConnectedSocials(avatarId);
-    if (links.isEmpty) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Keine verbundenen Accounts')),
-      );
-      return;
-    }
-    // Website zuerst (falls vorhanden), dann andere
-    links.sort((a, b) {
-      int rank(String p) => p.toLowerCase() == 'website' ? 0 : 1;
-      return rank(a['provider']!).compareTo(rank(b['provider']!));
-    });
+    // Basis-Provider immer anbieten
+    final Set<String> present = links.map((e) => (e['provider'] ?? '').toLowerCase()).toSet();
+    if (!present.contains('facebook')) links.insert(0, {'provider': 'Facebook', 'url': ''});
+    if (!present.contains('instagram')) links.insert(0, {'provider': 'Instagram', 'url': ''});
 
-    final List<PopupMenuEntry<Map<String, String>>> items = links.map((e) {
-      final provider = e['provider']!;
-      final url = e['url']!;
-      final icon = _brandIcon(provider, size: 30);
-      final label = provider;
-      return PopupMenuItem<Map<String, String>>(
-        value: {'provider': provider, 'url': url},
-        child: Row(
-          children: [
-            icon,
-            const SizedBox(width: 12),
-            Text(label, style: const TextStyle(color: Colors.white)),
-          ],
-        ),
-      );
-    }).toList();
-
-    // showMenu öffnet, bei Platzmangel nach oben (Dropup-Effekt)
-    final selected = await showMenu<Map<String, String>>(
+    await showDialog(
       context: context,
-      position: position,
-      color: const Color(0xFF1E1E1E),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      items: items,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      builder: (_) {
+        return Stack(
+          children: [
+            // Schließen bei Tap außerhalb
+            Positioned.fill(
+              child: GestureDetector(onTap: () => Navigator.of(context).pop()),
+            ),
+            // Dropup Panel
+            Positioned(
+              right: 16,
+              bottom: 96, // oberhalb der Bottom-Bar
+              child: Container(
+                width: 260,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFE91E63), Color(0xFF8AB4F8), Color(0xFF00E5FF)],
+                    stops: [0.0, 0.5, 1.0],
+                  ),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 16)],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: links.map((e) {
+                    final provider = e['provider']!;
+                    return InkWell(
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        final embedUrl = _buildSocialEmbedUrl(provider, avatarId);
+                        _openAvatarIframe(embedUrl);
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            _whiteIcon(provider, size: 22),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                provider,
+                                textAlign: TextAlign.left,
+                                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
-    if (selected != null) {
-      final provider = selected['provider']!;
-      final embedUrl = _buildSocialEmbedUrl(provider, avatarId);
-      _openAvatarIframe(embedUrl); // schließt automatisch, dann Aktion
-    }
   }
 
   // (Legacy GMBC-Button entfernt – aktuell nicht genutzt)
@@ -791,6 +805,9 @@ class ExploreScreenState extends State<ExploreScreen> {
     final p = provider.toLowerCase();
     if (p == 'instagram') {
       return 'https://us-central1-sunriza26.cloudfunctions.net/socialEmbedPage?provider=instagram&avatarId=$avatarId';
+    }
+    if (p == 'facebook') {
+      return 'https://us-central1-sunriza26.cloudfunctions.net/socialEmbedPage?provider=facebook&avatarId=$avatarId';
     }
     return 'about:blank';
   }
@@ -839,6 +856,17 @@ class ExploreScreenState extends State<ExploreScreen> {
         return FaIcon(FontAwesomeIcons.tiktok, color: Colors.white, size: size);
       case 'linkedin':
         return FaIcon(FontAwesomeIcons.linkedin, color: const Color(0xFF0A66C2), size: size);
+      default:
+        return FaIcon(FontAwesomeIcons.globe, color: Colors.white, size: size);
+    }
+  }
+
+  Widget _whiteIcon(String provider, {double size = 20}) {
+    switch (provider.toLowerCase()) {
+      case 'instagram':
+        return FaIcon(FontAwesomeIcons.instagram, color: Colors.white, size: size);
+      case 'facebook':
+        return FaIcon(FontAwesomeIcons.facebook, color: Colors.white, size: size);
       default:
         return FaIcon(FontAwesomeIcons.globe, color: Colors.white, size: size);
     }

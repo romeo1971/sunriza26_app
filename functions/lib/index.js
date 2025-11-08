@@ -79,6 +79,7 @@ Object.defineProperty(exports, "mediaCheckoutWebhook", { enumerable: true, get: 
 Object.defineProperty(exports, "handleMediaPurchaseWebhook", { enumerable: true, get: function () { return mediaCheckout_1.handleMediaPurchaseWebhook; } });
 __exportStar(require("./social"), exports);
 __exportStar(require("./social_oauth"), exports);
+__exportStar(require("./social_oauth_facebook"), exports);
 // Admin init (falls notwendig)
 if (!admin.apps.length) {
     try {

@@ -8,7 +8,7 @@ service cloud.firestore {
     function validTimestamp(ts) { return ts is int && ts > 0; }
     function validString(s, min, max) { return s is string && s.size() >= min && s.size() <= max; }
     function isAdmin() {
-      return signedIn() &&
+      return signedIn() && 
         exists(/databases/$(db)/documents/users/$(request.auth.uid)) &&
         get(/databases/$(db)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
