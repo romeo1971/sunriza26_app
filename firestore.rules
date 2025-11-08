@@ -7,13 +7,10 @@ service cloud.firestore {
     // Nur epoch millis zulässig (ursprüngliches Verhalten)
     function validTimestamp(ts) { return ts is int && ts > 0; }
     function validString(s, min, max) { return s is string && s.size() >= min && s.size() <= max; }
-    function stringList(l, maxItems, maxLen) {
-      return l is list && l.size() <= maxItems && l.hasOnly(l.where(e, e is string && e.size() <= maxLen));
-    }
     function isAdmin() {
-      return signedIn() && 
-        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true;
+      return signedIn() &&
+        exists(/databases/$(db)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(db)/documents/users/$(request.auth.uid)).data.isAdmin == true;
     }
     // Avatar-Besitz prüfen: entweder Root-Avatar-Dokument gehört dem Nutzer
     // ODER es existiert ein Nutzer-gebundenes Avatar-Dokument unter users/{uid}/avatars/{avatarId}
@@ -27,17 +24,7 @@ service cloud.firestore {
         signedIn() && exists(/databases/$(db)/documents/users/$(request.auth.uid)/avatars/$(avatarId))
       );
     }
-    // Video-Provider prüfen
-    function allowedVideoProvider(p) {
-      return p in ['bithuman'];
-    }
-
-    // Sprachauswahl validieren (ISO Kurzcodes, inkl. zh-Hans/zh-Hant)
-    function allowedLanguage(code) {
-      return code in [
-        'ar','bn','cs','da','de','el','en','es','fa','fi','fr','hi','hu','id','it','he','ja','ko','mr','ms','nl','no','pa','pl','pt','ro','ru','sv','te','th','tl','tr','uk','vi','zh-Hans','zh-Hant'
-      ];
-    }
+    // (entfernt: ungenutzte Helper)
 
     // Media-Pricing validieren
     function validMediaPricing(data) {
@@ -185,6 +172,16 @@ service cloud.firestore {
       allow delete: if ownsAvatar(avatarId);
     }
     // Legacy-Pfad entfernt: /avatars/{avatarId}/media/** ist obsolet
+
+    // Social Media Accounts je Avatar
+    match /avatars/{avatarId}/social_accounts/{docId} {
+      // Lesen: erlaubt für Owner ODER wenn Avatar öffentlich ist
+      allow get, list: if ownsAvatar(avatarId) ||
+        (exists(/databases/$(db)/documents/avatars/$(avatarId)) &&
+         get(/databases/$(db)/documents/avatars/$(avatarId)).data.isPublic == true);
+      // Schreiben: nur Owner
+      allow create, update, delete: if ownsAvatar(avatarId);
+    }
 
     // Playlists
     match /avatars/{avatarId}/playlists/{playlistId} {

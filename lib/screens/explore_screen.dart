@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../theme/app_theme.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../models/avatar_data.dart';
 import '../widgets/app_drawer.dart';
 import 'home_navigation_screen.dart';
@@ -41,6 +42,7 @@ class ExploreScreenState extends State<ExploreScreen> {
   final Map<String, int> _currentIndex = {}; // avatarId -> current index
   final Map<String, String?> _currentImage =
       {}; // avatarId -> current image URL
+  String? _socialOverlayUrl; // aktives iFrame
 
   // LRU Cache: Behalte letzte 5 Avatare im Speicher
   static const int _maxCachedAvatars = 5;
@@ -514,6 +516,39 @@ class ExploreScreenState extends State<ExploreScreen> {
           ),
           Stack(
             children: [
+              // Social iFrame Overlay (unter AppBar, über Hintergrund; Buttons bleiben oben)
+              if (_socialOverlayUrl != null)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 56 + 8,
+                  left: 0,
+                  right: 0,
+                  bottom: 88,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: InAppWebView(
+                      initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
+                      initialUrlRequest: URLRequest(url: WebUri(_socialOverlayUrl!)),
+                    ),
+                  ),
+                ),
+              if (_socialOverlayUrl != null)
+                Positioned(
+                  top: MediaQuery.of(context).padding.top + 56 + 12,
+                  right: 12,
+                  child: GestureDetector(
+                    onTap: () => setState(() => _socialOverlayUrl = null),
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.7),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Icon(Icons.close, color: Colors.white, size: 20),
+                    ),
+                  ),
+                ),
               // Rechts Mitte: Favoriten-Herz (TikTok-Style)
               Positioned(
                 right: 16,
@@ -682,73 +717,40 @@ class ExploreScreenState extends State<ExploreScreen> {
       ),
       Offset.zero & overlay.size,
     );
+    // Lade verbundene Social Accounts dynamisch (connected==true)
+    final links = await _fetchConnectedSocials(avatarId);
+    if (links.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Keine verbundenen Accounts')),
+      );
+      return;
+    }
+    // Website zuerst (falls vorhanden), dann andere
+    links.sort((a, b) {
+      int rank(String p) => p.toLowerCase() == 'website' ? 0 : 1;
+      return rank(a['provider']!).compareTo(rank(b['provider']!));
+    });
 
-    final double iconSize = 30; // 50% größer als vorher (20 -> 30)
-    final List<PopupMenuEntry<String>> items = [
-      PopupMenuItem<String>(
-        value: 'www',
-        child: Row(
-          children: const [
-            FaIcon(FontAwesomeIcons.globe, color: Colors.white, size: 30),
-            SizedBox(width: 12),
-            Text('Website', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-      ),
-      PopupMenuItem<String>(
-        value: 'instagram',
+    final List<PopupMenuEntry<Map<String, String>>> items = links.map((e) {
+      final provider = e['provider']!;
+      final url = e['url']!;
+      final icon = _brandIcon(provider, size: 30);
+      final label = provider;
+      return PopupMenuItem<Map<String, String>>(
+        value: {'provider': provider, 'url': url},
         child: Row(
           children: [
-            const FaIcon(FontAwesomeIcons.instagram, color: Color(0xFFE4405F), size: 30),
+            icon,
             const SizedBox(width: 12),
-            const Text('Instagram', style: TextStyle(color: Colors.white)),
+            Text(label, style: const TextStyle(color: Colors.white)),
           ],
         ),
-      ),
-      PopupMenuItem<String>(
-        value: 'facebook',
-        child: Row(
-          children: [
-            const FaIcon(FontAwesomeIcons.facebook, color: Color(0xFF1877F2), size: 30),
-            const SizedBox(width: 12),
-            const Text('Facebook', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-      ),
-      PopupMenuItem<String>(
-        value: 'x',
-        child: Row(
-          children: const [
-            FaIcon(FontAwesomeIcons.xTwitter, color: Colors.white, size: 30),
-            SizedBox(width: 12),
-            Text('X', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-      ),
-      PopupMenuItem<String>(
-        value: 'tiktok',
-        child: Row(
-          children: const [
-            FaIcon(FontAwesomeIcons.tiktok, color: Colors.white, size: 30),
-            SizedBox(width: 12),
-            Text('TikTok', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-      ),
-      PopupMenuItem<String>(
-        value: 'linkedin',
-        child: Row(
-          children: const [
-            FaIcon(FontAwesomeIcons.linkedin, color: Color(0xFF0A66C2), size: 30),
-            SizedBox(width: 12),
-            Text('LinkedIn', style: TextStyle(color: Colors.white)),
-          ],
-        ),
-      ),
-    ];
+      );
+    }).toList();
 
     // showMenu öffnet, bei Platzmangel nach oben (Dropup-Effekt)
-    final selected = await showMenu<String>(
+    final selected = await showMenu<Map<String, String>>(
       context: context,
       position: position,
       color: const Color(0xFF1E1E1E),
@@ -756,7 +758,9 @@ class ExploreScreenState extends State<ExploreScreen> {
       items: items,
     );
     if (selected != null) {
-      _openAvatarSocial(selected, avatarId); // schließt automatisch, dann Aktion
+      final provider = selected['provider']!;
+      final embedUrl = _buildSocialEmbedUrl(provider, avatarId);
+      _openAvatarIframe(embedUrl); // schließt automatisch, dann Aktion
     }
   }
 
@@ -783,16 +787,67 @@ class ExploreScreenState extends State<ExploreScreen> {
 
   // (Legacy GMBC-Button entfernt – aktuell nicht genutzt)
 
-  void _openAvatarSocial(String platform, String avatarId) {
-    // Platzhalter: später iFrame/Embedded WebView mit Avatar-Accounts
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Öffne $platform für Avatar $avatarId (bald verfügbar)'),
-        duration: const Duration(seconds: 2),
-        backgroundColor: Colors.black87,
-      ),
-    );
+  String _buildSocialEmbedUrl(String provider, String avatarId) {
+    final p = provider.toLowerCase();
+    if (p == 'instagram') {
+      return 'https://us-central1-sunriza26.cloudfunctions.net/socialEmbedPage?provider=instagram&avatarId=$avatarId';
+    }
+    return 'about:blank';
+  }
+
+  Future<List<Map<String, String>>> _fetchConnectedSocials(String avatarId) async {
+    try {
+      final qs = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(avatarId)
+          .collection('social_accounts')
+          .where('connected', isEqualTo: true)
+          .get();
+      final items = <Map<String, String>>[];
+      for (final d in qs.docs) {
+        final m = d.data();
+        final url = (m['url'] as String?) ?? '';
+        if (url.isEmpty) continue;
+        final provider = (m['providerName'] as String?) ?? _detectProvider(url);
+        items.add({'provider': provider, 'url': url});
+      }
+      return items;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  String _detectProvider(String url) {
+    final u = url.toLowerCase();
+    if (u.contains('instagram.com')) return 'Instagram';
+    if (u.contains('facebook.com')) return 'Facebook';
+    if (u.contains('tiktok.com')) return 'TikTok';
+    if (u.contains('x.com') || u.contains('twitter.com')) return 'X';
+    if (u.contains('linkedin.com')) return 'LinkedIn';
+    return 'Website';
+  }
+
+  Widget _brandIcon(String provider, {double size = 20}) {
+    switch (provider.toLowerCase()) {
+      case 'instagram':
+        return FaIcon(FontAwesomeIcons.instagram, color: const Color(0xFFE4405F), size: size);
+      case 'facebook':
+        return FaIcon(FontAwesomeIcons.facebook, color: const Color(0xFF1877F2), size: size);
+      case 'x':
+        return FaIcon(FontAwesomeIcons.xTwitter, color: Colors.white, size: size);
+      case 'tiktok':
+        return FaIcon(FontAwesomeIcons.tiktok, color: Colors.white, size: size);
+      case 'linkedin':
+        return FaIcon(FontAwesomeIcons.linkedin, color: const Color(0xFF0A66C2), size: size);
+      default:
+        return FaIcon(FontAwesomeIcons.globe, color: Colors.white, size: size);
+    }
+  }
+
+  void _openAvatarIframe(String url) {
+    setState(() {
+      _socialOverlayUrl = url;
+    });
   }
 
 }

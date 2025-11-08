@@ -42,6 +42,7 @@ import '../widgets/custom_date_field.dart';
 import '../widgets/custom_dropdown.dart';
 import '../widgets/expansion_tiles/dynamics_expansion_tile.dart';
 import '../widgets/expansion_tiles/greeting_text_expansion_tile.dart';
+import '../widgets/expansion_tiles/social_media_expansion_tile.dart';
 import '../widgets/expansion_tiles/texts_expansion_tile.dart';
 import '../widgets/expansion_tiles/voice_selection_expansion_tile.dart';
 import '../widgets/expansion_tiles/person_data_expansion_tile.dart';
@@ -6666,6 +6667,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                       _buildMediaContent(),
                       const SizedBox(height: 6),
                       _buildPersonDataTile(),
+                      const SizedBox(height: 12),
+                      if (_avatarData?.id != null)
+                        SocialMediaExpansionTile(avatarId: _avatarData!.id),
                     ],
                   ),
                 ),

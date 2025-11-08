@@ -33,7 +33,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.createSellerDashboardLink = exports.processCreditsPayment = exports.stripeConnectWebhook = exports.createConnectedAccount = void 0;
+exports.createSellerDashboardLink = exports.requestSellerDisconnect = exports.disconnectSellerAccount = exports.refreshSellerStatus = exports.processCreditsPayment = exports.stripeConnectWebhook = exports.createConnectedAccount = void 0;
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
 // Stripe nur initialisieren wenn Secret Key vorhanden
@@ -281,6 +281,133 @@ exports.processCreditsPayment = functions
     catch (error) {
         console.error('Credits Payment Error:', error);
         throw new functions.https.HttpsError('internal', error.message);
+    }
+});
+/**
+ * Manuelle Status-Aktualisierung: liest den aktuellen Connect-Status von Stripe
+ * und schreibt ihn in users/{uid}. Für UI-„Status prüfen“-Button gedacht.
+ */
+exports.refreshSellerStatus = functions
+    .region('us-central1')
+    .https.onCall(async (_data, context) => {
+    var _a;
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
+    }
+    const userId = context.auth.uid;
+    try {
+        const stripe = getStripe();
+        const userDoc = await admin.firestore().collection('users').doc(userId).get();
+        if (!userDoc.exists) {
+            throw new functions.https.HttpsError('not-found', 'User nicht gefunden');
+        }
+        const d = userDoc.data();
+        const accId = d.stripeConnectAccountId;
+        if (!accId) {
+            throw new functions.https.HttpsError('failed-precondition', 'Kein verbundenes Verkäufer-Konto vorhanden');
+        }
+        const account = await stripe.accounts.retrieve(accId);
+        let status = 'pending';
+        if (account.details_submitted && account.charges_enabled && account.payouts_enabled) {
+            status = 'active';
+        }
+        else if ((_a = account === null || account === void 0 ? void 0 : account.requirements) === null || _a === void 0 ? void 0 : _a.disabled_reason) {
+            status = 'restricted';
+        }
+        await admin.firestore().collection('users').doc(userId).update({
+            stripeConnectStatus: status,
+            payoutsEnabled: account.payouts_enabled || false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { status, payoutsEnabled: account.payouts_enabled || false };
+    }
+    catch (error) {
+        console.error('refreshSellerStatus error:', error);
+        throw new functions.https.HttpsError('internal', (error === null || error === void 0 ? void 0 : error.message) || 'Unbekannter Fehler');
+    }
+});
+/**
+ * Verkäufer‑Konto trennen: löscht (Test) bzw. deaktiviert das verbundene Express‑Konto
+ * und setzt die Felder im User‑Dokument zurück.
+ */
+exports.disconnectSellerAccount = functions
+    .region('us-central1')
+    .https.onCall(async (_data, context) => {
+    var _a;
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
+    }
+    const userId = context.auth.uid;
+    try {
+        const stripe = getStripe();
+        const ref = admin.firestore().collection('users').doc(userId);
+        const snap = await ref.get();
+        if (!snap.exists) {
+            throw new functions.https.HttpsError('not-found', 'User nicht gefunden');
+        }
+        const accId = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.stripeConnectAccountId;
+        if (accId) {
+            try {
+                await stripe.accounts.del(accId);
+            }
+            catch (e) {
+                // Falls nicht löschbar (LIVE), ignoriere und setze Status auf disabled
+                console.warn('accounts.del failed, continue with local cleanup', e);
+            }
+        }
+        await ref.update({
+            isSeller: false,
+            stripeConnectAccountId: admin.firestore.FieldValue.delete(),
+            stripeConnectStatus: 'disabled',
+            payoutsEnabled: false,
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+        return { ok: true };
+    }
+    catch (error) {
+        console.error('disconnectSellerAccount error:', error);
+        throw new functions.https.HttpsError('internal', (error === null || error === void 0 ? void 0 : error.message) || 'Unbekannter Fehler');
+    }
+});
+/**
+ * Nur Anfrage: Verkäufer‑Konto‑Auflösung beantragen (wird von Admin/Plattform ausgeführt).
+ */
+exports.requestSellerDisconnect = functions
+    .region('us-central1')
+    .https.onCall(async (_data, context) => {
+    var _a;
+    if (!context.auth) {
+        throw new functions.https.HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
+    }
+    const userId = context.auth.uid;
+    try {
+        const stripe = getStripe();
+        const userRef = admin.firestore().collection('users').doc(userId);
+        const snap = await userRef.get();
+        const accId = (_a = snap.data()) === null || _a === void 0 ? void 0 : _a.stripeConnectAccountId;
+        const ts = Date.now().toString();
+        if (accId) {
+            try {
+                await stripe.accounts.update(accId, {
+                    metadata: {
+                        disconnect_requested: 'true',
+                        disconnect_requested_at: ts,
+                    },
+                });
+            }
+            catch (e) {
+                console.warn('metadata update failed', e);
+            }
+        }
+        await admin.firestore().collection('users').doc(userId).set({
+            sellerDisconnectRequested: true,
+            sellerDisconnectRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+        return { ok: true };
+    }
+    catch (e) {
+        console.error('requestSellerDisconnect error:', e);
+        throw new functions.https.HttpsError('internal', (e === null || e === void 0 ? void 0 : e.message) || 'Unbekannter Fehler');
     }
 });
 exports.createSellerDashboardLink = functions

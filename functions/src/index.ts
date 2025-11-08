@@ -34,6 +34,8 @@ export * from './paymentMethods';
 
 // Explizite Re-Exports für mediaCheckout
 export { copyMediaToMoments, createMediaCheckoutSession, mediaCheckoutWebhook, handleMediaPurchaseWebhook } from './mediaCheckout';
+export * from './social';
+export * from './social_oauth';
 
 // Admin init (falls notwendig)
 if (!admin.apps.length) {
