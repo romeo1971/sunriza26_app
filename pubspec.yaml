@@ -88,6 +88,7 @@ dependencies:
   flutter_dotenv: ^6.0.0  # Für BitHuman API Key
   extended_image: ^10.0.1
   # extended_image_library: ^4.0.6
+  font_awesome_flutter: ^10.7.0
 
   # LiveKit Flutter SDK (Room Join/Leave, Remote Audio/Video)
   livekit_client: ^2.2.6  # Mikrofon-Management manuell (livekit_components hat intl-Konflikt)

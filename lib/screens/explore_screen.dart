@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../theme/app_theme.dart';
 import '../models/avatar_data.dart';
 import '../widgets/app_drawer.dart';
 import 'home_navigation_screen.dart';
@@ -568,14 +570,14 @@ class ExploreScreenState extends State<ExploreScreen> {
                 ),
               ),
 
-              // Unten: Conversation starten Button (schwarz)
+              // Unten: Conversation starten Button + Timeline + Social Dropup
               Positioned(
                 bottom: 16,
                 left: 16,
                 right: 16,
                 child: Row(
                   children: [
-                    // Chat starten (breit)
+                    // Chat starten (Button, weißer Text)
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: () {
@@ -604,7 +606,7 @@ class ExploreScreenState extends State<ExploreScreen> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    // Timeline-Icon (öffnet Overlay)
+                    // Timeline-Button
                     SizedBox(
                       width: 56,
                       height: 48,
@@ -621,6 +623,9 @@ class ExploreScreenState extends State<ExploreScreen> {
                         child: const Icon(Icons.timeline, size: 22),
                       ),
                     ),
+                    const SizedBox(width: 10),
+                    // Social Dropup (öffnet Menü nach oben)
+                    _buildSocialDropupButton(avatar.id),
                   ],
                 ),
               ),
@@ -641,6 +646,152 @@ class ExploreScreenState extends State<ExploreScreen> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
       builder: (ctx) => TimelineItemsSheet(avatarId: avatarId),
+    );
+  }
+
+  Widget _buildSocialDropupButton(String avatarId) {
+    final GlobalKey openerKey = GlobalKey();
+    return SizedBox(
+      width: 56,
+      height: 48,
+      child: ElevatedButton(
+        key: openerKey,
+        onPressed: () => _openSocialMenu(openerKey, avatarId),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.black.withValues(alpha: 0.7),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: EdgeInsets.zero,
+        ),
+        child: const FaIcon(FontAwesomeIcons.globe, size: 20, color: Colors.white),
+      ),
+    );
+  }
+
+  void _openSocialMenu(GlobalKey openerKey, String avatarId) async {
+    final ctx = openerKey.currentContext;
+    if (ctx == null) return;
+    final RenderBox button = ctx.findRenderObject() as RenderBox;
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    final double iconSize = 30; // 50% größer als vorher (20 -> 30)
+    final List<PopupMenuEntry<String>> items = [
+      PopupMenuItem<String>(
+        value: 'www',
+        child: Row(
+          children: const [
+            FaIcon(FontAwesomeIcons.globe, color: Colors.white, size: 30),
+            SizedBox(width: 12),
+            Text('Website', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+      ),
+      PopupMenuItem<String>(
+        value: 'instagram',
+        child: Row(
+          children: [
+            const FaIcon(FontAwesomeIcons.instagram, color: Color(0xFFE4405F), size: 30),
+            const SizedBox(width: 12),
+            const Text('Instagram', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+      ),
+      PopupMenuItem<String>(
+        value: 'facebook',
+        child: Row(
+          children: [
+            const FaIcon(FontAwesomeIcons.facebook, color: Color(0xFF1877F2), size: 30),
+            const SizedBox(width: 12),
+            const Text('Facebook', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+      ),
+      PopupMenuItem<String>(
+        value: 'x',
+        child: Row(
+          children: const [
+            FaIcon(FontAwesomeIcons.xTwitter, color: Colors.white, size: 30),
+            SizedBox(width: 12),
+            Text('X', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+      ),
+      PopupMenuItem<String>(
+        value: 'tiktok',
+        child: Row(
+          children: const [
+            FaIcon(FontAwesomeIcons.tiktok, color: Colors.white, size: 30),
+            SizedBox(width: 12),
+            Text('TikTok', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+      ),
+      PopupMenuItem<String>(
+        value: 'linkedin',
+        child: Row(
+          children: const [
+            FaIcon(FontAwesomeIcons.linkedin, color: Color(0xFF0A66C2), size: 30),
+            SizedBox(width: 12),
+            Text('LinkedIn', style: TextStyle(color: Colors.white)),
+          ],
+        ),
+      ),
+    ];
+
+    // showMenu öffnet, bei Platzmangel nach oben (Dropup-Effekt)
+    final selected = await showMenu<String>(
+      context: context,
+      position: position,
+      color: const Color(0xFF1E1E1E),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: items,
+    );
+    if (selected != null) {
+      _openAvatarSocial(selected, avatarId); // schließt automatisch, dann Aktion
+    }
+  }
+
+  // (Legacy GMBC-Button entfernt – aktuell nicht genutzt)
+
+  Widget _brandBtn(Widget icon, VoidCallback onTap) {
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: ElevatedButton(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.black.withValues(alpha: 0.7),
+          foregroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          padding: EdgeInsets.zero,
+        ),
+        child: icon,
+      ),
+    );
+  }
+
+  // (Legacy GMBC-Button entfernt – aktuell nicht genutzt)
+
+  void _openAvatarSocial(String platform, String avatarId) {
+    // Platzhalter: später iFrame/Embedded WebView mit Avatar-Accounts
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Öffne $platform für Avatar $avatarId (bald verfügbar)'),
+        duration: const Duration(seconds: 2),
+        backgroundColor: Colors.black87,
+      ),
     );
   }
 

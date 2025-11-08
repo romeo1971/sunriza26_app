@@ -11,6 +11,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'firebase_options.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'auth_gate.dart';
+import 'screens/auth_screen.dart';
 import 'services/bithuman_service.dart';
 import 'services/video_stream_service.dart';
 import 'services/auth_service.dart';
@@ -435,6 +436,8 @@ class SunrizaApp extends StatelessWidget {
           debugShowCheckedModeBanner: false,
           routes: {
             '/home': (context) => const HomeNavigationScreen(),
+            // Embed-Route: erwartet avatarId via Query (?avatarId=...) oder Route-Args
+            '/embed': (context) => const _EmbedAvatarPage(),
             '/explore': (context) => const ExploreScreen(),
             '/favorites': (context) => const FavoritesScreen(),
             '/profile': (context) => const UserProfilePublicScreen(),
@@ -735,6 +738,82 @@ class _MediaCheckoutPageState extends State<_MediaCheckoutPage> {
     return const Scaffold(
       backgroundColor: Colors.black,
       body: Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+/// Leichte Embed-Seite: fordert Login, leitet danach in AvatarDetails (embed=true)
+class _EmbedAvatarPage extends StatefulWidget {
+  const _EmbedAvatarPage();
+  @override
+  State<_EmbedAvatarPage> createState() => _EmbedAvatarPageState();
+}
+
+class _EmbedAvatarPageState extends State<_EmbedAvatarPage> {
+  User? _user;
+  late final Stream<User?> _authStream;
+  String _avatarId = '';
+  bool _navigated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _authStream = FirebaseAuth.instance.authStateChanges();
+    _extractAvatarId();
+  }
+
+  void _extractAvatarId() {
+    try {
+      // 1) Query ?avatarId=...
+      final uri = Uri.base;
+      final fromQuery = (uri.queryParameters['avatarId'] ?? '').trim();
+      if (fromQuery.isNotEmpty) {
+        _avatarId = fromQuery;
+        return;
+      }
+      // 2) Pfad /embed/<avatarId>
+      final seg = uri.pathSegments;
+      if (seg.isNotEmpty && seg.first == 'embed' && seg.length >= 2) {
+        _avatarId = seg[1].trim();
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<User?>(
+      stream: _authStream,
+      builder: (context, snap) {
+        _user = snap.data;
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            backgroundColor: Colors.black,
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (_user == null) {
+          // Login erforderlich
+          return const AuthScreen();
+        }
+        // Eingeloggt → sauber in Avatar Details navigieren (embed)
+        if (!_navigated) {
+          _navigated = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            Navigator.of(context).pushReplacementNamed(
+              '/avatar-details',
+              arguments: {
+                'avatarId': _avatarId,
+                'embed': true,
+                'fromScreen': 'embed',
+              },
+            );
+          });
+        }
+        return const Scaffold(
+          backgroundColor: Colors.black,
+          body: Center(child: CircularProgressIndicator()),
+        );
+      },
     );
   }
 }

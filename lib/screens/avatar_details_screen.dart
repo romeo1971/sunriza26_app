@@ -6597,6 +6597,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   @override
   Widget build(BuildContext context) {
     final backgroundImage = _profileImageUrl ?? _avatarData?.avatarImageUrl;
+    final isEmbed = ((ModalRoute.of(context)?.settings.arguments is Map)
+            ? ((ModalRoute.of(context)?.settings.arguments as Map)['embed'] == true)
+            : false);
 
     return Scaffold(
       appBar: AppBar(
@@ -6671,7 +6674,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: (_avatarData?.id != null)
+      bottomNavigationBar: (_avatarData?.id != null && !isEmbed)
           ? AvatarBottomNavBar(
               avatarId: _avatarData!.id,
               currentScreen: 'details',
