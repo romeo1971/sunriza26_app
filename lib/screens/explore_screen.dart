@@ -728,47 +728,57 @@ class ExploreScreenState extends State<ExploreScreen> {
             Positioned(
               right: 16,
               bottom: 96, // oberhalb der Bottom-Bar
-              child: Container(
-                width: 260,
-                padding: const EdgeInsets.symmetric(vertical: 12),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFFE91E63), Color(0xFF8AB4F8), Color(0xFF00E5FF)],
-                    stops: [0.0, 0.5, 1.0],
+              child: Material(
+                color: Colors.transparent,
+                child: Container(
+                  width: 260,
+                  constraints: const BoxConstraints(
+                    maxHeight: 180,
+                    minWidth: 200,
                   ),
-                  borderRadius: BorderRadius.circular(16),
-                  boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 16)],
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: links.map((e) {
-                    final provider = e['provider']!;
-                    return InkWell(
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        final embedUrl = _buildSocialEmbedUrl(provider, avatarId);
-                        _openAvatarIframe(embedUrl);
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            _whiteIcon(provider, size: 22),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                provider,
-                                textAlign: TextAlign.left,
-                                style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
-                              ),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFE91E63), Color(0xFF8AB4F8), Color(0xFF00E5FF)],
+                      stops: [0.0, 0.5, 1.0],
+                    ),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 16)],
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: links.map((e) {
+                        final provider = e['provider']!;
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            final embedUrl = _buildSocialEmbedUrl(provider, avatarId);
+                            _openAvatarIframe(embedUrl);
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                _whiteIcon(provider, size: 22),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Text(
+                                    provider,
+                                    textAlign: TextAlign.left,
+                                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                                  ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ),
                 ),
               ),
             ),

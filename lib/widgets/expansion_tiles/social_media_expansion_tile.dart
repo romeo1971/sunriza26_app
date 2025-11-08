@@ -6,6 +6,7 @@ import 'package:encrypt/encrypt.dart' as enc;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../theme/app_theme.dart';
 import '../custom_text_field.dart';
 import 'expansion_tile_base.dart';
@@ -222,26 +223,17 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
   @override
   Widget build(BuildContext context) {
     final children = <Widget>[
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text('Social Media', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-          IconButton(
-            tooltip: 'Neu',
-            icon: const Icon(Icons.add, color: Colors.white),
-            onPressed: () => _startEdit(null),
-          ),
-        ],
-      ),
+      const Text('Social Media', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
       const SizedBox(height: 8),
       if (_loading)
         const Center(child: CircularProgressIndicator())
-      else if (_editingId != null)
-        _buildEditor()
-      else if (_items.isEmpty)
-        const Text('Keine Einträge', style: TextStyle(color: Colors.white60))
-      else
-        ..._items.map(_buildRow),
+      else ...[
+        _buildSimpleRow('facebook', 'Facebook'),
+        _buildSimpleRow('instagram', 'Instagram'),
+        _buildSimpleRow('tiktok', 'TikTok'),
+        _buildSimpleRow('x', 'X'),
+        _buildSimpleRow('linkedin', 'LinkedIn'),
+      ],
     ];
 
     return BaseExpansionTile(
@@ -250,6 +242,78 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
       initiallyExpanded: false,
       children: children,
     );
+  }
+
+  // Neue, vereinfachte Zeile: Verbinden/Trennen je Provider
+  Widget _buildSimpleRow(String key, String label) {
+    final existing = _items.firstWhere(
+      (e) => e.providerName.toLowerCase() == label.toLowerCase() || e.id.toLowerCase() == key,
+      orElse: () => SocialMediaAccount(
+        id: key,
+        providerName: label,
+        url: '',
+        login: '',
+        passwordEnc: '',
+        connected: false,
+      ),
+    );
+    final connected = existing.connected;
+    final icon = _iconForProvider(label);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Row(
+        children: [
+            icon,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(connected ? 'Verbunden' : 'Getrennt', style: const TextStyle(color: Colors.white70, fontSize: 12)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            InkWell(
+              onTap: _connecting ? null : () => _toggleConnectSimple(key, label, !connected),
+              child: _miniToggle(connected),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _toggleConnectSimple(String key, String label, bool next) async {
+    if (_connecting) return;
+    setState(() => _connecting = true);
+    try {
+      if (next) {
+        final projectId = Firebase.apps.isNotEmpty ? Firebase.app().options.projectId : 'sunriza26';
+        final base = 'https://us-central1-$projectId.cloudfunctions.net';
+        final endpoint = key == 'facebook' ? 'fbConnect' : (key == 'instagram' ? 'igConnect' : null);
+        if (endpoint != null) {
+          final url = Uri.parse('$base/$endpoint?avatarId=${Uri.encodeComponent(widget.avatarId)}');
+          await launchUrl(url, mode: LaunchMode.externalApplication);
+        } else {
+          _toast('Provider noch nicht unterstützt');
+        }
+      }
+      await _col().doc(key).set({'providerName': label, 'connected': next, 'updatedAt': Date.now()}, SetOptions(merge: true));
+      await _load();
+      _toast(next ? 'Verbinden gestartet' : 'Getrennt');
+    } catch (e) {
+      _toast('Fehler: $e');
+    } finally {
+      if (mounted) setState(() => _connecting = false);
+    }
   }
 
   Widget _buildEditor() {
