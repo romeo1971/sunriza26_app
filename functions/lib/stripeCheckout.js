@@ -57,7 +57,8 @@ const getStripe = () => {
     if (!secretKey) {
         throw new https_1.HttpsError('failed-precondition', 'Stripe Secret Key nicht konfiguriert');
     }
-    return new stripe_1.default(secretKey, { apiVersion: '2025-09-30.clover' });
+    // Verwende die Stripe-Standardversion (keine API-Version erzwingen)
+    return new stripe_1.default(secretKey);
 };
 exports.createCreditsCheckoutSession = (0, https_1.onCall)({ region: 'us-central1' }, async (req) => {
     const auth = req.auth;

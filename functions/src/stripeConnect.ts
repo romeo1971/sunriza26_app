@@ -11,9 +11,7 @@ const getStripe = () => {
     );
   }
   const Stripe = require('stripe');
-  return new Stripe(secretKey, {
-    apiVersion: '2025-09-30.clover',
-  });
+  return new Stripe(secretKey);
 };
 
 /**
@@ -91,7 +89,20 @@ export const createConnectedAccount = functions
 
       return { accountId: account.id, url: accountLink.url, status: 'pending' };
     } catch (error: any) {
-      console.error('Fehler beim Erstellen des Connected Accounts:', error);
+      // Ausführliches Stripe-Fehlerlogging für schnelle Diagnose
+      try {
+        console.error('Fehler beim Erstellen des Connected Accounts:', {
+          message: error?.message,
+          type: error?.type,
+          code: error?.code,
+          param: error?.param,
+          requestId: error?.requestId || error?.raw?.requestId,
+          raw: error?.raw,
+          stack: error?.stack,
+        });
+      } catch (_) {
+        console.error('Fehler beim Erstellen des Connected Accounts (fallback):', error);
+      }
       throw new functions.https.HttpsError('internal', error.message);
     }
   });
@@ -100,7 +111,12 @@ export const stripeConnectWebhook = functions
   .region('us-central1')
   .https.onRequest(async (req: functions.https.Request, res: functions.Response<any>) => {
     const sig = req.headers['stripe-signature'] as string;
-    const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || functions.config().stripe?.webhook_secret || '').trim();
+    // Eigener Secret für CONNECT‑Webhook, damit Checkout und Connect getrennte Secrets nutzen können
+    const webhookSecret = (
+      process.env.STRIPE_CONNECT_WEBHOOK_SECRET
+      || functions.config().stripe?.connect_webhook_secret
+      || ''
+    ).trim();
     if (!webhookSecret) {
       res.status(500).send('Webhook Secret nicht konfiguriert');
       return;
@@ -117,15 +133,17 @@ export const stripeConnectWebhook = functions
     }
 
     try {
-      switch (event.type) {
-        case 'account.updated':
-          await handleAccountUpdated(event.data.object);
-          break;
-        case 'account.application.deauthorized':
-          await handleAccountDeauthorized(event.data.object);
-          break;
-        default:
-          break;
+      const t = String(event.type || '');
+      if (
+        t === 'account.updated' ||
+        t.startsWith('v2.core.account.updated') ||
+        t.startsWith('v2.core.account[') // includes requirements/configuration.* updates
+      ) {
+        await handleAccountUpdated(event.data.object);
+      } else if (t === 'account.application.deauthorized' || t === 'v2.core.account.closed') {
+        await handleAccountDeauthorized(event.data.object);
+      } else {
+        // ignore other v2 events like account_person.*
       }
       res.json({ received: true });
     } catch (error: any) {
@@ -259,6 +277,127 @@ export const processCreditsPayment = functions
     } catch (error: any) {
       console.error('Credits Payment Error:', error);
       throw new functions.https.HttpsError('internal', error.message);
+    }
+  });
+
+/**
+ * Manuelle Status-Aktualisierung: liest den aktuellen Connect-Status von Stripe
+ * und schreibt ihn in users/{uid}. Für UI-„Status prüfen“-Button gedacht.
+ */
+export const refreshSellerStatus = functions
+  .region('us-central1')
+  .https.onCall(async (_data: any, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
+    }
+    const userId = context.auth.uid;
+    try {
+      const stripe = getStripe();
+      const userDoc = await admin.firestore().collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        throw new functions.https.HttpsError('not-found', 'User nicht gefunden');
+      }
+      const d = userDoc.data()!;
+      const accId: string | undefined = d.stripeConnectAccountId;
+      if (!accId) {
+        throw new functions.https.HttpsError('failed-precondition', 'Kein verbundenes Verkäufer-Konto vorhanden');
+      }
+      const account = await stripe.accounts.retrieve(accId);
+      let status = 'pending';
+      if ((account as any).details_submitted && (account as any).charges_enabled && (account as any).payouts_enabled) {
+        status = 'active';
+      } else if ((account as any)?.requirements?.disabled_reason) {
+        status = 'restricted';
+      }
+      await admin.firestore().collection('users').doc(userId).update({
+        stripeConnectStatus: status,
+        payoutsEnabled: (account as any).payouts_enabled || false,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return { status, payoutsEnabled: (account as any).payouts_enabled || false };
+    } catch (error: any) {
+      console.error('refreshSellerStatus error:', error);
+      throw new functions.https.HttpsError('internal', error?.message || 'Unbekannter Fehler');
+    }
+  });
+
+/**
+ * Verkäufer‑Konto trennen: löscht (Test) bzw. deaktiviert das verbundene Express‑Konto
+ * und setzt die Felder im User‑Dokument zurück.
+ */
+export const disconnectSellerAccount = functions
+  .region('us-central1')
+  .https.onCall(async (_data: any, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
+    }
+    const userId = context.auth.uid;
+    try {
+      const stripe = getStripe();
+      const ref = admin.firestore().collection('users').doc(userId);
+      const snap = await ref.get();
+      if (!snap.exists) {
+        throw new functions.https.HttpsError('not-found', 'User nicht gefunden');
+      }
+      const accId = (snap.data() as any)?.stripeConnectAccountId as string | undefined;
+      if (accId) {
+        try {
+          await stripe.accounts.del(accId);
+        } catch (e) {
+          // Falls nicht löschbar (LIVE), ignoriere und setze Status auf disabled
+          console.warn('accounts.del failed, continue with local cleanup', e);
+        }
+      }
+      await ref.update({
+        isSeller: false,
+        stripeConnectAccountId: admin.firestore.FieldValue.delete(),
+        stripeConnectStatus: 'disabled',
+        payoutsEnabled: false,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      return { ok: true };
+    } catch (error: any) {
+      console.error('disconnectSellerAccount error:', error);
+      throw new functions.https.HttpsError('internal', error?.message || 'Unbekannter Fehler');
+    }
+  });
+
+/**
+ * Nur Anfrage: Verkäufer‑Konto‑Auflösung beantragen (wird von Admin/Plattform ausgeführt).
+ */
+export const requestSellerDisconnect = functions
+  .region('us-central1')
+  .https.onCall(async (_data: any, context: functions.https.CallableContext) => {
+    if (!context.auth) {
+      throw new functions.https.HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
+    }
+    const userId = context.auth.uid;
+    try {
+      const stripe = getStripe();
+      const userRef = admin.firestore().collection('users').doc(userId);
+      const snap = await userRef.get();
+      const accId = (snap.data() as any)?.stripeConnectAccountId as string | undefined;
+      const ts = Date.now().toString();
+      if (accId) {
+        try {
+          await stripe.accounts.update(accId, {
+            metadata: {
+              disconnect_requested: 'true',
+              disconnect_requested_at: ts,
+            },
+          } as any);
+        } catch (e) {
+          console.warn('metadata update failed', e);
+        }
+      }
+      await admin.firestore().collection('users').doc(userId).set({
+        sellerDisconnectRequested: true,
+        sellerDisconnectRequestedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
+      return { ok: true };
+    } catch (e: any) {
+      console.error('requestSellerDisconnect error:', e);
+      throw new functions.https.HttpsError('internal', e?.message || 'Unbekannter Fehler');
     }
   });
 

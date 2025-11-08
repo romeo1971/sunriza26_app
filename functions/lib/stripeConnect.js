@@ -44,9 +44,7 @@ const getStripe = () => {
         throw new functions.https.HttpsError('failed-precondition', 'Stripe Secret Key nicht konfiguriert');
     }
     const Stripe = require('stripe');
-    return new Stripe(secretKey, {
-        apiVersion: '2025-09-30.clover',
-    });
+    return new Stripe(secretKey);
 };
 /**
  * Erstellt Stripe Connected Account für Verkäufer (Seller Onboarding)
@@ -54,7 +52,7 @@ const getStripe = () => {
 exports.createConnectedAccount = functions
     .region('us-central1')
     .https.onCall(async (data, context) => {
-    var _a, _b;
+    var _a, _b, _c;
     if (!context.auth) {
         throw new functions.https.HttpsError('unauthenticated', 'Nutzer muss angemeldet sein');
     }
@@ -113,7 +111,21 @@ exports.createConnectedAccount = functions
         return { accountId: account.id, url: accountLink.url, status: 'pending' };
     }
     catch (error) {
-        console.error('Fehler beim Erstellen des Connected Accounts:', error);
+        // Ausführliches Stripe-Fehlerlogging für schnelle Diagnose
+        try {
+            console.error('Fehler beim Erstellen des Connected Accounts:', {
+                message: error === null || error === void 0 ? void 0 : error.message,
+                type: error === null || error === void 0 ? void 0 : error.type,
+                code: error === null || error === void 0 ? void 0 : error.code,
+                param: error === null || error === void 0 ? void 0 : error.param,
+                requestId: (error === null || error === void 0 ? void 0 : error.requestId) || ((_c = error === null || error === void 0 ? void 0 : error.raw) === null || _c === void 0 ? void 0 : _c.requestId),
+                raw: error === null || error === void 0 ? void 0 : error.raw,
+                stack: error === null || error === void 0 ? void 0 : error.stack,
+            });
+        }
+        catch (_) {
+            console.error('Fehler beim Erstellen des Connected Accounts (fallback):', error);
+        }
         throw new functions.https.HttpsError('internal', error.message);
     }
 });
@@ -122,7 +134,10 @@ exports.stripeConnectWebhook = functions
     .https.onRequest(async (req, res) => {
     var _a;
     const sig = req.headers['stripe-signature'];
-    const webhookSecret = (process.env.STRIPE_WEBHOOK_SECRET || ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.webhook_secret) || '').trim();
+    // Eigener Secret für CONNECT‑Webhook, damit Checkout und Connect getrennte Secrets nutzen können
+    const webhookSecret = (process.env.STRIPE_CONNECT_WEBHOOK_SECRET
+        || ((_a = functions.config().stripe) === null || _a === void 0 ? void 0 : _a.connect_webhook_secret)
+        || '').trim();
     if (!webhookSecret) {
         res.status(500).send('Webhook Secret nicht konfiguriert');
         return;
@@ -138,15 +153,18 @@ exports.stripeConnectWebhook = functions
         return;
     }
     try {
-        switch (event.type) {
-            case 'account.updated':
-                await handleAccountUpdated(event.data.object);
-                break;
-            case 'account.application.deauthorized':
-                await handleAccountDeauthorized(event.data.object);
-                break;
-            default:
-                break;
+        const t = String(event.type || '');
+        if (t === 'account.updated' ||
+            t.startsWith('v2.core.account.updated') ||
+            t.startsWith('v2.core.account[') // includes requirements/configuration.* updates
+        ) {
+            await handleAccountUpdated(event.data.object);
+        }
+        else if (t === 'account.application.deauthorized' || t === 'v2.core.account.closed') {
+            await handleAccountDeauthorized(event.data.object);
+        }
+        else {
+            // ignore other v2 events like account_person.*
         }
         res.json({ received: true });
     }

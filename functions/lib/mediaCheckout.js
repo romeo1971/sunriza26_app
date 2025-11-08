@@ -48,7 +48,8 @@ const getStripe = () => {
     if (!secretKey) {
         throw new functions.https.HttpsError('failed-precondition', 'Stripe Secret Key nicht konfiguriert');
     }
-    return new stripe_1.default(secretKey, { apiVersion: '2025-09-30.clover' });
+    // Verwende die Stripe-Standardversion (keine API-Version erzwingen)
+    return new stripe_1.default(secretKey);
 };
 /**
  * Cloud Function: Stripe Checkout Session für Media-Kauf

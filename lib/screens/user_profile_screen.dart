@@ -13,11 +13,11 @@ import '../theme/app_theme.dart';
 import '../widgets/custom_text_field.dart';
 import '../widgets/custom_date_field.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:flutter/foundation.dart';
-import 'dart:io';
+import 'dart:async';
 
 class UserProfileScreen extends StatefulWidget {
   const UserProfileScreen({super.key});
@@ -26,7 +26,7 @@ class UserProfileScreen extends StatefulWidget {
   State<UserProfileScreen> createState() => _UserProfileScreenState();
 }
 
-class _UserProfileScreenState extends State<UserProfileScreen> {
+class _UserProfileScreenState extends State<UserProfileScreen> with WidgetsBindingObserver {
   final TextEditingController _displayNameController = TextEditingController();
   final TextEditingController _firstNameController = TextEditingController();
   final TextEditingController _lastNameController = TextEditingController();
@@ -45,11 +45,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
   DateTime? _selectedDob;
   bool _uploadingPhoto = false;
   String? _profileImageUrl;
+  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? _userDocSub;
+  bool _pendingStripeRefresh = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _load();
+    _subscribeProfileUpdates();
   }
 
   void _attachListeners() {
@@ -67,6 +71,38 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _postalCodeController.addListener(() => setState(() => _hasChanges = true));
     _countryController.addListener(() => setState(() => _hasChanges = true));
     _phoneController.addListener(() => setState(() => _hasChanges = true));
+  }
+
+  void _subscribeProfileUpdates() {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    _userDocSub?.cancel();
+    _userDocSub = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .snapshots()
+        .listen((snap) {
+      if (!snap.exists) return;
+      final data = snap.data();
+      if (data == null) return;
+      final updated = UserProfile.fromMap({'uid': uid, ...data});
+      if (!mounted) return;
+      setState(() {
+        _profile = updated;
+        // Halte Image‑URL in Sync
+        _profileImageUrl = updated.profileImageUrl;
+      });
+    });
+  }
+
+  Future<void> _refreshStripeStatus() async {
+    try {
+      final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
+      await fns.httpsCallable('refreshSellerStatus').call();
+    } catch (e) {
+      // still silently ignore; UI aktualisiert sich über Live-Listener
+      debugPrint('refreshStripeStatus error: $e');
+    }
   }
 
   void _markChanged() {
@@ -374,7 +410,15 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
       // WICHTIG: Sofort in Firestore speichern (nur erlaubte Felder)
       if (url != null) {
-        await _userService.updateCurrentUserProfileImageUrl(url);
+        // Fallback: aktualisiere das User‑Dokument über updateUserProfile,
+        // falls direkte Image-URL‑Methode nicht verfügbar ist.
+        final updated = _profile?.copyWith(
+          profileImageUrl: url,
+          updatedAt: DateTime.now().millisecondsSinceEpoch,
+        );
+        if (updated != null) {
+          await _userService.updateUserProfile(updated);
+        }
         debugPrint('✅ ProfileImageUrl saved to Firestore: $url');
         if (_profile != null) {
           _profile = _profile!.copyWith(
@@ -689,8 +733,8 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
 
                   const SizedBox(height: 6),
 
-                  // Zahlungsmoethoden - ExpansionTile wie im Details Screen
-                  _buildExpandableSection('Zahlungsmoethoden', [
+                  // Zahlungsmethoden - ExpansionTile wie im Details Screen
+                  _buildExpandableSection('Zahlungsmethoden', [
                     _buildPaymentSection(),
                   ]),
 
@@ -794,59 +838,90 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
             const SizedBox(width: 12),
             Expanded(
               child: Text(
-                _profile?.stripeCustomerId != null
-                    ? context.read<LocalizationService>().t(
-                        'profile.paymentsConfigured',
-                      )
-                    : context.read<LocalizationService>().t(
-                        'profile.noPayments',
-                      ),
+                (() {
+                  final accId = _profile?.stripeConnectAccountId;
+                  final status = (_profile?.stripeConnectStatus ?? '').toLowerCase();
+                  final payouts = _profile?.payoutsEnabled ?? false;
+                  if (accId == null || accId.isEmpty) {
+                    return 'Noch kein Verkäufer-Konto verbunden.';
+                  }
+                  if (payouts || status == 'active') {
+                    return 'Du bist erfolgreich als Verkäufer bei hauau integriert.';
+                  }
+                  return 'Du bist erfolgreich als Verkäufer bei hauau integriert.';
+                })(),
                 style: const TextStyle(color: Colors.white),
               ),
             ),
+            // Status wird im Hintergrund aktualisiert; kein Button nötig
           ],
         ),
         const SizedBox(height: 12),
-        ElevatedButton(
-          onPressed: _manageStripeConnect,
-          style:
-              ElevatedButton.styleFrom(
-                backgroundColor: Colors.transparent,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-              ).copyWith(
-                backgroundColor: WidgetStateProperty.all(Colors.transparent),
-                overlayColor: WidgetStateProperty.all(
-                  Colors.white.withValues(alpha: 0.1),
+        if ((_profile?.stripeConnectAccountId ?? '').isNotEmpty) ...[
+          // Verbunden: Option zum Trennen (mit Bestätigung)
+          OutlinedButton(
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Verbindung trennen'),
+                  content: const Text('Willst du das Verkäufer‑Konto wirklich trennen?'),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
+                    TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Trennen')),
+                  ],
                 ),
-              ),
-          child: Container(
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFEC4899), Color(0xFF8B5CF6)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(4),
+              );
+              if (ok == true) {
+                try {
+                  final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
+                  await fns.httpsCallable('disconnectSellerAccount').call();
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
+                }
+              }
+            },
+            style: OutlinedButton.styleFrom(
+              side: const BorderSide(color: Colors.white24),
+              foregroundColor: Colors.white70,
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
             ),
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            child: const Center(
-              child: Text(
-                'Verwalten',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+            child: const Text('Verkäufer‑Konto trennen'),
           ),
-        ),
-        if (_profile?.stripeConnectAccountId != null) ...[
           const SizedBox(height: 8),
           TextButton.icon(
             onPressed: _openStripeDashboard,
             icon: const Icon(Icons.open_in_new, color: Colors.white70),
             label: const Text('Stripe Dashboard öffnen', style: TextStyle(color: Colors.white70)),
+          ),
+        ] else ...[
+          // Noch nicht verbunden: auffälliger CTA zum Starten des Onboardings
+          ElevatedButton(
+            onPressed: _manageStripeConnect,
+            style:
+                ElevatedButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ).copyWith(
+                  backgroundColor: WidgetStateProperty.all(Colors.transparent),
+                  overlayColor: WidgetStateProperty.all(
+                    Colors.white.withValues(alpha: 0.1),
+                  ),
+                ),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFEC4899), Color(0xFF8B5CF6)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: const Center(child: Text('Als Verkäufer verbinden', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+            ),
           ),
         ],
       ],
@@ -858,13 +933,22 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) return;
 
-      final countryRaw = _countryController.text.trim();
-      final country = (countryRaw.isNotEmpty ? countryRaw : (_profile?.country ?? 'DE')).toUpperCase();
-      final email = user.email ?? _profile?.email ?? '';
+      // 1) Seller-Infos via Bottom‑Sheet bestätigen/erfassen
+      final info = await _showStripeOnboardingSheet(
+        initialCountry: (_countryController.text.trim().isNotEmpty
+                ? _countryController.text.trim()
+                : (_profile?.country ?? 'DE'))
+            .toUpperCase(),
+        initialEmail: (user.email ?? _profile?.email ?? ''),
+      );
+      if (info == null) return; // abgebrochen
 
+      final country = info['country']!.toUpperCase();
+      final email = info['email']!;
+
+      // 2) Cloud Function aufrufen
       final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
       final fn = fns.httpsCallable('createConnectedAccount');
-
       final res = await fn.call({
         'country': country,
         'email': email,
@@ -875,23 +959,142 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
       final url = data['url'] as String?;
       if (url == null || url.isEmpty) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kein Onboarding-Link erhalten')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Kein Onboarding‑Link von Stripe erhalten')),
+          );
         }
         return;
       }
 
+      // 3) Onboarding im externen Browser öffnen
       final uri = Uri.parse(url);
       if (await canLaunchUrl(uri)) {
+        _pendingStripeRefresh = true;
         await launchUrl(uri, mode: LaunchMode.externalApplication, webOnlyWindowName: '_blank');
       } else {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kann Link nicht öffnen: $url')));
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Link kann nicht geöffnet werden: $url')),
+          );
         }
       }
+    } on FirebaseFunctionsException catch (e) {
+      if (!mounted) return;
+      String msg = e.message ?? 'Unbekannter Fehler';
+      if (e.code == 'failed-precondition' &&
+          (msg.contains('Stripe Secret Key') || msg.contains('Webhook'))) {
+        msg = 'Stripe‑Konfiguration fehlt am Server. Bitte STRIPE_SECRET_KEY/WEBHOOK_SECRET setzen.';
+      } else if (e.code == 'unauthenticated') {
+        msg = 'Bitte erst anmelden, um Stripe Connect zu starten.';
+      } else if (e.code == 'invalid-argument') {
+        msg = 'Bitte Land (ISO‑Code) und E‑Mail korrekt eingeben.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $msg')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler: $e')));
     }
+  }
+
+  Future<Map<String, String>?> _showStripeOnboardingSheet({
+    required String initialCountry,
+    required String initialEmail,
+  }) async {
+    final TextEditingController countryCtrl = TextEditingController(text: initialCountry);
+    final TextEditingController emailCtrl = TextEditingController(text: initialEmail);
+    String? errorText;
+
+    return await showModalBottomSheet<Map<String, String>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 16,
+            right: 16,
+            top: 16,
+            bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+          ),
+          child: StatefulBuilder(
+            builder: (ctx, setState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Stripe Connect einrichten', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.all(12),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('So funktioniert es:', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                      SizedBox(height: 6),
+                      Text('1) Wähle dein Land (ISO‑Code, z. B. DE).', style: TextStyle(color: Colors.white70)),
+                      Text('2) Gib deine E‑Mail an (für Stripe).', style: TextStyle(color: Colors.white70)),
+                      Text('3) Wir öffnen den Stripe‑Onboarding‑Link.', style: TextStyle(color: Colors.white70)),
+                      Text('4) Nach Abschluss setzt Stripe deinen Auszahlungsstatus.', style: TextStyle(color: Colors.white70)),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: countryCtrl,
+                  textCapitalization: TextCapitalization.characters,
+                  decoration: const InputDecoration(
+                    labelText: 'Land (ISO, z. B. DE)',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: emailCtrl,
+                  keyboardType: TextInputType.emailAddress,
+                  decoration: const InputDecoration(
+                    labelText: 'E‑Mail',
+                  ),
+                ),
+                if (errorText != null) ...[
+                  const SizedBox(height: 8),
+                  Text(errorText!, style: const TextStyle(color: Colors.orange)),
+                ],
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(ctx),
+                        child: const Text('Abbrechen'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final c = countryCtrl.text.trim().toUpperCase();
+                          final e = emailCtrl.text.trim();
+                          final bool okCountry = c.isNotEmpty && c.length >= 2 && c.length <= 5;
+                          final bool okEmail = e.contains('@') && e.contains('.');
+                          if (!okCountry || !okEmail) {
+                            setState(() => errorText = 'Bitte gültiges Land (ISO) und E‑Mail angeben.');
+                            return;
+                          }
+                          Navigator.pop(ctx, {'country': c, 'email': e});
+                        },
+                        child: const Text('Weiter zu Stripe'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   Future<void> _openStripeDashboard() async {
@@ -922,6 +1125,17 @@ class _UserProfileScreenState extends State<UserProfileScreen> {
     _postalCodeController.dispose();
     _countryController.dispose();
     _phoneController.dispose();
+    _userDocSub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _pendingStripeRefresh) {
+      _pendingStripeRefresh = false;
+      _refreshStripeStatus();
+    }
+  }
 }
+

@@ -8,7 +8,8 @@ const getStripe = () => {
   if (!secretKey) {
     throw new functions.https.HttpsError('failed-precondition', 'Stripe Secret Key nicht konfiguriert');
   }
-  return new Stripe(secretKey, { apiVersion: '2025-09-30.clover' });
+  // Verwende die Stripe-Standardversion (keine API-Version erzwingen)
+  return new Stripe(secretKey);
 };
 
 /**
