@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:http/http.dart' as http;
 import '../models/avatar_data.dart';
 import '../widgets/app_drawer.dart';
 import 'home_navigation_screen.dart';
@@ -926,32 +928,30 @@ class ExploreScreenState extends State<ExploreScreen> {
                 scrollDirection: Axis.vertical,
                 itemBuilder: (c, i) {
                   final url = urls[i % urls.length];
-                  final html = '''
-<!doctype html>
-<html>
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <style>html,body{height:100%;margin:0;background:#000;display:flex;align-items:center;justify-content:center} .wrap{width:100%}</style>
-  </head>
-  <body>
-    <div class="wrap">
-      <blockquote class="tiktok-embed" cite="$url" style="max-width:100%;min-width:100%;"></blockquote>
-      <script async src="https://www.tiktok.com/embed.js"></script>
-    </div>
-  </body>
-</html>
-''';
-                  return Center(
-                    child: AspectRatio(
-                      aspectRatio: 9 / 16,
-                      child: InAppWebView(
-                        initialData: InAppWebViewInitialData(data: html, mimeType: 'text/html', encoding: 'utf-8'),
-                        initialSettings: InAppWebViewSettings(
-                          transparentBackground: true,
-                          mediaPlaybackRequiresUserGesture: true,
+                  return FutureBuilder<InAppWebViewInitialData>(
+                    future: _buildTikTokOEmbed(url),
+                    builder: (context, snap) {
+                      if (!snap.hasData) {
+                        return const Center(child: CircularProgressIndicator());
+                      }
+                      return Center(
+                        child: AspectRatio(
+                          aspectRatio: 9 / 16,
+                          child: InAppWebView(
+                            initialData: snap.data,
+                            initialSettings: InAppWebViewSettings(
+                              transparentBackground: true,
+                              mediaPlaybackRequiresUserGesture: true,
+                              disableContextMenu: true,
+                              supportZoom: false,
+                            ),
+                            onConsoleMessage: (controller, consoleMessage) {
+                              // Console-Logs unterdrücken
+                            },
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   );
                 },
               ),
@@ -968,6 +968,36 @@ class ExploreScreenState extends State<ExploreScreen> {
         );
       },
     );
+  }
+
+  Future<InAppWebViewInitialData> _buildTikTokOEmbed(String postUrl) async {
+    String body = '';
+    try {
+      final resp = await http.get(Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(postUrl)}'));
+      if (resp.statusCode == 200) {
+        final m = jsonDecode(resp.body) as Map<String, dynamic>;
+        final html = (m['html'] as String?) ?? '';
+        body = html;
+      }
+    } catch (_) {}
+    if (body.isEmpty) {
+      body = '<blockquote class="tiktok-embed" cite="$postUrl" style="max-width:100%;min-width:100%;"></blockquote><script async src="https://www.tiktok.com/embed.js"></script>';
+    } else if (!body.contains('embed.js')) {
+      body = '$body<script async src="https://www.tiktok.com/embed.js"></script>';
+    }
+    final doc = '''
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>html,body{height:100%;margin:0;background:#000;display:flex;align-items:center;justify-content:center} .wrap{width:100%}</style>
+  </head>
+  <body>
+    <div class="wrap">$body</div>
+  </body>
+</html>
+''';
+    return InAppWebViewInitialData(data: doc, mimeType: 'text/html', encoding: 'utf-8');
   }
 
 }
