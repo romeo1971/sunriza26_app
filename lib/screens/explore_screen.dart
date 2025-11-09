@@ -507,22 +507,19 @@ class ExploreScreenState extends State<ExploreScreen> {
               // Social iFrame Overlay (zwischen Header und Footer)
               if (_socialOverlayUrl != null)
                 Positioned(
-                  top: MediaQuery.of(context).padding.top + 56 + 8,
+                  top: MediaQuery.of(context).padding.top + 56,
                   left: 0,
                   right: 0,
                   // exakt über der unteren Button-Leiste verbleiben
                   bottom: MediaQuery.of(context).padding.bottom + 16 + 48,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: InAppWebView(
-                      initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
-                      initialUrlRequest: URLRequest(url: WebUri(_socialOverlayUrl!)),
-                    ),
+                  child: InAppWebView(
+                    initialSettings: InAppWebViewSettings(javaScriptEnabled: true),
+                    initialUrlRequest: URLRequest(url: WebUri(_socialOverlayUrl!)),
                   ),
                 ),
               if (_socialOverlayUrl != null)
                 Positioned(
-                  top: MediaQuery.of(context).padding.top + 56 + 12,
+                  top: MediaQuery.of(context).padding.top + 56 + 8,
                   right: 12,
                   child: GestureDetector(
                     onTap: () => setState(() => _socialOverlayUrl = null),
@@ -649,8 +646,8 @@ class ExploreScreenState extends State<ExploreScreen> {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    // Social Dropup (öffnet Menü nach oben)
-                    _buildSocialDropupButton(avatar.id, height: 40),
+                    // Social Dropup (öffnet Menü nach oben) – kompakter
+                    _buildSocialDropupButton(avatar.id, height: 36),
                   ],
                 ),
               ),
@@ -722,24 +719,21 @@ class ExploreScreenState extends State<ExploreScreen> {
             ),
             // Dropup Panel
             Positioned(
-              right: 16,
-              bottom: 96, // oberhalb der Bottom-Bar
+              right: 12,
+              bottom: 88, // oberhalb der Bottom-Bar, kompakter
               child: Material(
                 color: Colors.transparent,
                 child: Container(
-                  width: 260,
-                  constraints: const BoxConstraints(
-                    maxHeight: 180,
-                    minWidth: 200,
-                  ),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  width: 200,
+                  constraints: const BoxConstraints(maxHeight: 140, minWidth: 160),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [Color(0xFFE91E63), Color(0xFF8AB4F8), Color(0xFF00E5FF)],
                       stops: [0.0, 0.5, 1.0],
                     ),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 16)],
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 12)],
                   ),
                   child: SingleChildScrollView(
                     child: Column(
@@ -759,17 +753,17 @@ class ExploreScreenState extends State<ExploreScreen> {
                             }
                           },
                           child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
-                                _whiteIcon(provider, size: 22),
-                                const SizedBox(width: 12),
+                                _whiteIcon(provider, size: 18),
+                                const SizedBox(width: 10),
                                 Expanded(
                                   child: Text(
                                     provider,
                                     textAlign: TextAlign.left,
-                                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600),
+                                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
                                   ),
                                 ),
                               ],
@@ -918,7 +912,7 @@ class ExploreScreenState extends State<ExploreScreen> {
         .where((e) => e.isNotEmpty)
         .toList();
     if (urls.isEmpty) return;
-    final topInset = MediaQuery.of(context).padding.top + 56 + 8;
+    final topInset = MediaQuery.of(context).padding.top + 56;
     final bottomInset = MediaQuery.of(context).padding.bottom + 16 + 48;
     await showDialog(
       context: context,
@@ -935,22 +929,14 @@ class ExploreScreenState extends State<ExploreScreen> {
               left: 0,
               right: 0,
               bottom: bottomInset,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Container(
-                  color: const Color(0xFF121212),
-                  child: _TikTokOverviewOverlay(
-                    urls: urls,
-                    onSelect: (index) {
-                      Navigator.pop(context);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          fullscreenDialog: true,
-                          builder: (_) => _TikTokFullscreenViewer(urls: urls, initialIndex: index),
-                        ),
-                      );
-                    },
-                  ),
+              child: Container(
+                color: const Color(0xFF121212),
+                child: _TikTokOverviewOverlay(
+                  urls: urls,
+                  onSelect: (index) {
+                    Navigator.pop(context);
+                    _openSingleTikTokOverlay(urls[index]);
+                  },
                 ),
               ),
             ),
@@ -975,6 +961,100 @@ class ExploreScreenState extends State<ExploreScreen> {
         );
       },
     );
+  }
+
+  Future<void> _openSingleTikTokOverlay(String url) async {
+    final topInset = MediaQuery.of(context).padding.top + 56;
+    final bottomInset = MediaQuery.of(context).padding.bottom + 16 + 48;
+    final html = await _buildTikTokOverlayHtml(url);
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      builder: (_) {
+        InAppWebViewController? controller;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(onTap: () => Navigator.pop(context)),
+            ),
+            Positioned(
+              top: topInset,
+              left: 0,
+              right: 0,
+              bottom: bottomInset,
+              child: InAppWebView(
+                initialData: InAppWebViewInitialData(data: html, mimeType: 'text/html', encoding: 'utf-8'),
+                initialSettings: InAppWebViewSettings(
+                  transparentBackground: false,
+                  javaScriptEnabled: true,
+                  mediaPlaybackRequiresUserGesture: false,
+                  disableContextMenu: true,
+                  supportZoom: false,
+                  verticalScrollBarEnabled: true,
+                ),
+                onWebViewCreated: (c) {
+                  controller = c;
+                  c.addJavaScriptHandler(
+                    handlerName: 'close',
+                    callback: (args) {
+                      Navigator.pop(context);
+                      return null;
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<String> _buildTikTokOverlayHtml(String postUrl) async {
+    String body = '';
+    try {
+      final resp = await http.get(Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(postUrl)}'));
+      if (resp.statusCode == 200) {
+        final m = jsonDecode(resp.body) as Map<String, dynamic>;
+        body = (m['html'] as String?) ?? '';
+      }
+    } catch (_) {}
+    if (body.isEmpty) {
+      body = '<blockquote class="tiktok-embed" cite="$postUrl" style="max-width:100%;min-width:100%;"></blockquote>';
+    }
+    return '''
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>
+      * { overscroll-behavior: none; }
+      html, body { margin:0; padding:0; background:#000; height:100%; overflow-x:hidden; overflow-y:auto; border-radius:0 !important; }
+      body { -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+      .wrap { position:relative; width:100%; height:100vh; display:flex; align-items:flex-start; justify-content:center; overflow:hidden; border-radius:0 !important; }
+      .inner { width:min(600px, 100%); max-height:100vh; overflow-y:auto; overflow-x:hidden; margin:0; padding:0; border-radius:0 !important; -webkit-overflow-scrolling: touch; }
+      ::-webkit-scrollbar { display:none; }
+      /* TikTok embed: jegliche Außenabstände/Rundungen entfernen */
+      .tiktok-embed { margin:0 !important; padding:0 !important; border-radius:0 !important; }
+      .tiktok-embed *, iframe, video, canvas { border-radius:0 !important; }
+      .close {
+        position: absolute; top: 0px; right: 12px; width: 36px; height: 36px;
+        border-radius: 18px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2);
+        display:flex; align-items:center; justify-content:center; color:#fff; font-size:20px; cursor:pointer; z-index:9999;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="close" onclick="window.flutter_inappwebview.callHandler('close')">✕</div>
+      <div class="inner">$body</div>
+    </div>
+    <script async src="https://www.tiktok.com/embed.js"></script>
+  </body>
+</html>
+''';
   }
 
   Future<void> _openTikTokVerticalViewer(String avatarId) async {
