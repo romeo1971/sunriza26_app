@@ -276,8 +276,8 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
       future: _col().doc('instagram').get(),
       builder: (context, snap) {
         final data = snap.data?.data() ?? {};
-        final manualUrls = ((data['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
-        final connected = manualUrls.isNotEmpty;
+        final profileUrl = (data['profileUrl'] as String?)?.trim() ?? '';
+        final connected = profileUrl.isNotEmpty;
         return Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
@@ -294,11 +294,18 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
                   const FaIcon(FontAwesomeIcons.instagram, color: Color(0xFFE4405F), size: 20),
                   const SizedBox(width: 10),
                   const Expanded(child: Text('Instagram', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
-                  Text('Anzahl Posts: ${manualUrls.length}', style: const TextStyle(color: Colors.white70)),
+                  Flexible(
+                    child: Text(
+                      connected ? profileUrl : 'Kein Account verknüpft',
+                      style: const TextStyle(color: Colors.white70),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
                   IconButton(
                     tooltip: 'Bearbeiten',
                     icon: const Icon(Icons.edit, color: Colors.white70, size: 18),
-                    onPressed: () => _openIgEdit(manualUrls, connected),
+                    onPressed: () => _openIgEdit(profileUrl, connected),
                   ),
                 ],
               ),
@@ -341,8 +348,7 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
     );
   }
 
-  void _openIgEdit(List<String> currentManual, bool connected) {
-    final manualCtrl = TextEditingController(text: currentManual.join('\n'));
+  void _openIgEdit(String currentProfile, bool connected) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -358,11 +364,7 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
                 bottom: MediaQuery.of(ctx).viewInsets.bottom + 12,
                 left: 16, right: 16, top: 16,
               ),
-              child: _IgEditor(
-                initialUrls: currentManual,
-                avatarId: widget.avatarId,
-                onSaved: () async { await _load(); },
-              ),
+              child: _IgAccountEditor(initialProfile: currentProfile, avatarId: widget.avatarId, onSaved: () async { await _load(); }),
             ),
           ),
         );
@@ -370,6 +372,83 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
     );
   }
 
+}
+
+class _IgAccountEditor extends StatefulWidget {
+  final String initialProfile;
+  final String avatarId;
+  final Future<void> Function() onSaved;
+  const _IgAccountEditor({required this.initialProfile, required this.avatarId, required this.onSaved});
+
+  @override
+  State<_IgAccountEditor> createState() => _IgAccountEditorState();
+}
+
+class _IgAccountEditorState extends State<_IgAccountEditor> {
+  late final TextEditingController _profileCtrl;
+  @override
+  void initState() {
+    super.initState();
+    _profileCtrl = TextEditingController(text: widget.initialProfile);
+  }
+  @override
+  void dispose() {
+    _profileCtrl.dispose();
+    super.dispose();
+  }
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Instagram Account', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _profileCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Profil-URL',
+                  hintText: 'https://www.instagram.com/username/',
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Speichern',
+              icon: const Icon(Icons.check, color: Colors.white),
+              onPressed: _isValidProfile(_profileCtrl.text) ? () async {
+                final url = _normalizeProfileUrl(_profileCtrl.text);
+                await FirebaseFirestore.instance.collection('avatars').doc(widget.avatarId)
+                    .collection('social_accounts').doc('instagram')
+                    .set({
+                  'providerName': 'Instagram',
+                  'profileUrl': url,
+                  'manualUrls': <String>[],
+                  'connected': url.isNotEmpty,
+                  'updatedAt': DateTime.now().millisecondsSinceEpoch,
+                }, SetOptions(merge: true));
+                await widget.onSaved();
+                if (mounted) Navigator.pop(context);
+              } : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        const Text('Beispiel: https://www.instagram.com/ralf_matten/', style: TextStyle(color: Colors.white54, fontSize: 10)),
+      ],
+    );
+  }
+  bool _isValidProfile(String s) {
+    final u = s.trim();
+    return u.startsWith('http') && u.contains('instagram.com/');
+  }
+  String _normalizeProfileUrl(String raw) {
+    final r = raw.trim().split('?').first.split('#').first;
+    return r.endsWith('/') ? r : '$r/';
+  }
 }
 
 class _IgEditor extends StatefulWidget {
@@ -385,6 +464,7 @@ class _IgEditor extends StatefulWidget {
 class _IgEditorState extends State<_IgEditor> {
   final TextEditingController _addUrlCtrl = TextEditingController();
   final Map<String, String> _thumbByUrl = <String, String>{};
+  final Map<String, Uint8List> _thumbBytesByUrl = <String, Uint8List>{};
   late List<String> _urls;
   int _page = 0;
   // dynamisch nach Breite
@@ -504,6 +584,7 @@ class _IgEditorState extends State<_IgEditor> {
     final url = _urls[index];
     _fetchThumb(url);
     final thumb = _thumbByUrl[url];
+    final thumbBytes = _thumbBytesByUrl[url];
     return Stack(
       children: [
         SizedBox(
@@ -512,17 +593,19 @@ class _IgEditorState extends State<_IgEditor> {
             aspectRatio: 9 / 16,
             child: ClipRRect(
               borderRadius: BorderRadius.circular(8),
-              child: thumb == null
+              child: (thumb == null && thumbBytes == null)
                   ? Container(color: Colors.white10, child: const Center(child: Icon(Icons.photo, color: Colors.white54)))
-                  : Image.network(
-                      thumb,
+                  : (thumbBytes != null
+                      ? Image.memory(thumbBytes, fit: BoxFit.cover)
+                      : Image.network(
+                      thumb!,
                       fit: BoxFit.cover,
                       headers: const {
                         'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
                         'Referer': 'https://www.instagram.com/',
                         'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
                       },
-                    ),
+                    )),
             ),
           ),
         ),
@@ -575,13 +658,66 @@ class _IgEditorState extends State<_IgEditor> {
   Future<void> _fetchThumb(String url) async {
     if (_thumbByUrl.containsKey(url)) return;
     try {
+      // 0) Server-Proxy (robuster gegen IG-Blockaden)
+      final cf = await http.get(
+        Uri.parse('https://us-central1-sunriza26.cloudfunctions.net/instagramThumb?url=${Uri.encodeComponent(url)}'),
+        headers: const {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+        },
+      );
+      if (cf.statusCode == 200) {
+        final m = jsonDecode(cf.body) as Map<String, dynamic>;
+        final t = (m['thumb'] as String?) ?? '';
+        if (t.isNotEmpty) {
+          try {
+            final img = await http.get(Uri.parse(t), headers: const {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+              'Referer': 'https://www.instagram.com/',
+              'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+            });
+            if (img.statusCode == 200 && img.bodyBytes.isNotEmpty) {
+              setState(() { _thumbBytesByUrl[url] = img.bodyBytes; });
+              return;
+            } else {
+              setState(() { _thumbByUrl[url] = t; });
+              return;
+            }
+          } catch (_) {
+            setState(() { _thumbByUrl[url] = t; });
+            return;
+          }
+        }
+      }
+    } catch (_) {}
+    try {
       // Versuche oEmbed ohne Token (kann je nach Region eingeschränkt sein)
-      final resp = await http.get(Uri.parse('https://www.instagram.com/oembed/?url=${Uri.encodeComponent(url)}'));
+      final resp = await http.get(
+        Uri.parse('https://www.instagram.com/oembed/?url=${Uri.encodeComponent(url)}'),
+        headers: const {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'Accept': 'application/json',
+          'Referer': 'https://www.instagram.com/',
+        },
+      );
       if (resp.statusCode == 200) {
         final m = jsonDecode(resp.body) as Map<String, dynamic>;
         final thumb = (m['thumbnail_url'] as String?) ?? '';
         if (thumb.isNotEmpty) {
-          setState(() { _thumbByUrl[url] = thumb; });
+          try {
+            final img = await http.get(Uri.parse(thumb), headers: const {
+              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+              'Referer': 'https://www.instagram.com/',
+              'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+            });
+            if (img.statusCode == 200 && img.bodyBytes.isNotEmpty) {
+              setState(() { _thumbBytesByUrl[url] = img.bodyBytes; });
+            } else {
+              setState(() { _thumbByUrl[url] = thumb; });
+            }
+          } catch (_) {
+            setState(() { _thumbByUrl[url] = thumb; });
+          }
         }
       }
     } catch (_) {}
@@ -605,7 +741,59 @@ class _IgEditorState extends State<_IgEditor> {
             img = regTw.firstMatch(html)?.group(1) ?? '';
           }
           if (img.isNotEmpty) {
-            setState(() { _thumbByUrl[url] = img; });
+            try {
+              final rr = await http.get(Uri.parse(img), headers: const {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                'Referer': 'https://www.instagram.com/',
+                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+              });
+              if (rr.statusCode == 200 && rr.bodyBytes.isNotEmpty) {
+                setState(() { _thumbBytesByUrl[url] = rr.bodyBytes; });
+              } else {
+                setState(() { _thumbByUrl[url] = img; });
+              }
+            } catch (_) {
+              setState(() { _thumbByUrl[url] = img; });
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    // Zusätzlicher Fallback: öffentliche Embed-Seite laden und daraus OG/Twitter-Image extrahieren
+    if (!_thumbByUrl.containsKey(url) && !_thumbBytesByUrl.containsKey(url)) {
+      try {
+        final embed = '${normalizeInstagramPermalink(url)}embed';
+        final r = await http.get(
+          Uri.parse(embed),
+          headers: const {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            'Accept': 'text/html',
+            'Referer': 'https://www.instagram.com/',
+          },
+        );
+        if (r.statusCode == 200) {
+          final html = r.body;
+          final regOg = RegExp(r'''<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+          final regTw = RegExp(r'''<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+          String img = regOg.firstMatch(html)?.group(1) ?? '';
+          if (img.isEmpty) {
+            img = regTw.firstMatch(html)?.group(1) ?? '';
+          }
+          if (img.isNotEmpty) {
+            try {
+              final rr = await http.get(Uri.parse(img), headers: const {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                'Referer': 'https://www.instagram.com/',
+                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+              });
+              if (rr.statusCode == 200 && rr.bodyBytes.isNotEmpty) {
+                setState(() { _thumbBytesByUrl[url] = rr.bodyBytes; });
+              } else {
+                setState(() { _thumbByUrl[url] = img; });
+              }
+            } catch (_) {
+              setState(() { _thumbByUrl[url] = img; });
+            }
           }
         }
       } catch (_) {}
@@ -728,13 +916,13 @@ String buildInstagramEmbedBlockquote(String permalink, {bool captioned = true}) 
 String? _extractInstagramPermalink(String input) {
   final text = input.trim();
   // 1) data-instgrm-permalink="...”
-  final reAttr = RegExp(r'''data-instgrm-permalink=["\'](https?://www\.instagram\.com/(?:reel|p|tv)/[^"\']+)["\']''', caseSensitive: false);
+  final reAttr = RegExp(r'''data-instgrm-permalink=["\'](https?://(?:www\.|m\.)?instagram\.com/(?:reel|p|tv)/[^"']+)["']''', caseSensitive: false);
   final m1 = reAttr.firstMatch(text);
   if (m1 != null && m1.groupCount >= 1) {
     return normalizeInstagramPermalink(m1.group(1)!);
   }
   // 2) Plain URL im Text
-  final reUrl = RegExp(r'''(https?://www\.instagram\.com/(?:reel|p|tv)/[^\s"\'<>]+)''', caseSensitive: false);
+  final reUrl = RegExp(r'''(https?://(?:www\.|m\.)?instagram\.com/(?:reel|p|tv)/[^\s"'<>\)]+)''', caseSensitive: false);
   final m2 = reUrl.firstMatch(text);
   if (m2 != null && m2.groupCount >= 1) {
     return normalizeInstagramPermalink(m2.group(1)!);

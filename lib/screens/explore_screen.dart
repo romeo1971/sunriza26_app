@@ -25,6 +25,162 @@ class ExploreScreen extends StatefulWidget {
   State<ExploreScreen> createState() => ExploreScreenState();
 }
 
+class _InstagramOverviewOverlay extends StatefulWidget {
+  final List<String> urls;
+  final void Function(int index) onSelect;
+  const _InstagramOverviewOverlay({required this.urls, required this.onSelect});
+  @override
+  State<_InstagramOverviewOverlay> createState() => _InstagramOverviewOverlayState();
+}
+
+class _InstagramOverviewOverlayState extends State<_InstagramOverviewOverlay> {
+  static const String _ua =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+  final Map<String, String> _thumbByUrl = <String, String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    for (final url in widget.urls) {
+      _loadThumb(url);
+    }
+  }
+
+  String _normalizePermalink(String rawUrl) {
+    try {
+      final uri = Uri.parse(rawUrl.trim());
+      final host = uri.host.toLowerCase();
+      if (!host.contains('instagram.com')) return rawUrl.split('?').first;
+      final parts = uri.pathSegments;
+      final idx = parts.indexWhere((s) => s == 'reel' || s == 'p' || s == 'tv');
+      if (idx >= 0 && idx + 1 < parts.length) {
+        final kind = parts[idx];
+        final id = parts[idx + 1];
+        return 'https://www.instagram.com/$kind/$id/';
+      }
+      final base = rawUrl.split('?').first.split('#').first;
+      return base.endsWith('/') ? base : '$base/';
+    } catch (_) {
+      final base = rawUrl.split('?').first.split('#').first;
+      return base.endsWith('/') ? base : '$base/';
+    }
+  }
+
+  Future<void> _loadThumb(String url) async {
+    if (_thumbByUrl.containsKey(url)) return;
+    try {
+      final normalized = _normalizePermalink(url);
+      final o = await http.get(
+        Uri.parse('https://www.instagram.com/oembed/?url=${Uri.encodeComponent(normalized)}'),
+        headers: {'User-Agent': _ua, 'Accept': 'application/json', 'Referer': 'https://www.instagram.com/'},
+      );
+      if (o.statusCode == 200) {
+        final m = jsonDecode(o.body) as Map<String, dynamic>;
+        final thumb = (m['thumbnail_url'] as String?) ?? '';
+        if (thumb.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _thumbByUrl[url] = thumb;
+            });
+          }
+          return;
+        }
+      }
+    } catch (_) {}
+    // Fallback 1: normale Seite scrapen
+    try {
+      final r = await http.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent': _ua,
+          'Accept': 'text/html',
+          'Referer': 'https://www.instagram.com/',
+        },
+      );
+      if (r.statusCode == 200) {
+        final html = r.body;
+        final regOg = RegExp(r'''<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+        final regTw = RegExp(r'''<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+        String img = regOg.firstMatch(html)?.group(1) ?? '';
+        if (img.isEmpty) {
+          img = regTw.firstMatch(html)?.group(1) ?? '';
+        }
+        if (img.isNotEmpty && mounted) {
+          setState(() {
+            _thumbByUrl[url] = img;
+          });
+          return;
+        }
+      }
+    } catch (_) {}
+    // Fallback 2: Embed-Seite scrapen
+    try {
+      final embedUrl = '${_normalizePermalink(url)}embed';
+      final r = await http.get(
+        Uri.parse(embedUrl),
+        headers: {
+          'User-Agent': _ua,
+          'Accept': 'text/html',
+          'Referer': 'https://www.instagram.com/',
+        },
+      );
+      if (r.statusCode == 200) {
+        final html = r.body;
+        final regOg = RegExp(r'''<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+        final regTw = RegExp(r'''<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+        String img = regOg.firstMatch(html)?.group(1) ?? '';
+        if (img.isEmpty) {
+          img = regTw.firstMatch(html)?.group(1) ?? '';
+        }
+        if (img.isNotEmpty && mounted) {
+          setState(() {
+            _thumbByUrl[url] = img;
+          });
+          return;
+        }
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 9 / 16,
+      ),
+      itemCount: widget.urls.length,
+      itemBuilder: (context, index) {
+        final url = widget.urls[index];
+        final thumb = _thumbByUrl[url];
+        return GestureDetector(
+          onTap: () => widget.onSelect(index),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              color: Colors.white10,
+              child: thumb == null
+                  ? const Center(child: FaIcon(FontAwesomeIcons.instagram, color: Colors.white54, size: 28))
+                  : Image.network(
+                      thumb,
+                      fit: BoxFit.cover,
+                      headers: const {
+                        'User-Agent': _ua,
+                        'Referer': 'https://www.instagram.com/',
+                        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                      },
+                    ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class ExploreScreenState extends State<ExploreScreen> {
   final _searchController = TextEditingController();
   Set<String> _favoriteIds = {};
@@ -58,6 +214,171 @@ class ExploreScreenState extends State<ExploreScreen> {
     super.initState();
     _pageController = PageController(initialPage: _currentPageIndex);
     _loadFavorites();
+  }
+
+  Future<void> _openInstagramOverview(String avatarId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('avatars').doc(avatarId)
+        .collection('social_accounts').doc('instagram').get();
+    final urls = ((doc.data()?['manualUrls'] as List?) ?? const [])
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (urls.isEmpty) return;
+    final topInset = MediaQuery.of(context).padding.top + 56;
+    final bottomInset = MediaQuery.of(context).padding.bottom + 16 + 48;
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      builder: (_) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(onTap: () => Navigator.pop(context)),
+            ),
+            Positioned(
+              top: topInset,
+              left: 0,
+              right: 0,
+              bottom: bottomInset,
+              child: Container(
+                color: const Color(0xFF121212),
+                child: _InstagramOverviewOverlay(
+                  urls: urls,
+                  onSelect: (index) {
+                    _openSingleInstagramOverlay(urls[index]);
+                  },
+                ),
+              ),
+            ),
+            Positioned(
+              top: topInset + 4,
+              right: 12,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 20),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openSingleInstagramOverlay(String url) async {
+    final topInset = MediaQuery.of(context).padding.top + 56;
+    final bottomInset = MediaQuery.of(context).padding.bottom + 16 + 48;
+    final html = _buildInstagramOverlayHtml(url);
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      builder: (_) {
+        InAppWebViewController? controller;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () async {
+                  try {
+                    await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank')));
+                  } catch (_) {}
+                  if (context.mounted) Navigator.pop(context);
+                },
+              ),
+            ),
+            Positioned(
+              top: topInset,
+              left: 0,
+              right: 0,
+              bottom: bottomInset,
+              child: InAppWebView(
+                initialData: InAppWebViewInitialData(data: html, mimeType: 'text/html', encoding: 'utf-8'),
+                initialSettings: InAppWebViewSettings(
+                  transparentBackground: false,
+                  javaScriptEnabled: true,
+                  mediaPlaybackRequiresUserGesture: false,
+                  allowsInlineMediaPlayback: true,
+                  disableContextMenu: true,
+                  supportZoom: false,
+                  verticalScrollBarEnabled: true,
+                ),
+                onWebViewCreated: (c) {
+                  controller = c;
+                },
+                shouldOverrideUrlLoading: (c, action) async {
+                  // Nur echte User-Link-Klicks im Hauptframe blockieren (verhindert Redirect raus aus dem Overlay)
+                  final isMain = action.isForMainFrame ?? true;
+                  if (isMain && action.navigationType == NavigationType.LINK_ACTIVATED) {
+                    return NavigationActionPolicy.CANCEL;
+                  }
+                  // Alle internen Ressourcen-Navigationsschritte des Embeds erlauben
+                  return NavigationActionPolicy.ALLOW;
+                },
+                onCreateWindow: (c, action) async {
+                  // Blockiere Popups/Neue Fenster von Instagram-Embed
+                  return false;
+                },
+                onConsoleMessage: (c, msg) {
+                  // Ignorieren
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _buildInstagramOverlayHtml(String postUrl) {
+    // Verwende iframe-Embed (stabiler in WKWebView), Navigation wird im WebView blockiert
+    String permalink = postUrl.trim();
+    try {
+      final uri = Uri.parse(postUrl);
+      final parts = uri.pathSegments;
+      final idx = parts.indexWhere((s) => s == 'reel' || s == 'p' || s == 'tv');
+      if (idx >= 0 && idx + 1 < parts.length) {
+        final kind = parts[idx];
+        final id = parts[idx + 1];
+        permalink = 'https://www.instagram.com/$kind/$id/';
+      } else {
+        final base = postUrl.split('?').first.split('#').first;
+        permalink = base.endsWith('/') ? base : '$base/';
+      }
+    } catch (_) {
+      final base = postUrl.split('?').first.split('#').first;
+      permalink = base.endsWith('/') ? base : '$base/';
+    }
+    final iframe = '${permalink}embed';
+    return '''
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>
+      html, body { margin:0; padding:0; background:#000; height:100%; overflow:hidden; }
+      .wrap { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+      iframe { width:min(540px, 100%); height:90vh; border:none; border-radius:8px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <iframe src="$iframe" allowfullscreen allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"></iframe>
+    </div>
+  </body>
+</html>
+''';
   }
 
   String? getCurrentAvatarId() => _currentAvatarId;
@@ -747,6 +1068,8 @@ class ExploreScreenState extends State<ExploreScreen> {
                             Navigator.of(context).pop();
                             if (provider.toLowerCase() == 'tiktok') {
                               _openTikTokOverview(avatarId);
+                            } else if (provider.toLowerCase() == 'instagram') {
+                              _openInstagramProfile(avatarId);
                             } else {
                               final embedUrl = _buildSocialEmbedUrl(provider, avatarId);
                               _openAvatarIframe(embedUrl);
@@ -835,12 +1158,27 @@ class ExploreScreenState extends State<ExploreScreen> {
         final isOn = (m['connected'] as bool?) ?? false;
         if (!isOn) continue; // OFF -> nicht anzeigen
         
-        // 2. Prüfe ob Einträge vorhanden (manualUrls.length > 0)
-        final manual = ((m['manualUrls'] as List?) ?? const [])
-            .map((e) => e.toString().trim())
-            .where((e) => e.isNotEmpty)
-            .toList();
-        if (manual.isEmpty) continue; // Keine Einträge -> nicht anzeigen
+        // 2. Prüfe, ob der jeweilige Provider Daten hat:
+        //    - TikTok: manualUrls vorhanden
+        //    - Instagram: profileUrl gesetzt
+        bool hasData = false;
+        if (id == 'tiktok') {
+          final manual = ((m['manualUrls'] as List?) ?? const [])
+              .map((e) => e.toString().trim())
+              .where((e) => e.isNotEmpty)
+              .toList();
+          hasData = manual.isNotEmpty;
+        } else if (id == 'instagram') {
+          final profileUrl = (m['profileUrl'] as String?)?.trim() ?? '';
+          hasData = profileUrl.isNotEmpty;
+        } else {
+          final manual = ((m['manualUrls'] as List?) ?? const [])
+              .map((e) => e.toString().trim())
+              .where((e) => e.isNotEmpty)
+              .toList();
+          hasData = manual.isNotEmpty;
+        }
+        if (!hasData) continue;
         
         // Provider-Name ermitteln
         String providerName = (m['providerName'] as String?) ?? '';
@@ -903,6 +1241,65 @@ class ExploreScreenState extends State<ExploreScreen> {
     });
   }
 
+  Future<void> _openInstagramProfile(String avatarId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('avatars').doc(avatarId)
+        .collection('social_accounts').doc('instagram').get();
+    final url0 = (doc.data()?['profileUrl'] as String?)?.trim() ?? '';
+    if (url0.isEmpty) return;
+    final url = url0.endsWith('/') ? url0 : '$url0/';
+    final topInset = MediaQuery.of(context).padding.top + 56;
+    final bottomInset = MediaQuery.of(context).padding.bottom + 16 + 48;
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      builder: (_) {
+        InAppWebViewController? controller;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () async {
+                  try {
+                    await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank')));
+                  } catch (_) {}
+                  if (context.mounted) Navigator.pop(context);
+                },
+              ),
+            ),
+            Positioned(
+              top: topInset,
+              left: 0,
+              right: 0,
+              bottom: bottomInset,
+              child: InAppWebView(
+                initialUrlRequest: URLRequest(url: WebUri(url)),
+                initialSettings: InAppWebViewSettings(
+                  transparentBackground: false,
+                  javaScriptEnabled: true,
+                  allowsInlineMediaPlayback: true,
+                  mediaPlaybackRequiresUserGesture: true,
+                  disableContextMenu: true,
+                  supportZoom: false,
+                  verticalScrollBarEnabled: true,
+                ),
+                onWebViewCreated: (c) => controller = c,
+                shouldOverrideUrlLoading: (c, action) async {
+                  // Erlaube Navigation innerhalb IG; blockiere externe neue Fenster
+                  return NavigationActionPolicy.ALLOW;
+                },
+                onCreateWindow: (c, action) async {
+                  return false;
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _openTikTokOverview(String avatarId) async {
     final doc = await FirebaseFirestore.instance
         .collection('avatars').doc(avatarId)
@@ -934,7 +1331,6 @@ class ExploreScreenState extends State<ExploreScreen> {
                 child: _TikTokOverviewOverlay(
                   urls: urls,
                   onSelect: (index) {
-                    Navigator.pop(context);
                     _openSingleTikTokOverlay(urls[index]);
                   },
                 ),
@@ -976,7 +1372,14 @@ class ExploreScreenState extends State<ExploreScreen> {
         return Stack(
           children: [
             Positioned.fill(
-              child: GestureDetector(onTap: () => Navigator.pop(context)),
+              child: GestureDetector(
+                onTap: () async {
+                  try {
+                    await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank')));
+                  } catch (_) {}
+                  if (context.mounted) Navigator.pop(context);
+                },
+              ),
             ),
             Positioned(
               top: topInset,
@@ -998,7 +1401,12 @@ class ExploreScreenState extends State<ExploreScreen> {
                   c.addJavaScriptHandler(
                     handlerName: 'close',
                     callback: (args) {
-                      Navigator.pop(context);
+                      () async {
+                        try {
+                          await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank')));
+                        } catch (_) {}
+                        if (context.mounted) Navigator.pop(context);
+                      }();
                       return null;
                     },
                   );
