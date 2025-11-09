@@ -527,6 +527,19 @@ class _IgEditorState extends State<_IgEditor> {
             ),
           ),
         ),
+        // Preview (Auge) unten links – gleich wie bei TikTok
+        Positioned(
+          left: 4,
+          bottom: 4,
+          child: InkWell(
+            onTap: () => _openOEmbedPreview(context, provider: 'instagram', postUrl: url),
+            child: Container(
+              decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.all(4),
+              child: const Icon(Icons.remove_red_eye, size: 16, color: Colors.white70),
+            ),
+          ),
+        ),
         Positioned(
           top: 4,
           right: 4,
@@ -573,7 +586,104 @@ class _IgEditorState extends State<_IgEditor> {
         }
       }
     } catch (_) {}
+    // Fallback: OG/Twitter-Meta scrapen, falls oEmbed kein Thumbnail liefert
+    if (!_thumbByUrl.containsKey(url)) {
+      try {
+        final r = await http.get(
+          Uri.parse(url),
+          headers: const {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+            'Accept': 'text/html',
+            'Referer': 'https://www.instagram.com/',
+          },
+        );
+        if (r.statusCode == 200) {
+          final html = r.body;
+          final regOg = RegExp(r'''<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+          final regTw = RegExp(r'''<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+          String img = regOg.firstMatch(html)?.group(1) ?? '';
+          if (img.isEmpty) {
+            img = regTw.firstMatch(html)?.group(1) ?? '';
+          }
+          if (img.isNotEmpty) {
+            setState(() { _thumbByUrl[url] = img; });
+          }
+        }
+      } catch (_) {}
+    }
   }
+}
+
+// Einheitliches Preview-Overlay für oEmbed-Provider (instagram/tiktok)
+Future<void> _openOEmbedPreview(BuildContext context, {required String provider, required String postUrl}) async {
+  Future<InAppWebViewInitialData> _buildData() async {
+    // API-frei: reines Client-Embed über blockquote + embed.js
+    String body;
+    if (provider.toLowerCase() == 'instagram') {
+      body = '<blockquote class="instagram-media" data-instgrm-permalink="$postUrl" data-instgrm-version="14" style="margin:0;padding:0;"></blockquote>'
+             '<script async src="https://www.instagram.com/embed.js"></script>';
+    } else {
+      body = '<blockquote class="tiktok-embed" cite="$postUrl" style="max-width:100%;min-width:100%;"></blockquote>'
+             '<script async src="https://www.tiktok.com/embed.js"></script>';
+    }
+    final doc = '''
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>
+      html,body{height:100%;margin:0;background:#000;overflow-y:auto;overflow-x:hidden}
+      .wrap{position:relative;width:100%;height:100%;display:flex;align-items:flex-start;justify-content:center}
+      .inner{width:min(600px,100%);padding-top:8px}
+      .close{
+        position: fixed; top: 8px; right: 12px; width: 36px; height: 36px;
+        border-radius: 18px; background: rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.2);
+        display:flex; align-items:center; justify-content:center; color:#fff; font-size:20px; cursor:pointer; z-index:9999;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="close" onclick="window.flutter_inappwebview.callHandler('close')">✕</div>
+      <div class="inner">$body</div>
+    </div>
+  </body>
+</html>
+''';
+    return InAppWebViewInitialData(data: doc, mimeType: 'text/html', encoding: 'utf-8');
+  }
+
+  await showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.black,
+    builder: (ctx) {
+      return SafeArea(
+        child: FutureBuilder<InAppWebViewInitialData>(
+          future: _buildData(),
+          builder: (context, snap) {
+            if (!snap.hasData) return const Center(child: CircularProgressIndicator());
+            return InAppWebView(
+              initialData: snap.data,
+              initialSettings: InAppWebViewSettings(
+                transparentBackground: true,
+                mediaPlaybackRequiresUserGesture: true,
+              ),
+              onWebViewCreated: (controller) {
+                controller.addJavaScriptHandler(
+                  handlerName: 'close',
+                  callback: (_) {
+                    Navigator.of(ctx).pop();
+                    return null;
+                  },
+                );
+              },
+            );
+          },
+        ),
+      );
+    },
+  );
 }
 
 class _TikTokEditor extends StatefulWidget {
@@ -909,7 +1019,12 @@ class _TikTokEditorState extends State<_TikTokEditor> {
                 alignment: Alignment.topRight,
                 child: IconButton(
                   icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.pop(ctx),
+                  onPressed: () async {
+                    try {
+                      await _previewController?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank')));
+                    } catch (_) {}
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  },
                 ),
               ),
               Expanded(
@@ -930,6 +1045,7 @@ class _TikTokEditorState extends State<_TikTokEditor> {
                             disableContextMenu: true,
                             supportZoom: false,
                           ),
+                          onWebViewCreated: (c) => _previewController = c,
                           onConsoleMessage: (controller, consoleMessage) {
                             // Console-Logs unterdrücken
                           },
@@ -946,6 +1062,7 @@ class _TikTokEditorState extends State<_TikTokEditor> {
     );
   }
 
+  InAppWebViewController? _previewController;
   Future<InAppWebViewInitialData> _buildEmbedData(String postUrl) async {
     String body = '';
     try {
