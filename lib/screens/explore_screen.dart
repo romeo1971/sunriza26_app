@@ -830,32 +830,33 @@ class ExploreScreenState extends State<ExploreScreen> {
           .collection('avatars')
           .doc(avatarId)
           .collection('social_accounts')
-          .where('connected', isEqualTo: true)
           .get();
       final items = <Map<String, String>>[];
       for (final d in qs.docs) {
         final m = d.data();
         final id = d.id.toLowerCase();
-        final provider = (m['providerName'] as String?) ?? id;
-        // Neu: TikTok/Instagram arbeiten mit manualUrls; kein einzelnes url-Feld
-        if (id == 'tiktok') {
-          final manual = ((m['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
-          if (manual.isNotEmpty) {
-            items.add({'provider': 'TikTok', 'url': _buildSocialEmbedUrl('tiktok', avatarId)});
-          }
-          continue;
+        
+        // 1. Prüfe ON/OFF Switch (connected-Feld)
+        final isOn = (m['connected'] as bool?) ?? false;
+        if (!isOn) continue; // OFF -> nicht anzeigen
+        
+        // 2. Prüfe ob Einträge vorhanden (manualUrls.length > 0)
+        final manual = ((m['manualUrls'] as List?) ?? const [])
+            .map((e) => e.toString().trim())
+            .where((e) => e.isNotEmpty)
+            .toList();
+        if (manual.isEmpty) continue; // Keine Einträge -> nicht anzeigen
+        
+        // Provider-Name ermitteln
+        String providerName = (m['providerName'] as String?) ?? '';
+        if (providerName.isEmpty) {
+          if (id == 'tiktok') providerName = 'TikTok';
+          else if (id == 'instagram') providerName = 'Instagram';
+          else if (id == 'facebook') providerName = 'Facebook';
+          else providerName = id;
         }
-        if (id == 'instagram') {
-          final manual = ((m['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
-          if (manual.isNotEmpty) {
-            items.add({'provider': 'Instagram', 'url': _buildSocialEmbedUrl('instagram', avatarId)});
-          }
-          continue;
-        }
-        final url = (m['url'] as String?) ?? '';
-        if (url.isEmpty) continue;
-        final detected = (m['providerName'] as String?) ?? _detectProvider(url);
-        items.add({'provider': detected, 'url': url});
+        
+        items.add({'provider': providerName, 'url': ''});
       }
       return items;
     } catch (_) {
@@ -911,62 +912,17 @@ class ExploreScreenState extends State<ExploreScreen> {
     final doc = await FirebaseFirestore.instance
         .collection('avatars').doc(avatarId)
         .collection('social_accounts').doc('tiktok').get();
-    final urls = ((doc.data()?['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
+    final urls = ((doc.data()?['manualUrls'] as List?) ?? const [])
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
     if (urls.isEmpty) return;
-    final initialPage = urls.length * 1000;
-    final controller = PageController(initialPage: initialPage);
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.black,
-      builder: (ctx) {
-        return SafeArea(
-          child: Stack(
-            children: [
-              PageView.builder(
-                controller: controller,
-                scrollDirection: Axis.vertical,
-                itemBuilder: (c, i) {
-                  final url = urls[i % urls.length];
-                  return FutureBuilder<InAppWebViewInitialData>(
-                    future: _buildTikTokOEmbed(url),
-                    builder: (context, snap) {
-                      if (!snap.hasData) {
-                        return const Center(child: CircularProgressIndicator());
-                      }
-                      return Center(
-                        child: AspectRatio(
-                          aspectRatio: 9 / 16,
-                          child: InAppWebView(
-                            initialData: snap.data,
-                            initialSettings: InAppWebViewSettings(
-                              transparentBackground: true,
-                              mediaPlaybackRequiresUserGesture: true,
-                              disableContextMenu: true,
-                              supportZoom: false,
-                            ),
-                            onConsoleMessage: (controller, consoleMessage) {
-                              // Console-Logs unterdrücken
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-              Positioned(
-                right: 8,
-                top: 8,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () => Navigator.pop(ctx),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+    
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (context) => _TikTokFullscreenViewer(urls: urls),
+      ),
     );
   }
 
@@ -1000,6 +956,135 @@ class ExploreScreenState extends State<ExploreScreen> {
     return InAppWebViewInitialData(data: doc, mimeType: 'text/html', encoding: 'utf-8');
   }
 
+}
+
+/// TikTok Fullscreen Viewer mit Infinity Scroll
+class _TikTokFullscreenViewer extends StatefulWidget {
+  final List<String> urls;
+  const _TikTokFullscreenViewer({required this.urls});
+
+  @override
+  State<_TikTokFullscreenViewer> createState() => _TikTokFullscreenViewerState();
+}
+
+class _TikTokFullscreenViewerState extends State<_TikTokFullscreenViewer> {
+  late PageController _controller;
+  final Map<int, InAppWebViewInitialData> _cache = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController(initialPage: widget.urls.length * 1000);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<InAppWebViewInitialData> _buildOEmbed(String postUrl) async {
+    String body = '';
+    try {
+      final resp = await http.get(Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(postUrl)}'));
+      if (resp.statusCode == 200) {
+        final m = jsonDecode(resp.body) as Map<String, dynamic>;
+        final html = (m['html'] as String?) ?? '';
+        body = html;
+      }
+    } catch (_) {}
+    if (body.isEmpty) {
+      body = '<blockquote class="tiktok-embed" cite="$postUrl" style="max-width:100%;min-width:100%;"></blockquote><script async src="https://www.tiktok.com/embed.js"></script>';
+    } else if (!body.contains('embed.js')) {
+      body = '$body<script async src="https://www.tiktok.com/embed.js"></script>';
+    }
+    final doc = '''
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>html,body{height:100%;margin:0;background:#000;display:flex;align-items:center;justify-content:center} .wrap{width:100%}</style>
+  </head>
+  <body>
+    <div class="wrap">$body</div>
+  </body>
+</html>
+''';
+    return InAppWebViewInitialData(data: doc, mimeType: 'text/html', encoding: 'utf-8');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          PageView.builder(
+            controller: _controller,
+            scrollDirection: Axis.vertical,
+            itemBuilder: (context, i) {
+              final index = i % widget.urls.length;
+              final url = widget.urls[index];
+              return FutureBuilder<InAppWebViewInitialData>(
+                future: _cache.containsKey(index) 
+                    ? Future.value(_cache[index])
+                    : _buildOEmbed(url).then((data) {
+                        _cache[index] = data;
+                        return data;
+                      }),
+                builder: (context, snap) {
+                  if (!snap.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return SizedBox.expand(
+                    child: Container(
+                      color: Colors.black,
+                      child: Center(
+                        child: AspectRatio(
+                          aspectRatio: 9 / 16,
+                          child: InAppWebView(
+                            initialData: snap.data,
+                            initialSettings: InAppWebViewSettings(
+                              transparentBackground: true,
+                              mediaPlaybackRequiresUserGesture: true,
+                              disableContextMenu: true,
+                              supportZoom: false,
+                            ),
+                            onConsoleMessage: (controller, consoleMessage) {
+                              // Console-Logs unterdrücken
+                            },
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+          SafeArea(
+            child: Positioned(
+              right: 16,
+              top: 16,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 24),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Search Delegate für Avatar-Suche
