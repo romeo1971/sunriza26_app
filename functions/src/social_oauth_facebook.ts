@@ -72,6 +72,33 @@ export async function handleFacebookTokenExchange({
       },
       { merge: true }
     );
+
+  // Prefetch: letzte 10 Page-Posts cachen
+  try {
+    const postsUrl = new URL(`https://graph.facebook.com/v17.0/${first.id}/posts`);
+    postsUrl.searchParams.set('fields', 'id,full_picture,permalink_url,message,created_time');
+    postsUrl.searchParams.set('limit', '10');
+    postsUrl.searchParams.set('access_token', String(first.access_token));
+    const r = await fetch(postsUrl.toString());
+    if (r.ok) {
+      const j = await r.json() as any;
+      const posts = (j?.data ?? [])
+        .map((p: any) => ({
+          id: p.id,
+          caption: p.message,
+          media_type: 'IMAGE',
+          media_url: p.full_picture || '',
+          permalink: p.permalink_url,
+          timestamp: p.created_time,
+        }))
+        .filter((p: any) => p.media_url)
+        .slice(0, 10);
+      await db
+        .collection('avatars').doc(avatarId)
+        .collection('social_cache').doc('facebook')
+        .set({ posts, fetchedAt: Date.now() }, { merge: true });
+    }
+  } catch {}
 }
 
 

@@ -77,7 +77,7 @@ exports.fbConnect = (0, https_1.onRequest)({ region: 'us-central1', secrets: [IG
  * Diese Utility-Funktion steht optional bereit, falls du später bündeln möchtest.
  */
 async function handleFacebookTokenExchange({ userAccessToken, avatarId, }) {
-    var _a;
+    var _a, _b;
     const db = admin.firestore();
     // Hole die erste Page und Page-Token
     const mePagesUrl = new URL('https://graph.facebook.com/v17.0/me/accounts');
@@ -103,5 +103,32 @@ async function handleFacebookTokenExchange({ userAccessToken, avatarId, }) {
         page_access_token: String(first.access_token),
         updatedAt: Date.now(),
     }, { merge: true });
+    // Prefetch: letzte 10 Page-Posts cachen
+    try {
+        const postsUrl = new URL(`https://graph.facebook.com/v17.0/${first.id}/posts`);
+        postsUrl.searchParams.set('fields', 'id,full_picture,permalink_url,message,created_time');
+        postsUrl.searchParams.set('limit', '10');
+        postsUrl.searchParams.set('access_token', String(first.access_token));
+        const r = await (0, node_fetch_1.default)(postsUrl.toString());
+        if (r.ok) {
+            const j = await r.json();
+            const posts = ((_b = j === null || j === void 0 ? void 0 : j.data) !== null && _b !== void 0 ? _b : [])
+                .map((p) => ({
+                id: p.id,
+                caption: p.message,
+                media_type: 'IMAGE',
+                media_url: p.full_picture || '',
+                permalink: p.permalink_url,
+                timestamp: p.created_time,
+            }))
+                .filter((p) => p.media_url)
+                .slice(0, 10);
+            await db
+                .collection('avatars').doc(avatarId)
+                .collection('social_cache').doc('facebook')
+                .set({ posts, fetchedAt: Date.now() }, { merge: true });
+        }
+    }
+    catch (_c) { }
 }
 //# sourceMappingURL=social_oauth_facebook.js.map

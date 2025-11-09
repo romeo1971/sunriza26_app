@@ -236,6 +236,46 @@ export const socialEmbedPage = onRequest(
           } catch {}
         }
       }
+    } else if (provider === 'tiktok') {
+      // TikTok: oEmbed für manuell hinterlegte Video-URLs
+      const cacheRef = db.collection('avatars').doc(avatarId).collection('social_cache').doc('tiktok');
+      try {
+        const snap = await cacheRef.get();
+        const doc = snap.data();
+        if (doc && doc.posts && doc.fetchedAt && Date.now() - (doc.fetchedAt as number) <= 10 * 60 * 1000) {
+          posts = (doc.posts as IgMedia[]).slice(0, 10);
+        }
+      } catch {}
+      if (posts.length === 0) {
+        try {
+          const doc = await db
+            .collection('avatars').doc(avatarId)
+            .collection('social_accounts').doc('tiktok').get();
+          const m = doc.data() as any;
+          const manual: string[] = (m?.manualUrls as any[] ?? []).map(String).slice(0, 20);
+          const result: IgMedia[] = [];
+          for (const v of manual) {
+            try {
+              const oembed = new URL('https://www.tiktok.com/oembed');
+              oembed.searchParams.set('url', v);
+              const r = await fetch(oembed.toString());
+              if (!r.ok) continue;
+              const j = await r.json() as any;
+              // wir speichern das Iframe-HTML in caption für das HTML-Embed Rendering
+              result.push({
+                id: j?.author_unique_id ?? v,
+                caption: j?.html ?? '',
+                media_type: 'CAROUSEL_ALBUM',
+                media_url: j?.thumbnail_url ?? '',
+                permalink: v,
+                timestamp: new Date().toISOString(),
+              });
+            } catch {}
+          }
+          posts = result.slice(0, 10);
+          try { await cacheRef.set({ posts, fetchedAt: Date.now() }, { merge: true }); } catch {}
+        } catch {}
+      }
     } else {
       res.status(400).send('<html><body><p>Unsupported provider</p></body></html>');
       return;
@@ -273,6 +313,10 @@ export const socialEmbedPage = onRequest(
 
     const itemsHtml = posts
       .map((p) => {
+        if (provider === 'tiktok' && p.caption && p.caption.includes('<iframe')) {
+          // Embed-HTML direkt einbetten
+          return `<div class="card">${p.caption}</div>`;
+        }
         const safeUrl = p.media_url;
         const link = p.permalink;
         const isVideo = (p.media_type || '').toUpperCase().includes('VIDEO');

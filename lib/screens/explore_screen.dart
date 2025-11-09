@@ -81,9 +81,6 @@ class ExploreScreenState extends State<ExploreScreen> {
         }
       }
     }
-    debugPrint(
-      '🗑️ Explorer Screen dispose: ${_cachedAvatarIds.length} Avatare aus Cache entfernt',
-    );
 
     super.dispose();
   }
@@ -110,7 +107,6 @@ class ExploreScreenState extends State<ExploreScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Fehler beim Laden der Favoriten: $e');
     }
   }
 
@@ -137,7 +133,6 @@ class ExploreScreenState extends State<ExploreScreen> {
         setState(() => _favoriteIds.add(avatarId));
       }
     } catch (e) {
-      debugPrint('Fehler beim Favoriten-Toggle: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Fehler: $e'), backgroundColor: Colors.red),
@@ -191,7 +186,6 @@ class ExploreScreenState extends State<ExploreScreen> {
         precacheImage(NetworkImage(heroImage), context);
       }
     } catch (e) {
-      debugPrint('❌ Explorer Images Fehler: $e');
     }
   }
 
@@ -205,7 +199,6 @@ class ExploreScreenState extends State<ExploreScreen> {
         .listen((snapshot) {
           if (snapshot.exists && mounted && _currentAvatarId == avatarId) {
             // Bei Änderungen: Bilder NEU LADEN (gelöscht/verschoben/etc.)
-            debugPrint('🔄 Explorer: Avatar-Daten geändert, lade Bilder neu');
             _loadExplorerImages(avatarId).then((_) {
               _startExplorerTimer(avatarId);
               if (mounted) setState(() {});
@@ -232,9 +225,6 @@ class ExploreScreenState extends State<ExploreScreen> {
         for (final url in oldImages) {
           NetworkImage(url).evict();
         }
-        debugPrint(
-          '🗑️ LRU Cache bereinigt: $oldestAvatarId (${oldImages.length} Bilder) | Cache: ${_cachedAvatarIds.length}/$_maxCachedAvatars',
-        );
 
         // Entferne aus Maps
         _explorerImages.remove(oldestAvatarId);
@@ -242,9 +232,6 @@ class ExploreScreenState extends State<ExploreScreen> {
         _currentImage.remove(oldestAvatarId);
       }
     } else {
-      debugPrint(
-        '✅ LRU Cache: $newAvatarId hinzugefügt | Cache: ${_cachedAvatarIds.length}/$_maxCachedAvatars',
-      );
     }
   }
 
@@ -686,32 +673,38 @@ class ExploreScreenState extends State<ExploreScreen> {
 
   Widget _buildSocialDropupButton(String avatarId, {double height = 48}) {
     final GlobalKey openerKey = GlobalKey();
-    return SizedBox(
-      width: 56,
-      height: height,
-      child: ElevatedButton(
-        key: openerKey,
-        onPressed: () => _openSocialMenu(openerKey, avatarId),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.black.withValues(alpha: 0.7),
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+    return FutureBuilder<List<Map<String, String>>>(
+      future: _fetchConnectedSocials(avatarId),
+      builder: (context, snap) {
+        final hasItems = (snap.data?.isNotEmpty ?? false);
+        if (!hasItems) {
+          return const SizedBox.shrink(); // Dropup ausblenden, wenn nichts aktiv
+        }
+        return SizedBox(
+          width: 56,
+          height: height,
+          child: ElevatedButton(
+            key: openerKey,
+            onPressed: () => _openSocialMenu(openerKey, avatarId),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.black.withValues(alpha: 0.7),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              padding: EdgeInsets.zero,
+            ),
+            child: const FaIcon(FontAwesomeIcons.globe, size: 20, color: Colors.white),
           ),
-          padding: EdgeInsets.zero,
-        ),
-        child: const FaIcon(FontAwesomeIcons.globe, size: 20, color: Colors.white),
-      ),
+        );
+      },
     );
   }
 
   void _openSocialMenu(GlobalKey openerKey, String avatarId) async {
     // Lade verbundene Social Accounts (connected==true)
     final links = await _fetchConnectedSocials(avatarId);
-    // Basis-Provider immer anbieten
-    final Set<String> present = links.map((e) => (e['provider'] ?? '').toLowerCase()).toSet();
-    if (!present.contains('facebook')) links.insert(0, {'provider': 'Facebook', 'url': ''});
-    if (!present.contains('instagram')) links.insert(0, {'provider': 'Instagram', 'url': ''});
+    // Nur verbundene Provider anzeigen (FB/IG aktuell ausgeblendet, TikTok nur wenn connected)
 
     await showDialog(
       context: context,
@@ -755,8 +748,12 @@ class ExploreScreenState extends State<ExploreScreen> {
                           borderRadius: BorderRadius.circular(12),
                           onTap: () {
                             Navigator.of(context).pop();
-                            final embedUrl = _buildSocialEmbedUrl(provider, avatarId);
-                            _openAvatarIframe(embedUrl);
+                            if (provider.toLowerCase() == 'tiktok') {
+                              _openTikTokVerticalViewer(avatarId);
+                            } else {
+                              final embedUrl = _buildSocialEmbedUrl(provider, avatarId);
+                              _openAvatarIframe(embedUrl);
+                            }
                           },
                           child: Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -819,6 +816,9 @@ class ExploreScreenState extends State<ExploreScreen> {
     if (p == 'facebook') {
       return 'https://us-central1-sunriza26.cloudfunctions.net/socialEmbedPage?provider=facebook&avatarId=$avatarId';
     }
+    if (p == 'tiktok') {
+      return 'https://us-central1-sunriza26.cloudfunctions.net/socialEmbedPage?provider=tiktok&avatarId=$avatarId';
+    }
     return 'about:blank';
   }
 
@@ -833,10 +833,27 @@ class ExploreScreenState extends State<ExploreScreen> {
       final items = <Map<String, String>>[];
       for (final d in qs.docs) {
         final m = d.data();
+        final id = d.id.toLowerCase();
+        final provider = (m['providerName'] as String?) ?? id;
+        // Neu: TikTok/Instagram arbeiten mit manualUrls; kein einzelnes url-Feld
+        if (id == 'tiktok') {
+          final manual = ((m['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
+          if (manual.isNotEmpty) {
+            items.add({'provider': 'TikTok', 'url': _buildSocialEmbedUrl('tiktok', avatarId)});
+          }
+          continue;
+        }
+        if (id == 'instagram') {
+          final manual = ((m['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
+          if (manual.isNotEmpty) {
+            items.add({'provider': 'Instagram', 'url': _buildSocialEmbedUrl('instagram', avatarId)});
+          }
+          continue;
+        }
         final url = (m['url'] as String?) ?? '';
         if (url.isEmpty) continue;
-        final provider = (m['providerName'] as String?) ?? _detectProvider(url);
-        items.add({'provider': provider, 'url': url});
+        final detected = (m['providerName'] as String?) ?? _detectProvider(url);
+        items.add({'provider': detected, 'url': url});
       }
       return items;
     } catch (_) {
@@ -886,6 +903,71 @@ class ExploreScreenState extends State<ExploreScreen> {
     setState(() {
       _socialOverlayUrl = url;
     });
+  }
+
+  Future<void> _openTikTokVerticalViewer(String avatarId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('avatars').doc(avatarId)
+        .collection('social_accounts').doc('tiktok').get();
+    final urls = ((doc.data()?['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
+    if (urls.isEmpty) return;
+    final initialPage = urls.length * 1000;
+    final controller = PageController(initialPage: initialPage);
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      builder: (ctx) {
+        return SafeArea(
+          child: Stack(
+            children: [
+              PageView.builder(
+                controller: controller,
+                scrollDirection: Axis.vertical,
+                itemBuilder: (c, i) {
+                  final url = urls[i % urls.length];
+                  final html = '''
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>html,body{height:100%;margin:0;background:#000;display:flex;align-items:center;justify-content:center} .wrap{width:100%}</style>
+  </head>
+  <body>
+    <div class="wrap">
+      <blockquote class="tiktok-embed" cite="$url" style="max-width:100%;min-width:100%;"></blockquote>
+      <script async src="https://www.tiktok.com/embed.js"></script>
+    </div>
+  </body>
+</html>
+''';
+                  return Center(
+                    child: AspectRatio(
+                      aspectRatio: 9 / 16,
+                      child: InAppWebView(
+                        initialData: InAppWebViewInitialData(data: html, mimeType: 'text/html', encoding: 'utf-8'),
+                        initialSettings: InAppWebViewSettings(
+                          transparentBackground: true,
+                          mediaPlaybackRequiresUserGesture: true,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+              Positioned(
+                right: 8,
+                top: 8,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
 }

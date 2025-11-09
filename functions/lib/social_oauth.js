@@ -82,6 +82,7 @@ exports.igConnect = (0, https_1.onRequest)({ region: 'us-central1', secrets: [IG
  * Tauscht Code gegen Token, versucht Long-Lived Token, speichert unter avatars/{avatarId}/social_accounts
  */
 exports.igCallback = (0, https_1.onRequest)({ region: 'us-central1', secrets: [IG_APP_ID, IG_APP_SECRET, IG_REDIRECT_URI] }, async (req, res) => {
+    var _a;
     try {
         const code = String(req.query.code || '').trim();
         const stateRaw = String(req.query.state || '').trim();
@@ -121,7 +122,7 @@ exports.igCallback = (0, https_1.onRequest)({ region: 'us-central1', secrets: [I
                 longToken = llJson.access_token || longToken;
             }
         }
-        catch (_a) { }
+        catch (_b) { }
         // Facebook Pages Flow: wenn state "fb:" war → Page-Token speichern und fertig
         if (isFb) {
             await (0, social_oauth_facebook_1.handleFacebookTokenExchange)({ userAccessToken: shortToken, avatarId });
@@ -138,7 +139,7 @@ exports.igCallback = (0, https_1.onRequest)({ region: 'us-central1', secrets: [I
             if (meResp.ok)
                 igBasicUser = await meResp.json();
         }
-        catch (_b) { }
+        catch (_c) { }
         const docData = {
             providerName: 'Instagram',
             connected: true,
@@ -153,6 +154,23 @@ exports.igCallback = (0, https_1.onRequest)({ region: 'us-central1', secrets: [I
             .collection('avatars').doc(avatarId)
             .collection('social_accounts').doc('instagram')
             .set(docData, { merge: true });
+        // Prefetch: letzte 10 Medien cachen, damit Explore sofort anzeigen kann
+        try {
+            const mediaUrl = new URL('https://graph.instagram.com/me/media');
+            mediaUrl.searchParams.set('fields', 'id,caption,media_type,media_url,permalink,timestamp');
+            mediaUrl.searchParams.set('limit', '10');
+            mediaUrl.searchParams.set('access_token', longToken);
+            const r = await (0, node_fetch_1.default)(mediaUrl.toString());
+            if (r.ok) {
+                const j = await r.json();
+                const posts = ((_a = j === null || j === void 0 ? void 0 : j.data) !== null && _a !== void 0 ? _a : []).slice(0, 10);
+                await admin.firestore()
+                    .collection('avatars').doc(avatarId)
+                    .collection('social_cache').doc('instagram')
+                    .set({ posts, fetchedAt: Date.now() }, { merge: true });
+            }
+        }
+        catch (_d) { }
         res.status(200).send('Instagram verbunden. Du kannst dieses Fenster schließen.');
     }
     catch (e) {

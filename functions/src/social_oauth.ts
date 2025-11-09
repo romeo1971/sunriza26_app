@@ -118,6 +118,23 @@ export const igCallback = onRequest({ region: 'us-central1', secrets: [IG_APP_ID
       .collection('social_accounts').doc('instagram')
       .set(docData, { merge: true });
 
+    // Prefetch: letzte 10 Medien cachen, damit Explore sofort anzeigen kann
+    try {
+      const mediaUrl = new URL('https://graph.instagram.com/me/media');
+      mediaUrl.searchParams.set('fields', 'id,caption,media_type,media_url,permalink,timestamp');
+      mediaUrl.searchParams.set('limit', '10');
+      mediaUrl.searchParams.set('access_token', longToken);
+      const r = await fetch(mediaUrl.toString());
+      if (r.ok) {
+        const j = await r.json() as any;
+        const posts = (j?.data ?? []).slice(0, 10);
+        await admin.firestore()
+          .collection('avatars').doc(avatarId)
+          .collection('social_cache').doc('instagram')
+          .set({ posts, fetchedAt: Date.now() }, { merge: true });
+      }
+    } catch {}
+
     res.status(200).send('Instagram verbunden. Du kannst dieses Fenster schließen.');
   } catch (e: any) {
     res.status(500).send(`Error: ${e?.message || 'unknown'}`);

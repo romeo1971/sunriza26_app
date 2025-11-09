@@ -158,7 +158,7 @@ exports.instagramFeed = (0, https_1.onCall)({
  * Rendert die letzten 5 Posts als simples Grid (ohne Login-Wall).
  */
 exports.socialEmbedPage = (0, https_1.onRequest)({ region: 'us-central1', timeoutSeconds: 20 }, async (req, res) => {
-    var _a, _b;
+    var _a, _b, _c, _d, _e, _f;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     const provider = String(req.query.provider || '').toLowerCase();
     const avatarId = String(req.query.avatarId || '');
@@ -178,7 +178,7 @@ exports.socialEmbedPage = (0, https_1.onRequest)({ region: 'us-central1', timeou
                 posts = doc.posts.slice(0, 5);
             }
         }
-        catch (_c) { }
+        catch (_g) { }
         if (posts.length === 0) {
             // Load tokens
             let token;
@@ -198,7 +198,7 @@ exports.socialEmbedPage = (0, https_1.onRequest)({ region: 'us-central1', timeou
                     igUserId = m['ig_user_id'] || m['igUserId'];
                 }
             }
-            catch (_d) { }
+            catch (_h) { }
             if (token && igUserId) {
                 try {
                     const url = new URL(`https://graph.facebook.com/v17.0/${igUserId}/media`);
@@ -212,10 +212,10 @@ exports.socialEmbedPage = (0, https_1.onRequest)({ region: 'us-central1', timeou
                         try {
                             await cacheRef.set({ posts, fetchedAt: Date.now() }, { merge: true });
                         }
-                        catch (_e) { }
+                        catch (_j) { }
                     }
                 }
-                catch (_f) { }
+                catch (_k) { }
             }
         }
     }
@@ -228,7 +228,7 @@ exports.socialEmbedPage = (0, https_1.onRequest)({ region: 'us-central1', timeou
                 posts = doc.posts.slice(0, 5);
             }
         }
-        catch (_g) { }
+        catch (_l) { }
         if (posts.length === 0) {
             let pageToken;
             let pageId;
@@ -243,7 +243,7 @@ exports.socialEmbedPage = (0, https_1.onRequest)({ region: 'us-central1', timeou
                 pageToken = m === null || m === void 0 ? void 0 : m.page_access_token;
                 pageId = m === null || m === void 0 ? void 0 : m.page_id;
             }
-            catch (_h) { }
+            catch (_m) { }
             if (pageToken && pageId) {
                 try {
                     const url = new URL(`https://graph.facebook.com/v17.0/${pageId}/posts`);
@@ -264,11 +264,59 @@ exports.socialEmbedPage = (0, https_1.onRequest)({ region: 'us-central1', timeou
                         try {
                             await cacheRef.set({ posts, fetchedAt: Date.now() }, { merge: true });
                         }
-                        catch (_j) { }
+                        catch (_o) { }
                     }
                 }
-                catch (_k) { }
+                catch (_p) { }
             }
+        }
+    }
+    else if (provider === 'tiktok') {
+        // TikTok: oEmbed für manuell hinterlegte Video-URLs
+        const cacheRef = db.collection('avatars').doc(avatarId).collection('social_cache').doc('tiktok');
+        try {
+            const snap = await cacheRef.get();
+            const doc = snap.data();
+            if (doc && doc.posts && doc.fetchedAt && Date.now() - doc.fetchedAt <= 10 * 60 * 1000) {
+                posts = doc.posts.slice(0, 10);
+            }
+        }
+        catch (_q) { }
+        if (posts.length === 0) {
+            try {
+                const doc = await db
+                    .collection('avatars').doc(avatarId)
+                    .collection('social_accounts').doc('tiktok').get();
+                const m = doc.data();
+                const manual = ((_c = m === null || m === void 0 ? void 0 : m.manualUrls) !== null && _c !== void 0 ? _c : []).map(String).slice(0, 20);
+                const result = [];
+                for (const v of manual) {
+                    try {
+                        const oembed = new URL('https://www.tiktok.com/oembed');
+                        oembed.searchParams.set('url', v);
+                        const r = await (0, node_fetch_1.default)(oembed.toString());
+                        if (!r.ok)
+                            continue;
+                        const j = await r.json();
+                        // wir speichern das Iframe-HTML in caption für das HTML-Embed Rendering
+                        result.push({
+                            id: (_d = j === null || j === void 0 ? void 0 : j.author_unique_id) !== null && _d !== void 0 ? _d : v,
+                            caption: (_e = j === null || j === void 0 ? void 0 : j.html) !== null && _e !== void 0 ? _e : '',
+                            media_type: 'CAROUSEL_ALBUM',
+                            media_url: (_f = j === null || j === void 0 ? void 0 : j.thumbnail_url) !== null && _f !== void 0 ? _f : '',
+                            permalink: v,
+                            timestamp: new Date().toISOString(),
+                        });
+                    }
+                    catch (_r) { }
+                }
+                posts = result.slice(0, 10);
+                try {
+                    await cacheRef.set({ posts, fetchedAt: Date.now() }, { merge: true });
+                }
+                catch (_s) { }
+            }
+            catch (_t) { }
         }
     }
     else {
@@ -307,6 +355,10 @@ exports.socialEmbedPage = (0, https_1.onRequest)({ region: 'us-central1', timeou
     }
     const itemsHtml = posts
         .map((p) => {
+        if (provider === 'tiktok' && p.caption && p.caption.includes('<iframe')) {
+            // Embed-HTML direkt einbetten
+            return `<div class="card">${p.caption}</div>`;
+        }
         const safeUrl = p.media_url;
         const link = p.permalink;
         const isVideo = (p.media_type || '').toUpperCase().includes('VIDEO');

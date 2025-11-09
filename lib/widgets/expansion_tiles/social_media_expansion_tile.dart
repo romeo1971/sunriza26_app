@@ -4,10 +4,13 @@ import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../theme/app_theme.dart';
+import 'package:http/http.dart' as http;
 import '../custom_text_field.dart';
 import 'expansion_tile_base.dart';
 
@@ -87,6 +90,86 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
     _load();
   }
 
+  void _openPreview(String postUrl) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      builder: (ctx) {
+        return FutureBuilder<InAppWebViewInitialData>(
+          future: _buildTikTokEmbedData(postUrl),
+          builder: (context, snap) {
+            return SafeArea(
+              child: Column(
+                children: [
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, color: Colors.white),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ),
+                  Expanded(
+                    child: !snap.hasData 
+                      ? const Center(child: CircularProgressIndicator())
+                      : Center(
+                          child: AspectRatio(
+                            aspectRatio: 9 / 16,
+                            child: InAppWebView(
+                              initialData: snap.data,
+                              initialSettings: InAppWebViewSettings(
+                                transparentBackground: true,
+                                mediaPlaybackRequiresUserGesture: true,
+                                disableContextMenu: true,
+                                supportZoom: false,
+                              ),
+                              onConsoleMessage: (controller, consoleMessage) {
+                                // Console-Logs unterdrücken (kein Debug-Spam)
+                              },
+                            ),
+                          ),
+                        ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<InAppWebViewInitialData> _buildTikTokEmbedData(String postUrl) async {
+    String body = '';
+    try {
+      final resp = await http.get(Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(postUrl)}'));
+      if (resp.statusCode == 200) {
+        final m = jsonDecode(resp.body) as Map<String, dynamic>;
+        final html = (m['html'] as String?) ?? '';
+        body = html;
+      }
+    } catch (_) {}
+    if (body.isEmpty) {
+      // Fallback: minimal Embed-Markup
+      body =
+          '<blockquote class="tiktok-embed" cite="$postUrl" style="max-width:100%;min-width:100%;"></blockquote><script async src="https://www.tiktok.com/embed.js"></script>';
+    } else if (!body.contains('embed.js')) {
+      body = '$body<script async src="https://www.tiktok.com/embed.js"></script>';
+    }
+    final doc = '''
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>html,body{height:100%;margin:0;background:#000;display:flex;align-items:center;justify-content:center} .wrap{width:100%}</style>
+  </head>
+  <body>
+    <div class="wrap">$body</div>
+  </body>
+</html>
+''';
+    return InAppWebViewInitialData(data: doc, mimeType: 'text/html', encoding: 'utf-8');
+  }
   @override
   void dispose() {
     _urlCtrl.dispose();
@@ -108,110 +191,7 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
     if (mounted) setState(() => _loading = false);
   }
 
-  Future<void> _save({required bool isNew, String? id}) async {
-    final url = _urlCtrl.text.trim();
-    final login = _loginCtrl.text.trim();
-    final pwd = _pwdCtrl.text;
-    if (url.isEmpty) {
-      _toast('URL erforderlich');
-      return;
-    }
-    final provider = _detectProvider(url);
-    final encPwd = await _encrypt(pwd);
-    try {
-      if (isNew) {
-        await _col().add({
-          'providerName': provider,
-          'url': url,
-          'login': login,
-          'passwordEnc': encPwd,
-          'connected': false,
-        });
-      } else if (id != null) {
-        await _col().doc(id).set({
-          'providerName': provider,
-          'url': url,
-          'login': login,
-          'passwordEnc': encPwd,
-        }, SetOptions(merge: true));
-      }
-      await _load();
-      _editingId = null;
-      _clearCtrls();
-      _toast('Gespeichert');
-    } catch (e) {
-      _toast('Fehler: $e');
-    }
-    if (mounted) setState(() {});
-  }
-
-  Future<void> _delete(String id) async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        title: const Text('Löschen bestätigen', style: TextStyle(color: Colors.white)),
-        content: const Text('Eintrag wirklich löschen?', style: TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Löschen')),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    try {
-      await _col().doc(id).delete();
-      await _load();
-      _toast('Gelöscht');
-    } catch (e) {
-      _toast('Fehler: $e');
-    }
-    if (mounted) setState(() {});
-  }
-
-  void _startEdit(SocialMediaAccount? m) {
-    _editingId = m?.id ?? 'new';
-    _urlCtrl.text = m?.url ?? '';
-    _loginCtrl.text = m?.login ?? '';
-    _pwdCtrl.text = ''; // Sicherheit: nie automatisch füllen
-    _showPassword = false;
-    setState(() {});
-  }
-
-  void _clearCtrls() {
-    _urlCtrl.clear();
-    _loginCtrl.clear();
-    _pwdCtrl.clear();
-    _showPassword = false;
-  }
-
-  Future<void> _toggleConnect(SocialMediaAccount m, bool next) async {
-    if (_connecting) return;
-    setState(() => _connecting = true);
-    try {
-      if (next) {
-        // Verbinden → nutze gespeicherte Daten
-        final ok = await _fakeConnect(m);
-        if (!ok) {
-          _toast('Verbindung fehlgeschlagen');
-          return;
-        }
-      }
-      await _col().doc(m.id).set({'connected': next}, SetOptions(merge: true));
-      await _load();
-      _toast(next ? 'Verbunden' : 'Getrennt');
-    } catch (e) {
-      _toast('Fehler: $e');
-    } finally {
-      if (mounted) setState(() => _connecting = false);
-    }
-  }
-
-  Future<bool> _fakeConnect(SocialMediaAccount m) async {
-    // Platzhalter: Hier echte Provider-Auth/Fetch integrieren
-    await Future.delayed(const Duration(milliseconds: 600));
-    return m.url.isNotEmpty; // minimal
-  }
+  // Alte Editor-/CRUD-Methoden entfernt (ersetzt durch vereinfachten TikTok-Editor)
 
   void _toast(String msg) {
     if (!mounted) return;
@@ -223,145 +203,271 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
   @override
   Widget build(BuildContext context) {
     final children = <Widget>[
-      const Text('Social Media', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-      const SizedBox(height: 8),
       if (_loading)
         const Center(child: CircularProgressIndicator())
       else ...[
-        _buildSimpleRow('facebook', 'Facebook'),
-        _buildSimpleRow('instagram', 'Instagram'),
-        _buildSimpleRow('tiktok', 'TikTok'),
-        _buildSimpleRow('x', 'X'),
-        _buildSimpleRow('linkedin', 'LinkedIn'),
+        _buildTikTokTile(),
+        const SizedBox(height: 10),
+        _buildInstagramTile(),
       ],
     ];
 
-    return BaseExpansionTile(
-      title: 'Social Media',
-      emoji: '🌐',
+    return ExpansionTile(
       initiallyExpanded: false,
-      children: children,
-    );
-  }
-
-  // Neue, vereinfachte Zeile: Verbinden/Trennen je Provider
-  Widget _buildSimpleRow(String key, String label) {
-    final existing = _items.firstWhere(
-      (e) => e.providerName.toLowerCase() == label.toLowerCase() || e.id.toLowerCase() == key,
-      orElse: () => SocialMediaAccount(
-        id: key,
-        providerName: label,
-        url: '',
-        login: '',
-        passwordEnc: '',
-        connected: false,
-      ),
-    );
-    final connected = existing.connected;
-    final icon = _iconForProvider(label);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Row(
-        children: [
-            icon,
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
-                  Text(connected ? 'Verbunden' : 'Getrennt', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            InkWell(
-              onTap: _connecting ? null : () => _toggleConnectSimple(key, label, !connected),
-              child: _miniToggle(connected),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _toggleConnectSimple(String key, String label, bool next) async {
-    if (_connecting) return;
-    setState(() => _connecting = true);
-    try {
-      if (next) {
-        final projectId = Firebase.apps.isNotEmpty ? Firebase.app().options.projectId : 'sunriza26';
-        final base = 'https://us-central1-$projectId.cloudfunctions.net';
-        final endpoint = key == 'facebook' ? 'fbConnect' : (key == 'instagram' ? 'igConnect' : null);
-        if (endpoint != null) {
-          final url = Uri.parse('$base/$endpoint?avatarId=${Uri.encodeComponent(widget.avatarId)}');
-          await launchUrl(url, mode: LaunchMode.externalApplication);
-        } else {
-          _toast('Provider noch nicht unterstützt');
-        }
-      }
-      await _col().doc(key).set({'providerName': label, 'connected': next, 'updatedAt': Date.now()}, SetOptions(merge: true));
-      await _load();
-      _toast(next ? 'Verbinden gestartet' : 'Getrennt');
-    } catch (e) {
-      _toast('Fehler: $e');
-    } finally {
-      if (mounted) setState(() => _connecting = false);
-    }
-  }
-
-  Widget _buildEditor() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+      collapsedBackgroundColor: Colors.white.withValues(alpha: 0.04),
+      backgroundColor: Colors.black.withValues(alpha: 0.95),
+      collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
+      iconColor: AppColors.lightBlue, // GMBC Arrow expanded
+      title: const Text('Social Media', style: TextStyle(color: Colors.white)),
       children: [
-        CustomTextField(
-          label: 'URL',
-          controller: _urlCtrl,
-          hintText: 'z. B. https://www.instagram.com/...',
-          prefixIcon: const Icon(Icons.link, color: Colors.white70, size: 18),
-        ),
-        const SizedBox(height: 8),
-        CustomTextField(
-          label: 'Login (Username/Email)',
-          controller: _loginCtrl,
-          prefixIcon: const Icon(Icons.person_outline, color: Colors.white70, size: 18),
-        ),
-        const SizedBox(height: 8),
-        CustomTextField(
-          label: 'Passwort',
-          controller: _pwdCtrl,
-          obscureText: !_showPassword,
-          prefixIcon: const Icon(Icons.lock_outline, color: Colors.white70, size: 18),
-          suffixIcon: IconButton(
-            onPressed: () => setState(() => _showPassword = !_showPassword),
-            icon: Icon(_showPassword ? Icons.visibility_off : Icons.visibility, color: Colors.white70, size: 18),
+        Padding(
+          padding: const EdgeInsets.all(12.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: children,
           ),
         ),
-        const SizedBox(height: 12),
+      ],
+    );
+  }
+
+  Widget _buildTikTokTile() {
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: _col().doc('tiktok').get(),
+      builder: (context, snap) {
+        final data = snap.data?.data() ?? {};
+        final manualUrls = ((data['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
+        final connected = manualUrls.isNotEmpty;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const FaIcon(FontAwesomeIcons.tiktok, color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  const Expanded(child: Text('TikTok', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+                  Text('Anzahl Posts: ${manualUrls.length}', style: const TextStyle(color: Colors.white70)),
+                  IconButton(
+                    tooltip: 'Bearbeiten',
+                    icon: const Icon(Icons.edit, color: Colors.white70, size: 18),
+                    onPressed: () => _openTikTokEdit('', manualUrls, connected),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              const SizedBox(height: 2),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildInstagramTile() {
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: _col().doc('instagram').get(),
+      builder: (context, snap) {
+        final data = snap.data?.data() ?? {};
+        final manualUrls = ((data['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
+        final connected = manualUrls.isNotEmpty;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const FaIcon(FontAwesomeIcons.instagram, color: Color(0xFFE4405F), size: 20),
+                  const SizedBox(width: 10),
+                  const Expanded(child: Text('Instagram', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+                  Text('Anzahl Posts: ${manualUrls.length}', style: const TextStyle(color: Colors.white70)),
+                  IconButton(
+                    tooltip: 'Bearbeiten',
+                    icon: const Icon(Icons.edit, color: Colors.white70, size: 18),
+                    onPressed: () => _openIgEdit(manualUrls, connected),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _openTikTokEdit(String currentProfile, List<String> currentManual, bool connected) {
+    final profileCtrl = TextEditingController(text: currentProfile);
+    final manualCtrl = TextEditingController(text: currentManual.join('\n'));
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) {
+        final height = MediaQuery.of(ctx).size.height * 0.75;
+        return SafeArea(
+          child: SizedBox(
+            height: height,
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 12,
+                left: 16, right: 16, top: 16,
+              ),
+              child: _TikTokEditor(
+                profileCtrl: profileCtrl,
+                manualCtrl: manualCtrl,
+                avatarId: widget.avatarId,
+                connected: connected,
+                onSaved: () async { await _load(); },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openIgEdit(List<String> currentManual, bool connected) {
+    final manualCtrl = TextEditingController(text: currentManual.join('\n'));
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) {
+        final height = MediaQuery.of(ctx).size.height * 0.75;
+        return SafeArea(
+          child: SizedBox(
+            height: height,
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 12,
+                left: 16, right: 16, top: 16,
+              ),
+              child: _IgEditor(
+                initialUrls: currentManual,
+                avatarId: widget.avatarId,
+                onSaved: () async { await _load(); },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+}
+
+class _IgEditor extends StatefulWidget {
+  final List<String> initialUrls;
+  final String avatarId;
+  final Future<void> Function() onSaved;
+  const _IgEditor({required this.initialUrls, required this.avatarId, required this.onSaved});
+
+  @override
+  State<_IgEditor> createState() => _IgEditorState();
+}
+
+class _IgEditorState extends State<_IgEditor> {
+  final TextEditingController _addUrlCtrl = TextEditingController();
+  final Map<String, String> _thumbByUrl = <String, String>{};
+  late List<String> _urls;
+  int _page = 0;
+  // dynamisch nach Breite
+
+  @override
+  void initState() {
+    super.initState();
+    _urls = [...widget.initialUrls];
+    _thumbByUrl.clear();
+  }
+
+  @override
+  void dispose() {
+    _addUrlCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final int perPage = _calcPerPage(context);
+    final start = _page * perPage;
+    final end = (start + perPage).clamp(0, _urls.length);
+    final slice = _urls.sublist(start, end);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Instagram Setup', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
         Row(
           children: [
-            OutlinedButton(
-              onPressed: () => _save(isNew: _editingId == 'new', id: _editingId == 'new' ? null : _editingId),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: Colors.white,
-                side: const BorderSide(color: Colors.white24),
+            Expanded(
+              child: TextField(
+                controller: _addUrlCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Post-URL hinzufügen',
+                  hintText: 'https://www.instagram.com/p/... oder /reel/...',
+                ),
+                onChanged: (_) => setState(() {}),
               ),
-              child: const Text('Speichern'),
             ),
-            const SizedBox(width: 8),
+            IconButton(
+              tooltip: 'Hinzufügen',
+              icon: const Icon(Icons.check, color: Colors.white),
+              onPressed: (_isValidIg(_addUrlCtrl.text)) ? () async {
+                final u = _addUrlCtrl.text.trim();
+                _urls.add(u);
+                _addUrlCtrl.clear();
+                await _persist();
+                _fetchThumb(u);
+                setState(() {
+                  final int perPage = _calcPerPage(context);
+                  _page = ((_urls.length - 1) / perPage).floor();
+                });
+              } : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Benötigter Link: Instagram Post öffnen → rechts „Link kopieren“ → hier einfügen.',
+          style: TextStyle(color: Colors.white54, fontSize: 10),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (int i = 0; i < slice.length; i++) _buildTile(start + i),
+          ],
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            TextButton(onPressed: _page > 0 ? () => setState(() => _page--) : null, child: const Text('Zurück')),
+            Builder(builder: (_) {
+              final int perPage = _calcPerPage(context);
+              final total = ((_urls.length + perPage - 1) / perPage).floor();
+              return Text('${_page + 1} / $total', style: const TextStyle(color: Colors.white54, fontSize: 12));
+            }),
             TextButton(
-              onPressed: () {
-                _editingId = null;
-                _clearCtrls();
-                setState(() {});
-              },
-              child: const Text('Abbrechen'),
+              onPressed: ((start + _calcPerPage(context)) < _urls.length) ? () => setState(() => _page++) : null,
+              child: const Text('Weiter'),
             ),
           ],
         ),
@@ -369,52 +475,555 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
     );
   }
 
-  Widget _buildRow(SocialMediaAccount m) {
-    final icon = _iconForProvider(m.providerName);
-    return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: Row(
-        children: [
-          icon,
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(m.providerName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Text(m.login.isNotEmpty ? m.login : '(kein Login)', style: const TextStyle(color: Colors.white70, fontSize: 12)),
-              ],
+  int _calcPerPage(BuildContext context) {
+    final double width = MediaQuery.of(context).size.width - 32;
+    const double tile = 90;
+    const double spacing = 10;
+    final int columns = max(1, ((width + spacing) / (tile + spacing)).floor());
+    const int rows = 2;
+    return columns * rows;
+  }
+
+  bool _isValidIg(String s) {
+    final u = s.trim();
+    return u.contains('www.instagram.com') && (u.contains('/p/') || u.contains('/reel/') || u.contains('/tv/'));
+  }
+
+  Future<void> _persist() async {
+    await FirebaseFirestore.instance.collection('avatars').doc(widget.avatarId)
+        .collection('social_accounts').doc('instagram')
+        .set({
+      'providerName': 'Instagram',
+      'manualUrls': _urls.take(20).toList(),
+      'connected': _urls.isNotEmpty,
+      'updatedAt': DateTime.now().millisecondsSinceEpoch,
+    }, SetOptions(merge: true));
+    await widget.onSaved();
+  }
+
+  Widget _buildTile(int index) {
+    final url = _urls[index];
+    _fetchThumb(url);
+    final thumb = _thumbByUrl[url];
+    return Stack(
+      children: [
+        SizedBox(
+          width: 90,
+          child: AspectRatio(
+            aspectRatio: 9 / 16,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: thumb == null
+                  ? Container(color: Colors.white10, child: const Center(child: Icon(Icons.photo, color: Colors.white54)))
+                  : Image.network(
+                      thumb,
+                      fit: BoxFit.cover,
+                      headers: const {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                        'Referer': 'https://www.instagram.com/',
+                        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                      },
+                    ),
             ),
           ),
-          const SizedBox(width: 8),
-          // Mini Toggle: Verbinden/Trennen
-          InkWell(
-            onTap: _connecting ? null : () => _toggleConnect(m, !m.connected),
-            child: _miniToggle(m.connected),
+        ),
+        Positioned(
+          top: 4,
+          right: 4,
+          child: InkWell(
+            onTap: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (_) => AlertDialog(
+                  backgroundColor: const Color(0xFF1E1E1E),
+                  title: const Text('Löschen?', style: TextStyle(color: Colors.white)),
+                  content: const Text('Diesen Instagram‑Eintrag wirklich entfernen?', style: TextStyle(color: Colors.white70)),
+                  actions: [
+                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
+                    TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Löschen')),
+                  ],
+                ),
+              );
+              if (confirm != true) return;
+              _urls.removeAt(index);
+              await _persist();
+              setState(() {});
+            },
+            child: Container(
+              decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)),
+              padding: const EdgeInsets.all(2),
+              child: const Icon(Icons.delete, size: 16, color: Colors.redAccent),
+            ),
           ),
-          const SizedBox(width: 8),
-          IconButton(
-            tooltip: 'Bearbeiten',
-            icon: const Icon(Icons.edit, color: Colors.white70, size: 18),
-            onPressed: () => _startEdit(m),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _fetchThumb(String url) async {
+    if (_thumbByUrl.containsKey(url)) return;
+    try {
+      // Versuche oEmbed ohne Token (kann je nach Region eingeschränkt sein)
+      final resp = await http.get(Uri.parse('https://www.instagram.com/oembed/?url=${Uri.encodeComponent(url)}'));
+      if (resp.statusCode == 200) {
+        final m = jsonDecode(resp.body) as Map<String, dynamic>;
+        final thumb = (m['thumbnail_url'] as String?) ?? '';
+        if (thumb.isNotEmpty) {
+          setState(() { _thumbByUrl[url] = thumb; });
+        }
+      }
+    } catch (_) {}
+  }
+}
+
+class _TikTokEditor extends StatefulWidget {
+  final TextEditingController profileCtrl;
+  final TextEditingController manualCtrl;
+  final String avatarId;
+  final Future<void> Function() onSaved;
+  final bool connected;
+  const _TikTokEditor({required this.profileCtrl, required this.manualCtrl, required this.avatarId, required this.connected, required this.onSaved});
+
+  @override
+  State<_TikTokEditor> createState() => _TikTokEditorState();
+}
+
+class _TikTokEditorState extends State<_TikTokEditor> {
+  int _page = 0; // dynamisch nach Breite
+  // Toggle/Updater entfernt: nur manuelle URLs
+  static const String _ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+  bool _editingProfile = false;
+  final TextEditingController _addUrlCtrl = TextEditingController();
+  final Map<String, String> _thumbByUrl = <String, String>{};
+  int? _dragFromIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    // Sicherstellen, dass stale Proxy-Thumbs nicht weiterverwendet werden
+    _thumbByUrl.clear();
+  }
+
+  @override
+  void dispose() {
+    _addUrlCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final manual = widget.manualCtrl.text.split('\n').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    final int perPage = _calcPerPage(context);
+    final start = _page * perPage;
+    final end = (start + perPage).clamp(0, manual.length);
+    final slice = manual.sublist(start, end);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Expanded(child: Text('TikTok Setup', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
+            // Keine Zusatzaktionen mehr (Aktualisieren/Toggle/Plus entfernt)
+          ],
+        ),
+        const SizedBox(height: 8),
+        const SizedBox(height: 12),
+        // Neuer URL-Input + Hook
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _addUrlCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: const InputDecoration(
+                  labelText: 'Video-URL hinzufügen',
+                  hintText: 'https://www.tiktok.com/@user/video/…',
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Hinzufügen',
+              icon: const Icon(Icons.check, color: Colors.white),
+              onPressed: (_addUrlCtrl.text.contains('www.tiktok.com') && (_addUrlCtrl.text.contains('/video/') || _addUrlCtrl.text.contains('/photo/'))) ? () async {
+                final u = _addUrlCtrl.text.trim();
+                if (!(u.contains('/video/') || u.contains('/photo/'))) { _toast(context, 'Bitte gültige TikTok URL (/video/ oder /photo/)'); return; }
+                final list = widget.manualCtrl.text.split('\n').where((e) => e.trim().isNotEmpty).map((e) => e.trim()).toList();
+                list.add(u);
+                widget.manualCtrl.text = list.join('\n');
+                _addUrlCtrl.clear();
+                await FirebaseFirestore.instance.collection('avatars').doc(widget.avatarId)
+                    .collection('social_accounts').doc('tiktok')
+                    .set({
+                      'manualUrls': list.take(20).toList(),
+                      'connected': true,
+                      'updatedAt': DateTime.now().millisecondsSinceEpoch
+                    }, SetOptions(merge: true));
+                _fetchThumb(u);
+                // Auf letzte Seite springen, wenn Eintrag > perPage
+                setState(() {
+                  final int perPage = _calcPerPage(context);
+                  _page = ((list.length - 1) / perPage).floor();
+                });
+              } : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Benötigter Link: TikTok Post öffnen → rechts „Link kopieren“ → hier einfügen.',
+          style: TextStyle(color: Colors.white54, fontSize: 10),
+        ),
+        const SizedBox(height: 12),
+        // Grid mit 9:16 Thumbnails, Trash + Drag (dynamisch nach Breite, 2 Reihen)
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (int i = 0; i < slice.length; i++) _buildDraggableTile(manual, start + i),
+          ],
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            TextButton(
+              onPressed: _page > 0 ? () => setState(() => _page--) : null,
+              child: const Text('Zurück'),
+            ),
+            Builder(builder: (_) {
+              final int perPage = _calcPerPage(context);
+              final total = ((manual.length + perPage - 1) / perPage).floor();
+              return Text('${_page + 1} / $total', style: const TextStyle(color: Colors.white54, fontSize: 12));
+            }),
+            TextButton(
+              onPressed: ((start + _calcPerPage(context)) < manual.length) ? () => setState(() => _page++) : null,
+              child: const Text('Weiter'),
+            ),
+          ],
+        ),
+        // Keine globalen Speichern/Abbrechen Buttons mehr
+      ],
+    );
+  }
+
+  int _calcPerPage(BuildContext context) {
+    // Verfügbare Breite minus Padding (ca. 32 px)
+    final double width = MediaQuery.of(context).size.width - 32;
+    const double tile = 90;
+    const double spacing = 10;
+    final int columns = max(1, ((width + spacing) / (tile + spacing)).floor());
+    const int rows = 2; // Zwei Reihen sichtbar
+    return columns * rows;
+  }
+
+  void _toast(BuildContext context, String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: Colors.black87));
+  }
+  Future<void> _fetchThumb(String url) async {
+    final existing = _thumbByUrl[url];
+    if (existing != null && !existing.contains('cloudfunctions.net/thumbnailProxy')) {
+      return;
+    } else if (existing != null) {
+      // Stale Proxy-Eintrag verwerfen und neu laden
+      _thumbByUrl.remove(url);
+    }
+    try {
+      final o = await http.get(Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(url)}'),
+          headers: {'User-Agent': _ua, 'Accept': 'application/json'});
+      if (o.statusCode == 200) {
+        final m = jsonDecode(o.body) as Map<String, dynamic>;
+        final thumb = (m['thumbnail_url'] as String?) ?? '';
+        if (thumb.isNotEmpty) {
+          setState(() {
+            _thumbByUrl[url] = thumb;
+          });
+        }
+      } else {
+        // Fallback: HTML scrapen und Bild aus Meta-Tags extrahieren (og:image / twitter:image)
+        final r = await http.get(Uri.parse(url), headers: {'User-Agent': _ua, 'Accept': 'text/html'});
+        if (r.statusCode == 200) {
+          final html = r.body;
+          final regOg = RegExp(r"""<meta[^>]+property=["'](?:og:image|og:image:url)["'][^>]+content=["']([^"']+)["']""", caseSensitive: false);
+          final regTw = RegExp(r"""<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']""", caseSensitive: false);
+          String img = regOg.firstMatch(html)?.group(1) ?? '';
+          if (img.isEmpty) {
+            img = regTw.firstMatch(html)?.group(1) ?? '';
+          }
+          if (img.isNotEmpty) {
+            setState(() { _thumbByUrl[url] = img; });
+          } else {
+          }
+        } else {
+        }
+      }
+    } catch (_) {}
+  }
+
+  Widget _buildDraggableTile(List<String> urls, int index) {
+    final url = urls[index];
+    _fetchThumb(url);
+    final thumb = _thumbByUrl[url];
+    return Draggable<int>(
+      data: index,
+      onDragStarted: () => _dragFromIndex = index,
+      onDragEnd: (_) => _dragFromIndex = null,
+      feedback: Opacity(
+        opacity: 0.8,
+        child: SizedBox(
+          width: 90,
+          child: AspectRatio(
+            aspectRatio: 9 / 16,
+            child: Container(color: Colors.black54, child: const Icon(Icons.drag_indicator, color: Colors.white)),
           ),
-          IconButton(
-            tooltip: 'Löschen',
-            icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 18),
-            onPressed: () => _delete(m.id),
-          ),
-        ],
+        ),
+      ),
+      child: DragTarget<int>(
+        onWillAccept: (from) => from != null && from != index,
+        onAccept: (from) async {
+          final list = urls;
+          final item = list.removeAt(from);
+          list.insert(index, item);
+          widget.manualCtrl.text = list.join('\n');
+          await FirebaseFirestore.instance.collection('avatars').doc(widget.avatarId)
+              .collection('social_accounts').doc('tiktok')
+              .set({
+                'manualUrls': list.take(20).toList(),
+                'connected': list.isNotEmpty,
+                'updatedAt': DateTime.now().millisecondsSinceEpoch
+              }, SetOptions(merge: true));
+          setState(() {});
+        },
+        builder: (ctx, cand, rej) {
+          return Stack(
+            children: [
+              SizedBox(
+                width: 90,
+                child: AspectRatio(
+                  aspectRatio: 9 / 16,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: thumb == null
+                        ? Container(
+                            color: Colors.white10,
+                            child: const Center(
+                              child: FaIcon(FontAwesomeIcons.tiktok, color: Colors.white54, size: 40),
+                            ),
+                          )
+                        : Image.network(
+                            thumb,
+                            fit: BoxFit.cover,
+                            headers: const {
+                              'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                              'Referer': 'https://www.tiktok.com/',
+                              'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                            },
+                            errorBuilder: (_, __, ___) => Container(
+                              color: Colors.white10,
+                              child: const Center(
+                                child: FaIcon(FontAwesomeIcons.tiktok, color: Colors.white54, size: 40),
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+              ),
+              // Preview (Auge) unten links
+              Positioned(
+                left: 4,
+                bottom: 4,
+                child: InkWell(
+                  onTap: () => _openPreview(url),
+                  child: Container(
+                    decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.all(4),
+                    child: const Icon(Icons.remove_red_eye, size: 16, color: Colors.white70),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: InkWell(
+                  onTap: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        backgroundColor: const Color(0xFF1E1E1E),
+                        title: const Text('Löschen?', style: TextStyle(color: Colors.white)),
+                        content: const Text('Diesen TikTok‑Eintrag wirklich entfernen?', style: TextStyle(color: Colors.white70)),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
+                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Löschen')),
+                        ],
+                      ),
+                    );
+                    if (confirm != true) return;
+                    final list = urls;
+                    list.removeAt(index);
+                    widget.manualCtrl.text = list.join('\n');
+                    await FirebaseFirestore.instance.collection('avatars').doc(widget.avatarId)
+                        .collection('social_accounts').doc('tiktok')
+                        .set({
+                          'manualUrls': list.take(20).toList(),
+                          'connected': list.isNotEmpty,
+                          'updatedAt': DateTime.now().millisecondsSinceEpoch
+                        }, SetOptions(merge: true));
+                    setState(() {});
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.all(2),
+                    child: const Icon(Icons.delete, size: 16, color: Colors.redAccent),
+                  ),
+                ),
+              ),
+              Positioned(
+                bottom: 4,
+                right: 4,
+                child: InkWell(
+                  onTap: _openReorderDialog,
+                  child: Container(
+                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.all(2),
+                    child: const Icon(Icons.drag_indicator, size: 16, color: Colors.white70),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
 
+  void _openPreview(String postUrl) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.topRight,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ),
+              Expanded(
+                child: FutureBuilder<InAppWebViewInitialData>(
+                  future: _buildEmbedData(postUrl),
+                  builder: (context, snap) {
+                    if (!snap.hasData) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    return Center(
+                      child: AspectRatio(
+                        aspectRatio: 9 / 16,
+                        child: InAppWebView(
+                          initialData: snap.data,
+                          initialSettings: InAppWebViewSettings(
+                            transparentBackground: true,
+                            mediaPlaybackRequiresUserGesture: true,
+                            disableContextMenu: true,
+                            supportZoom: false,
+                          ),
+                          onConsoleMessage: (controller, consoleMessage) {
+                            // Console-Logs unterdrücken
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<InAppWebViewInitialData> _buildEmbedData(String postUrl) async {
+    String body = '';
+    try {
+      final resp = await http.get(Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(postUrl)}'));
+      if (resp.statusCode == 200) {
+        final m = jsonDecode(resp.body) as Map<String, dynamic>;
+        final html = (m['html'] as String?) ?? '';
+        body = html;
+      }
+    } catch (_) {}
+    if (body.isEmpty) {
+      body = '<blockquote class="tiktok-embed" cite="$postUrl" style="max-width:100%;min-width:100%;"></blockquote><script async src="https://www.tiktok.com/embed.js"></script>';
+    } else if (!body.contains('embed.js')) {
+      body = '$body<script async src="https://www.tiktok.com/embed.js"></script>';
+    }
+    final doc = '''
+<!doctype html>
+<html>
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>html,body{height:100%;margin:0;background:#000;display:flex;align-items:center;justify-content:center} .wrap{width:100%}</style>
+  </head>
+  <body>
+    <div class="wrap">$body</div>
+  </body>
+</html>
+''';
+    return InAppWebViewInitialData(data: doc, mimeType: 'text/html', encoding: 'utf-8');
+  }
+  Future<void> _openReorderDialog() async {
+    final list = widget.manualCtrl.text.split('\n').where((e) => e.trim().isNotEmpty).map((e) => e.trim()).toList();
+    final controller = ScrollController();
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Reihenfolge ändern', style: TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: 400,
+          height: 360,
+          child: ReorderableListView.builder(
+            scrollController: controller,
+            itemCount: list.length,
+            onReorder: (oldIndex, newIndex) {
+              final from = oldIndex;
+              var to = newIndex;
+              if (to > from) to -= 1;
+              final item = list.removeAt(from);
+              list.insert(to, item);
+            },
+            itemBuilder: (ctx, i) {
+              final u = list[i];
+              return ListTile(
+                key: ValueKey('re-$i'),
+                title: Text(u, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),
+                trailing: const Icon(Icons.drag_handle, color: Colors.white54),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen')),
+          TextButton(onPressed: () => Navigator.pop(context, list), child: const Text('Übernehmen')),
+        ],
+      ),
+    );
+    if (result != null) {
+      widget.manualCtrl.text = result.join('\n');
+      await FirebaseFirestore.instance.collection('avatars').doc(widget.avatarId)
+          .collection('social_accounts').doc('tiktok')
+          .set({
+            'manualUrls': result.take(20).toList(),
+            'connected': result.isNotEmpty,
+            'updatedAt': DateTime.now().millisecondsSinceEpoch
+          }, SetOptions(merge: true));
+      setState(() {});
+    }
+  }
   Widget _miniToggle(bool value) {
     return Container(
       width: 48,
@@ -475,7 +1084,7 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
   }
 
   Future<String> _encrypt(String plain) async {
-    final uid = _auth.currentUser?.uid ?? 'anon';
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anon';
     final keyBytes = Uint8List.fromList(_deriveKey(uid));
     final key = enc.Key(keyBytes);
     // AES-CBC: 16 Byte IV
@@ -492,7 +1101,7 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
       if (parts.length != 2) return '';
       final ivBytes = base64Decode(parts[0]);
       final cipherB64 = parts[1];
-      final uid = _auth.currentUser?.uid ?? 'anon';
+      final uid = FirebaseAuth.instance.currentUser?.uid ?? 'anon';
       final key = enc.Key(Uint8List.fromList(_deriveKey(uid)));
       final encrypter = enc.Encrypter(enc.AES(key, mode: enc.AESMode.cbc));
       final decrypted = encrypter.decrypt(enc.Encrypted.fromBase64(cipherB64), iv: enc.IV(ivBytes));

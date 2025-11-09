@@ -13,7 +13,7 @@ class BaseExpansionTile extends StatelessWidget {
   const BaseExpansionTile({
     super.key,
     required this.title,
-    required this.emoji,
+    this.emoji = '',
     required this.children,
     this.initiallyExpanded = false,
     this.backgroundColor,
@@ -37,8 +37,10 @@ class BaseExpansionTile extends StatelessWidget {
         iconColor: AppColors.lightBlue,
         title: Row(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 20)),
-            const SizedBox(width: 8),
+            if (emoji.trim().isNotEmpty) ...[
+              Text(emoji, style: const TextStyle(fontSize: 20)),
+              const SizedBox(width: 8),
+            ],
             Text(title, style: const TextStyle(color: Colors.white)),
           ],
         ),

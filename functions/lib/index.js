@@ -80,6 +80,7 @@ Object.defineProperty(exports, "handleMediaPurchaseWebhook", { enumerable: true,
 __exportStar(require("./social"), exports);
 __exportStar(require("./social_oauth"), exports);
 __exportStar(require("./social_oauth_facebook"), exports);
+__exportStar(require("./tiktok_prefetch"), exports);
 // Admin init (falls notwendig)
 if (!admin.apps.length) {
     try {
