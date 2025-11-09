@@ -986,7 +986,7 @@ class _TikTokFullscreenViewerState extends State<_TikTokFullscreenViewer> {
         embedHtml = '<blockquote class="tiktok-embed" cite="$url" style="max-width:100%;min-width:100%;"></blockquote>';
       }
       
-      embedBlocks.add('<div style="margin: 20px 0;">$embedHtml</div>');
+      embedBlocks.add('<div class="video-container">$embedHtml</div>');
     }
     
     final allEmbeds = embedBlocks.join('\n');
@@ -1005,18 +1005,74 @@ class _TikTokFullscreenViewerState extends State<_TikTokFullscreenViewer> {
         overflow-y: scroll;
         overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
+        scroll-snap-type: y mandatory;
       }
       body {
         display: flex;
         flex-direction: column;
         align-items: center;
-        padding: 20px 0;
+        padding: 0;
+      }
+      .video-container {
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
       }
     </style>
   </head>
   <body>
     $allEmbeds
     <script async src="https://www.tiktok.com/embed.js"></script>
+    <script>
+      // Pausiere alle Videos außer dem sichtbaren
+      let lastVisibleIndex = -1;
+      
+      function checkVisibleVideo() {
+        const containers = document.querySelectorAll('.video-container');
+        const viewportHeight = window.innerHeight;
+        
+        containers.forEach((container, index) => {
+          const rect = container.getBoundingClientRect();
+          const isVisible = rect.top >= -viewportHeight/2 && rect.top <= viewportHeight/2;
+          
+          if (isVisible && index !== lastVisibleIndex) {
+            lastVisibleIndex = index;
+            
+            // Pausiere alle iframes
+            const allIframes = document.querySelectorAll('iframe');
+            allIframes.forEach(iframe => {
+              try {
+                iframe.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
+              } catch(e) {}
+            });
+            
+            // Spiele nur das sichtbare Video ab (optional)
+            const visibleIframe = container.querySelector('iframe');
+            if (visibleIframe) {
+              try {
+                visibleIframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
+              } catch(e) {}
+            }
+          }
+        });
+      }
+      
+      // Beim Scrollen prüfen
+      let scrollTimeout;
+      window.addEventListener('scroll', () => {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(checkVisibleVideo, 150);
+      }, { passive: true });
+      
+      // Initial check nach Laden
+      setTimeout(() => {
+        checkVisibleVideo();
+      }, 2000);
+    </script>
   </body>
 </html>
 ''';
