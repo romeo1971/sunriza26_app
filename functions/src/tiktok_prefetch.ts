@@ -120,14 +120,7 @@ export const tiktokPrefetch = onRequest({ cors: true, timeoutSeconds: 60, region
         },
         { merge: true }
       );
-    // Clear cache so downstream embed page rebuilds
-    await db
-      .collection("avatars")
-      .doc(avatarId)
-      .collection("social_cache")
-      .doc("tiktok")
-      .delete()
-      .catch(() => {});
+    // Browser/Client cacht Embeds selbst.
     res.json({ urlsCount: manualUrls.length, urls: manualUrls });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "prefetch failed" });

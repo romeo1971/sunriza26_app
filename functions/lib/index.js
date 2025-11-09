@@ -77,9 +77,11 @@ Object.defineProperty(exports, "copyMediaToMoments", { enumerable: true, get: fu
 Object.defineProperty(exports, "createMediaCheckoutSession", { enumerable: true, get: function () { return mediaCheckout_1.createMediaCheckoutSession; } });
 Object.defineProperty(exports, "mediaCheckoutWebhook", { enumerable: true, get: function () { return mediaCheckout_1.mediaCheckoutWebhook; } });
 Object.defineProperty(exports, "handleMediaPurchaseWebhook", { enumerable: true, get: function () { return mediaCheckout_1.handleMediaPurchaseWebhook; } });
-__exportStar(require("./social"), exports);
-__exportStar(require("./social_oauth"), exports);
-__exportStar(require("./social_oauth_facebook"), exports);
+// Entfernt: Social-APIs (Instagram/Facebook) und serverseitige Social-Caches.
+// Wir arbeiten ausschließlich mit clientseitigen Embeds (blockquote + embed.js).
+// export * from './social';
+// export * from './social_oauth';
+// export * from './social_oauth_facebook';
 __exportStar(require("./tiktok_prefetch"), exports);
 // Admin init (falls notwendig)
 if (!admin.apps.length) {

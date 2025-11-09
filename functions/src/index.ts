@@ -34,8 +34,11 @@ export * from './paymentMethods';
 
 // Explizite Re-Exports für mediaCheckout
 export { copyMediaToMoments, createMediaCheckoutSession, mediaCheckoutWebhook, handleMediaPurchaseWebhook } from './mediaCheckout';
-export * from './social';
-// OAuth-basierte Anbindungen entfernt (wir nutzen manuelle Embeds)
+// Entfernt: Social-APIs (Instagram/Facebook) und serverseitige Social-Caches.
+// Wir arbeiten ausschließlich mit clientseitigen Embeds (blockquote + embed.js).
+// export * from './social';
+// export * from './social_oauth';
+// export * from './social_oauth_facebook';
 export * from './tiktok_prefetch';
 
 // Admin init (falls notwendig)

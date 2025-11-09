@@ -155,14 +155,7 @@ exports.tiktokPrefetch = (0, https_1.onRequest)({ cors: true, timeoutSeconds: 60
             connected: true,
             updatedAt: Date.now(),
         }, { merge: true });
-        // Clear cache so downstream embed page rebuilds
-        await db
-            .collection("avatars")
-            .doc(avatarId)
-            .collection("social_cache")
-            .doc("tiktok")
-            .delete()
-            .catch(() => { });
+        // Obsolet: Kein serverseitiger social_cache mehr – Browser/Client cacht Embeds selbst.
         res.json({ urlsCount: manualUrls.length, urls: manualUrls });
     }
     catch (e) {

@@ -429,17 +429,19 @@ class _IgEditorState extends State<_IgEditor> {
             IconButton(
               tooltip: 'Hinzufügen',
               icon: const Icon(Icons.check, color: Colors.white),
-              onPressed: (_isValidIg(_addUrlCtrl.text)) ? () async {
-                final u = _addUrlCtrl.text.trim();
-                _urls.add(u);
-                _addUrlCtrl.clear();
-                await _persist();
-                _fetchThumb(u);
-                setState(() {
-                  final int perPage = _calcPerPage(context);
-                  _page = ((_urls.length - 1) / perPage).floor();
-                });
-              } : null,
+              onPressed: (_isValidIg(_addUrlCtrl.text))
+                  ? () async {
+                      final permalink = _extractInstagramPermalink(_addUrlCtrl.text)!;
+                      _urls.add(permalink);
+                      _addUrlCtrl.clear();
+                      await _persist();
+                      _fetchThumb(permalink);
+                      setState(() {
+                        final int perPage = _calcPerPage(context);
+                        _page = ((_urls.length - 1) / perPage).floor();
+                      });
+                    }
+                  : null,
             ),
           ],
         ),
@@ -484,10 +486,7 @@ class _IgEditorState extends State<_IgEditor> {
     return columns * rows;
   }
 
-  bool _isValidIg(String s) {
-    final u = s.trim();
-    return u.contains('www.instagram.com') && (u.contains('/p/') || u.contains('/reel/') || u.contains('/tv/'));
-  }
+  bool _isValidIg(String s) => _extractInstagramPermalink(s) != null;
 
   Future<void> _persist() async {
     await FirebaseFirestore.instance.collection('avatars').doc(widget.avatarId)
@@ -620,8 +619,9 @@ Future<void> _openOEmbedPreview(BuildContext context, {required String provider,
     // API-frei: reines Client-Embed über blockquote + embed.js
     String body;
     if (provider.toLowerCase() == 'instagram') {
-      body = '<blockquote class="instagram-media" data-instgrm-permalink="$postUrl" data-instgrm-version="14" style="margin:0;padding:0;"></blockquote>'
-             '<script async src="https://www.instagram.com/embed.js"></script>';
+      final permalink = normalizeInstagramPermalink(postUrl);
+      final block = buildInstagramEmbedBlockquote(permalink);
+      body = '$block<script async src="https://www.instagram.com/embed.js"></script>';
     } else {
       body = '<blockquote class="tiktok-embed" cite="$postUrl" style="max-width:100%;min-width:100%;"></blockquote>'
              '<script async src="https://www.tiktok.com/embed.js"></script>';
@@ -684,6 +684,62 @@ Future<void> _openOEmbedPreview(BuildContext context, {required String provider,
       );
     },
   );
+}
+
+/// Normalisiert Instagram-URLs zu einer sauberen Permalink-Form:
+/// - unterstützt /reel/{id}/, /p/{id}/ und /tv/{id}/
+/// - entfernt Query/Fragment, stellt den abschließenden Slash sicher
+String normalizeInstagramPermalink(String rawUrl) {
+  try {
+    final uri = Uri.parse(rawUrl.trim());
+    final host = uri.host.toLowerCase();
+    if (!host.contains('instagram.com')) return rawUrl.split('?').first;
+    final parts = uri.pathSegments;
+    final idx = parts.indexWhere((s) => s == 'reel' || s == 'p' || s == 'tv');
+    if (idx >= 0 && idx + 1 < parts.length) {
+      final kind = parts[idx];
+      final id = parts[idx + 1];
+      return 'https://www.instagram.com/$kind/$id/';
+    }
+    // Fallback: Query abschneiden, Slash sicherstellen
+    final base = rawUrl.split('?').first.split('#').first;
+    return base.endsWith('/') ? base : '$base/';
+  } catch (_) {
+    final base = rawUrl.split('?').first.split('#').first;
+    return base.endsWith('/') ? base : '$base/';
+  }
+}
+
+/// Baut nur den Blockquote-Teil für Instagram.
+/// Beispielausgabe:
+/// <blockquote class="instagram-media" data-instgrm-captioned
+///   data-instgrm-permalink="https://www.instagram.com/reel/DOE1q9-CWr6/"
+///   style="width:100%; max-width:540px; margin:0 auto;">
+/// </blockquote>
+String buildInstagramEmbedBlockquote(String permalink, {bool captioned = true}) {
+  final p = normalizeInstagramPermalink(permalink);
+  final capAttr = captioned ? ' data-instgrm-captioned' : '';
+  return '<blockquote class="instagram-media"$capAttr data-instgrm-permalink="$p" '
+      'style="width:100%; max-width:540px; margin:0 auto;"></blockquote>';
+}
+
+/// Extrahiert aus beliebigem Text (URL, Blockquote, HTML) die erste Instagram-Permalink-URL.
+/// Unterstützt /reel/, /p/, /tv/
+String? _extractInstagramPermalink(String input) {
+  final text = input.trim();
+  // 1) data-instgrm-permalink="...”
+  final reAttr = RegExp(r'''data-instgrm-permalink=["\'](https?://www\.instagram\.com/(?:reel|p|tv)/[^"\']+)["\']''', caseSensitive: false);
+  final m1 = reAttr.firstMatch(text);
+  if (m1 != null && m1.groupCount >= 1) {
+    return normalizeInstagramPermalink(m1.group(1)!);
+  }
+  // 2) Plain URL im Text
+  final reUrl = RegExp(r'''(https?://www\.instagram\.com/(?:reel|p|tv)/[^\s"\'<>]+)''', caseSensitive: false);
+  final m2 = reUrl.firstMatch(text);
+  if (m2 != null && m2.groupCount >= 1) {
+    return normalizeInstagramPermalink(m2.group(1)!);
+  }
+  return null;
 }
 
 class _TikTokEditor extends StatefulWidget {
