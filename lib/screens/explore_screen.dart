@@ -958,7 +958,7 @@ class ExploreScreenState extends State<ExploreScreen> {
 
 }
 
-/// TikTok Fullscreen Viewer mit Infinity Scroll
+/// TikTok Fullscreen Viewer mit Infinity Scroll IM iFrame
 class _TikTokFullscreenViewer extends StatefulWidget {
   final List<String> urls;
   const _TikTokFullscreenViewer({required this.urls});
@@ -968,45 +968,55 @@ class _TikTokFullscreenViewer extends StatefulWidget {
 }
 
 class _TikTokFullscreenViewerState extends State<_TikTokFullscreenViewer> {
-  late PageController _controller;
-  final Map<int, InAppWebViewInitialData> _cache = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = PageController(initialPage: widget.urls.length * 1000);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  Future<InAppWebViewInitialData> _buildOEmbed(String postUrl) async {
-    String body = '';
-    try {
-      final resp = await http.get(Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(postUrl)}'));
-      if (resp.statusCode == 200) {
-        final m = jsonDecode(resp.body) as Map<String, dynamic>;
-        final html = (m['html'] as String?) ?? '';
-        body = html;
+  Future<InAppWebViewInitialData> _buildAllEmbedsHtml() async {
+    // Lade JEDES Video einzeln über oEmbed API
+    final embedBlocks = <String>[];
+    
+    for (final url in widget.urls) {
+      String embedHtml = '';
+      try {
+        final resp = await http.get(Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(url)}'));
+        if (resp.statusCode == 200) {
+          final m = jsonDecode(resp.body) as Map<String, dynamic>;
+          embedHtml = (m['html'] as String?) ?? '';
+        }
+      } catch (_) {}
+      
+      if (embedHtml.isEmpty) {
+        embedHtml = '<blockquote class="tiktok-embed" cite="$url" style="max-width:100%;min-width:100%;"></blockquote>';
       }
-    } catch (_) {}
-    if (body.isEmpty) {
-      body = '<blockquote class="tiktok-embed" cite="$postUrl" style="max-width:100%;min-width:100%;"></blockquote><script async src="https://www.tiktok.com/embed.js"></script>';
-    } else if (!body.contains('embed.js')) {
-      body = '$body<script async src="https://www.tiktok.com/embed.js"></script>';
+      
+      embedBlocks.add('<div style="margin: 20px 0;">$embedHtml</div>');
     }
+    
+    final allEmbeds = embedBlocks.join('\n');
+    
     final doc = '''
 <!doctype html>
 <html>
   <head>
+    <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <style>html,body{height:100%;margin:0;background:#000;display:flex;align-items:center;justify-content:center} .wrap{width:100%}</style>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: #000;
+        overflow-y: scroll;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 20px 0;
+      }
+    </style>
   </head>
   <body>
-    <div class="wrap">$body</div>
+    $allEmbeds
+    <script async src="https://www.tiktok.com/embed.js"></script>
   </body>
 </html>
 ''';
@@ -1019,46 +1029,28 @@ class _TikTokFullscreenViewerState extends State<_TikTokFullscreenViewer> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          PageView.builder(
-            controller: _controller,
-            scrollDirection: Axis.vertical,
-            itemBuilder: (context, i) {
-              final index = i % widget.urls.length;
-              final url = widget.urls[index];
-              return FutureBuilder<InAppWebViewInitialData>(
-                future: _cache.containsKey(index) 
-                    ? Future.value(_cache[index])
-                    : _buildOEmbed(url).then((data) {
-                        _cache[index] = data;
-                        return data;
-                      }),
-                builder: (context, snap) {
-                  if (!snap.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  return SizedBox.expand(
-                    child: Container(
-                      color: Colors.black,
-                      child: Center(
-                        child: AspectRatio(
-                          aspectRatio: 9 / 16,
-                          child: InAppWebView(
-                            initialData: snap.data,
-                            initialSettings: InAppWebViewSettings(
-                              transparentBackground: true,
-                              mediaPlaybackRequiresUserGesture: true,
-                              disableContextMenu: true,
-                              supportZoom: false,
-                            ),
-                            onConsoleMessage: (controller, consoleMessage) {
-                              // Console-Logs unterdrücken
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
+          FutureBuilder<InAppWebViewInitialData>(
+            future: _buildAllEmbedsHtml(),
+            builder: (context, snap) {
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              return SizedBox.expand(
+                child: InAppWebView(
+                  initialData: snap.data,
+                  initialSettings: InAppWebViewSettings(
+                    transparentBackground: false,
+                    mediaPlaybackRequiresUserGesture: false,
+                    disableContextMenu: true,
+                    supportZoom: false,
+                    verticalScrollBarEnabled: true,
+                    javaScriptEnabled: true,
+                    javaScriptCanOpenWindowsAutomatically: true,
+                  ),
+                  onConsoleMessage: (controller, consoleMessage) {
+                    // Console-Logs unterdrücken
+                  },
+                ),
               );
             },
           ),
