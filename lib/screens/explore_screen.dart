@@ -504,13 +504,14 @@ class ExploreScreenState extends State<ExploreScreen> {
           ),
           Stack(
             children: [
-              // Social iFrame Overlay (unter AppBar, über Hintergrund; Buttons bleiben oben)
+              // Social iFrame Overlay (zwischen Header und Footer)
               if (_socialOverlayUrl != null)
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 56 + 8,
                   left: 0,
                   right: 0,
-                  bottom: 88,
+                  // exakt über der unteren Button-Leiste verbleiben
+                  bottom: MediaQuery.of(context).padding.bottom + 16 + 48,
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: InAppWebView(
@@ -751,7 +752,7 @@ class ExploreScreenState extends State<ExploreScreen> {
                           onTap: () {
                             Navigator.of(context).pop();
                             if (provider.toLowerCase() == 'tiktok') {
-                              _openTikTokVerticalViewer(avatarId);
+                              _openTikTokOverview(avatarId);
                             } else {
                               final embedUrl = _buildSocialEmbedUrl(provider, avatarId);
                               _openAvatarIframe(embedUrl);
@@ -908,6 +909,74 @@ class ExploreScreenState extends State<ExploreScreen> {
     });
   }
 
+  Future<void> _openTikTokOverview(String avatarId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('avatars').doc(avatarId)
+        .collection('social_accounts').doc('tiktok').get();
+    final urls = ((doc.data()?['manualUrls'] as List?) ?? const [])
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (urls.isEmpty) return;
+    final topInset = MediaQuery.of(context).padding.top + 56 + 8;
+    final bottomInset = MediaQuery.of(context).padding.bottom + 16 + 48;
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      builder: (_) {
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(onTap: () => Navigator.pop(context)),
+            ),
+            Positioned(
+              top: topInset,
+              left: 0,
+              right: 0,
+              bottom: bottomInset,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  color: const Color(0xFF121212),
+                  child: _TikTokOverviewOverlay(
+                    urls: urls,
+                    onSelect: (index) {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          fullscreenDialog: true,
+                          builder: (_) => _TikTokFullscreenViewer(urls: urls, initialIndex: index),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ),
+            Positioned(
+              top: topInset + 4,
+              right: 12,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 20),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _openTikTokVerticalViewer(String avatarId) async {
     final doc = await FirebaseFirestore.instance
         .collection('avatars').doc(avatarId)
@@ -958,39 +1027,236 @@ class ExploreScreenState extends State<ExploreScreen> {
 
 }
 
+/// TikTok Overview Page: Scrollbare Übersicht aller Einträge (Thumbnails)
+class _TikTokOverviewPage extends StatefulWidget {
+  final List<String> urls;
+  final void Function(int index) onSelect;
+  const _TikTokOverviewPage({required this.urls, required this.onSelect});
+  @override
+  State<_TikTokOverviewPage> createState() => _TikTokOverviewPageState();
+}
+
+class _TikTokOverviewPageState extends State<_TikTokOverviewPage> {
+  static const String _ua =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+  final Map<String, String> _thumbByUrl = <String, String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    for (final url in widget.urls) {
+      _loadThumb(url);
+    }
+  }
+
+  Future<void> _loadThumb(String url) async {
+    if (_thumbByUrl.containsKey(url)) return;
+    try {
+      final o = await http.get(
+        Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(url)}'),
+        headers: {'User-Agent': _ua, 'Accept': 'application/json'},
+      );
+      if (o.statusCode == 200) {
+        final m = jsonDecode(o.body) as Map<String, dynamic>;
+        final thumb = (m['thumbnail_url'] as String?) ?? '';
+        if (thumb.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _thumbByUrl[url] = thumb;
+            });
+          }
+          return;
+        }
+      }
+    } catch (_) {}
+    // Fallback (optional): belasse Platzhalter
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            GridView.builder(
+              padding: const EdgeInsets.all(12),
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                mainAxisSpacing: 12,
+                crossAxisSpacing: 12,
+                childAspectRatio: 9 / 16,
+              ),
+              itemCount: widget.urls.length,
+              itemBuilder: (context, index) {
+                final url = widget.urls[index];
+                final thumb = _thumbByUrl[url];
+                return GestureDetector(
+                  onTap: () => widget.onSelect(index),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Container(
+                      color: Colors.white10,
+                      child: thumb == null
+                          ? const Center(child: FaIcon(FontAwesomeIcons.tiktok, color: Colors.white54, size: 28))
+                          : Image.network(
+                              thumb,
+                              fit: BoxFit.cover,
+                              headers: const {
+                                'User-Agent': _ua,
+                                'Referer': 'https://www.tiktok.com/',
+                                'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                              },
+                            ),
+                    ),
+                  ),
+                );
+              },
+            ),
+            Positioned(
+              right: 12,
+              top: 12,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 24),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Gleiches Grid wie Page-Variante, aber ohne Scaffold/SafeArea – für Dialog-Overlay
+class _TikTokOverviewOverlay extends StatefulWidget {
+  final List<String> urls;
+  final void Function(int index) onSelect;
+  const _TikTokOverviewOverlay({required this.urls, required this.onSelect});
+  @override
+  State<_TikTokOverviewOverlay> createState() => _TikTokOverviewOverlayState();
+}
+
+class _TikTokOverviewOverlayState extends State<_TikTokOverviewOverlay> {
+  static const String _ua =
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
+  final Map<String, String> _thumbByUrl = <String, String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    for (final url in widget.urls) {
+      _loadThumb(url);
+    }
+  }
+
+  Future<void> _loadThumb(String url) async {
+    if (_thumbByUrl.containsKey(url)) return;
+    try {
+      final o = await http.get(
+        Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(url)}'),
+        headers: {'User-Agent': _ua, 'Accept': 'application/json'},
+      );
+      if (o.statusCode == 200) {
+        final m = jsonDecode(o.body) as Map<String, dynamic>;
+        final thumb = (m['thumbnail_url'] as String?) ?? '';
+        if (thumb.isNotEmpty) {
+          if (mounted) {
+            setState(() {
+              _thumbByUrl[url] = thumb;
+            });
+          }
+          return;
+        }
+      }
+    } catch (_) {}
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        mainAxisSpacing: 12,
+        crossAxisSpacing: 12,
+        childAspectRatio: 9 / 16,
+      ),
+      itemCount: widget.urls.length,
+      itemBuilder: (context, index) {
+        final url = widget.urls[index];
+        final thumb = _thumbByUrl[url];
+        return GestureDetector(
+          onTap: () => widget.onSelect(index),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              color: Colors.white10,
+              child: thumb == null
+                  ? const Center(child: FaIcon(FontAwesomeIcons.tiktok, color: Colors.white54, size: 28))
+                  : Image.network(
+                      thumb,
+                      fit: BoxFit.cover,
+                      headers: const {
+                        'User-Agent': _ua,
+                        'Referer': 'https://www.tiktok.com/',
+                        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                      },
+                    ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 /// TikTok Fullscreen Viewer mit Infinity Scroll IM iFrame
 class _TikTokFullscreenViewer extends StatefulWidget {
   final List<String> urls;
-  const _TikTokFullscreenViewer({required this.urls});
+  final int? initialIndex;
+  const _TikTokFullscreenViewer({required this.urls, this.initialIndex});
 
   @override
   State<_TikTokFullscreenViewer> createState() => _TikTokFullscreenViewerState();
 }
 
 class _TikTokFullscreenViewerState extends State<_TikTokFullscreenViewer> {
-  Future<InAppWebViewInitialData> _buildAllEmbedsHtml() async {
-    // Lade JEDES Video einzeln über oEmbed API
-    final embedBlocks = <String>[];
-    
-    for (final url in widget.urls) {
-      String embedHtml = '';
-      try {
-        final resp = await http.get(Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(url)}'));
-        if (resp.statusCode == 200) {
-          final m = jsonDecode(resp.body) as Map<String, dynamic>;
-          embedHtml = (m['html'] as String?) ?? '';
-        }
-      } catch (_) {}
-      
-      if (embedHtml.isEmpty) {
-        embedHtml = '<blockquote class="tiktok-embed" cite="$url" style="max-width:100%;min-width:100%;"></blockquote>';
-      }
-      
-      embedBlocks.add('<div class="video-container">$embedHtml</div>');
+  // Einfacher Cache: url -> fertiges InAppWebViewInitialData
+  static final Map<String, InAppWebViewInitialData> _embedCache = {};
+
+  String get _selectedUrl {
+    final idx = (widget.initialIndex ?? 0) % widget.urls.length;
+    return widget.urls[idx];
+  }
+
+  Future<InAppWebViewInitialData> _buildSingleEmbedHtml(String url) async {
+    if (_embedCache.containsKey(url)) {
+      return _embedCache[url]!;
     }
-    
-    final allEmbeds = embedBlocks.join('\n');
-    
+
+    String embedHtml = '';
+    try {
+      final resp = await http.get(Uri.parse('https://www.tiktok.com/oembed?url=${Uri.encodeComponent(url)}'));
+      if (resp.statusCode == 200) {
+        final m = jsonDecode(resp.body) as Map<String, dynamic>;
+        embedHtml = (m['html'] as String?) ?? '';
+      }
+    } catch (_) {}
+
+    if (embedHtml.isEmpty) {
+      embedHtml = '<blockquote class="tiktok-embed" cite="$url" style="max-width:100%;min-width:100%;"></blockquote>';
+    }
+
     final doc = '''
 <!doctype html>
 <html>
@@ -998,85 +1264,24 @@ class _TikTokFullscreenViewerState extends State<_TikTokFullscreenViewer> {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <style>
-      html, body {
-        margin: 0;
-        padding: 0;
-        background: #000;
-        overflow-y: scroll;
-        overflow-x: hidden;
-        -webkit-overflow-scrolling: touch;
-        scroll-snap-type: y mandatory;
-      }
-      body {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        padding: 0;
-      }
-      .video-container {
-        width: 100%;
-        height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        scroll-snap-align: start;
-        scroll-snap-stop: always;
-      }
+      html, body { margin:0; padding:0; background:#000; overflow:hidden; }
+      .wrap { width:100%; height:100vh; display:flex; align-items:center; justify-content:center; }
+      .inner { width:min(600px, 100%); }
     </style>
   </head>
   <body>
-    $allEmbeds
+    <div class="wrap">
+      <div class="inner">
+        $embedHtml
+      </div>
+    </div>
     <script async src="https://www.tiktok.com/embed.js"></script>
-    <script>
-      // Pausiere alle Videos außer dem sichtbaren
-      let lastVisibleIndex = -1;
-      
-      function checkVisibleVideo() {
-        const containers = document.querySelectorAll('.video-container');
-        const viewportHeight = window.innerHeight;
-        
-        containers.forEach((container, index) => {
-          const rect = container.getBoundingClientRect();
-          const isVisible = rect.top >= -viewportHeight/2 && rect.top <= viewportHeight/2;
-          
-          if (isVisible && index !== lastVisibleIndex) {
-            lastVisibleIndex = index;
-            
-            // Pausiere alle iframes
-            const allIframes = document.querySelectorAll('iframe');
-            allIframes.forEach(iframe => {
-              try {
-                iframe.contentWindow.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-              } catch(e) {}
-            });
-            
-            // Spiele nur das sichtbare Video ab (optional)
-            const visibleIframe = container.querySelector('iframe');
-            if (visibleIframe) {
-              try {
-                visibleIframe.contentWindow.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
-              } catch(e) {}
-            }
-          }
-        });
-      }
-      
-      // Beim Scrollen prüfen
-      let scrollTimeout;
-      window.addEventListener('scroll', () => {
-        clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(checkVisibleVideo, 150);
-      }, { passive: true });
-      
-      // Initial check nach Laden
-      setTimeout(() => {
-        checkVisibleVideo();
-      }, 2000);
-    </script>
   </body>
 </html>
 ''';
-    return InAppWebViewInitialData(data: doc, mimeType: 'text/html', encoding: 'utf-8');
+    final data = InAppWebViewInitialData(data: doc, mimeType: 'text/html', encoding: 'utf-8');
+    _embedCache[url] = data;
+    return data;
   }
 
   @override
@@ -1086,7 +1291,7 @@ class _TikTokFullscreenViewerState extends State<_TikTokFullscreenViewer> {
       body: Stack(
         children: [
           FutureBuilder<InAppWebViewInitialData>(
-            future: _buildAllEmbedsHtml(),
+            future: _buildSingleEmbedHtml(_selectedUrl),
             builder: (context, snap) {
               if (!snap.hasData) {
                 return const Center(child: CircularProgressIndicator());
@@ -1099,7 +1304,7 @@ class _TikTokFullscreenViewerState extends State<_TikTokFullscreenViewer> {
                     mediaPlaybackRequiresUserGesture: false,
                     disableContextMenu: true,
                     supportZoom: false,
-                    verticalScrollBarEnabled: true,
+                    verticalScrollBarEnabled: false,
                     javaScriptEnabled: true,
                     javaScriptCanOpenWindowsAutomatically: true,
                   ),
