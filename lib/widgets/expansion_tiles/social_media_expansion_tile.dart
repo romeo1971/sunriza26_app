@@ -303,7 +303,7 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
                   child: GestureDetector(
                     behavior: HitTestBehavior.opaque,
                     onTap: () {},
-                    child: Container(color: const Color.fromARGB(10, 255, 255, 255)), // #ff000030
+                    child: Container(color: const Color.fromARGB(10, 255, 255, 255)),
                   ),
                 ),
               // Eye preview unten links für X und LinkedIn
@@ -402,11 +402,13 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
                   child: InAppWebView(
                     initialData: InAppWebViewInitialData(data: html, mimeType: 'text/html', encoding: 'utf-8'),
                     initialSettings: InAppWebViewSettings(
-                      transparentBackground: true,
+                      transparentBackground: false,
+                      javaScriptEnabled: true,
+                      allowsInlineMediaPlayback: true,
                       mediaPlaybackRequiresUserGesture: true,
                       disableContextMenu: true,
                       supportZoom: false,
-                      allowsInlineMediaPlayback: true,
+                      verticalScrollBarEnabled: true,
                     ),
                     onWebViewCreated: (c) => controller = c,
                   ),
@@ -440,7 +442,7 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
   }
 
   Future<void> _openLinkedInPreview(String postUrl) async {
-    final u = _extractLinkedInUrl(postUrl) ?? postUrl.trim();
+    final u = _normalizeLinkedInEmbedUrl(postUrl);
     final html = _buildLinkedInEmbedDoc(u);
     await showModalBottomSheet(
       context: context,
@@ -521,6 +523,7 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
   }
 
   String _buildLinkedInEmbedDoc(String url) {
+    final u = _normalizeLinkedInEmbedUrl(url);
     return '''
 <!doctype html>
 <html>
@@ -533,10 +536,24 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
     </style>
   </head>
   <body>
-    <iframe src="$url" allow="encrypted-media;" allowfullscreen></iframe>
+    <iframe src="$u" allow="encrypted-media;" allowfullscreen></iframe>
   </body>
 </html>
 ''';
+  }
+
+  String _normalizeLinkedInEmbedUrl(String raw) {
+    try {
+      final t = _extractLinkedInUrl(raw) ?? raw.trim();
+      if (t.contains('linkedin.com/') && !t.contains('/embed/')) {
+        // Beispiel: https://www.linkedin.com/feed/update/urn:li:activity:... ->
+        //           https://www.linkedin.com/embed/feed/update/urn:li:activity:...
+        return t.replaceFirst('linkedin.com/', 'linkedin.com/embed/');
+      }
+      return t;
+    } catch (_) {
+      return raw.trim();
+    }
   }
 
   Future<void> _fetchThumb(String url) async {

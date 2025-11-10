@@ -1041,12 +1041,11 @@ class ExploreScreenState extends State<ExploreScreen> {
             // Dropup Panel
             Positioned(
               right: 12,
-              bottom: 88, // oberhalb der Bottom-Bar, kompakter
+              bottom: 88,
               child: Material(
                 color: Colors.transparent,
                 child: Container(
                   width: 200,
-                  constraints: const BoxConstraints(maxHeight: 140, minWidth: 160),
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
@@ -1056,45 +1055,48 @@ class ExploreScreenState extends State<ExploreScreen> {
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: const [BoxShadow(color: Colors.black54, blurRadius: 12)],
                   ),
-                  child: SingleChildScrollView(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: links.map((e) {
-                        final provider = e['provider']!;
-                        return InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () {
-                            Navigator.of(context).pop();
-                            if (provider.toLowerCase() == 'tiktok') {
-                              _openTikTokOverview(avatarId);
-                            } else if (provider.toLowerCase() == 'instagram') {
-                              _openInstagramProfile(avatarId);
-                            } else {
-                              final embedUrl = _buildSocialEmbedUrl(provider, avatarId);
-                              _openAvatarIframe(embedUrl);
-                            }
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                _whiteIcon(provider, size: 18),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    provider,
-                                    textAlign: TextAlign.left,
-                                    style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-                                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: links.map((e) {
+                      final provider = e['provider']!;
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () {
+                          Navigator.of(context).pop();
+                          final p = provider.toLowerCase();
+                          if (p == 'tiktok') {
+                            _openTikTokOverview(avatarId);
+                          } else if (p == 'instagram') {
+                            _openInstagramProfile(avatarId);
+                          } else if (p == 'linkedin') {
+                            _openLinkedInOverview(avatarId);
+                          } else if (p == 'x' || p == 'twitter') {
+                            _openXOverview(avatarId);
+                          } else {
+                            final embedUrl = _buildSocialEmbedUrl(provider, avatarId);
+                            _openAvatarIframe(embedUrl);
+                          }
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              _whiteIcon(provider, size: 18),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Text(
+                                  provider,
+                                  textAlign: TextAlign.left,
+                                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        );
-                      }).toList(),
-                    ),
+                        ),
+                      );
+                    }).toList(),
                   ),
                 ),
               ),
@@ -1230,6 +1232,13 @@ class ExploreScreenState extends State<ExploreScreen> {
         return FaIcon(FontAwesomeIcons.instagram, color: Colors.white, size: size);
       case 'facebook':
         return FaIcon(FontAwesomeIcons.facebook, color: Colors.white, size: size);
+      case 'tiktok':
+        return FaIcon(FontAwesomeIcons.tiktok, color: Colors.white, size: size);
+      case 'linkedin':
+        return FaIcon(FontAwesomeIcons.linkedin, color: Colors.white, size: size);
+      case 'x':
+      case 'twitter':
+        return FaIcon(FontAwesomeIcons.xTwitter, color: Colors.white, size: size);
       default:
         return FaIcon(FontAwesomeIcons.globe, color: Colors.white, size: size);
     }
@@ -1419,6 +1428,387 @@ class ExploreScreenState extends State<ExploreScreen> {
     );
   }
 
+  Future<void> _openLinkedInOverview(String avatarId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('avatars').doc(avatarId)
+        .collection('social_accounts').doc('linkedin').get();
+    final urls = ((doc.data()?['manualUrls'] as List?) ?? const [])
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (urls.isEmpty) return;
+    final topInset = MediaQuery.of(context).padding.top + 56;
+    final bottomInset = MediaQuery.of(context).padding.bottom + 16 + 48;
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      builder: (_) {
+        return Stack(
+          children: [
+            Positioned.fill(child: GestureDetector(onTap: () => Navigator.pop(context))),
+            Positioned(
+              top: topInset, left: 0, right: 0, bottom: bottomInset,
+              child: Container(
+                color: const Color(0xFF121212),
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 9/16,
+                  ),
+                  itemCount: urls.length,
+                  itemBuilder: (_, i) {
+                    final u = urls[i];
+                    return _LinkedInTileForOverview(url: u, onTap: () => _openSingleLinkedInOverlay(u));
+                  },
+                ),
+              ),
+            ),
+            Positioned(
+              top: topInset + 4,
+              right: 12,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), shape: BoxShape.circle, border: Border.all(color: Colors.white24)),
+                  child: const Icon(Icons.close, color: Colors.white, size: 20),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openXOverview(String avatarId) async {
+    final doc = await FirebaseFirestore.instance
+        .collection('avatars').doc(avatarId)
+        .collection('social_accounts').doc('x').get();
+    final urls = ((doc.data()?['manualUrls'] as List?) ?? const [])
+        .map((e) => e.toString().trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (urls.isEmpty) return;
+    final topInset = MediaQuery.of(context).padding.top + 56;
+    final bottomInset = MediaQuery.of(context).padding.bottom + 16 + 48;
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      builder: (_) {
+        return Stack(
+          children: [
+            Positioned.fill(child: GestureDetector(onTap: () => Navigator.pop(context))),
+            Positioned(
+              top: topInset, left: 0, right: 0, bottom: bottomInset,
+              child: Container(
+                color: const Color(0xFF121212),
+                child: GridView.builder(
+                  padding: const EdgeInsets.all(12),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3, mainAxisSpacing: 10, crossAxisSpacing: 10, childAspectRatio: 9/16,
+                  ),
+                  itemCount: urls.length,
+                  itemBuilder: (_, i) {
+                    final u = urls[i];
+                    return _XTileForOverview(url: u, onTap: () => _openSingleXOverlay(u));
+                  },
+                ),
+              ),
+            ),
+            Positioned(
+              top: topInset + 4,
+              right: 12,
+              child: GestureDetector(
+                onTap: () => Navigator.pop(context),
+                child: Container(
+                  width: 36, height: 36,
+                  decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.7), shape: BoxShape.circle, border: Border.all(color: Colors.white24)),
+                  child: const Icon(Icons.close, color: Colors.white, size: 20),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _normalizeLinkedInEmbedUrl(String raw) {
+    try {
+      final t = (_extractLinkedInUrl(raw) ?? raw).trim();
+      if (t.contains('linkedin.com/') && !t.contains('/embed/')) {
+        return t.replaceFirst('linkedin.com/', 'linkedin.com/embed/');
+      }
+      return t;
+    } catch (_) {
+      return raw.trim();
+    }
+  }
+
+  Future<void> _openSingleLinkedInOverlay(String url) async {
+    final topInset = MediaQuery.of(context).padding.top + 56;
+    final bottomInset = MediaQuery.of(context).padding.bottom + 16 + 48;
+    final u = _normalizeLinkedInEmbedUrl(url);
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      builder: (_) {
+        InAppWebViewController? controller;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () async {
+                  try { await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank'))); } catch (_) {}
+                  if (context.mounted) Navigator.pop(context);
+                },
+              ),
+            ),
+            Positioned(
+              top: topInset, left: 0, right: 0, bottom: bottomInset,
+              child: InAppWebView(
+                initialUrlRequest: URLRequest(url: WebUri(u)),
+                initialSettings: InAppWebViewSettings(
+                  transparentBackground: false, javaScriptEnabled: true, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserGesture: true,
+                  disableContextMenu: true, supportZoom: false, verticalScrollBarEnabled: true,
+                ),
+                onWebViewCreated: (c) => controller = c,
+              ),
+            ),
+            Positioned(
+              top: topInset + 4,
+              right: 12,
+              child: GestureDetector(
+                onTap: () async {
+                  try { await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank'))); } catch (_) {}
+                  if (context.mounted) Navigator.pop(context);
+                },
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 20),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openSingleXOverlay(String url) async {
+    final topInset = MediaQuery.of(context).padding.top + 56;
+    final bottomInset = MediaQuery.of(context).padding.bottom + 16 + 48;
+    final html = _buildTwitterOverlayHtml(url);
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.transparent,
+      builder: (_) {
+        InAppWebViewController? controller;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () async {
+                  try { await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank'))); } catch (_) {}
+                  if (context.mounted) Navigator.pop(context);
+                },
+              ),
+            ),
+            Positioned(
+              top: topInset, left: 0, right: 0, bottom: bottomInset,
+              child: InAppWebView(
+                initialData: InAppWebViewInitialData(data: html, mimeType: 'text/html', encoding: 'utf-8'),
+                initialSettings: InAppWebViewSettings(
+                  transparentBackground: false, javaScriptEnabled: true, allowsInlineMediaPlayback: true, mediaPlaybackRequiresUserGesture: true,
+                  disableContextMenu: true, supportZoom: false, verticalScrollBarEnabled: true,
+                ),
+                onWebViewCreated: (c) => controller = c,
+              ),
+            ),
+            Positioned(
+              top: topInset + 4,
+              right: 12,
+              child: GestureDetector(
+                onTap: () async {
+                  try { await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank'))); } catch (_) {}
+                  if (context.mounted) Navigator.pop(context);
+                },
+                child: Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Icon(Icons.close, color: Colors.white, size: 20),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _buildTwitterOverlayHtml(String url) {
+    final u = url.trim();
+    final block = '<blockquote class="twitter-tweet"><a href="$u"></a></blockquote>';
+    return '''
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<style>
+html,body{margin:0;padding:0;background:#000;height:100%;overflow:hidden;}
+.wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;}
+.inner{width:min(600px,100%);max-height:90vh;overflow-y:auto;}
+blockquote.twitter-tweet{margin:0 !important;}
+</style></head><body>
+<div class="wrap"><div class="inner">$block</div></div>
+<script async src="https://platform.twitter.com/widgets.js"></script>
+</body></html>
+''';
+  }
+
+  // Klein-Embed für Kacheln (ohne Außenabstände, transparenter Hintergrund)
+  String _buildTwitterEmbedDoc(String url) {
+    final u = url.trim();
+    final block = '<blockquote class="twitter-tweet"><a href="$u"></a></blockquote>';
+    return '''
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<style>
+html,body{margin:0 !important;padding:0 !important;background:transparent;height:100%;}
+.wrap{position:relative;width:100%;height:100%;}
+.inner{position:absolute;inset:0;overflow:auto;display:flex;align-items:flex-start;justify-content:flex-start;}
+blockquote.twitter-tweet{margin:0 !important;padding:0 !important;}
+.twitter-tweet,.twitter-tweet-rendered{margin:0 !important;padding:0 !important;}
+body>div{margin:0 !important;padding:0 !important;}
+</style></head><body>
+<div class="wrap"><div class="inner">$block</div></div>
+<script async src="https://platform.twitter.com/widgets.js"></script>
+</body></html>
+''';
+  }
+
+  String _buildLinkedInOverlayHtml(String url) {
+    final u = url.trim();
+    return '''
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>
+      html, body { margin:0; padding:0; background:#000; height:100%; overflow:hidden; }
+      iframe { width:100%; height:100%; border:0; }
+    </style>
+  </head>
+  <body>
+    <iframe src="$u" allow="encrypted-media;" allowfullscreen></iframe>
+  </body>
+</html>
+''';
+  }
+
+  // Tiles for overviews
+  Widget _XTileForOverview({required String url, required VoidCallback onTap}) {
+    final u = url.trim();
+    final html = _buildTwitterEmbedDoc(u);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Stack(
+        children: [
+          InAppWebView(
+            initialData: InAppWebViewInitialData(data: html, mimeType: 'text/html', encoding: 'utf-8'),
+            initialSettings: InAppWebViewSettings(transparentBackground: true, mediaPlaybackRequiresUserGesture: true, disableContextMenu: true, supportZoom: false, allowsInlineMediaPlayback: true),
+          ),
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: onTap,
+              child: Container(color: Color.fromARGB(10, 255, 255, 255)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _LinkedInTileForOverview({required String url, required VoidCallback onTap}) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: FutureBuilder<String?>(
+        future: _fetchLinkedInThumb(url),
+        builder: (context, snap) {
+          final thumb = snap.data;
+          return GestureDetector(
+            onTap: onTap,
+            child: Container(
+              color: Colors.white10,
+              child: thumb != null && thumb.isNotEmpty
+                  ? Image.network(
+                      thumb.replaceAll('&amp;', '&'),
+                      fit: BoxFit.cover,
+                      headers: const {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                        'Referer': 'https://www.linkedin.com/',
+                      },
+                      errorBuilder: (_, __, ___) => const Center(
+                        child: FaIcon(FontAwesomeIcons.linkedin, color: Color(0xFF0A66C2), size: 32),
+                      ),
+                    )
+                  : const Center(
+                      child: FaIcon(FontAwesomeIcons.linkedin, color: Color(0xFF0A66C2), size: 32),
+                    ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Future<String?> _fetchLinkedInThumb(String url) async {
+    try {
+      // URL normalisieren: /embed/ entfernen und Query-Parameter entfernen
+      final effectiveRaw = _extractLinkedInUrl(url) ?? url;
+      final effective = effectiveRaw.replaceFirst('/embed/', '/').split('?').first;
+      final cf = await http.get(
+        Uri.parse('https://us-central1-sunriza26.cloudfunctions.net/linkedinThumb?url=${Uri.encodeComponent(effective)}'),
+        headers: const {'Accept': 'application/json'},
+      );
+      if (cf.statusCode == 200) {
+        final m = jsonDecode(cf.body) as Map<String, dynamic>;
+        return (m['thumb'] as String?) ?? '';
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  String? _extractLinkedInUrl(String input) {
+    // 1) src="https://www.linkedin.com/embed/feed/update/urn:li:..."
+    final reSrc = RegExp(r'''src=["'](https?://[^"']*linkedin\.com/[^"']+)["']''', caseSensitive: false);
+    final m1 = reSrc.firstMatch(input);
+    if (m1 != null) return m1.group(1);
+    // 2) href="https://www.linkedin.com/..."
+    final reHref = RegExp(r'''href=["'](https?://[^"']*linkedin\.com/[^"']+)["']''', caseSensitive: false);
+    final m2 = reHref.firstMatch(input);
+    if (m2 != null) return m2.group(1);
+    // 3) Plain URL im Text
+    final rePlain = RegExp(r'''(https?://(?:www\.)?linkedin\.com/[^"'\s<>]+)''', caseSensitive: false);
+    final m3 = rePlain.firstMatch(input);
+    if (m3 != null) return m3.group(1);
+    return null;
+  }
   Future<String> _buildTikTokOverlayHtml(String postUrl) async {
     String body = '';
     try {
