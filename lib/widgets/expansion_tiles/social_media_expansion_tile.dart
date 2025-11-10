@@ -443,7 +443,6 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
 
   Future<void> _openLinkedInPreview(String postUrl) async {
     final u = _normalizeLinkedInEmbedUrl(postUrl);
-    final html = _buildLinkedInEmbedDoc(u);
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -457,13 +456,15 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
                 child: AspectRatio(
                   aspectRatio: 9 / 16,
                   child: InAppWebView(
-                    initialData: InAppWebViewInitialData(data: html, mimeType: 'text/html', encoding: 'utf-8'),
+                    initialUrlRequest: URLRequest(url: WebUri(u)),
                     initialSettings: InAppWebViewSettings(
-                      transparentBackground: true,
+                      transparentBackground: false,
+                      javaScriptEnabled: true,
+                      allowsInlineMediaPlayback: true,
                       mediaPlaybackRequiresUserGesture: true,
                       disableContextMenu: true,
                       supportZoom: false,
-                      allowsInlineMediaPlayback: true,
+                      verticalScrollBarEnabled: true,
                     ),
                     onWebViewCreated: (c) => controller = c,
                   ),
