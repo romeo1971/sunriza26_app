@@ -75,6 +75,7 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
   int? _dragFromIndex;
   final Map<String, String> _thumbByUrl = <String, String>{};
   final Map<String, String> _titleByUrl = <String, String>{};
+  final Map<String, Uint8List> _shotBytesByUrl = <String, Uint8List>{}; // Screenshot-Cache nur für X
 
   @override
   void dispose() {
@@ -107,10 +108,12 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
                 onChanged: (_) => setState(() {}),
               ),
             ),
-            IconButton(
+            Builder(builder: (_) {
+              final bool _enabled = _isValid(_addCtrl.text);
+              return IconButton(
               tooltip: 'Hinzufügen',
-              icon: const Icon(Icons.check, color: Colors.white),
-              onPressed: _isValid(_addCtrl.text) ? () async {
+              icon: Icon(Icons.check, color: _enabled ? Colors.white : Colors.white24),
+              onPressed: _enabled ? () async {
                 String u = _addCtrl.text.trim();
                 if (widget.providerId == 'x') {
                   final extracted = _extractXStatusUrl(u);
@@ -136,7 +139,7 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
                 });
                 await widget.onSaved();
               } : null,
-            ),
+            );}),
           ],
         ),
         const SizedBox(height: 12),
@@ -251,6 +254,20 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Builder(builder: (_) {
+                      if (widget.providerId == 'x') {
+                        final u = _extractXStatusUrl(url) ?? url;
+                        final html = _buildTwitterEmbedDoc(u);
+                        return InAppWebView(
+                          initialData: InAppWebViewInitialData(data: html, mimeType: 'text/html', encoding: 'utf-8'),
+                          initialSettings: InAppWebViewSettings(
+                            transparentBackground: true,
+                            mediaPlaybackRequiresUserGesture: true,
+                            disableContextMenu: true,
+                            supportZoom: false,
+                            allowsInlineMediaPlayback: true,
+                          ),
+                        );
+                      }
                       final thumb = _thumbByUrl[url];
                       if (thumb != null && thumb.isNotEmpty) {
                         final headers = <String, String>{
@@ -281,6 +298,14 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
                   ),
                 ),
               ),
+              if (widget.providerId == 'x')
+                Positioned.fill(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: Container(color: const Color.fromARGB(10, 255, 255, 255)), // #ff000030
+                  ),
+                ),
               // Eye preview unten links für X und LinkedIn
               Positioned(
                 left: 4,
@@ -479,9 +504,12 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
     <style>
-      html, body { margin:0; padding:0; background:#000; height:100%; overflow:hidden; }
-      .wrap { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
-      .inner { width:min(600px,100%); max-height:90vh; overflow-y:auto; }
+      html, body { margin:0 !important; padding:0 !important; background:transparent; height:100%; overflow:hidden; }
+      .wrap { position:relative; width:100%; height:100%; }
+      .inner { position:absolute; inset:0; overflow:auto; display:flex; align-items:flex-start; justify-content:flex-start; }
+      blockquote.twitter-tweet { margin:0 !important; padding:0 !important; }
+      .twitter-tweet, .twitter-tweet-rendered { margin:0 !important; padding:0 !important; }
+      body > div { margin:0 !important; padding:0 !important; }
     </style>
   </head>
   <body>
@@ -525,10 +553,40 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
         if (cf.statusCode == 200) {
           final m = jsonDecode(cf.body) as Map<String, dynamic>;
           final t = (m['thumb'] as String?) ?? '';
+          final s = (m['title'] as String?) ?? '';
           if (t.isNotEmpty && mounted) {
             print('[X Thumb] Found: $t');
-            setState(() { _thumbByUrl[url] = t.replaceAll('&amp;', '&'); });
+            final cleaned = t.replaceAll('&amp;', '&');
+            // Für X immer über CF-Bild-Proxy laden, um 403 zu vermeiden
+            final proxied = 'https://us-central1-sunriza26.cloudfunctions.net/xThumb?img=${Uri.encodeComponent(cleaned)}';
+            setState(() { 
+              _thumbByUrl[url] = proxied; 
+              if (s.isNotEmpty) _titleByUrl[url] = s;
+            });
             return;
+          }
+          // Auch wenn kein Bild kam: versuche Titel aus oEmbed zu ziehen
+          if (s.isEmpty) {
+            try {
+              final o = await http.get(
+                Uri.parse('https://publish.twitter.com/oembed?url=${Uri.encodeComponent(effective)}'),
+                headers: const {
+                  'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                  'Accept': 'application/json',
+                },
+              );
+              if (o.statusCode == 200) {
+                final mo = jsonDecode(o.body) as Map<String, dynamic>;
+                final h = (mo['html'] as String?) ?? '';
+                if (h.isNotEmpty) {
+                  var txt = h.replaceAll(RegExp(r'<[^>]+>'), ' ');
+                  txt = txt.replaceAll('&amp;', '&').replaceAll('&quot;', '"').replaceAll('&#39;', "'").trim();
+                  if (txt.isNotEmpty && mounted) {
+                    setState(() { _titleByUrl[url] = txt; });
+                  }
+                }
+              }
+            } catch (_) {}
           }
         }
       } else if (widget.providerId == 'linkedin') {
@@ -571,14 +629,26 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
         final html = r.body;
         final regOg = RegExp(r'''<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
         final regTw = RegExp(r'''<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+        final regTitle = RegExp(r'''<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+        final regDesc = RegExp(r'''<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+        final regTwTitle = RegExp(r'''<meta[^>]+name=["']twitter:title["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
         String img = regOg.firstMatch(html)?.group(1) ?? '';
         if (img.isEmpty) img = regTw.firstMatch(html)?.group(1) ?? '';
+        String title = regTitle.firstMatch(html)?.group(1) ?? '';
+        if (title.isEmpty) title = regTwTitle.firstMatch(html)?.group(1) ?? '';
+        if (title.isEmpty) title = regDesc.firstMatch(html)?.group(1) ?? '';
         if (img.isNotEmpty && mounted) {
           final cleaned = img.replaceAll('&amp;', '&');
           print('[Fallback] Found thumb: $cleaned');
-          setState(() { _thumbByUrl[url] = cleaned; });
+          setState(() {
+            _thumbByUrl[url] = cleaned;
+            if (title.isNotEmpty) _titleByUrl[url] = title;
+          });
         } else {
-          _thumbByUrl[url] = '';
+          setState(() {
+            _thumbByUrl[url] = '';
+            if (title.isNotEmpty) _titleByUrl[url] = title;
+          });
         }
       }
     } catch (e) {
@@ -828,7 +898,10 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
         final data = snap.data?.data() ?? {};
         final manualUrls = ((data['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
         final connected = manualUrls.isNotEmpty;
-        return Container(
+        return InkWell(
+          onTap: () => _openTikTokEdit('', manualUrls, connected),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -845,17 +918,13 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
                   const SizedBox(width: 10),
                   const Expanded(child: Text('TikTok', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
                   Text('Anzahl Posts: ${manualUrls.length}', style: const TextStyle(color: Colors.white70)),
-                  IconButton(
-                    tooltip: 'Bearbeiten',
-                    icon: const Icon(Icons.edit, color: Colors.white70, size: 18),
-                    onPressed: () => _openTikTokEdit('', manualUrls, connected),
-                  ),
                 ],
               ),
               const SizedBox(height: 10),
               const SizedBox(height: 2),
             ],
           ),
+        ),
         );
       },
     );
@@ -868,7 +937,10 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
         final data = snap.data?.data() ?? {};
         final profileUrl = (data['profileUrl'] as String?)?.trim() ?? '';
         final connected = profileUrl.isNotEmpty;
-        return Container(
+        return InkWell(
+          onTap: () => _openIgEdit(profileUrl, connected),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -892,15 +964,11 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
                       maxLines: 1,
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Bearbeiten',
-                    icon: const Icon(Icons.edit, color: Colors.white70, size: 18),
-                    onPressed: () => _openIgEdit(profileUrl, connected),
-                  ),
                 ],
               ),
             ],
           ),
+        ),
         );
       },
     );
@@ -913,7 +981,10 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
         final data = snap.data?.data() ?? {};
         final manualUrls = ((data['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
         final connected = manualUrls.isNotEmpty;
-        return Container(
+        return InkWell(
+          onTap: () => _openGenericEdit(providerId: 'linkedin', initial: manualUrls, title: 'LinkedIn Posts'),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -930,15 +1001,11 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
                   const SizedBox(width: 10),
                   const Expanded(child: Text('LinkedIn', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
                   Text('Anzahl Posts: ${manualUrls.length}', style: const TextStyle(color: Colors.white70)),
-                  IconButton(
-                    tooltip: 'Bearbeiten',
-                    icon: const Icon(Icons.edit, color: Colors.white70, size: 18),
-                    onPressed: () => _openGenericEdit(providerId: 'linkedin', initial: manualUrls, title: 'LinkedIn Posts'),
-                  ),
                 ],
               ),
             ],
           ),
+        ),
         );
       },
     );
@@ -951,7 +1018,10 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
         final data = snap.data?.data() ?? {};
         final manualUrls = ((data['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
         final connected = manualUrls.isNotEmpty;
-        return Container(
+        return InkWell(
+          onTap: () => _openGenericEdit(providerId: 'x', initial: manualUrls, title: 'X (Twitter) Posts'),
+          borderRadius: BorderRadius.circular(8),
+          child: Container(
           margin: const EdgeInsets.only(bottom: 8),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -968,15 +1038,11 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
                   const SizedBox(width: 10),
                   const Expanded(child: Text('X (Twitter)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
                   Text('Anzahl Posts: ${manualUrls.length}', style: const TextStyle(color: Colors.white70)),
-                  IconButton(
-                    tooltip: 'Bearbeiten',
-                    icon: const Icon(Icons.edit, color: Colors.white70, size: 18),
-                    onPressed: () => _openGenericEdit(providerId: 'x', initial: manualUrls, title: 'X (Twitter) Posts'),
-                  ),
                 ],
               ),
             ],
           ),
+        ),
         );
       },
     );
@@ -1203,10 +1269,12 @@ class _IgEditorState extends State<_IgEditor> {
                 onChanged: (_) => setState(() {}),
               ),
             ),
-            IconButton(
+            Builder(builder: (_) {
+              final bool _enabled = _isValidIg(_addUrlCtrl.text);
+              return IconButton(
               tooltip: 'Hinzufügen',
-              icon: const Icon(Icons.check, color: Colors.white),
-              onPressed: (_isValidIg(_addUrlCtrl.text))
+              icon: Icon(Icons.check, color: _enabled ? Colors.white : Colors.white24),
+              onPressed: _enabled
                   ? () async {
                       final permalink = _extractInstagramPermalink(_addUrlCtrl.text)!;
                       _urls.add(permalink);
@@ -1219,7 +1287,7 @@ class _IgEditorState extends State<_IgEditor> {
                       });
                     }
                   : null,
-            ),
+            );}),
           ],
         ),
         const SizedBox(height: 4),
@@ -1693,10 +1761,12 @@ class _TikTokEditorState extends State<_TikTokEditor> {
                 onChanged: (_) => setState(() {}),
               ),
             ),
-            IconButton(
+            Builder(builder: (_) {
+              final bool _enabled = (_addUrlCtrl.text.contains('www.tiktok.com') && (_addUrlCtrl.text.contains('/video/') || _addUrlCtrl.text.contains('/photo/')));
+              return IconButton(
               tooltip: 'Hinzufügen',
-              icon: const Icon(Icons.check, color: Colors.white),
-              onPressed: (_addUrlCtrl.text.contains('www.tiktok.com') && (_addUrlCtrl.text.contains('/video/') || _addUrlCtrl.text.contains('/photo/'))) ? () async {
+              icon: Icon(Icons.check, color: _enabled ? Colors.white : Colors.white24),
+              onPressed: _enabled ? () async {
                 final u = _addUrlCtrl.text.trim();
                 if (!(u.contains('/video/') || u.contains('/photo/'))) { _toast(context, 'Bitte gültige TikTok URL (/video/ oder /photo/)'); return; }
                 final list = widget.manualCtrl.text.split('\n').where((e) => e.trim().isNotEmpty).map((e) => e.trim()).toList();
@@ -1717,7 +1787,7 @@ class _TikTokEditorState extends State<_TikTokEditor> {
                   _page = ((list.length - 1) / perPage).floor();
                 });
               } : null,
-            ),
+            );}),
           ],
         ),
         const SizedBox(height: 4),
