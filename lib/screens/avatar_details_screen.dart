@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:video_thumbnail/video_thumbnail.dart' as vt;
+import 'package:flutter/services.dart';
 import '../data/countries.dart';
 import '../models/avatar_data.dart';
 import '../services/avatar_service.dart';
@@ -152,6 +153,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   int? _calculatedAge;
 
   AvatarData? _avatarData;
+  bool _slugPulse = false;
+  Timer? _slugPulseTimer;
+  String? get _avatarSlug {
+    // Lokaler Cache hat Vorrang (sofortige UI-Aktualisierung nach Speichern)
+    if (_slugCache != null && _slugCache!.isNotEmpty) return _slugCache;
+    final a = _avatarData;
+    if (a == null) return null;
+    try {
+      return (a as dynamic).slug as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+  String? _slugCache;
   String? _pendingAvatarId; // für Navigation mit nur avatarId
   final List<String> _imageUrls = [];
   final List<String> _videoUrls = [];
@@ -986,6 +1001,320 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
       _loadElevenVoices();
     });
+    // Einfacher Puls-Effekt (Opacity/Scale) für den Slug-Link
+    _slugPulseTimer = Timer.periodic(const Duration(milliseconds: 900), (_) {
+      if (mounted) setState(() => _slugPulse = !_slugPulse);
+    });
+  }
+
+  @override
+  void dispose() {
+    _slugPulseTimer?.cancel();
+    _avatarDocSubscription?.cancel();
+    _firstNameController.dispose();
+    _nicknameController.dispose();
+    _lastNameController.dispose();
+    _cityController.dispose();
+    _postalCodeController.dispose();
+    _countryController.dispose();
+    _birthDateController.dispose();
+    _deathDateController.dispose();
+    _regionInputController.dispose();
+    _inlineVideoController?.dispose();
+    // Audio-Testplayer sauber beenden
+    try {
+      _voiceTestPlayer.stop();
+    } catch (_) {}
+    try {
+      _voiceTestPlayer.dispose();
+    } catch (_) {}
+    // Thumbnail-Controller aufräumen
+    for (final controller in _thumbControllers.values) {
+      controller.dispose();
+    }
+    _thumbControllers.clear();
+    // Dynamics Timer aufräumen (ALLE Timer!)
+    for (final timer in _dynamicsTimers.values) {
+      timer?.cancel();
+    }
+    _dynamicsTimers.clear();
+    super.dispose();
+  }
+
+  Future<void> _createSlugFlow() async {
+    if (_avatarData == null) return;
+    final TextEditingController ctrl = TextEditingController();
+    // Vorschlag aus Vorname/Nickname/Nachname
+    final parts = <String>[];
+    if ((_avatarData!.nickname ?? '').trim().isNotEmpty) {
+      parts.add(_avatarData!.nickname!.trim());
+    } else {
+      parts.add(_avatarData!.firstName.trim());
+      if ((_avatarData!.lastName ?? '').trim().isNotEmpty) {
+        parts.add(_avatarData!.lastName!.trim());
+      }
+    }
+    ctrl.text = _slugify(parts.join(' '));
+
+    List<String> _buildSuggestions() {
+      final String first = _avatarData!.firstName.trim();
+      final String? nick = (_avatarData!.nickname ?? '').trim().isNotEmpty ? _avatarData!.nickname!.trim() : null;
+      final String? last = (_avatarData!.lastName ?? '').trim().isNotEmpty ? _avatarData!.lastName!.trim() : null;
+      final s = <String>{};
+      if (nick != null) s.add(_slugify(nick));
+      if (first.isNotEmpty && last != null) s.add(_slugify('$first $last'));
+      if (first.isNotEmpty && nick != null) s.add(_slugify('$first $nick'));
+      if (last != null) s.add(_slugify(last));
+      if (s.isEmpty) s.add(_slugify(first));
+      return s.take(3).toList();
+    }
+
+    final ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        bool available = false;
+        bool checked = false;
+        bool checking = false;
+        List<String> suggestions = _buildSuggestions();
+        return StatefulBuilder(
+          builder: (ctx2, setDlg) => AlertDialog(
+            backgroundColor: const Color(0xFF1A1A1A),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            title: ShaderMask(
+              shaderCallback: (b) => Theme.of(ctx2).extension<AppGradients>()!.magentaBlue.createShader(b),
+              child: const Text('Avatar URL anlegen', style: TextStyle(color: Colors.white)),
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Wähle deinen eindeutigen Namen (nur einmal festlegbar):',
+                    style: TextStyle(color: Colors.white70, fontSize: 13)),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: suggestions.map((s) {
+                    return InkWell(
+                      onTap: () {
+                        ctrl.text = s;
+                        setDlg(() {
+                          checked = false;
+                          available = false;
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          gradient: Theme.of(ctx2).extension<AppGradients>()!.magentaBlue,
+                        ),
+                        child: Text(s, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: ctrl,
+                  autofocus: true,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Name',
+                    labelStyle: TextStyle(color: Colors.white70),
+                    hintText: 'z. B. ralf-matten',
+                    hintStyle: TextStyle(color: Colors.white38),
+                  ),
+                  onChanged: (v) {
+                    final s = _slugify(v);
+                    if (s != v) {
+                      final pos = TextSelection.collapsed(offset: s.length);
+                      ctrl.value = TextEditingValue(text: s, selection: pos);
+                    }
+                    setDlg(() {
+                      checked = false;
+                      available = false;
+                    });
+                  },
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    ElevatedButton(
+                      onPressed: checking
+                          ? null
+                          : () async {
+                              final slug = _slugify(ctrl.text);
+                              if (slug.isEmpty) return;
+                              setDlg(() {
+                                checking = true;
+                                checked = false;
+                                available = false;
+                              });
+                              final fs = FirebaseFirestore.instance;
+                              try {
+                                final q = await fs.collection('slugs').doc(slug).get();
+                                setDlg(() {
+                                  checking = false;
+                                  checked = true;
+                                  available = !q.exists || (q.data()?['avatarId'] == _avatarData!.id);
+                                });
+                              } catch (_) {
+                                // Fallback bei fehlender Berechtigung → als nicht verfügbar markieren
+                                setDlg(() {
+                                  checking = false;
+                                  checked = true;
+                                  available = false;
+                                });
+                              }
+                            },
+                      child: checking ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Prüfen'),
+                    ),
+                    const SizedBox(width: 10),
+                    if (checked && available)
+                      const Text('Verfügbar', style: TextStyle(color: Color(0xFF00FF94), fontWeight: FontWeight.w700))
+                    else if (checked && !available)
+                      const Text('Schon vergeben', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.w700)),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // URL vollständig anzeigen (Zeilenumbruch erlaubt) + Copy-Icon rechts (aktiv erst nach erfolgreicher Prüfung)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: SelectableText(
+                        'https://www.hauau.com/#/avatar/${ctrl.text}',
+                        style: const TextStyle(color: Colors.white54, fontSize: 12),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: (checked && available) ? 'URL kopieren' : 'Bitte zuerst prüfen',
+                      onPressed: (checked && available)
+                          ? () async {
+                              final url = 'https://www.hauau.com/#/avatar/${ctrl.text}';
+                              await Clipboard.setData(ClipboardData(text: url));
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Kopiert')),
+                                );
+                              }
+                            }
+                          : null,
+                      icon: (checked && available)
+                          ? ShaderMask(
+                              shaderCallback: (b) => Theme.of(context)
+                                  .extension<AppGradients>()!
+                                  .magentaBlue
+                                  .createShader(b),
+                              child: const Icon(Icons.copy, color: Colors.white, size: 18),
+                            )
+                          : const Icon(Icons.copy, color: Colors.white24, size: 18),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                const Text('Achtung: Diese URL ist endgültig und kann später NICHT geändert werden.',
+                    style: TextStyle(color: Colors.white70, fontSize: 12)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx2, false),
+                child: const Text('Abbrechen'),
+              ),
+              ElevatedButton(
+                onPressed: (checked && available)
+                    ? () async {
+                        final slug = _slugify(ctrl.text);
+                        if (slug.isEmpty) return;
+                        final fs = FirebaseFirestore.instance;
+                        try {
+                          await fs.runTransaction((tx) async {
+                            final slugRef = fs.collection('slugs').doc(slug);
+                            final snap = await tx.get(slugRef);
+                            if (snap.exists && snap.data()?['avatarId'] != _avatarData!.id) {
+                              throw Exception('exists');
+                            }
+                            tx.set(slugRef, {'avatarId': _avatarData!.id});
+                            tx.set(
+                              fs.collection('avatars').doc(_avatarData!.id),
+                              {
+                                'slug': slug,
+                                'updatedAt': DateTime.now().millisecondsSinceEpoch,
+                              },
+                              SetOptions(merge: true),
+                            );
+                          });
+                          if (mounted) {
+                            setState(() {
+                              _slugCache = slug;
+                              _avatarData = _avatarData!.copyWith(updatedAt: DateTime.now());
+                            });
+                          }
+                          Navigator.pop(ctx2, true);
+                        } catch (_) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Dieser Name wurde soeben vergeben. Bitte anderen wählen.')),
+                            );
+                          }
+                        }
+                      }
+                    : null,
+                child: const Text('Sichern'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (ok == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Avatar URL gespeichert')),
+      );
+    }
+  }
+
+  Future<void> _showSlugInfo() async {
+    final s = _avatarSlug;
+    if (s == null || s.isEmpty) return;
+    final url = 'https://www.hauau.com/#/avatar/$s';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A1A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        title: const Text('Avatar URL', style: TextStyle(color: Colors.white)),
+        content: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Expanded(
+              child: Text(url, style: const TextStyle(color: Colors.white70), overflow: TextOverflow.ellipsis),
+            ),
+            IconButton(
+              tooltip: 'In Zwischenablage kopieren',
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: url));
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Kopiert')),
+                  );
+                }
+              },
+              icon: ShaderMask(
+                shaderCallback: (b) => Theme.of(ctx).extension<AppGradients>()!.magentaBlue.createShader(b),
+                child: const Icon(Icons.copy, color: Colors.white),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Schließen')),
+        ],
+      ),
+    );
   }
 
   Future<void> _fetchLatest(String id) async {
@@ -1159,6 +1488,18 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       currentTab: _mediaTab,
       currentViewMode: _heroViewMode,
       imageCount: _imageUrls.length,
+      slug: _avatarSlug,
+      onCreateSlug: _createSlugFlow,
+      onShowSlug: _showSlugInfo,
+      onCopySlug: () async {
+        final s = _avatarSlug;
+        if (s == null || s.isEmpty) return;
+        final url = 'https://www.hauau.com/#/avatar/$s';
+        await Clipboard.setData(ClipboardData(text: url));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kopiert')));
+        }
+      },
       onTabChanged: (tab) => setState(() => _mediaTab = tab),
       onUpload: () {
         // Zur Klick-Zeit entscheiden welcher Upload-Handler aufgerufen wird
@@ -6685,39 +7026,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             )
           : null,
     );
-  }
-
-  @override
-  void dispose() {
-    _avatarDocSubscription?.cancel();
-    _firstNameController.dispose();
-    _nicknameController.dispose();
-    _lastNameController.dispose();
-    _cityController.dispose();
-    _postalCodeController.dispose();
-    _countryController.dispose();
-    _birthDateController.dispose();
-    _deathDateController.dispose();
-    _regionInputController.dispose();
-    _inlineVideoController?.dispose();
-    // Audio-Testplayer sauber beenden
-    try {
-      _voiceTestPlayer.stop();
-    } catch (_) {}
-    try {
-      _voiceTestPlayer.dispose();
-    } catch (_) {}
-    // Thumbnail-Controller aufräumen
-    for (final controller in _thumbControllers.values) {
-      controller.dispose();
-    }
-    _thumbControllers.clear();
-    // Dynamics Timer aufräumen (ALLE Timer!)
-    for (final timer in _dynamicsTimers.values) {
-      timer?.cancel();
-    }
-    _dynamicsTimers.clear();
-    super.dispose();
   }
 
   Future<void> _onImageRecrop(String url, [String? tempPath]) async {

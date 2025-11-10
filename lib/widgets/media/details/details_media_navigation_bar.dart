@@ -11,6 +11,10 @@ class MediaNavigationBar extends StatelessWidget {
   final VoidCallback onUpload;
   final VoidCallback onInfoPressed;
   final VoidCallback onViewModeToggle;
+  final String? slug;
+  final VoidCallback? onCreateSlug;
+  final VoidCallback? onShowSlug;
+  final VoidCallback? onCopySlug;
 
   const MediaNavigationBar({
     super.key,
@@ -21,15 +25,18 @@ class MediaNavigationBar extends StatelessWidget {
     required this.onUpload,
     required this.onInfoPressed,
     required this.onViewModeToggle,
+    this.slug,
+    this.onCreateSlug,
+    this.onShowSlug,
+    this.onCopySlug,
   });
 
   @override
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        // Hintergrund: quasi black
+        // Hintergrund wie vorher: dunkel + leichtes Weiß‑Overlay
         Container(height: 35, color: const Color(0xFF0D0D0D)),
-        // Weißes Overlay #ffffff15
         Positioned.fill(child: Container(color: const Color(0x15FFFFFF))),
         // Inhalt
         Container(
@@ -85,6 +92,48 @@ class MediaNavigationBar extends StatelessWidget {
                 ),
               ),
               const Spacer(),
+              // Slug Bereich: CTA oder kleiner Link + Copy
+              if ((slug == null || slug!.isEmpty) && onCreateSlug != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: InkWell(
+                    onTap: onCreateSlug,
+                    child: ShaderMask(
+                      shaderCallback: (b) =>
+                          Theme.of(context).extension<AppGradients>()!.magentaBlue.createShader(b),
+                      child: const Text(
+                        'Avatar URL anlegen',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                          letterSpacing: 0.2,
+                        ),
+                      ),
+                    ),
+                  ),
+                )
+              else if (slug != null && slug!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: InkWell(
+                    onTap: onShowSlug,
+                    child: ShaderMask(
+                      shaderCallback: (b) =>
+                          Theme.of(context).extension<AppGradients>()!.magentaBlue.createShader(b),
+                      child: const Text(
+                        'URL',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.0,
+                          letterSpacing: 0.2,
+                          decoration: TextDecoration.underline,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
               // Info-Button für Explorer-Dialog
               Padding(
                 padding: const EdgeInsets.only(right: 8),

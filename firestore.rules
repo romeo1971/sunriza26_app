@@ -308,6 +308,22 @@ service cloud.firestore {
       allow write: if signedIn() && isAdmin();
     }
 
+    // Globale Slug-Index (einzigartige Avatar-URLs)
+    match /slugs/{slug} {
+      // Lesen für Verfügbarkeitsprüfung erlauben (kein PII)
+      allow get, list: if true;
+      // Anlegen nur, wenn noch nicht vorhanden und der Nutzer Eigentümer des Avatars ist
+      allow create: if signedIn()
+        && !exists(/databases/$(db)/documents/slugs/$(slug))
+        && request.resource.data.keys().hasOnly(['avatarId'])
+        && ownsAvatar(request.resource.data.avatarId);
+      // Update nicht erlaubt (Slug ist final)
+      allow update: if false;
+      // Löschen nur vom Owner erlaubt (Cleanup)
+      allow delete: if signedIn()
+        && ownsAvatar(resource.data.avatarId);
+    }
+
     // Chat Messages (Struppi-System)
     match /chats/{chatId}/messages/{messageId} {
       allow create: if signedIn()
