@@ -41,6 +41,8 @@ export { copyMediaToMoments, createMediaCheckoutSession, mediaCheckoutWebhook, h
 // export * from './social_oauth_facebook';
 export * from './tiktok_prefetch';
 export * from './instagram_thumb';
+export * from './x_thumb';
+export * from './linkedin_thumb';
 
 // Admin init (falls notwendig)
 if (!admin.apps.length) {

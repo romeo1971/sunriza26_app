@@ -155,7 +155,7 @@ exports.tiktokPrefetch = (0, https_1.onRequest)({ cors: true, timeoutSeconds: 60
             connected: true,
             updatedAt: Date.now(),
         }, { merge: true });
-        // Obsolet: Kein serverseitiger social_cache mehr – Browser/Client cacht Embeds selbst.
+        // Browser/Client cacht Embeds selbst.
         res.json({ urlsCount: manualUrls.length, urls: manualUrls });
     }
     catch (e) {

@@ -52,6 +52,592 @@ class SocialMediaAccount {
   }
 }
 
+class _SimpleManualUrlsEditor extends StatefulWidget {
+  final String title;
+  final String providerId; // 'linkedin' | 'x'
+  final TextEditingController manualCtrl;
+  final String avatarId;
+  final Future<void> Function() onSaved;
+  const _SimpleManualUrlsEditor({
+    required this.title,
+    required this.providerId,
+    required this.manualCtrl,
+    required this.avatarId,
+    required this.onSaved,
+  });
+  @override
+  State<_SimpleManualUrlsEditor> createState() => _SimpleManualUrlsEditorState();
+}
+
+class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
+  final TextEditingController _addCtrl = TextEditingController();
+  int _page = 0;
+  int? _dragFromIndex;
+  final Map<String, String> _thumbByUrl = <String, String>{};
+  final Map<String, String> _titleByUrl = <String, String>{};
+
+  @override
+  void dispose() {
+    _addCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final list = widget.manualCtrl.text.split('\n').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    final int perPage = _calcPerPage(context);
+    final start = _page * perPage;
+    final end = (start + perPage).clamp(0, list.length);
+    final slice = list.sublist(start, end);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(widget.title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _addCtrl,
+                style: const TextStyle(color: Colors.white),
+                decoration: InputDecoration(
+                  labelText: 'Post-URL hinzufügen',
+                  hintText: widget.providerId == 'x' ? 'https://x.com/user/status/…' : 'https://www.linkedin.com/feed/update/…',
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+            ),
+            IconButton(
+              tooltip: 'Hinzufügen',
+              icon: const Icon(Icons.check, color: Colors.white),
+              onPressed: _isValid(_addCtrl.text) ? () async {
+                String u = _addCtrl.text.trim();
+                if (widget.providerId == 'x') {
+                  final extracted = _extractXStatusUrl(u);
+                  if (extracted != null) {
+                    u = extracted;
+                  }
+                }
+                final list = widget.manualCtrl.text.split('\n').where((e) => e.trim().isNotEmpty).map((e) => e.trim()).toList();
+                list.add(u);
+                widget.manualCtrl.text = list.join('\n');
+                _addCtrl.clear();
+                await FirebaseFirestore.instance.collection('avatars').doc(widget.avatarId)
+                    .collection('social_accounts').doc(widget.providerId)
+                    .set({
+                  'manualUrls': list.take(20).toList(),
+                  'connected': true,
+                  'updatedAt': DateTime.now().millisecondsSinceEpoch
+                }, SetOptions(merge: true));
+                _fetchThumb(u);
+                setState(() {
+                  final int per = _calcPerPage(context);
+                  _page = ((list.length - 1) / per).floor();
+                });
+                await widget.onSaved();
+              } : null,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (int i = 0; i < slice.length; i++) _tile(list, start + i),
+          ],
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            TextButton(onPressed: _page > 0 ? () => setState(() => _page--) : null, child: const Text('Zurück')),
+            Builder(builder: (_) {
+              final int per = _calcPerPage(context);
+              final total = ((list.length + per - 1) / per).floor();
+              return Text('${_page + 1} / $total', style: const TextStyle(color: Colors.white54, fontSize: 12));
+            }),
+            TextButton(onPressed: ((start + _calcPerPage(context)) < list.length) ? () => setState(() => _page++) : null, child: const Text('Weiter')),
+          ],
+        ),
+      ],
+    );
+  }
+
+  int _calcPerPage(BuildContext context) {
+    final double width = MediaQuery.of(context).size.width - 32;
+    const double tile = 90;
+    const double spacing = 10;
+    final int columns = max(1, ((width + spacing) / (tile + spacing)).floor());
+    const int rows = 2;
+    return columns * rows;
+  }
+
+  bool _isValid(String s) {
+    final u = s.trim();
+    if (widget.providerId == 'x') {
+      return _extractXStatusUrl(u) != null;
+    }
+    // LinkedIn: akzeptiere reine URL oder eingebettetes <iframe>/<a> Snippet
+    return _extractLinkedInUrl(u) != null;
+  }
+
+  String? _extractXStatusUrl(String input) {
+    // Support: raw URL, x.com or twitter.com, or full blockquote HTML
+    final reUrl = RegExp(r'(https?://(?:x\.com|twitter\.com)/[^/\s]+/status/\d+)', caseSensitive: false);
+    final m1 = reUrl.firstMatch(input);
+    if (m1 != null) return m1.group(1);
+    // Look inside href attributes
+    final reHref = RegExp(r'''href=["'](https?://(?:x\.com|twitter\.com)/[^"']+/status/\d+)["']''', caseSensitive: false);
+    final m2 = reHref.firstMatch(input);
+    if (m2 != null) return m2.group(1);
+    return null;
+  }
+
+  String? _extractLinkedInUrl(String input) {
+    // 1) src="https://www.linkedin.com/embed/feed/update/urn:li:..."
+    final reSrc = RegExp(r'''src=["'](https?://[^"']*linkedin\.com/[^"']+)["']''', caseSensitive: false);
+    final m1 = reSrc.firstMatch(input);
+    if (m1 != null) return m1.group(1);
+    // 2) href="https://www.linkedin.com/..."
+    final reHref = RegExp(r'''href=["'](https?://[^"']*linkedin\.com/[^"']+)["']''', caseSensitive: false);
+    final m2 = reHref.firstMatch(input);
+    if (m2 != null) return m2.group(1);
+    // 3) Plain URL im Text
+    final rePlain = RegExp(r'''(https?://(?:www\.)?linkedin\.com/[^"'\s<>]+)''', caseSensitive: false);
+    final m3 = rePlain.firstMatch(input);
+    if (m3 != null) return m3.group(1);
+    return null;
+  }
+
+  Widget _tile(List<String> list, int index) {
+    final url = list[index];
+    _fetchThumb(url);
+    return Draggable<int>(
+      data: index,
+      onDragStarted: () => _dragFromIndex = index,
+      onDragEnd: (_) => _dragFromIndex = null,
+      feedback: Opacity(
+        opacity: 0.8,
+        child: SizedBox(
+          width: 90,
+          child: AspectRatio(
+            aspectRatio: 9 / 16,
+            child: Container(color: Colors.black54, child: const Icon(Icons.drag_indicator, color: Colors.white)),
+          ),
+        ),
+      ),
+      child: DragTarget<int>(
+        onWillAccept: (from) => from != null && from != index,
+        onAccept: (from) async {
+          final item = list.removeAt(from);
+          list.insert(index, item);
+          widget.manualCtrl.text = list.join('\n');
+          await FirebaseFirestore.instance.collection('avatars').doc(widget.avatarId)
+              .collection('social_accounts').doc(widget.providerId)
+              .set({
+            'manualUrls': list.take(20).toList(),
+            'connected': list.isNotEmpty,
+            'updatedAt': DateTime.now().millisecondsSinceEpoch
+          }, SetOptions(merge: true));
+          setState(() {});
+        },
+        builder: (ctx, cand, rej) {
+          return Stack(
+            children: [
+              SizedBox(
+                width: 90,
+                child: AspectRatio(
+                  aspectRatio: 9 / 16,
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Builder(builder: (_) {
+                      final thumb = _thumbByUrl[url];
+                      if (thumb != null && thumb.isNotEmpty) {
+                        final headers = <String, String>{
+                          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+                          'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+                        };
+                        if (widget.providerId == 'linkedin') {
+                          headers['Referer'] = 'https://www.linkedin.com/';
+                        } else if (widget.providerId == 'x') {
+                          headers['Referer'] = 'https://x.com/';
+                        }
+                        return Image.network(
+                          thumb.replaceAll('&amp;', '&'),
+                          fit: BoxFit.cover,
+                          headers: headers,
+                        );
+                      }
+                      // Fallback: Icon
+                      return Container(
+                        color: Colors.white10,
+                        child: Center(
+                          child: widget.providerId == 'x'
+                              ? const FaIcon(FontAwesomeIcons.xTwitter, color: Colors.white24, size: 32)
+                              : const FaIcon(FontAwesomeIcons.linkedin, color: Color(0xFF0A66C2), size: 32),
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+              ),
+              // Eye preview unten links für X und LinkedIn
+              Positioned(
+                left: 4,
+                bottom: 4,
+                child: InkWell(
+                  onTap: () {
+                    if (widget.providerId == 'x') {
+                      _openXPreview(url);
+                    } else if (widget.providerId == 'linkedin') {
+                      _openLinkedInPreview(url);
+                    }
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.all(4),
+                    child: const Icon(Icons.remove_red_eye, size: 16, color: Colors.white70),
+                  ),
+                ),
+              ),
+              // Reorder-Dialog unten rechts – wie bei TikTok
+              Positioned(
+                bottom: 4,
+                right: 4,
+                child: InkWell(
+                  onTap: _openReorderDialog,
+                  child: Container(
+                    decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.all(2),
+                    child: const Icon(Icons.drag_indicator, size: 16, color: Colors.white70),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: 4,
+                right: 4,
+                child: InkWell(
+                  onTap: () async {
+                    final confirm = await showDialog<bool>(
+                      context: context,
+                      builder: (_) => AlertDialog(
+                        backgroundColor: const Color(0xFF1E1E1E),
+                        title: const Text('Löschen?', style: TextStyle(color: Colors.white)),
+                        content: Text(
+                          'Diesen ${widget.providerId == 'x' ? 'X' : 'LinkedIn'}‑Eintrag wirklich entfernen?',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        actions: [
+                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
+                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Löschen')),
+                        ],
+                      ),
+                    );
+                    if (confirm != true) return;
+                    list.removeAt(index);
+                    widget.manualCtrl.text = list.join('\n');
+                    await FirebaseFirestore.instance.collection('avatars').doc(widget.avatarId)
+                        .collection('social_accounts').doc(widget.providerId)
+                        .set({
+                      'manualUrls': list.take(20).toList(),
+                      'connected': list.isNotEmpty,
+                      'updatedAt': DateTime.now().millisecondsSinceEpoch
+                    }, SetOptions(merge: true));
+                    setState(() {});
+                    await widget.onSaved();
+                  },
+                  child: Container(
+                    decoration: BoxDecoration(color: Colors.black87, borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.all(2),
+                    child: const Icon(Icons.delete, size: 16, color: Colors.redAccent),
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _openXPreview(String postUrl) async {
+    final html = _buildTwitterEmbedDoc(postUrl);
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      builder: (ctx) {
+        InAppWebViewController? controller;
+        return SafeArea(
+          child: Stack(
+            children: [
+              Center(
+                child: AspectRatio(
+                  aspectRatio: 9 / 16,
+                  child: InAppWebView(
+                    initialData: InAppWebViewInitialData(data: html, mimeType: 'text/html', encoding: 'utf-8'),
+                    initialSettings: InAppWebViewSettings(
+                      transparentBackground: true,
+                      mediaPlaybackRequiresUserGesture: true,
+                      disableContextMenu: true,
+                      supportZoom: false,
+                      allowsInlineMediaPlayback: true,
+                    ),
+                    onWebViewCreated: (c) => controller = c,
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 12,
+                top: 8,
+                child: GestureDetector(
+                  onTap: () async {
+                    try { await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank'))); } catch (_) {}
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  },
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.7),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: const Icon(Icons.close, color: Colors.white, size: 20),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _openLinkedInPreview(String postUrl) async {
+    final u = _extractLinkedInUrl(postUrl) ?? postUrl.trim();
+    final html = _buildLinkedInEmbedDoc(u);
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.black,
+      builder: (ctx) {
+        InAppWebViewController? controller;
+        return SafeArea(
+          child: Stack(
+            children: [
+              Center(
+                child: AspectRatio(
+                  aspectRatio: 9 / 16,
+                  child: InAppWebView(
+                    initialData: InAppWebViewInitialData(data: html, mimeType: 'text/html', encoding: 'utf-8'),
+                    initialSettings: InAppWebViewSettings(
+                      transparentBackground: true,
+                      mediaPlaybackRequiresUserGesture: true,
+                      disableContextMenu: true,
+                      supportZoom: false,
+                      allowsInlineMediaPlayback: true,
+                    ),
+                    onWebViewCreated: (c) => controller = c,
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 12,
+                top: 8,
+                child: GestureDetector(
+                  onTap: () async {
+                    try { await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank'))); } catch (_) {}
+                    if (ctx.mounted) Navigator.pop(ctx);
+                  },
+                  child: Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.7),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white24),
+                    ),
+                    child: const Icon(Icons.close, color: Colors.white, size: 20),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  String _buildTwitterEmbedDoc(String url) {
+    final u = _extractXStatusUrl(url) ?? url.trim();
+    final block = '<blockquote class="twitter-tweet"><a href="$u"></a></blockquote>';
+    return '''
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>
+      html, body { margin:0; padding:0; background:#000; height:100%; overflow:hidden; }
+      .wrap { width:100%; height:100%; display:flex; align-items:center; justify-content:center; }
+      .inner { width:min(600px,100%); max-height:90vh; overflow-y:auto; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap"><div class="inner">$block</div></div>
+    <script async src="https://platform.twitter.com/widgets.js"></script>
+  </body>
+</html>
+''';
+  }
+
+  String _buildLinkedInEmbedDoc(String url) {
+    return '''
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <style>
+      html, body { margin:0; padding:0; background:#000; height:100%; overflow:hidden; }
+      iframe { width:100%; height:100%; border:0; }
+    </style>
+  </head>
+  <body>
+    <iframe src="$url" allow="encrypted-media;" allowfullscreen></iframe>
+  </body>
+</html>
+''';
+  }
+
+  Future<void> _fetchThumb(String url) async {
+    if (_thumbByUrl.containsKey(url)) return;
+    try {
+      // Server-Proxy für X oder LinkedIn
+      if (widget.providerId == 'x') {
+        final effective = _extractXStatusUrl(url) ?? url;
+        final cf = await http.get(
+          Uri.parse('https://us-central1-sunriza26.cloudfunctions.net/xThumb?url=${Uri.encodeComponent(effective)}'),
+          headers: const {'Accept': 'application/json'},
+        );
+        print('[X Thumb] CF status: ${cf.statusCode}, body: ${cf.body}');
+        if (cf.statusCode == 200) {
+          final m = jsonDecode(cf.body) as Map<String, dynamic>;
+          final t = (m['thumb'] as String?) ?? '';
+          if (t.isNotEmpty && mounted) {
+            print('[X Thumb] Found: $t');
+            setState(() { _thumbByUrl[url] = t.replaceAll('&amp;', '&'); });
+            return;
+          }
+        }
+      } else if (widget.providerId == 'linkedin') {
+        final effectiveRaw = _extractLinkedInUrl(url) ?? url;
+        // Für Thumbnail immer kanonische Seite nutzen (ohne /embed/ und ohne Query)
+        final effective = effectiveRaw.replaceFirst('/embed/', '/').split('?').first;
+        final cf = await http.get(
+          Uri.parse('https://us-central1-sunriza26.cloudfunctions.net/linkedinThumb?url=${Uri.encodeComponent(effective)}'),
+          headers: const {'Accept': 'application/json'},
+        );
+        print('[LI Thumb] CF status: ${cf.statusCode}, body: ${cf.body}');
+        if (cf.statusCode == 200) {
+          final m = jsonDecode(cf.body) as Map<String, dynamic>;
+          final t = (m['thumb'] as String?) ?? '';
+          if (t.isNotEmpty && mounted) {
+            print('[LI Thumb] Found: $t');
+            setState(() { _thumbByUrl[url] = t.replaceAll('&amp;', '&'); });
+            return;
+          }
+        }
+      }
+      // Fallback: direktes HTML scrapen
+      final String htmlUrl;
+      if (widget.providerId == 'x') {
+        htmlUrl = _extractXStatusUrl(url) ?? url;
+      } else if (widget.providerId == 'linkedin') {
+        final lr = _extractLinkedInUrl(url) ?? url;
+        htmlUrl = lr.replaceFirst('/embed/', '/').split('?').first;
+      } else {
+        htmlUrl = url;
+      }
+      final r = await http.get(
+        Uri.parse(htmlUrl),
+        headers: const {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+          'Accept': 'text/html',
+        },
+      );
+      if (r.statusCode == 200) {
+        final html = r.body;
+        final regOg = RegExp(r'''<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+        final regTw = RegExp(r'''<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']''', caseSensitive: false);
+        String img = regOg.firstMatch(html)?.group(1) ?? '';
+        if (img.isEmpty) img = regTw.firstMatch(html)?.group(1) ?? '';
+        if (img.isNotEmpty && mounted) {
+          final cleaned = img.replaceAll('&amp;', '&');
+          print('[Fallback] Found thumb: $cleaned');
+          setState(() { _thumbByUrl[url] = cleaned; });
+        } else {
+          _thumbByUrl[url] = '';
+        }
+      }
+    } catch (e) {
+      print('[FetchThumb Error] $e');
+    }
+  }
+
+  Future<void> _openReorderDialog() async {
+    final list = widget.manualCtrl.text.split('\n').where((e) => e.trim().isNotEmpty).map((e) => e.trim()).toList();
+    final controller = ScrollController();
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: const Color(0xFF1E1E1E),
+        title: const Text('Reihenfolge ändern', style: TextStyle(color: Colors.white)),
+        content: SizedBox(
+          width: 400,
+          height: 360,
+          child: ReorderableListView.builder(
+            scrollController: controller,
+            itemCount: list.length,
+            onReorder: (oldIndex, newIndex) {
+              final from = oldIndex;
+              var to = newIndex;
+              if (to > from) to -= 1;
+              final item = list.removeAt(from);
+              list.insert(to, item);
+            },
+            itemBuilder: (ctx, i) {
+              final u = list[i];
+              return ListTile(
+                key: ValueKey('xli-$i'),
+                title: Text(u, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white70)),
+                trailing: const Icon(Icons.drag_handle, color: Colors.white54),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen')),
+          TextButton(onPressed: () => Navigator.pop(context, list), child: const Text('Übernehmen')),
+        ],
+      ),
+    );
+    if (result != null) {
+      widget.manualCtrl.text = result.join('\n');
+      await FirebaseFirestore.instance.collection('avatars').doc(widget.avatarId)
+          .collection('social_accounts').doc(widget.providerId)
+          .set({
+        'manualUrls': result.take(20).toList(),
+        'connected': result.isNotEmpty,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch
+      }, SetOptions(merge: true));
+      setState(() {});
+      await widget.onSaved();
+    }
+  }
+}
+
 /// Provider aus URL erkennen (Top-Level, für Model und UI nutzbar)
 String detectProviderFromUrl(String url) {
   final u = url.toLowerCase();
@@ -209,6 +795,10 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
         _buildTikTokTile(),
         const SizedBox(height: 10),
         _buildInstagramTile(),
+        const SizedBox(height: 10),
+        _buildLinkedInTile(),
+        const SizedBox(height: 10),
+        _buildXTile(),
       ],
     ];
 
@@ -310,6 +900,113 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
                 ],
               ),
             ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildLinkedInTile() {
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: _col().doc('linkedin').get(),
+      builder: (context, snap) {
+        final data = snap.data?.data() ?? {};
+        final manualUrls = ((data['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
+        final connected = manualUrls.isNotEmpty;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const FaIcon(FontAwesomeIcons.linkedin, color: Color(0xFF0A66C2), size: 20),
+                  const SizedBox(width: 10),
+                  const Expanded(child: Text('LinkedIn', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+                  Text('Anzahl Posts: ${manualUrls.length}', style: const TextStyle(color: Colors.white70)),
+                  IconButton(
+                    tooltip: 'Bearbeiten',
+                    icon: const Icon(Icons.edit, color: Colors.white70, size: 18),
+                    onPressed: () => _openGenericEdit(providerId: 'linkedin', initial: manualUrls, title: 'LinkedIn Posts'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildXTile() {
+    return FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      future: _col().doc('x').get(),
+      builder: (context, snap) {
+        final data = snap.data?.data() ?? {};
+        final manualUrls = ((data['manualUrls'] as List?) ?? const []).map((e) => e.toString()).toList();
+        final connected = manualUrls.isNotEmpty;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF1E1E1E),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const FaIcon(FontAwesomeIcons.xTwitter, color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  const Expanded(child: Text('X (Twitter)', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
+                  Text('Anzahl Posts: ${manualUrls.length}', style: const TextStyle(color: Colors.white70)),
+                  IconButton(
+                    tooltip: 'Bearbeiten',
+                    icon: const Icon(Icons.edit, color: Colors.white70, size: 18),
+                    onPressed: () => _openGenericEdit(providerId: 'x', initial: manualUrls, title: 'X (Twitter) Posts'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _openGenericEdit({required String providerId, required List<String> initial, required String title}) {
+    final ctrl = TextEditingController(text: initial.join('\n'));
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
+      builder: (ctx) {
+        final height = MediaQuery.of(ctx).size.height * 0.75;
+        return SafeArea(
+          child: SizedBox(
+            height: height,
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.of(ctx).viewInsets.bottom + 12,
+                left: 16, right: 16, top: 16,
+              ),
+              child: _SimpleManualUrlsEditor(
+                title: title,
+                providerId: providerId,
+                manualCtrl: ctrl,
+                avatarId: widget.avatarId,
+                onSaved: () async { await _load(); },
+              ),
+            ),
           ),
         );
       },
