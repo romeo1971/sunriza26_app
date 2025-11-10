@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sunriza Landing</title>
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        /* GMBC Gradient Hintergrund außerhalb des iFrames */
+        background:
+          radial-gradient(1200px 800px at 10% 10%, rgba(255, 46, 200, 0.25), transparent 60%),
+          radial-gradient(1000px 700px at 90% 20%, rgba(33, 150, 243, 0.25), transparent 60%),
+          radial-gradient(900px 600px at 50% 100%, rgba(0, 255, 148, 0.18), transparent 60%),
+          linear-gradient(160deg, #0a0a0a 0%, #000000 100%);
+        height: 100%;
+        overflow: hidden;
+      }
+      .wrap {
+        width: 100%;
+        height: 100vh;
+        display: flex;
+        align-items: center; /* vertikal zentrieren */
+        justify-content: center; /* horizontal zentrieren */
+        padding: 0 12px; /* leichter Rand auf sehr kleinen Screens */
+      }
+      .frame {
+        width: 100%;
+        max-width: 768px;   /* iPad Portrait Breite */
+        height: min(100vh, 1024px); /* iPad Portrait Höhe max, sonst viewport */
+        display: block;
+        box-sizing: border-box;
+        /* Optional: leichter Schatten, kein Radius um „Geräteframe“ zu suggerieren */
+        /* box-shadow: 0 10px 40px rgba(0,0,0,0.6); */
+      }
+      .frame > iframe {
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <!-- Lädt die bestehende Flutter-Web-App in einem iFrame mit vorhandenen Hash-Routen -->
+      <div class="frame">
+        <iframe id="appFrame"
+                allow="clipboard-write; autoplay; encrypted-media; microphone; camera"
+                allowfullscreen>
+        </iframe>
+      </div>
+    </div>
+    <script>
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          var avatarId = params.get('avatarId');
+          // Nur bestehende Pfade verwenden (keine "schönen" Pfade):
+          // - Explore:   index.html#/explore
+          // - Embed:     index.html#/embed?avatarId=...
+          var path = avatarId && avatarId.trim().length > 0
+            ? 'index.html#/embed?avatarId=' + encodeURIComponent(avatarId.trim())
+            : 'index.html#/explore';
+          document.getElementById('appFrame').src = path;
+        } catch (e) {
+          // Fallback: Explore
+          document.getElementById('appFrame').src = 'index.html#/explore';
+        }
+      })();
+    </script>
+  </body>
+</html>
+
+

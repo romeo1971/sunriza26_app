@@ -2042,49 +2042,64 @@ class _TikTokEditorState extends State<_TikTokEditor> {
       backgroundColor: Colors.black,
       builder: (ctx) {
         return SafeArea(
-          child: Column(
-            children: [
-              Align(
-                alignment: Alignment.topRight,
-                child: IconButton(
-                  icon: const Icon(Icons.close, color: Colors.white),
-                  onPressed: () async {
-                    try {
-                      await _previewController?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank')));
-                    } catch (_) {}
-                    if (ctx.mounted) Navigator.pop(ctx);
-                  },
-                ),
-              ),
-              Expanded(
-                child: FutureBuilder<InAppWebViewInitialData>(
-                  future: _buildEmbedData(postUrl),
-                  builder: (context, snap) {
-                    if (!snap.hasData) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    return Center(
-                      child: AspectRatio(
-                        aspectRatio: 9 / 16,
-                        child: InAppWebView(
-                          initialData: snap.data,
-                          initialSettings: InAppWebViewSettings(
-                            transparentBackground: true,
-                            mediaPlaybackRequiresUserGesture: true,
-                            disableContextMenu: true,
-                            supportZoom: false,
-                          ),
-                          onWebViewCreated: (c) => _previewController = c,
-                          onConsoleMessage: (controller, consoleMessage) {
-                            // Console-Logs unterdrücken
-                          },
+          child: FutureBuilder<InAppWebViewInitialData>(
+            future: _buildEmbedData(postUrl),
+            builder: (context, snap) {
+              if (!snap.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              InAppWebViewController? controller;
+              return Stack(
+                children: [
+                  Center(
+                    child: AspectRatio(
+                      aspectRatio: 9 / 16,
+                      child: InAppWebView(
+                        initialData: snap.data,
+                        initialSettings: InAppWebViewSettings(
+                          transparentBackground: false,
+                          javaScriptEnabled: true,
+                          allowsInlineMediaPlayback: true,
+                          mediaPlaybackRequiresUserGesture: true,
+                          disableContextMenu: true,
+                          supportZoom: false,
+                          verticalScrollBarEnabled: true,
                         ),
+                        onWebViewCreated: (c) {
+                          _previewController = c;
+                          controller = c;
+                        },
+                        onConsoleMessage: (controller, consoleMessage) {
+                          // Console-Logs unterdrücken
+                        },
                       ),
-                    );
-                  },
-                ),
-              ),
-            ],
+                    ),
+                  ),
+                  Positioned(
+                    right: 12,
+                    top: 8,
+                    child: GestureDetector(
+                      onTap: () async {
+                        try {
+                          await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank')));
+                        } catch (_) {}
+                        if (ctx.mounted) Navigator.pop(ctx);
+                      },
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white24),
+                        ),
+                        child: const Icon(Icons.close, color: Colors.white, size: 20),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         );
       },
