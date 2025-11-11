@@ -1185,7 +1185,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   children: [
                     Expanded(
                       child: SelectableText(
-                        'https://www.hauau.com/#/avatar/${ctrl.text}',
+                        'https://www.hauau.de/#/avatar/${ctrl.text}',
                         style: const TextStyle(color: Colors.white54, fontSize: 12),
                       ),
                     ),
@@ -1193,7 +1193,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                       tooltip: (checked && available) ? 'URL kopieren' : 'Bitte zuerst prüfen',
                       onPressed: (checked && available)
                           ? () async {
-                              final url = 'https://www.hauau.com/#/avatar/${ctrl.text}';
+                              final url = 'https://www.hauau.de/#/avatar/${ctrl.text}';
                               await Clipboard.setData(ClipboardData(text: url));
                               if (context.mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1280,7 +1280,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Future<void> _showSlugInfo() async {
     final s = _avatarSlug;
     if (s == null || s.isEmpty) return;
-    final url = 'https://www.hauau.com/#/avatar/$s';
+    final url = 'https://www.hauau.de/#/avatar/$s';
     await showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1494,7 +1494,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       onCopySlug: () async {
         final s = _avatarSlug;
         if (s == null || s.isEmpty) return;
-        final url = 'https://www.hauau.com/#/avatar/$s';
+        final url = 'https://www.hauau.de/#/avatar/$s';
         await Clipboard.setData(ClipboardData(text: url));
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kopiert')));

@@ -51,7 +51,7 @@ class _AvatarListScreenState extends State<AvatarListScreen>
   String _buildEmbedUrl(String avatarId, {bool withSession = false}) {
     final code = _shortCode(avatarId);
     final room = withSession ? _genSessionId() : '{ROOM_ID}';
-    return 'https://www.hauau.com/app/embed/chat?room=$room&code=$code';
+    return 'https://www.hauau.de/app/embed/chat?room=$room&code=$code';
   }
 
   Widget _buildEmbedBadge(String avatarId) {

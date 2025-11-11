@@ -55,6 +55,11 @@ post_install do |installer|
       config.build_settings['SWIFT_SUPPRESS_WARNINGS'] = 'YES'
       config.build_settings['GCC_WARN_INHIBIT_ALL_WARNINGS'] = 'YES'
 
+      # Nur für WebRTC-Pod und nur Release/Profile: dSYM erzwingen
+      if (target.name.include?('WebRTC')) && (['Release', 'Profile'].include?(config.name))
+        config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
+      end
+
       # Duplicate Linker-Flags deduplizieren und -lc++ entfernen
       flags = config.build_settings['OTHER_LDFLAGS']
       if flags.is_a?(Array)
