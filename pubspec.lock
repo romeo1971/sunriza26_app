@@ -913,18 +913,18 @@ packages:
     dependency: "direct main"
     description:
       name: livekit_client
-      sha256: "4c1663c1e6ac20a743d9a46c7bc71f17e1949db99d245750c68661d554e30cd2"
+      sha256: ddb4467d306be472898b2459c87768121aba030173b3664ef367f7f7f4c96897
       url: "https://pub.dev"
     source: hosted
-    version: "2.5.1"
+    version: "2.5.3"
   logger:
     dependency: transitive
     description:
       name: logger
-      sha256: "55d6c23a6c15db14920e037fe7e0dc32e7cdaf3b64b4b25df2d541b5b6b81c0c"
+      sha256: a7967e31b703831a893bbc3c3dd11db08126fe5f369b5c648a36f821979f5be3
       url: "https://pub.dev"
     source: hosted
-    version: "2.6.1"
+    version: "2.6.2"
   logging:
     dependency: transitive
     description:

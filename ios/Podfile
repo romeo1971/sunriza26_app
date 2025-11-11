@@ -72,4 +72,38 @@ post_install do |installer|
       end
     end
   end
+
+  # Füge eine Build-Phase im App-Target hinzu, die beim Archivieren
+  # (Deployment Postprocessing) vorhandene WebRTC dSYMs in den dSYM-Ordner kopiert.
+  installer.aggregate_targets.each do |aggregate_target|
+    next unless aggregate_target.name == 'Pods-Runner'
+    aggregate_target.user_targets.each do |user_target|
+      phase_name = 'Copy WebRTC dSYMs'
+      exists = user_target.build_phases.any? { |p| p.respond_to?(:name) && p.name == phase_name }
+      unless exists
+        phase = user_target.new_shell_script_build_phase(phase_name)
+        phase.shell_script = <<-SCRIPT
+set -e
+SRC="${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework"
+DST="${DWARF_DSYM_FOLDER_PATH}"
+# 1) Falls dSYMs im XCFramework mitgeliefert sind: kopieren (ios-arm64 Slice)
+if [ -d "$SRC/dSYMs" ]; then
+  FOUND=0
+  while IFS= read -r -d '' DS; do
+    cp -R "$DS" "$DST"
+    FOUND=1
+  done < <(find "$SRC/dSYMs" -path "*ios-arm64*.dSYM" -name "WebRTC*.dSYM" -print0)
+  if [ "$FOUND" = "1" ]; then exit 0; fi
+fi
+# 2) Fallback: dSYM aus dem Device‑Slice erzeugen
+BIN=$(find "$SRC" -path "*ios-arm64*" -name WebRTC -type f -print -quit)
+if [ -n "$BIN" ]; then
+  /usr/bin/dsymutil "$BIN" -o "$DST/WebRTC.framework.dSYM" || true
+fi
+        SCRIPT
+        # Nur beim Archivieren ausführen
+        phase.run_only_for_deployment_postprocessing = '1'
+      end
+    end
+  end
 end

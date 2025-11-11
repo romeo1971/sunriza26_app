@@ -199,6 +199,7 @@
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				5D6A39754A168082582A5EAF /* [CP] Embed Pods Frameworks */,
 				93045754D990D11831A29DDF /* [CP] Copy Pods Resources */,
+				248BE840F0279A27315CACE2 /* Copy WebRTC dSYMs */,
 			);
 			buildRules = (
 			);
@@ -270,6 +271,24 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
+		248BE840F0279A27315CACE2 /* Copy WebRTC dSYMs */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy WebRTC dSYMs";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nXCFRAMEWORK=\"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework\"\nDST=\"${DWARF_DSYM_FOLDER_PATH}\"\n\n# 1) Wenn dSYMs mitgeliefert (ios-arm64): kopieren\nif [ -d \"$XCFRAMEWORK/dSYMs\" ]; then\n  FOUND=0\n  while IFS= read -r -d '' DS; do\n    cp -R \"$DS\" \"$DST\"\n    FOUND=1\n  done < <(find \"$XCFRAMEWORK/dSYMs\" -path \"*ios-arm64*.dSYM\" -name \"WebRTC*.dSYM\" -print0)\n  if [ \"$FOUND\" = \"1\" ]; then exit 0; fi\nfi\n\n# 2) Fallback: dSYM aus Binary erzeugen\nBIN=$(find \"$XCFRAMEWORK\" -path \"*ios-arm64*\" -name WebRTC -type f -print -quit)\nif [ -n \"$BIN\" ]; then\n  /usr/bin/dsymutil \"$BIN\" -o \"$DST/WebRTC.framework.dSYM\" || true\nfi\n";
+		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -355,7 +374,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build";
+			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build\n";
 		};
 		A46D172C9D11D77CBA28980D /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
