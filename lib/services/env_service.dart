@@ -79,6 +79,65 @@ class EnvService {
     return AppConfig.backendUrl;
   }
 
+  /// Basis-URL für TTS-/ElevenLabs-Backend (z. B. FastAPI oder Cloud Function Proxy)
+  /// Reihenfolge:
+  /// - Compile-time define: ELEVENLABS_API_BASE_URL oder TTS_API_BASE_URL
+  /// - .env: ELEVENLABS_API_BASE_URL oder TTS_API_BASE_URL
+  /// - Fallback: memoryApiBaseUrl() → bestehendes Verhalten
+  static String ttsApiBaseUrl() {
+    // Defines haben Vorrang (CI/Release)
+    const fromDefine1 = String.fromEnvironment('ELEVENLABS_API_BASE_URL', defaultValue: '');
+    if (fromDefine1.isNotEmpty) return _normalizeBase(fromDefine1.trim());
+    const fromDefine2 = String.fromEnvironment('TTS_API_BASE_URL', defaultValue: '');
+    if (fromDefine2.isNotEmpty) return _normalizeBase(fromDefine2.trim());
+
+    // .env
+    final fromEnv1 = _safeEnv('ELEVENLABS_API_BASE_URL');
+    if (fromEnv1.isNotEmpty) return _normalizeBase(fromEnv1);
+    final fromEnv2 = _safeEnv('TTS_API_BASE_URL');
+    if (fromEnv2.isNotEmpty) return _normalizeBase(fromEnv2);
+
+    // Fallback auf bisherige Logik
+    final mem = memoryApiBaseUrl();
+    if (mem.isNotEmpty) return mem;
+    return AppConfig.backendUrl;
+  }
+
+  /// Erkennt, ob die TTS‑Basis Cloud Functions ist (liefert /testTTS als Bytes)
+  static bool ttsIsCloudFunctions(String baseUrl) {
+    try {
+      final host = Uri.parse(baseUrl).host;
+      return host.contains('cloudfunctions.net');
+    } catch (_) {
+      return baseUrl.contains('cloudfunctions.net');
+    }
+  }
+
+  /// Liefert den Pfad für TTS je nach Backend
+  static String ttsEndpointPath(String baseUrl) {
+    return ttsIsCloudFunctions(baseUrl) ? '/testTTS' : '/avatar/tts';
+  }
+
+  /// Basis-URL für Orchestrator-/LiveKit-Hilfsendpunkte (z. B. /livekit/token, /avatar/info)
+  /// Reihenfolge:
+  /// - Compile-time: LIVEKIT_API_BASE_URL oder ORCHESTRATOR_API_BASE_URL
+  /// - .env: LIVEKIT_API_BASE_URL oder ORCHESTRATOR_API_BASE_URL
+  /// - Fallback: memoryApiBaseUrl() (für Abwärtskompatibilität)
+  static String livekitApiBaseUrl() {
+    const fromDefine1 = String.fromEnvironment('LIVEKIT_API_BASE_URL', defaultValue: '');
+    if (fromDefine1.isNotEmpty) return _normalizeBase(fromDefine1.trim());
+    const fromDefine2 = String.fromEnvironment('ORCHESTRATOR_API_BASE_URL', defaultValue: '');
+    if (fromDefine2.isNotEmpty) return _normalizeBase(fromDefine2.trim());
+
+    final fromEnv1 = _safeEnv('LIVEKIT_API_BASE_URL');
+    if (fromEnv1.isNotEmpty) return _normalizeBase(fromEnv1);
+    final fromEnv2 = _safeEnv('ORCHESTRATOR_API_BASE_URL');
+    if (fromEnv2.isNotEmpty) return _normalizeBase(fromEnv2);
+
+    // Rückfall
+    return memoryApiBaseUrl();
+  }
+
   // Feature-Flags für Orchestrator
   static bool orchestratorEnabled() {
     final v = _safeEnv('ORCHESTRATOR_ENABLED');

@@ -3101,7 +3101,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   Future<void> _testVoicePlayback() async {
     try {
-      final base = dotenv.env['MEMORY_API_BASE_URL'];
+      // TTS nutzt eigene Basis‑URL, unabhängig von Memory‑API
+      final base = EnvService.ttsApiBaseUrl();
       if (base == null || base.isEmpty) {
         _showSystemSnack(
           context.read<LocalizationService>().t(
@@ -3110,6 +3111,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         );
         return;
       }
+      final isCf = EnvService.ttsIsCloudFunctions(base);
+      final path = EnvService.ttsEndpointPath(base);
       String? voiceId;
       // Slider-Auswahl berücksichtigen
       if (_useOwnVoice) {
@@ -3133,7 +3136,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         return;
       }
 
-      final uri = Uri.parse('$base/avatar/tts');
+      final uri = Uri.parse('$base$path');
       // Begrüßungstext immer verwenden
       final greeting = (_greetingController.text.trim().isNotEmpty)
           ? _greetingController.text.trim()
@@ -3145,7 +3148,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       final payload = <String, dynamic>{
         'text': greeting,
-        'voice_id': voiceId,
+        if (isCf) 'voiceId': voiceId else 'voice_id': voiceId,
         'stability': double.parse(_voiceStability.toStringAsFixed(2)),
         'similarity': double.parse(_voiceSimilarity.toStringAsFixed(2)),
         'speed': double.parse(_voiceTempo.toStringAsFixed(2)),
@@ -3159,18 +3162,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         body: jsonEncode(payload),
       );
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        final data = jsonDecode(res.body) as Map<String, dynamic>;
-        final b64 = data['audio_b64'] as String?;
-        if (b64 == null || b64.isEmpty) {
-          if (!mounted) return;
-          _showSystemSnack(
-            context.read<LocalizationService>().t(
-              'avatars.details.noAudioReceived',
-            ),
-          );
-          return;
-        }
-        final bytes = base64Decode(b64);
+        final Uint8List bytes = isCf
+            ? res.bodyBytes
+            : (() {
+                final data = jsonDecode(res.body) as Map<String, dynamic>;
+                final b64 = (data['audio_b64'] as String?) ?? '';
+                return base64Decode(b64);
+              })();
         final dir = await getTemporaryDirectory();
         final file = File(
           '${dir.path}/voice_test_${DateTime.now().millisecondsSinceEpoch}.mp3',

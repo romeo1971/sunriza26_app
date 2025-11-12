@@ -346,7 +346,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         debugPrint('⚠️ LiveKit DISABLED (LIVEKIT_ENABLED != 1)');
         return;
       }
-      final base = EnvService.memoryApiBaseUrl();
+      // LiveKit/Orchestrator Token-Endpoint getrennt konfigurierbar
+      final base = EnvService.livekitApiBaseUrl();
       final tokenUrlEnv = (dotenv.env['LIVEKIT_TOKEN_URL'] ?? '').trim();
       debugPrint('🔑 LiveKit Token URL: $tokenUrlEnv');
       Uri? tokenUri;
@@ -3017,12 +3018,20 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       if (voiceId == null || voiceId.isEmpty) {
         voiceId = await _reloadVoiceIdFromFirestore();
       }
-      // Bevorzugt .env MEMORY_API_BASE_URL; Fallback auf AppConfig.backendUrl
-      String base = EnvService.memoryApiBaseUrl();
+      // Verwende dedizierte TTS‑Basis‑URL; Fallbacks intern geregelt
+      String base = EnvService.ttsApiBaseUrl();
       if (base.isEmpty) base = AppConfig.backendUrl;
-      final uri = Uri.parse('$base/avatar/tts');
+      final bool isCf = EnvService.ttsIsCloudFunctions(base);
+      final String ttsPath = EnvService.ttsEndpointPath(base);
+      final uri = Uri.parse('$base$ttsPath');
       final payload = <String, dynamic>{'text': text};
-      if (voiceId != null) payload['voice_id'] = voiceId;
+      if (voiceId != null) {
+        if (isCf) {
+          payload['voiceId'] = voiceId;
+        } else {
+          payload['voice_id'] = voiceId;
+        }
+      }
       final double? stability = (_avatarData?.training != null)
           ? (_avatarData?.training?['voice'] != null
                 ? (_avatarData?.training?['voice']?['stability'] as num?)
@@ -3055,19 +3064,23 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         timeoutSeconds: 30,
       );
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        final Map<String, dynamic> j =
-            jsonDecode(res.body) as Map<String, dynamic>;
-        final String? b64 = j['audio_b64'] as String?;
-        if (b64 != null && b64.isNotEmpty) {
-          final bytes = base64Decode(b64);
-          final dir = await getTemporaryDirectory();
-          final file = File(
-            '${dir.path}/bot_local_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
-          );
-          await file.writeAsBytes(bytes, flush: true);
+        final dir = await getTemporaryDirectory();
+        final file = File(
+          '${dir.path}/bot_local_tts_${DateTime.now().millisecondsSinceEpoch}.mp3',
+        );
+        if (isCf || (res.headers['content-type'] ?? '').contains('audio/')) {
+          await file.writeAsBytes(res.bodyBytes, flush: true);
           path = file.path;
         } else {
-          debugPrint('TTS-Fehler: leere Antwort');
+          final Map<String, dynamic> j =
+              jsonDecode(res.body) as Map<String, dynamic>;
+          final String? b64 = j['audio_b64'] as String?;
+          if (b64 != null && b64.isNotEmpty) {
+            await file.writeAsBytes(base64Decode(b64), flush: true);
+            path = file.path;
+          } else {
+            debugPrint('TTS-Fehler: leere Antwort');
+          }
         }
       } else {
         debugPrint(
@@ -3096,10 +3109,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     _lastTtsRequestTime = DateTime.now();
 
     try {
-      // Verwende zentralen Backend‑Host
-      String base2 = EnvService.memoryApiBaseUrl();
+      // Verwende dedizierte TTS‑Basis‑URL
+      String base2 = EnvService.ttsApiBaseUrl();
       if (base2.isEmpty) base2 = AppConfig.backendUrl;
-      final uri = Uri.parse('$base2/avatar/tts');
+      final bool isCf2 = EnvService.ttsIsCloudFunctions(base2);
+      final String ttsPath2 = EnvService.ttsEndpointPath(base2);
+      final uri = Uri.parse('$base2$ttsPath2');
       String? idToken;
       try { idToken = await FirebaseAuth.instance.currentUser?.getIdToken(); } catch (_) {}
       String? voiceId = (_avatarData?.training != null)
@@ -3113,7 +3128,11 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       final payload = <String, dynamic>{'text': text};
       // Immer die geklonte Stimme verwenden
       if (voiceId != null) {
-        payload['voice_id'] = voiceId;
+        if (isCf2) {
+          payload['voiceId'] = voiceId;
+        } else {
+          payload['voice_id'] = voiceId;
+        }
       } else {
         _showSystemSnack('Keine geklonte Stimme verfügbar');
         return null;
@@ -3136,23 +3155,29 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         'Content-Type': 'application/json',
         if (idToken != null && idToken.isNotEmpty) 'Authorization': 'Bearer $idToken',
       };
-      final res = await http.post(
-        uri,
-        headers: headers,
-        body: jsonEncode(payload),
-      ).timeout(const Duration(seconds: 30));
+      final res = await http
+          .post(
+            uri,
+            headers: headers,
+            body: jsonEncode(payload),
+          )
+          .timeout(const Duration(seconds: 30));
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        final Map<String, dynamic> j =
-            jsonDecode(res.body) as Map<String, dynamic>;
-        final String? b64 = j['audio_b64'] as String?;
-        if (b64 != null && b64.isNotEmpty) {
-          final bytes = base64Decode(b64);
-          final dir = await getTemporaryDirectory();
-          final file = File(
-            '${dir.path}/tts_on_demand_${DateTime.now().millisecondsSinceEpoch}.mp3',
-          );
-          await file.writeAsBytes(bytes, flush: true);
+        final dir = await getTemporaryDirectory();
+        final file = File(
+          '${dir.path}/tts_on_demand_${DateTime.now().millisecondsSinceEpoch}.mp3',
+        );
+        if (isCf2 || (res.headers['content-type'] ?? '').contains('audio/')) {
+          await file.writeAsBytes(res.bodyBytes, flush: true);
           return file.path;
+        } else {
+          final Map<String, dynamic> j =
+              jsonDecode(res.body) as Map<String, dynamic>;
+          final String? b64 = j['audio_b64'] as String?;
+          if (b64 != null && b64.isNotEmpty) {
+            await file.writeAsBytes(base64Decode(b64), flush: true);
+            return file.path;
+          }
         }
       } else {
         _showSystemSnack(
@@ -3312,7 +3337,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         }
         if (!(res.statusCode >= 200 && res.statusCode < 300)) {
           try {
-            debugPrint('🌐 CF fehlgeschlagen (${res.statusCode}) → Fallback Python /avatar/chat: $chatUri');
+          debugPrint('🌐 CF fehlgeschlagen (${res.statusCode}) → Fallback Python /avatar/chat: $chatUri');
             res = await http
                 .post(
                   chatUri,
