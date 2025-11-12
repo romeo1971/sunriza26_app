@@ -24,6 +24,13 @@ class _LegalPageScreenState extends State<LegalPageScreen> {
   bool _isAdmin = false;
   bool _isHtml = false;
 
+  String _htmlToText(String html) {
+    var s = html.replaceAll(RegExp(r'(?i)<br\s*/?>'), '\n');
+    s = s.replaceAll(RegExp(r'(?i)</p>'), '\n\n');
+    s = s.replaceAll(RegExp(r'<[^>]+>'), '');
+    return s.trim();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -150,7 +157,10 @@ class _LegalPageScreenState extends State<LegalPageScreen> {
       backgroundColor: Colors.grey.shade900,
       drawer: const AppDrawer(),
       appBar: AppBar(
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        surfaceTintColor: Colors.transparent,
         title: Text(_getTitle()),
         foregroundColor: Colors.white,
         actions: [

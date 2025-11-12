@@ -37,7 +37,9 @@ import 'screens/explore_screen.dart';
 import 'screens/favorites_screen.dart';
 import 'screens/user_profile_public_screen.dart';
 import 'models/playlist_models.dart';
-import 'screens/legal_page_screen.dart';
+import 'widgets/legal/privacy.dart';
+import 'widgets/legal/terms.dart';
+import 'widgets/legal/imprint.dart';
 import 'screens/firebase_test_screen.dart';
 import 'screens/avatar_creation_screen.dart';
 import 'screens/language_screen.dart';
@@ -499,11 +501,9 @@ class SunrizaApp extends StatelessWidget {
                 fromScreen: fromScreen,
               );
             },
-            '/legal-terms': (context) => const LegalPageScreen(type: 'terms'),
-            '/legal-imprint': (context) =>
-                const LegalPageScreen(type: 'imprint'),
-            '/legal-privacy': (context) =>
-                const LegalPageScreen(type: 'privacy'),
+            '/legal-terms': (context) => const TermsWidget(),
+            '/legal-imprint': (context) => const ImprintWidget(),
+            '/legal-privacy': (context) => const PrivacyWidget(),
             '/firebase-test': (context) => const FirebaseTestScreen(),
             '/avatar-creation': (context) => const AvatarCreationScreen(),
             '/language': (context) => const LanguageScreen(),

@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import '../models/legal_page.dart';
 
 class LegalService {
@@ -14,6 +15,23 @@ class LegalService {
 
       if (doc.exists && doc.data() != null) {
         return LegalPage.fromMap(doc.data()!);
+      }
+      // Fallback: lokale Assets (assets/legal/<type>.html)
+      try {
+        final assetPath = 'assets/legal/$type.html';
+        final content = await rootBundle.loadString(assetPath);
+        final now = DateTime.now().millisecondsSinceEpoch;
+        return LegalPage(
+          id: type,
+          type: type,
+          title: _getDefaultTitle(type),
+          content: content,
+          isHtml: true,
+          createdAt: now,
+          updatedAt: now,
+        );
+      } catch (_) {
+        // kein Asset vorhanden
       }
       return null;
     } catch (e) {

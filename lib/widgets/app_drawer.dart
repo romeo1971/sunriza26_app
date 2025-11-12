@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+// no web redirects for legal pages; render in-app screens
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import '../services/auth_service.dart';

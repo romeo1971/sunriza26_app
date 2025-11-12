@@ -134,6 +134,7 @@ flutter:
     - assets/sunriza_complete/texts/
     - .env
     - assets/lang/
+    - assets/legal/
   generate: true
 
   # An image asset can refer to one or more resolution-specific "variants", see
