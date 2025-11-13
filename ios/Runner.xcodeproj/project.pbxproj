@@ -14,6 +14,7 @@
 		97C146FC1CF9000F007C117D /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FA1CF9000F007C117D /* Main.storyboard */; };
 		97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FD1CF9000F007C117D /* Assets.xcassets */; };
 		97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */; };
+		A4E8D7C62EC5B6E0004AC7FB /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = A4E8D7C52EC5B6E0004AC7FB /* GoogleService-Info.plist */; };
 		B56B7220B3BBE05197B6B479 /* Pods_RunnerTests.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4B1E10D2166ABD7BAF27AFE4 /* Pods_RunnerTests.framework */; };
 		BBE950598D139CB68B2AC07D /* Pods_Runner.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = ACC17AB466F904FDE1B7A507 /* Pods_Runner.framework */; };
 /* End PBXBuildFile section */
@@ -63,6 +64,7 @@
 		97C147001CF9000F007C117D /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		97C147021CF9000F007C117D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		9E9B146F5E33BBF136960FDE /* Pods-Runner.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Runner.profile.xcconfig"; path = "Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"; sourceTree = "<group>"; };
+		A4E8D7C52EC5B6E0004AC7FB /* GoogleService-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		ACC17AB466F904FDE1B7A507 /* Pods_Runner.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_Runner.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1017583CD7D1AE489EC6F0A /* Pods-RunnerTests.profile.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-RunnerTests.profile.xcconfig"; path = "Target Support Files/Pods-RunnerTests/Pods-RunnerTests.profile.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -143,6 +145,7 @@
 		97C146F01CF9000F007C117D /* Runner */ = {
 			isa = PBXGroup;
 			children = (
+				A4E8D7C52EC5B6E0004AC7FB /* GoogleService-Info.plist */,
 				97C146FA1CF9000F007C117D /* Main.storyboard */,
 				97C146FD1CF9000F007C117D /* Assets.xcassets */,
 				97C146FF1CF9000F007C117D /* LaunchScreen.storyboard */,
@@ -191,15 +194,17 @@
 			buildConfigurationList = 97C147051CF9000F007C117D /* Build configuration list for PBXNativeTarget "Runner" */;
 			buildPhases = (
 				A46D172C9D11D77CBA28980D /* [CP] Check Pods Manifest.lock */,
-				9740EEB61CF901F6004384FC /* Run Script */,
+				9740EEB61CF901F6004384FC /* Run Script xcode_backend */,
 				97C146EA1CF9000F007C117D /* Sources */,
 				97C146EB1CF9000F007C117D /* Frameworks */,
 				97C146EC1CF9000F007C117D /* Resources */,
+				A4E8D7C72EC6018D004AC7FB /* Run Script Crachlytics */,
+				A44A98FA2EC5232900475190 /* Run Script FirebaseCrashlytics */,
 				9705A1C41CF9048500538489 /* Embed Frameworks */,
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				5D6A39754A168082582A5EAF /* [CP] Embed Pods Frameworks */,
 				93045754D990D11831A29DDF /* [CP] Copy Pods Resources */,
-				248BE840F0279A27315CACE2 /* Copy WebRTC dSYMs */,
+				248BE840F0279A27315CACE2 /* Copy WebRTC dSYMs - obsolete */,
 			);
 			buildRules = (
 			);
@@ -261,17 +266,18 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
 				97C147011CF9000F007C117D /* LaunchScreen.storyboard in Resources */,
+				A4E8D7C62EC5B6E0004AC7FB /* GoogleService-Info.plist in Resources */,
 				3B3967161E833CAA004F5970 /* AppFrameworkInfo.plist in Resources */,
 				97C146FE1CF9000F007C117D /* Assets.xcassets in Resources */,
-				97C146FC1CF9000F007C117D /* Main.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		248BE840F0279A27315CACE2 /* Copy WebRTC dSYMs */ = {
+		248BE840F0279A27315CACE2 /* Copy WebRTC dSYMs - obsolete */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -281,7 +287,7 @@
 			inputPaths = (
 				"$(PODS_ROOT)/WebRTC-SDK/WebRTC.xcframework",
 			);
-			name = "Copy WebRTC dSYMs";
+			name = "Copy WebRTC dSYMs - obsolete";
 			outputFileListPaths = (
 			);
 			outputPaths = (
@@ -289,7 +295,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 1;
 			shellPath = /bin/sh;
-			shellScript = "#!/bin/sh\nset -e\n\nXCFRAMEWORK=\"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework\"\nDST=\"${DWARF_DSYM_FOLDER_PATH}\"\n\n# sanity checks\nif [ -z \"$XCFRAMEWORK\" ] || [ ! -d \"$XCFRAMEWORK\" ]; then\n  echo \"⚠️ XCFRAMEWORK not found at: $XCFRAMEWORK\"\n  exit 0\nfi\n\n# ensure destination exists\nif [ -z \"$DST\" ]; then\n  echo \"⚠️ DWARF_DSYM_FOLDER_PATH not set, nothing to do.\"\n  exit 0\nfi\nmkdir -p \"$DST\"\n\necho \"Looking for WebRTC dSYMs in: $XCFRAMEWORK/dSYMs\"\n\n# 1) copy existing dSYMs for ios-arm64\nCOUNT=$(find \"$XCFRAMEWORK/dSYMs\" -type d -name \"WebRTC*.dSYM\" -path \"*ios-arm64*\" 2>/dev/null | wc -l | tr -d ' ')\nif [ \"$COUNT\" -gt 0 ]; then\n  echo \"Found $COUNT WebRTC dSYM(s) — copying to $DST\"\n  find \"$XCFRAMEWORK/dSYMs\" -type d -name \"WebRTC*.dSYM\" -path \"*ios-arm64*\" -exec cp -R {} \"$DST\" \\;\n  exit 0\nfi\n\n# 2) fallback: generate dSYM from the binary\necho \"No prebuilt dSYM found — attempting to generate from binary\"\nBIN=$(find \"$XCFRAMEWORK\" -path \"*ios-arm64*\" -type f -name WebRTC | head -n 1)\nif [ -n \"$BIN\" ]; then\n  echo \"Generating dSYM from binary: $BIN\"\n  /usr/bin/dsymutil \"$BIN\" -o \"$DST/WebRTC.framework.dSYM\" || true\n  echo \"Generated: $DST/WebRTC.framework.dSYM\"\nelse\n  echo \"⚠️ WebRTC binary for ios-arm64 not found in $XCFRAMEWORK\"\nfi\n\nexit 0\n\n";
+			shellScript = "#set -e\n\n#DST=\"${DWARF_DSYM_FOLDER_PATH}\"\n#RUNNER_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/Runner.app.dSYM\"\n\n#CRASHLYTICS_RUN=\"${PODS_ROOT}/FirebaseCrashlytics/run\"\n\n#if [ -z \"$DST\" ]; then\n#  echo \"⚠️ DWARF_DSYM_FOLDER_PATH not set, nothing to do.\"\n#  exit 0\n#fi\n\n#mkdir -p \"$DST\"\n\n#if [ -d \"$RUNNER_DSYM\" ]; then\n#  echo \"Using Runner.app.dSYM at $RUNNER_DSYM\"\n#else\n#  echo \"⚠️ Runner.app.dSYM not found at $RUNNER_DSYM, trying default location\"\n#  RUNNER_DSYM=\"build/ios/archive/Runner.xcarchive/dSYMs/Runner.app.dSYM\"\n#  if [ ! -d \"$RUNNER_DSYM\" ]; then\n#    echo \"⚠️ No Runner dSYM found, skipping symbol upload.\"\n#    exit 0\n#  fi\n#fi\n\n#if [ -f \"$CRASHLYTICS_RUN\" ]; then\n#  echo \"Running Firebase Crashlytics run script...\"\n#  \"${CRASHLYTICS_RUN}\"\n#else\n# echo \"⚠️ Crashlytics run script not found at $CRASHLYTICS_RUN, make sure Firebase/Crashlytics pod is installed.\"\n#  exit 0\n#fi\n\n#echo \"✅ Crashlytics symbols processed successfully.\"\n#exit 0\n\n";
 		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -371,7 +377,7 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		9740EEB61CF901F6004384FC /* Run Script */ = {
+		9740EEB61CF901F6004384FC /* Run Script xcode_backend */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -379,12 +385,30 @@
 			);
 			inputPaths = (
 			);
-			name = "Run Script";
+			name = "Run Script xcode_backend";
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" build\n";
+		};
+		A44A98FA2EC5232900475190 /* Run Script FirebaseCrashlytics */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Run Script FirebaseCrashlytics";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\n#\"${PODS_ROOT}/FirebaseCrashlytics/run\"\n \n";
 		};
 		A46D172C9D11D77CBA28980D /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -407,6 +431,24 @@
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
+		};
+		A4E8D7C72EC6018D004AC7FB /* Run Script Crachlytics */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Run Script Crachlytics";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "#!/bin/sh\nset -e\n\n# Pfad zum Crashlytics Run Script\nCRASHLYTICS_RUN=\"${PODS_ROOT}/FirebaseCrashlytics/run\"\n\n# Pfad zum aktuellen Archiv\nARCHIVE_PATH=\"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}\"\n\n# Nur die Runner.app.dSYM hochladen\nRUNNER_DSYM=\"$ARCHIVE_PATH/Runner.app.dSYM\"\n\nif [ -d \"$RUNNER_DSYM\" ]; then\n    echo \"Uploading Runner.app.dSYM to Crashlytics...\"\n    \"$CRASHLYTICS_RUN\" \"$RUNNER_DSYM\"\n    echo \"✅ Upload erfolgreich. WebRTC-dSYM wird ignoriert.\"\nelse\n    echo \"⚠️ Runner.app.dSYM nicht gefunden – Crashlytics Upload übersprungen.\"\nfi\n\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

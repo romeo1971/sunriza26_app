@@ -211,3 +211,5 @@ const apiKey = process.env.API_KEY?.trim(); // ← .trim() hinzugefügt
 
 
 
+
+

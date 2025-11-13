@@ -32,5 +32,7 @@
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
 	<string>1:590744030274:ios:3312f6bd8cd558f03b31db</string>
+	<key>DATABASE_URL</key>
+	<string>https://sunriza26-default-rtdb.europe-west1.firebasedatabase.app</string>
 </dict>
 </plist>

@@ -47,6 +47,8 @@
 	<string>Zum Speichern exportierter Medien in der Fotomediathek.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Zugriff auf die Fotomediathek für Uploads.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
