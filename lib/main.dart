@@ -77,8 +77,13 @@ void main() async {
   // Alle Keys in .env sind Pflicht: leer/fehlend -> harter Fehler
   _validateAllEnvStrict();
 
-  // Firebase immer initialisieren
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Firebase immer initialisieren (nur wenn noch nicht initialisiert)
+  try {
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } catch (e) {
+    // Firebase bereits initialisiert (z.B. bei Hot Reload) - ignorieren
+    if (!e.toString().contains('duplicate-app')) rethrow;
+  }
 
   // Firestore: Offline-Persistenz deaktivieren, um LevelDB-LOCKs zu vermeiden (z.B. bei parallel laufenden Instanzen)
   try {
