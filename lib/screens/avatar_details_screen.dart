@@ -173,6 +173,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final List<String> _videoUrls = [];
   final List<String> _textFileUrls = [];
   final Map<String, String> _mediaOriginalNames = {}; // URL -> originalFileName
+  bool _mediaOriginalNamesLoaded = false; // verhindert kurzzeitigen Zahlennamen
   final Map<String, bool> _isRecropping =
       {}; // URL -> isRecropping (Loading Spinner)
   final Map<String, int> _imageDurations =
@@ -871,6 +872,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             _mediaOriginalNames[media.url] = media.originalFileName!;
           }
         }
+        _mediaOriginalNamesLoaded = true;
       });
     } catch (e) {
       debugPrint('❌ Fehler beim Laden der OriginalFileNames: $e');
@@ -3450,6 +3452,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
 
   String _fileNameFromUrl(String url) {
+    // Verhindert kurzzeitig den technischen Pfad (Zahlenname), bis Mapping geladen ist
+    if (!_mediaOriginalNamesLoaded) {
+      return '';
+    }
+
     // 1. Prüfe ob OriginalFileName in Map vorhanden (aus Firestore Media-Docs)
     if (_mediaOriginalNames.containsKey(url)) {
       return _mediaOriginalNames[url]!;
