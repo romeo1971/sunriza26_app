@@ -138,7 +138,7 @@ class FirebaseStorageService {
     }
   }
 
-  /// Upload ein Video zu Firebase Storage
+  /// Upload ein Video zu Firebase Storage (File-basiert – für Mobile/Desktop)
   static Future<String?> uploadVideo(
     File videoFile, {
     String? customPath,
@@ -201,6 +201,65 @@ class FirebaseStorageService {
     } catch (e, stack) {
       debugPrint('❌ FEHLER beim Upload des Videos: $e');
       debugPrint('Stack: $stack');
+      return null;
+    }
+  }
+
+  /// Upload Video aus Bytes (z.B. Flutter Web / FilePicker)
+  static Future<String?> uploadVideoBytes(
+    Uint8List bytes, {
+    String fileName = 'video.mp4',
+    String? customPath,
+  }) async {
+    try {
+      debugPrint(
+        '📤 uploadVideoBytes START (size=${bytes.lengthInBytes} bytes, name=$fileName)',
+      );
+
+      final user = _auth.currentUser;
+      if (user == null) {
+        debugPrint('❌ uploadVideoBytes FEHLER: Benutzer nicht angemeldet');
+        throw Exception('Benutzer nicht angemeldet');
+      }
+      debugPrint('✅ User authenticated: ${user.uid}');
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final sanitizedName = fileName.isEmpty ? 'video.mp4' : fileName;
+      final filePath =
+          customPath ??
+          'users/${user.uid}/uploads/videos/${timestamp}_$sanitizedName';
+      debugPrint('📁 Upload-Pfad (Bytes): $filePath');
+
+      final ref = _storage.ref().child(filePath);
+
+      // Content-Type anhand Dateiendung setzen
+      final String ext = path.extension(filePath).toLowerCase();
+      String contentType = 'video/mp4';
+      if (ext == '.mov') contentType = 'video/quicktime';
+      if (ext == '.m4v') contentType = 'video/x-m4v';
+
+      final uploadTask = ref.putData(
+        bytes,
+        SettableMetadata(contentType: contentType),
+      );
+
+      uploadTask.snapshotEvents.listen((snapshot) {
+        final progress = (snapshot.bytesTransferred / snapshot.totalBytes * 100)
+            .toStringAsFixed(1);
+        debugPrint('📊 uploadVideoBytes Fortschritt: $progress%');
+      });
+
+      final snapshot = await uploadTask;
+      debugPrint(
+        '✅ uploadVideoBytes Upload abgeschlossen, hole Download-URL...',
+      );
+
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      debugPrint('✅ uploadVideoBytes OK → $downloadUrl');
+      return downloadUrl;
+    } catch (e, stack) {
+      debugPrint('❌ FEHLER beim Upload des Videos (Bytes): $e');
+      debugPrint('Stack (Bytes): $stack');
       return null;
     }
   }

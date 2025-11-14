@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:path_provider/path_provider.dart';
+import 'package:image/image.dart' as img;
 import '../services/user_service.dart';
 import '../models/user_profile.dart';
 import '../services/localization_service.dart';
@@ -312,6 +314,188 @@ class _UserProfileScreenState extends State<UserProfileScreen> with WidgetsBindi
     }
   }
 
+  /// Web‑Variante: interaktives 9:16‑Cropping auf Basis von Bytes
+  Future<Uint8List?> _cropBytesToPortraitWeb(Uint8List input) async {
+    try {
+      // Versuche, das Bild vorab in ein kompatibles Format (JPEG) zu bringen.
+      // WICHTIG: HEIC u.ä. werden vom image-Package nicht unterstützt → dann abbrechen.
+      Uint8List effectiveBytes;
+      img.Image? decoded;
+      try {
+        decoded = img.decodeImage(input);
+      } catch (_) {
+        decoded = null;
+      }
+      if (decoded == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Dieses Bildformat wird im Web-Profil nicht unterstützt (z.B. HEIC). '
+                'Bitte JPEG/PNG verwenden oder mobil zuschneiden.',
+              ),
+            ),
+          );
+        }
+        return null;
+      }
+
+      const int maxSize = 2048;
+      img.Image resized = decoded;
+      if (decoded.width > maxSize || decoded.height > maxSize) {
+        resized = img.copyResize(
+          decoded,
+          width: decoded.width > decoded.height ? maxSize : null,
+          height: decoded.height >= decoded.width ? maxSize : null,
+        );
+      }
+      effectiveBytes = Uint8List.fromList(
+        img.encodeJpg(resized, quality: 95),
+      );
+
+      final cropController = cyi.CropController();
+      Uint8List? result;
+
+      if (!mounted) return null;
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+          backgroundColor: Colors.black,
+          clipBehavior: Clip.hardEdge,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: LayoutBuilder(
+            builder: (dCtx, _) {
+              final sz = MediaQuery.of(dCtx).size;
+              final double dlgW = (sz.width * 0.9).clamp(320.0, 900.0);
+              final double dlgH = (sz.height * 0.9).clamp(480.0, 1200.0);
+              return SizedBox(
+                width: dlgW,
+                height: dlgH,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: cyi.Crop(
+                        controller: cropController,
+                        image: effectiveBytes,
+                        aspectRatio: 9 / 16,
+                        withCircleUi: false,
+                        baseColor: Colors.black,
+                        maskColor: Colors.black38,
+                        onCropped: (cropped) {
+                          try {
+                            final dynamic any = cropped;
+                            if (any is Uint8List) {
+                              result = any;
+                            } else if (any is cyi.CropSuccess) {
+                              result = any.croppedImage as Uint8List?;
+                            } else if (any?.bytes is Uint8List) {
+                              result = any.bytes as Uint8List?;
+                            }
+                          } catch (_) {}
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                result = null;
+                                Navigator.pop(ctx);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade800,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: Text(
+                                      'Abbrechen',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () => cropController.crop(),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [
+                                      Color(0xFFE91E63),
+                                      AppColors.lightBlue,
+                                    ],
+                                  ),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: Text(
+                                      'Zuschneiden',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      return result;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<ImageSource?> _chooseImageSource() async {
     return await showModalBottomSheet<ImageSource>(
       context: context,
@@ -368,42 +552,66 @@ class _UserProfileScreenState extends State<UserProfileScreen> with WidgetsBindi
     }
 
     File? file;
-    if (!kIsWeb && (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
-      // Desktop: FilePicker
+    Uint8List? webBytes;
+
+    if (kIsWeb) {
+      // Web: nur Bytes, kein dart:io File
+      final picker = ImagePicker();
+      final pickedFile =
+          await picker.pickImage(source: source, imageQuality: 90);
+      if (pickedFile != null) {
+        webBytes = await pickedFile.readAsBytes();
+      }
+    } else if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+      // Desktop (nicht Web): FilePicker
       final res = await FilePicker.platform.pickFiles(type: FileType.image);
       final path = res?.files.single.path;
       if (path != null) file = File(path);
     } else {
-      // Mobile/Web: ImagePicker
+      // Mobile (iOS/Android): ImagePicker mit File-Pfad
       final picker = ImagePicker();
-      final pickedFile = await picker.pickImage(source: source, imageQuality: 90);
+      final pickedFile =
+          await picker.pickImage(source: source, imageQuality: 90);
       if (pickedFile != null) file = File(pickedFile.path);
     }
 
-    if (file == null) {
+    if (!kIsWeb && file == null || (kIsWeb && webBytes == null)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keine Datei ausgewählt')));
       }
       return;
     }
 
-    File f = file;
-    debugPrint('🖼️ Original file: ${f.path}');
-
-    final cropped = await _cropToPortrait916(f);
-    if (cropped == null) {
-      debugPrint('❌ Cropping cancelled or failed');
-      return;
-    }
-
-    f = cropped;
-    debugPrint('✅ Using cropped file: ${f.path}');
-
     setState(() => _uploadingPhoto = true);
 
     try {
-      debugPrint('📤 Uploading to Firebase...');
-      final url = await _userService.uploadProfileImage(f);
+      String? url;
+
+      if (kIsWeb) {
+        debugPrint('🖼️ (Web) Original bytes length: ${webBytes!.lengthInBytes}');
+        final croppedBytes = await _cropBytesToPortraitWeb(webBytes!);
+        if (croppedBytes == null) {
+          debugPrint('❌ (Web) Cropping cancelled or failed');
+          setState(() => _uploadingPhoto = false);
+          return;
+        }
+        debugPrint('📤 (Web) Uploading cropped bytes to Firebase...');
+        url = await _userService.uploadProfileImageBytes(croppedBytes);
+      } else {
+        File f = file!;
+        debugPrint('🖼️ Original file: ${f.path}');
+        final cropped = await _cropToPortrait916(f);
+        if (cropped == null) {
+          debugPrint('❌ Cropping cancelled or failed');
+          setState(() => _uploadingPhoto = false);
+          return;
+        }
+        f = cropped;
+        debugPrint('✅ Using cropped file: ${f.path}');
+
+        debugPrint('📤 Uploading to Firebase...');
+        url = await _userService.uploadProfileImage(f);
+      }
       debugPrint('✅ Upload complete: $url');
 
       if (!mounted) return;

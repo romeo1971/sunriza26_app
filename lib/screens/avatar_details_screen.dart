@@ -5490,6 +5490,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final result = await FilePicker.platform.pickFiles(
           type: FileType.video,
           allowMultiple: true,
+          withData: kIsWeb,
         );
 
         if (result == null || result.files.isEmpty) {
@@ -5500,14 +5501,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         setState(() => _isDirty = true);
         final String avatarId = _avatarData!.id;
         int baseTimestamp = DateTime.now().millisecondsSinceEpoch;
+        int uploadedCount = 0;
 
         for (int i = 0; i < result.files.length; i++) {
           final file = result.files[i];
-          if (file.path == null) continue;
 
           try {
-            final File f = File(file.path!);
-            final String origName = p.basename(file.path!);
+            final String origName = file.name;
             final timestamp = baseTimestamp + i;
             final String path =
                 'avatars/$avatarId/videos/${timestamp}_$origName';
@@ -5515,17 +5515,37 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             debugPrint(
               '🎬 Starte Upload ${i + 1}/${result.files.length}: $path',
             );
-            final url = await FirebaseStorageService.uploadVideo(
-              f,
-              customPath: path,
-            );
+
+            String? url;
+            if (kIsWeb) {
+              final bytes = file.bytes;
+              if (bytes == null) {
+                debugPrint(
+                  '❌ Web: Video ${i + 1} ohne Bytes → skip',
+                );
+                continue;
+              }
+              url = await FirebaseStorageService.uploadVideoBytes(
+                bytes,
+                fileName: origName,
+                customPath: path,
+              );
+            } else {
+              if (file.path == null) continue;
+              final File f = File(file.path!);
+              url = await FirebaseStorageService.uploadVideo(
+                f,
+                customPath: path,
+              );
+            }
 
             if (url != null) {
+              uploadedCount++;
               if (!mounted) return;
               final hasNoHeroVideo =
                   _getHeroVideoUrl() == null || _getHeroVideoUrl()!.isEmpty;
               setState(() {
-                _videoUrls.add(url);
+                _videoUrls.add(url!);
               });
               await _persistTextFileUrls();
               await _addMediaDoc(
@@ -5545,7 +5565,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
         }
 
-        if (mounted) {
+        if (mounted && uploadedCount > 0) {
           final scaffoldMessenger = ScaffoldMessenger.of(context);
           // Timeline neu laden für korrekte Anzeige
           await _loadTimelineData(_avatarData!.id);
@@ -5556,7 +5576,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           scaffoldMessenger.showSnackBar(
             SnackBar(
               content: Text(
-                '${result.files.length} Videos erfolgreich hochgeladen',
+                '$uploadedCount Videos erfolgreich hochgeladen',
               ),
             ),
           );

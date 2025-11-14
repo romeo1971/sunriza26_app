@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -82,6 +83,47 @@ class UserService {
 
     // 3. Update Firestore - wird vom Screen gemacht
     // (Screen macht das über updateUserProfile mit copyWith)
+    return url;
+  }
+
+  /// Profilbild-Upload aus Bytes (z.B. Flutter Web)
+  Future<String?> uploadProfileImageBytes(Uint8List bytes) async {
+    final u = _auth.currentUser!;
+
+    debugPrint(
+      '🔍 (Web) Deleting old photos from: users/${u.uid}/images/profileImage/',
+    );
+
+    // 1. Alle alten Fotos im profileImage/ Ordner löschen
+    final profileImageDir = _st.ref('users/${u.uid}/images/profileImage/');
+    try {
+      final listResult = await profileImageDir.listAll();
+      debugPrint('(Web) 📋 Found ${listResult.items.length} files to delete');
+
+      for (final item in listResult.items) {
+        debugPrint('(Web) 🗑️ Deleting: ${item.fullPath}');
+        await item.delete();
+        debugPrint('(Web) ✅ Deleted: ${item.name}');
+      }
+    } catch (e) {
+      debugPrint('(Web) ⚠️ Could not delete old photos: $e');
+    }
+
+    // 2. Neues Foto per Bytes hochladen
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final ref = _st.ref(
+      'users/${u.uid}/images/profileImage/profile_$timestamp.jpg',
+    );
+    debugPrint('(Web) 📤 Uploading bytes to: ${ref.fullPath}');
+
+    final snap = await ref.putData(
+      bytes,
+      SettableMetadata(contentType: 'image/jpeg'),
+    );
+    final url = await snap.ref.getDownloadURL();
+    debugPrint('(Web) ✅ New photo uploaded: $url');
+
+    // 3. Firestore-Update macht weiterhin der Screen
     return url;
   }
 

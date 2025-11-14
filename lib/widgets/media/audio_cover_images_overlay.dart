@@ -1,7 +1,9 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
+import 'package:image/image.dart' as img;
 import '../../models/media_models.dart';
 import '../../theme/app_theme.dart';
 import '../../services/audio_cover_service.dart';
@@ -221,7 +223,8 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
     final isEmpty = coverImage == null;
     
     // Portrait (9:16): halbe Breite, Landscape (16:9): volle Breite
-    final bool isPortrait = isEmpty || (coverImage.aspectRatio ?? 0.5625) < 1.0;
+    final bool isPortrait =
+        isEmpty || coverImage.aspectRatio < 1.0;
     
     if (isPortrait) {
       // Portrait: halbe Breite, AspectRatio 9:16
@@ -545,9 +548,47 @@ class _AudioCoverImagesOverlayState extends State<AudioCoverImagesOverlay> {
       if (image == null) return;
 
       final bytes = await image.readAsBytes();
+      Uint8List effectiveBytes = bytes;
+
+      // Web: HEIC/unkompatible Formate abfangen und in sicheres JPEG wandeln
+      if (kIsWeb) {
+        img.Image? decoded;
+        try {
+          decoded = img.decodeImage(bytes);
+        } catch (_) {
+          decoded = null;
+        }
+
+        if (decoded == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Dieses Bildformat wird im Web nicht unterstützt (z.B. HEIC). '
+                  'Bitte JPEG/PNG verwenden oder mobil zuschneiden.',
+                ),
+              ),
+            );
+          }
+          return;
+        }
+
+        const int maxSize = 2048;
+        img.Image resized = decoded;
+        if (decoded.width > maxSize || decoded.height > maxSize) {
+          resized = img.copyResize(
+            decoded,
+            width: decoded.width > decoded.height ? maxSize : null,
+            height: decoded.height >= decoded.width ? maxSize : null,
+          );
+        }
+        effectiveBytes = Uint8List.fromList(
+          img.encodeJpg(resized, quality: 95),
+        );
+      }
 
       // 2. Crop Dialog öffnen
-      await _openCropDialog(bytes, index);
+      await _openCropDialog(effectiveBytes, index);
     } catch (e) {
       debugPrint('Error picking image: $e');
       if (mounted) {
