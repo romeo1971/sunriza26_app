@@ -3729,6 +3729,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       voiceClone: voiceClone,
     );
     await _mediaSvc.add(_avatarData!.id, media);
+
+    // Name im UI immer als originalFileName anzeigen (falls vorhanden)
+    if (originalFileName != null && originalFileName.isNotEmpty) {
+      _mediaOriginalNames[url] = originalFileName;
+    }
   }
 
   String pathFromLocalFile(String p) {
@@ -4912,6 +4917,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         if (_profileImageUrl == oldUrl) {
           _profileImageUrl = newUrl;
         }
+        // originalFileName-Mapping im UI aktualisieren
+        if (savedOriginalFileName != null &&
+            savedOriginalFileName.isNotEmpty) {
+          _mediaOriginalNames.remove(oldUrl);
+          _mediaOriginalNames[newUrl] = savedOriginalFileName;
+        }
       }
     } catch (e) {
       debugPrint('RECROP: Fehler bei Finalisierung: $e');
@@ -4922,28 +4933,42 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   /// Web‑Variante: interaktives 9:16‑Cropping auf Basis von Bytes
   Future<Uint8List?> _cropBytesToPortraitWeb(Uint8List input) async {
     try {
-      // Versuche, das Bild vorab in ein kompatibles Format (JPEG) zu bringen,
-      // damit es im Web-Cropper sicher angezeigt werden kann (HEIC/WebP etc.).
-      Uint8List effectiveBytes = input;
+      // Versuche, das Bild vorab in ein kompatibles Format (JPEG) zu bringen.
+      // WICHTIG: HEIC u.ä. werden vom image-Package nicht unterstützt → dann abbrechen.
+      Uint8List effectiveBytes;
+      img.Image? decoded;
       try {
-        final decoded = img.decodeImage(input);
-        if (decoded != null) {
-          // Leicht verkleinern, damit der Crop-Dialog schneller reagiert
-          const int maxSize = 2048;
-          img.Image resized = decoded;
-          if (decoded.width > maxSize || decoded.height > maxSize) {
-            resized = img.copyResize(
-              decoded,
-              width: decoded.width > decoded.height ? maxSize : null,
-              height: decoded.height >= decoded.width ? maxSize : null,
-            );
-          }
-          effectiveBytes =
-              Uint8List.fromList(img.encodeJpg(resized, quality: 95));
-        }
+        decoded = img.decodeImage(input);
       } catch (_) {
-        // Wenn das Decoding fehlschlägt, verwenden wir die Original-Bytes.
+        decoded = null;
       }
+      if (decoded == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Dieses Bildformat wird im Web-Cropping nicht unterstützt (z.B. HEIC). '
+                'Bitte JPEG/PNG verwenden oder mobil zuschneiden.',
+              ),
+            ),
+          );
+        }
+        return null;
+      }
+
+      // Leicht verkleinern, damit der Crop-Dialog schneller reagiert
+      const int maxSize = 2048;
+      img.Image resized = decoded;
+      if (decoded.width > maxSize || decoded.height > maxSize) {
+        resized = img.copyResize(
+          decoded,
+          width: decoded.width > decoded.height ? maxSize : null,
+          height: decoded.height >= decoded.width ? maxSize : null,
+        );
+      }
+      effectiveBytes = Uint8List.fromList(
+        img.encodeJpg(resized, quality: 95),
+      );
 
       final cropController = cyi.CropController();
       Uint8List? result;
@@ -5106,6 +5131,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
         setState(() => _isDirty = true);
         final String avatarId = _avatarData!.id;
+        int uploadedCount = 0;
 
         for (int i = 0; i < result.files.length; i++) {
           final file = result.files[i];
@@ -5143,6 +5169,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           debugPrint('🖼️ Web: Upload Bild ${i + 1} Ergebnis: $url');
 
           if (url != null) {
+            uploadedCount++;
             if (!mounted) return;
             setState(() {
               _imageUrls.insert(0, url);
@@ -5168,11 +5195,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
         }
 
-        if (mounted) {
+        if (mounted && uploadedCount > 0) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                '${result.files.length} Bilder erfolgreich hochgeladen',
+                '$uploadedCount Bilder erfolgreich hochgeladen',
               ),
             ),
           );
@@ -7380,23 +7407,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
 
     try {
-      File? source;
-      if (tempPath != null && tempPath.isNotEmpty) {
-        final f = File(tempPath);
-        if (await f.exists()) source = f;
-      }
-      source ??= await _downloadToTemp(url, suffix: '.png');
-      if (!mounted) return;
-      if (source == null) {
-        if (mounted) {
-          setState(() => _isRecropping.remove(url));
-        }
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Bild konnte nicht geladen werden.')),
-        );
-        return;
-      }
-      // Web: eigener Recrop‑Pfad auf Basis von Bytes (kein dart:io‑Tempfile)
+      // WEB: Eigener Pfad – kein _downloadToTemp, nur HTTP + Byte-Cropping
       if (kIsWeb) {
         try {
           final resp = await http.get(Uri.parse(url));
@@ -7452,6 +7463,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             setState(() => _isRecropping.remove(url));
           }
         }
+      }
+
+      // NICHT Web: bestehender File-basierter Flow
+      File? source;
+      if (tempPath != null && tempPath.isNotEmpty) {
+        final f = File(tempPath);
+        if (await f.exists()) source = f;
+      }
+      source ??= await _downloadToTemp(url, suffix: '.png');
+      if (!mounted) return;
+      if (source == null) {
+        if (mounted) {
+          setState(() => _isRecropping.remove(url));
+        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bild konnte nicht geladen werden.')),
+        );
+        return;
       }
 
       final newCrop = await _cropToPortrait916(source);

@@ -86,41 +86,41 @@ post_install do |installer|
 
   # Füge eine Build-Phase im App-Target hinzu, die beim Archivieren
   # (Deployment Postprocessing) vorhandene WebRTC dSYMs in den dSYM-Ordner kopiert.
-  installer.aggregate_targets.each do |aggregate_target|
-    next unless aggregate_target.name == 'Pods-Runner'
-    aggregate_target.user_targets.each do |user_target|
-      phase_name = 'Copy WebRTC dSYMs'
-      exists = user_target.build_phases.any? { |p| p.respond_to?(:name) && p.name == phase_name }
-      unless exists
-        phase = user_target.new_shell_script_build_phase(phase_name)
-        phase.shell_script = <<-SCRIPT
-set -e
-SRC="${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework"
-DST="${DWARF_DSYM_FOLDER_PATH}"
+#   installer.aggregate_targets.each do |aggregate_target|
+#     next unless aggregate_target.name == 'Pods-Runner'
+#     aggregate_target.user_targets.each do |user_target|
+#       phase_name = 'Copy WebRTC dSYMs'
+#       exists = user_target.build_phases.any? { |p| p.respond_to?(:name) && p.name == phase_name }
+#       unless exists
+#         phase = user_target.new_shell_script_build_phase(phase_name)
+#         phase.shell_script = <<-SCRIPT
+# set -e
+# SRC="${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework"
+# DST="${DWARF_DSYM_FOLDER_PATH}"
 
-# 1) Mitgelieferte dSYMs finden (robust, beliebiger Unterordner mit ios-arm64)
-FOUND=0
-while IFS= read -r -d '' DS; do
-  cp -R "$DS" "$DST"
-  FOUND=1
-done < <(find "$SRC" -path "*ios-arm64*" -name "WebRTC*.dSYM" -print0 2>/dev/null)
+# # 1) Mitgelieferte dSYMs finden (robust, beliebiger Unterordner mit ios-arm64)
+# FOUND=0
+# while IFS= read -r -d '' DS; do
+#   cp -R "$DS" "$DST"
+#   FOUND=1
+# done < <(find "$SRC" -path "*ios-arm64*" -name "WebRTC*.dSYM" -print0 2>/dev/null)
 
-if [ "$FOUND" -eq 0 ]; then
-  # 2) Fallback: dSYM aus dem Device‑Slice erzeugen
-  BIN=$(find "$SRC" -path "*ios-arm64*" -name WebRTC -type f | head -n 1)
-  if [ -n "$BIN" ]; then
-    /usr/bin/dsymutil "$BIN" -o "$DST/WebRTC.framework.dSYM" || true
-  fi
-fi
-        SCRIPT
-        # Dependency-Analyse informieren: Input/Output zur Vermeidung der Warnung setzen
-        phase.input_paths ||= []
-        phase.output_paths ||= []
-        phase.input_paths << "$(PODS_ROOT)/WebRTC-SDK/WebRTC.xcframework"
-        phase.output_paths << "$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM"
-        # Nur beim Archivieren ausführen
-        phase.run_only_for_deployment_postprocessing = '0'
-      end
-    end
-  end
+# if [ "$FOUND" -eq 0 ]; then
+#   # 2) Fallback: dSYM aus dem Device‑Slice erzeugen
+#   BIN=$(find "$SRC" -path "*ios-arm64*" -name WebRTC -type f | head -n 1)
+#   if [ -n "$BIN" ]; then
+#     /usr/bin/dsymutil "$BIN" -o "$DST/WebRTC.framework.dSYM" || true
+#   fi
+# fi
+#         SCRIPT
+#         # Dependency-Analyse informieren: Input/Output zur Vermeidung der Warnung setzen
+#         phase.input_paths ||= []
+#         phase.output_paths ||= []
+#         phase.input_paths << "$(PODS_ROOT)/WebRTC-SDK/WebRTC.xcframework"
+#         phase.output_paths << "$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM"
+#         # Nur beim Archivieren ausführen
+#         phase.run_only_for_deployment_postprocessing = '0'
+#       end
+#     end
+#   end
 end
