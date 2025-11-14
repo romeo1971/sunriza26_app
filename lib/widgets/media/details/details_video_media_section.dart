@@ -758,7 +758,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
   Widget _buildWebThumbnail(String url) {
     final thumbUrl = thumbUrlForMedia?.call(url);
 
-    // Bevorzugt: JPEG-Thumb aus Storage/Media-Docs
+    // 1) Bevorzugt: JPEG-Thumb aus Storage/Media-Docs
     if (thumbUrl != null && thumbUrl.isNotEmpty) {
       return Image.network(
         thumbUrl,
@@ -788,7 +788,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
       );
     }
 
-    // Fallback: neutrales Icon, kein VideoPlayer (verhindert ständiges Nachladen)
+    // 2) Fallback: neutraler Platzhalter (kein VideoPlayer, kein Dauernachladen)
     return Container(
       color: Colors.black26,
       child: const Icon(
