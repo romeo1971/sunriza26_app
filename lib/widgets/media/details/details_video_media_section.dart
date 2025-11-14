@@ -755,45 +755,47 @@ class DetailsVideoMediaSection extends StatelessWidget {
     return '${twoDigits(minutes)}:${twoDigits(seconds)}';
   }
 
-  /// Web-spezifischer Thumbnail-Builder: nutzt thumbUrl aus Media-Docs,
-  /// fällt ansonsten auf die Video-URL zurück und zeigt einen Ladeindikator.
   Widget _buildWebThumbnail(String url) {
-    final thumbUrl = thumbUrlForMedia?.call(url) ?? url;
-    if (thumbUrl.isEmpty) {
-      return Container(
-        color: Colors.black26,
-        child: const Icon(
-          Icons.play_circle_outline,
-          color: Colors.white70,
-          size: 64,
-        ),
+    final thumbUrl = thumbUrlForMedia?.call(url);
+
+    // Bevorzugt: JPEG-Thumb aus Storage/Media-Docs
+    if (thumbUrl != null && thumbUrl.isNotEmpty) {
+      return Image.network(
+        thumbUrl,
+        fit: BoxFit.cover,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return Center(
+            child: CircularProgressIndicator(
+              value: progress.expectedTotalBytes != null
+                  ? progress.cumulativeBytesLoaded /
+                      progress.expectedTotalBytes!
+                  : null,
+              color: AppColors.lightBlue,
+            ),
+          );
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.black26,
+            child: const Icon(
+              Icons.play_circle_outline,
+              color: Colors.white70,
+              size: 64,
+            ),
+          );
+        },
       );
     }
-    return Image.network(
-      thumbUrl,
-      fit: BoxFit.cover,
-      loadingBuilder: (context, child, progress) {
-        if (progress == null) return child;
-        return Center(
-          child: CircularProgressIndicator(
-            value: progress.expectedTotalBytes != null
-                ? progress.cumulativeBytesLoaded /
-                    progress.expectedTotalBytes!
-                : null,
-            color: AppColors.lightBlue,
-          ),
-        );
-      },
-      errorBuilder: (context, error, stackTrace) {
-        return Container(
-          color: Colors.black26,
-          child: const Icon(
-            Icons.play_circle_outline,
-            color: Colors.white70,
-            size: 64,
-          ),
-        );
-      },
+
+    // Fallback: neutrales Icon, kein VideoPlayer (verhindert ständiges Nachladen)
+    return Container(
+      color: Colors.black26,
+      child: const Icon(
+        Icons.play_circle_outline,
+        color: Colors.white70,
+        size: 64,
+      ),
     );
   }
 }

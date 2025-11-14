@@ -712,7 +712,21 @@ async function createVideoThumbFromFirstFrame(avatarId, mediaId, videoUrl) {
         fluent_ffmpeg_1.default.setFfmpegPath(ffmpeg_static_1.default);
     const tmpDir = os.tmpdir();
     const random = Math.random().toString(36).substring(7);
-    const src = path.join(tmpDir, `${mediaId}_${random}.mp4`);
+    // Dateiendung aus der Video-URL ermitteln, damit FFmpeg bei .mov / .webm
+    // den Container korrekt erkennt. Fallback: .mp4
+    let ext = '.mp4';
+    try {
+        const urlObj = new URL(videoUrl);
+        const pathname = urlObj.pathname;
+        const candidate = path.extname(pathname);
+        if (candidate) {
+            ext = candidate.toLowerCase();
+        }
+    }
+    catch (_c) {
+        // Ignorieren – Fallback .mp4
+    }
+    const src = path.join(tmpDir, `${mediaId}_${random}${ext}`);
     // Download Video (kurz, reicht für Frame)
     const res = await node_fetch_1.default(videoUrl);
     if (!res.ok)
@@ -790,11 +804,11 @@ async function createVideoThumbFromFirstFrame(avatarId, mediaId, videoUrl) {
     try {
         fs.unlinkSync(src);
     }
-    catch (_c) { }
+    catch (_d) { }
     try {
         fs.unlinkSync(selectedFrame);
     }
-    catch (_d) { }
+    catch (_e) { }
     // AspectRatio NUR setzen, wenn sie noch nicht existiert (verhindert Überschreiben der korrekten App-Werte)
     const docSnap = await admin.firestore().collection('avatars').doc(avatarId)
         .collection('videos').doc(mediaId).get();

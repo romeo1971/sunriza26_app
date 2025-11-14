@@ -663,7 +663,22 @@ async function createVideoThumbFromFirstFrame(avatarId: string, mediaId: string,
   if (ffmpegPath) (ffmpeg as any).setFfmpegPath(ffmpegPath);
   const tmpDir = os.tmpdir();
   const random = Math.random().toString(36).substring(7);
-  const src = path.join(tmpDir, `${mediaId}_${random}.mp4`);
+
+  // Dateiendung aus der Video-URL ermitteln, damit FFmpeg bei .mov / .webm
+  // den Container korrekt erkennt. Fallback: .mp4
+  let ext = '.mp4';
+  try {
+    const urlObj = new URL(videoUrl);
+    const pathname = urlObj.pathname;
+    const candidate = path.extname(pathname);
+    if (candidate) {
+      ext = candidate.toLowerCase();
+    }
+  } catch {
+    // Ignorieren – Fallback .mp4
+  }
+
+  const src = path.join(tmpDir, `${mediaId}_${random}${ext}`);
   // Download Video (kurz, reicht für Frame)
   const res = await (fetch as any)(videoUrl);
   if (!(res as any).ok) throw new Error(`download video failed ${(res as any).status}`);

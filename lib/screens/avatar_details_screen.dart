@@ -890,7 +890,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   /// für ein Media-Item zurück (genutzt v.a. für Video-Thumbnails im Web).
   String? _thumbUrlForMedia(String url) {
     if (!_mediaOriginalNamesLoaded) return null;
-    return _mediaThumbUrls[url];
+    if (_mediaThumbUrls.isEmpty) return null;
+
+    // Direktes Mapping versuchen
+    if (_mediaThumbUrls.containsKey(url)) {
+      return _mediaThumbUrls[url];
+    }
+
+    // Fallback: URL ohne Query-Parameter vergleichen (Token können sich unterscheiden)
+    String stripQuery(String u) {
+      final i = u.indexOf('?');
+      return i == -1 ? u : u.substring(0, i);
+    }
+
+    final base = stripQuery(url);
+    for (final entry in _mediaThumbUrls.entries) {
+      if (stripQuery(entry.key) == base) {
+        return entry.value;
+      }
+    }
+    return null;
   }
 
   void _updateDirty() {
@@ -4754,6 +4773,63 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
+  /// Wartet (kurzzeitig) darauf, dass für neu hochgeladene Videos
+  /// die serverseitigen Thumbnails (thumbUrl) in den Media-Docs ankommen
+  /// und aktualisiert dann das lokale Mapping + UI.
+  Future<void> _waitForVideoThumbs(
+    String avatarId,
+    List<String> urls,
+  ) async {
+    if (urls.isEmpty) return;
+    final remaining = urls.toSet();
+    const int maxTries = 16; // ~8s bei 500ms Delay (Thumbs sind i.d.R. schnell da)
+
+    for (int attempt = 0;
+        attempt < maxTries && remaining.isNotEmpty && mounted;
+        attempt++) {
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      try {
+        final col = FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(avatarId)
+            .collection('videos');
+
+        bool changed = false;
+        // Parallel nach allen noch offenen URLs suchen
+        final snaps = await Future.wait(
+          remaining.map(
+            (u) => col.where('url', isEqualTo: u).limit(1).get(),
+          ),
+        );
+
+        int idx = 0;
+        for (final snap in snaps) {
+          final url = remaining.elementAt(idx);
+          idx++;
+          if (snap.docs.isEmpty) continue;
+          final data = snap.docs.first.data();
+          final thumb = (data['thumbUrl'] as String?) ?? '';
+          if (thumb.isNotEmpty) {
+            _mediaThumbUrls[url] = thumb;
+            changed = true;
+          }
+        }
+
+        // Entferne alle URLs, für die wir nun ein Thumb haben
+        remaining.removeWhere(
+          (u) => _mediaThumbUrls.containsKey(u),
+        );
+
+        if (changed && mounted) {
+          setState(() {});
+        }
+      } catch (_) {
+        // Fehler beim Polling ignorieren und im nächsten Versuch erneut probieren
+      }
+    }
+  }
+
   Future<String?> _refreshDownloadUrl(String maybeExpiredUrl) async {
     try {
       final path = _storagePathFromUrl(maybeExpiredUrl);
@@ -5550,76 +5626,145 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         final String avatarId = _avatarData!.id;
         int baseTimestamp = DateTime.now().millisecondsSinceEpoch;
         int uploadedCount = 0;
+        final List<String> newlyUploadedUrls = [];
 
-        for (int i = 0; i < result.files.length; i++) {
-          final file = result.files[i];
+        // WEB: Blockierender Progress-Dialog mit Fortschritt
+        if (kIsWeb) {
+          final locSvc = context.read<LocalizationService>();
+          final progress = ValueNotifier<double>(0.0);
+          await _showBlockingProgress<void>(
+            title: locSvc.t('avatars.details.uploadVideosTitle'),
+            message: locSvc.t(
+              'avatars.details.filesSavingMessage',
+              params: {'count': '${result.files.length}'},
+            ),
+            progress: progress,
+            task: () async {
+              for (int i = 0; i < result.files.length; i++) {
+                final file = result.files[i];
 
-          try {
-            final String origName = file.name;
-            final timestamp = baseTimestamp + i;
-            final String path =
-                'avatars/$avatarId/videos/${timestamp}_$origName';
+                try {
+                  final String origName = file.name;
+                  final timestamp = baseTimestamp + i;
+                  final String path =
+                      'avatars/$avatarId/videos/${timestamp}_$origName';
 
-            debugPrint(
-              '🎬 Starte Upload ${i + 1}/${result.files.length}: $path',
-            );
+                  debugPrint(
+                    '🎬 Starte Upload ${i + 1}/${result.files.length}: $path',
+                  );
 
-            String? url;
-            if (kIsWeb) {
-              final bytes = file.bytes;
-              if (bytes == null) {
-                debugPrint(
-                  '❌ Web: Video ${i + 1} ohne Bytes → skip',
-                );
-                continue;
+                  final bytes = file.bytes;
+                  if (bytes == null) {
+                    debugPrint(
+                      '❌ Web: Video ${i + 1} ohne Bytes → skip',
+                    );
+                    continue;
+                  }
+                  final url = await FirebaseStorageService.uploadVideoBytes(
+                    bytes,
+                    fileName: origName,
+                    customPath: path,
+                  );
+
+                  if (url != null) {
+                    uploadedCount++;
+                    if (!mounted) return;
+                    final hasNoHeroVideo =
+                        _getHeroVideoUrl() == null || _getHeroVideoUrl()!.isEmpty;
+                    setState(() {
+                      _videoUrls.add(url);
+                    });
+                    newlyUploadedUrls.add(url);
+                    await _persistTextFileUrls();
+                    await _addMediaDoc(
+                      url,
+                      AvatarMediaType.video,
+                      originalFileName: origName,
+                    );
+                    // Nur wenn noch KEIN Hero-Video existiert → erstes Video als Hero setzen
+                    if (hasNoHeroVideo && _videoUrls.length == 1) {
+                      await _setHeroVideo(url);
+                    }
+                  } else {
+                    debugPrint(
+                      '❌ Upload ${i + 1} fehlgeschlagen: url ist null',
+                    );
+                  }
+                } catch (e) {
+                  debugPrint('❌ Fehler bei Video ${i + 1}: $e');
+                } finally {
+                  final perFile = 1.0 / result.files.length;
+                  progress.value = (i + 1) * perFile;
+                }
               }
-              url = await FirebaseStorageService.uploadVideoBytes(
-                bytes,
-                fileName: origName,
-                customPath: path,
+            },
+          );
+        } else {
+          // Desktop: bestehendes Verhalten beibehalten (kein Blocking-Dialog)
+          for (int i = 0; i < result.files.length; i++) {
+            final file = result.files[i];
+
+            try {
+              final String origName = file.name;
+              final timestamp = baseTimestamp + i;
+              final String path =
+                  'avatars/$avatarId/videos/${timestamp}_$origName';
+
+              debugPrint(
+                '🎬 Starte Upload ${i + 1}/${result.files.length}: $path',
               );
-            } else {
+
+              String? url;
               if (file.path == null) continue;
               final File f = File(file.path!);
               url = await FirebaseStorageService.uploadVideo(
                 f,
                 customPath: path,
               );
-            }
 
-            if (url != null) {
-              uploadedCount++;
-              if (!mounted) return;
-              final hasNoHeroVideo =
-                  _getHeroVideoUrl() == null || _getHeroVideoUrl()!.isEmpty;
-              setState(() {
-                _videoUrls.add(url!);
-              });
-              await _persistTextFileUrls();
-              await _addMediaDoc(
-                url,
-                AvatarMediaType.video,
-                originalFileName: origName,
-              );
-              // Nur wenn noch KEIN Hero-Video existiert → erstes Video als Hero setzen
-              if (hasNoHeroVideo && _videoUrls.length == 1) {
-                await _setHeroVideo(url);
+              if (url != null) {
+                uploadedCount++;
+                if (!mounted) return;
+                final hasNoHeroVideo =
+                    _getHeroVideoUrl() == null || _getHeroVideoUrl()!.isEmpty;
+                setState(() {
+                  _videoUrls.add(url!);
+                });
+                await _persistTextFileUrls();
+                await _addMediaDoc(
+                  url,
+                  AvatarMediaType.video,
+                  originalFileName: origName,
+                );
+                if (hasNoHeroVideo && _videoUrls.length == 1) {
+                  await _setHeroVideo(url);
+                }
+              } else {
+                debugPrint('❌ Upload ${i + 1} fehlgeschlagen: url ist null');
               }
-            } else {
-              debugPrint('❌ Upload ${i + 1} fehlgeschlagen: url ist null');
+            } catch (e) {
+              debugPrint('❌ Fehler bei Video ${i + 1}: $e');
             }
-          } catch (e) {
-            debugPrint('❌ Fehler bei Video ${i + 1}: $e');
           }
         }
 
         if (mounted && uploadedCount > 0) {
           final scaffoldMessenger = ScaffoldMessenger.of(context);
-          // Timeline neu laden für korrekte Anzeige
-          await _loadTimelineData(_avatarData!.id);
+          final avatarId = _avatarData!.id;
 
-          // UI aktualisieren, damit Hero-Stern angezeigt wird
-          setState(() {});
+          // Timeline neu laden für korrekte Anzeige
+          await _loadTimelineData(avatarId);
+          // Mapping URL -> thumbUrl initial laden
+          await _loadMediaOriginalNames(avatarId);
+          // Zusätzlich kurz auf neue thumbUrls warten (ohne UI zu blockieren)
+          if (newlyUploadedUrls.isNotEmpty) {
+            // bewusst NICHT awaited – läuft im Hintergrund und aktualisiert Map + setState
+            _waitForVideoThumbs(avatarId, newlyUploadedUrls);
+          }
+
+          if (mounted) {
+            setState(() {});
+          }
 
           scaffoldMessenger.showSnackBar(
             SnackBar(
@@ -7310,12 +7455,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
     }
     // Remote löschen (Videos) + Thumbs und Media-Dokumente
-    bool heroDeleted = false;
-    final String? currentHeroAtStart = _getHeroVideoUrl();
-    String urlNoQuery(String u) {
-      final i = u.indexOf('?');
-      return i == -1 ? u : u.substring(0, i);
-    }
     for (final url in _selectedRemoteVideos) {
       try {
         debugPrint('🗑️ Lösche Video: $url');
@@ -7351,23 +7490,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       } catch (e) {
         debugPrint('❌ Fehler beim Löschen des Videos: $e');
       }
-      final removed = _videoUrls.remove(url);
-      if (currentHeroAtStart != null && urlNoQuery(url) == urlNoQuery(currentHeroAtStart)) {
-        heroDeleted = true;
+      // WICHTIG: Download-Token kann sich geändert haben → Vergleich ohne Query-Teil
+      String urlNoQuery(String u) {
+        final i = u.indexOf('?');
+        return i == -1 ? u : u.substring(0, i);
       }
+
+      final beforeLen = _videoUrls.length;
+      _videoUrls.removeWhere(
+        (v) => urlNoQuery(v) == urlNoQuery(url),
+      );
+      final removed = beforeLen != _videoUrls.length;
       debugPrint(
         '🗑️ Video aus Liste entfernt: $removed (verbleibend: ${_videoUrls.length})',
       );
     }
-    // Falls Hero-URL noch gesetzt ist, aber nicht mehr in der Liste vorkommt (wegen Token/Query-Unterschieden),
-    // sicherheitshalber als gelöscht markieren
-    if (!heroDeleted && currentHeroAtStart != null) {
-      final stillPresent = _videoUrls.any((v) => urlNoQuery(v) == urlNoQuery(currentHeroAtStart));
-      if (!stillPresent) {
-        heroDeleted = true;
-      }
-    }
-    // Hero-Video-Status nach Delete: Wenn das gelöschte Video das Hero war → Firestore-Feld leeren
     // Local entfernen (Bilder)
     _newImageFiles.removeWhere((f) => _selectedLocalImages.contains(f.path));
     // Local entfernen (Videos)
@@ -7376,18 +7513,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _selectedLocalImages.clear();
     _selectedRemoteVideos.clear();
     _selectedLocalVideos.clear();
+    // Hero-Video nach Delete neu bestimmen:
+    // - Wenn noch Videos vorhanden: erstes Video als neues Hero verwenden
+    // - Sonst: heroVideoUrl entfernen
+    final String? newHeroVideoUrl =
+        _videoUrls.isNotEmpty ? _videoUrls.first : null;
+
     // Persistiere Änderungen sofort (Storage + Firestore)
     // WICHTIG: imageUrls, videoUrls, heroVideoUrl UND textFileUrls müssen aktualisiert werden!
     final tr = Map<String, dynamic>.from(_avatarData!.training ?? {});
-    if (heroDeleted) {
-      tr['heroVideoUrl'] = null;
-      debugPrint('🎬 Training: heroVideoUrl auf null gesetzt (Hero gelöscht)');
+    if (newHeroVideoUrl != null && newHeroVideoUrl.isNotEmpty) {
+      tr['heroVideoUrl'] = newHeroVideoUrl;
+      debugPrint('🎬 Training: heroVideoUrl neu gesetzt: $newHeroVideoUrl');
     } else {
-      // Hero nicht betroffen → Wert beibehalten
-      final currentHeroVideo = _getHeroVideoUrl();
-      if (currentHeroVideo != null && currentHeroVideo.isNotEmpty) {
-        tr['heroVideoUrl'] = currentHeroVideo;
-      }
+      tr.remove('heroVideoUrl');
+      debugPrint('🎬 Training: heroVideoUrl entfernt (keine Videos mehr)');
     }
 
     final updated = _avatarData!.copyWith(
@@ -7401,7 +7541,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     );
     final success = await _avatarService.updateAvatar(updated);
     if (success) {
+      // Wenn kein Hero mehr existiert, heroVideoUrl explizit in Firestore löschen.
+      if (newHeroVideoUrl == null || newHeroVideoUrl.isEmpty) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(_avatarData!.id)
+              .update({'training.heroVideoUrl': FieldValue.delete()});
+          debugPrint('🎬 Firestore: training.heroVideoUrl explizit gelöscht (keine Videos)');
+        } catch (e) {
+          debugPrint('⚠️ Fehler beim expliziten Löschen von heroVideoUrl: $e');
+        }
+      }
+
       _applyAvatar(updated);
+      // Inline-Player immer aus dem aktuellen heroVideoUrl-Zustand neu initialisieren
+      // (setzt neues Hero-Video oder leert die Großansicht).
+      await _initInlineFromHero();
       debugPrint(
         '✅ Avatar nach Delete aktualisiert: ${_videoUrls.length} Videos, heroVideoUrl=${(_avatarData!.training?['heroVideoUrl'])}',
       );
