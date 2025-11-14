@@ -4927,6 +4927,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     } catch (e) {
       debugPrint('RECROP: Fehler bei Finalisierung: $e');
     }
+
+    // CRITICAL: imageUrls & Hero-Image auch im Avatar-Dokument speichern,
+    // damit nach erneutem Öffnen keine alten/broken URLs verwendet werden.
+    try {
+      await _saveHeroImageAndUrls();
+      debugPrint(
+        'RECROP: _saveHeroImageAndUrls nach Finalisierung ausgeführt (imageUrls persistent).',
+      );
+      if (_avatarData != null) {
+        await _loadMediaOriginalNames(_avatarData!.id);
+        debugPrint(
+          'RECROP: _loadMediaOriginalNames nach Finalisierung ausgeführt (Mapping URL → originalFileName aktualisiert).',
+        );
+      }
+    } catch (e) {
+      debugPrint('RECROP: Fehler bei Persistierung von Hero/imageUrls: $e');
+    }
+
     return newUrl;
   }
 
