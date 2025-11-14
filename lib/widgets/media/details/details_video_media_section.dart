@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:video_player/video_player.dart';
 import '../../../theme/app_theme.dart';
 
@@ -70,6 +71,9 @@ class DetailsVideoMediaSection extends StatelessWidget {
   final Future<VideoPlayerController?> Function(String url)
   videoControllerForThumb;
 
+  // Optional: Mapping URL -> thumbUrl aus Media-Dokumenten (Backend-Thumbs)
+  final String? Function(String url)? thumbUrlForMedia;
+
   const DetailsVideoMediaSection({
     super.key,
     required this.videoUrls,
@@ -90,6 +94,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
     required this.fileNameFromUrl,
     this.onTrimHeroVideo,
     this.onTrimVideo,
+    this.thumbUrlForMedia,
   });
 
   @override
@@ -293,29 +298,39 @@ class DetailsVideoMediaSection extends StatelessWidget {
                                               )
                                             : AspectRatio(
                                                 aspectRatio: 9 / 16,
-                                                child: FutureBuilder<Uint8List?>(
-                                                  future: thumbnailForRemote(
-                                                    hero,
-                                                  ),
-                                                  builder: (context, snapshot) {
-                                                    if (snapshot.hasData &&
-                                                        snapshot.data != null) {
-                                                      return Image.memory(
-                                                        snapshot.data!,
-                                                        fit: BoxFit.cover,
-                                                      );
-                                                    }
-                                                    return Container(
-                                                      color: Colors.black26,
-                                                      child: const Icon(
-                                                        Icons
-                                                            .play_circle_outline,
-                                                        color: Colors.white70,
-                                                        size: 64,
+                                                child: kIsWeb
+                                                    ? _buildWebThumbnail(hero)
+                                                    : FutureBuilder<
+                                                        Uint8List?>(
+                                                        future:
+                                                            thumbnailForRemote(
+                                                          hero,
+                                                        ),
+                                                        builder: (
+                                                          context,
+                                                          snapshot,
+                                                        ) {
+                                                          if (snapshot.hasData &&
+                                                              snapshot.data !=
+                                                                  null) {
+                                                            return Image.memory(
+                                                              snapshot.data!,
+                                                              fit: BoxFit.cover,
+                                                            );
+                                                          }
+                                                          return Container(
+                                                            color:
+                                                                Colors.black26,
+                                                            child: const Icon(
+                                                              Icons
+                                                                  .play_circle_outline,
+                                                              color: Colors
+                                                                  .white70,
+                                                              size: 64,
+                                                            ),
+                                                          );
+                                                        },
                                                       ),
-                                                    );
-                                                  },
-                                                ),
                                               ),
                                       );
                                     },
@@ -345,8 +360,6 @@ class DetailsVideoMediaSection extends StatelessWidget {
                             itemCount: remoteFour.length.clamp(0, 15),
                             itemBuilder: (context, index) {
                               final url = remoteFour[index];
-                              final heroUrl = getHeroVideoUrl();
-                              final isHero = heroUrl != null && url == heroUrl;
 
                               // Dynamische Größe EXAKT wie bei Images
                               const double nameHeight = 30.0;
@@ -563,27 +576,26 @@ class DetailsVideoMediaSection extends StatelessWidget {
             child: Stack(
               fit: StackFit.expand,
               children: [
-                FutureBuilder<VideoPlayerController?>(
-                  future: videoControllerForThumb(url),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.done &&
-                        snapshot.hasData &&
-                        snapshot.data != null) {
-                      final controller = snapshot.data!;
-                      if (controller.value.isInitialized) {
-                        return FittedBox(
+                // Hero-Thumbnail als statisches Bild
+                // Web: nutze Backend-ThumbUrl (Image.network),
+                // native: weiterhin lokales Video-Thumbnail (Image.memory)
+                if (kIsWeb)
+                  _buildWebThumbnail(url)
+                else
+                  FutureBuilder<Uint8List?>(
+                    future: thumbnailForRemote(url),
+                    builder: (context, snapshot) {
+                      if (snapshot.hasData &&
+                          snapshot.data != null &&
+                          snapshot.data!.isNotEmpty) {
+                        return Image.memory(
+                          snapshot.data!,
                           fit: BoxFit.cover,
-                          child: SizedBox(
-                            width: controller.value.size.width,
-                            height: controller.value.size.height,
-                            child: VideoPlayer(controller),
-                          ),
                         );
                       }
-                    }
-                    return Container(color: Colors.black26);
-                  },
-                ),
+                      return Container(color: Colors.black26);
+                    },
+                  ),
                 // Trash Icon (unten rechts)
                 Positioned(
                   right: 6,
@@ -664,27 +676,25 @@ class DetailsVideoMediaSection extends StatelessWidget {
         child: Stack(
           fit: StackFit.expand,
           children: [
-            FutureBuilder<VideoPlayerController?>(
-              future: videoControllerForThumb(url),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.done &&
-                    snapshot.hasData &&
-                    snapshot.data != null) {
-                  final controller = snapshot.data!;
-                  if (controller.value.isInitialized) {
-                    return FittedBox(
+            // Thumbnail: Web nutzt Backend-ThumbUrl (Image.network),
+            // native Plattformen weiterhin lokales Video-Thumbnail (Image.memory)
+            if (kIsWeb)
+              _buildWebThumbnail(url)
+            else
+              FutureBuilder<Uint8List?>(
+                future: thumbnailForRemote(url),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData &&
+                      snapshot.data != null &&
+                      snapshot.data!.isNotEmpty) {
+                    return Image.memory(
+                      snapshot.data!,
                       fit: BoxFit.cover,
-                      child: SizedBox(
-                        width: controller.value.size.width,
-                        height: controller.value.size.height,
-                        child: VideoPlayer(controller),
-                      ),
                     );
                   }
-                }
-                return Container(color: Colors.black26);
-              },
-            ),
+                  return Container(color: Colors.black26);
+                },
+              ),
             // Tap: setzt Hero-Video (nur wenn nicht bereits Hero)
             if (!isHero)
               Positioned.fill(
@@ -743,5 +753,47 @@ class DetailsVideoMediaSection extends StatelessWidget {
     final minutes = duration.inMinutes.remainder(60);
     final seconds = duration.inSeconds.remainder(60);
     return '${twoDigits(minutes)}:${twoDigits(seconds)}';
+  }
+
+  /// Web-spezifischer Thumbnail-Builder: nutzt thumbUrl aus Media-Docs,
+  /// fällt ansonsten auf die Video-URL zurück und zeigt einen Ladeindikator.
+  Widget _buildWebThumbnail(String url) {
+    final thumbUrl = thumbUrlForMedia?.call(url) ?? url;
+    if (thumbUrl.isEmpty) {
+      return Container(
+        color: Colors.black26,
+        child: const Icon(
+          Icons.play_circle_outline,
+          color: Colors.white70,
+          size: 64,
+        ),
+      );
+    }
+    return Image.network(
+      thumbUrl,
+      fit: BoxFit.cover,
+      loadingBuilder: (context, child, progress) {
+        if (progress == null) return child;
+        return Center(
+          child: CircularProgressIndicator(
+            value: progress.expectedTotalBytes != null
+                ? progress.cumulativeBytesLoaded /
+                    progress.expectedTotalBytes!
+                : null,
+            color: AppColors.lightBlue,
+          ),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          color: Colors.black26,
+          child: const Icon(
+            Icons.play_circle_outline,
+            color: Colors.white70,
+            size: 64,
+          ),
+        );
+      },
+    );
   }
 }

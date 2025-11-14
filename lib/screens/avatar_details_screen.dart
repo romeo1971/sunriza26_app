@@ -174,6 +174,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final List<String> _textFileUrls = [];
   final Map<String, String> _mediaOriginalNames = {}; // URL -> originalFileName
   bool _mediaOriginalNamesLoaded = false; // verhindert kurzzeitigen Zahlennamen
+  // Mapping der Media-Docs: URL -> thumbUrl (vom Backend generierte Thumbnails)
+  final Map<String, String> _mediaThumbUrls = {};
   final Map<String, bool> _isRecropping =
       {}; // URL -> isRecropping (Loading Spinner)
   final Map<String, int> _imageDurations =
@@ -400,6 +402,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   VideoPlayerController? _inlineVideoController; // Inline-Player für Videos
   // Inline-Vorschaubild nicht nötig, Thumbnails entstehen in den Tiles per FutureBuilder
   final Map<String, Uint8List> _videoThumbCache = {};
+  final Map<String, Future<Uint8List?>> _videoThumbFutureCache = {};
   String? _currentInlineUrl; // merkt die aktuell dargestellte Hero-Video-URL
   // bool _autoVideoHeroApplied = false;
   final Set<String> _selectedRemoteImages = {};
@@ -866,10 +869,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (!mounted) return;
       setState(() {
         _mediaOriginalNames.clear();
+        _mediaThumbUrls.clear();
         for (final media in mediaList) {
           if (media.originalFileName != null &&
               media.originalFileName!.isNotEmpty) {
             _mediaOriginalNames[media.url] = media.originalFileName!;
+          }
+          if (media.thumbUrl != null && media.thumbUrl!.isNotEmpty) {
+            _mediaThumbUrls[media.url] = media.thumbUrl!;
           }
         }
         _mediaOriginalNamesLoaded = true;
@@ -877,6 +884,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     } catch (e) {
       debugPrint('❌ Fehler beim Laden der OriginalFileNames: $e');
     }
+  }
+
+  /// Gibt – falls vorhanden – die vom Backend generierte Thumbnail-URL
+  /// für ein Media-Item zurück (genutzt v.a. für Video-Thumbnails im Web).
+  String? _thumbUrlForMedia(String url) {
+    if (!_mediaOriginalNamesLoaded) return null;
+    return _mediaThumbUrls[url];
   }
 
   void _updateDirty() {
@@ -1675,6 +1689,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             getHeroVideoUrl: _getHeroVideoUrl,
             playNetworkInline: _playNetworkInline,
             thumbnailForRemote: _thumbnailForRemote,
+            thumbUrlForMedia: _thumbUrlForMedia,
             toggleVideoAudio: _toggleVideoAudio,
             setHeroVideo: _setHeroVideo,
             onDeleteModeCancel: () {
@@ -4657,7 +4672,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
-  Future<Uint8List?> _thumbnailForRemote(String url) async {
+  Future<Uint8List?> _thumbnailForRemote(String url) {
+    // 1) Sofort aus Memory-Cache bedienen → kein Flackern bei Rebuilds
+    if (_videoThumbCache.containsKey(url)) {
+      return Future.value(_videoThumbCache[url]);
+    }
+
+    // 2) Bereits laufendes Future wiederverwenden
+    if (_videoThumbFutureCache.containsKey(url)) {
+      return _videoThumbFutureCache[url]!;
+    }
+
+    // 3) Neues Future anlegen und cachen
+    final future = _loadThumbnailForRemote(url);
+    _videoThumbFutureCache[url] = future;
+    return future;
+  }
+
+  Future<Uint8List?> _loadThumbnailForRemote(String url) async {
     try {
       debugPrint('🎬 start thumbnail for $url');
       if (_videoThumbCache.containsKey(url)) return _videoThumbCache[url];
@@ -4673,14 +4705,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           effectiveUrl = fresh;
           res = await http.get(Uri.parse(effectiveUrl));
           debugPrint('🎬 Fresh Response: ${res.statusCode}');
-          if (res.statusCode != 200) return null;
+          if (res.statusCode != 200) {
+            // endgültig kein Thumbnail → einmalig als "kein Thumb" cachen
+            _videoThumbCache[url] = Uint8List(0);
+            return Uint8List(0);
+          }
           // Cache frische URL direkt ablegen, damit Thumbs stabil sind
           final idx = _videoUrls.indexOf(url);
           if (idx >= 0) _videoUrls[idx] = fresh;
-          // kein persist hier, damit UI flott bleibt; persist passiert beim Speichern
+          // kein persist hier, damit UI flott bleibt; Persist passiert beim Speichern
         } else {
           debugPrint('🎬 Refresh failed');
-          return null;
+          // einmalig markieren, dass es kein Thumbnail gibt
+          _videoThumbCache[url] = Uint8List(0);
+          return Uint8List(0);
         }
       }
       final tmp = await File(
@@ -4694,7 +4732,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         quality: 60,
       );
       debugPrint('🎬 Thumbnail data: ${data?.length ?? 0} bytes');
-      if (data != null) _videoThumbCache[url] = data;
+      if (data != null) {
+        _videoThumbCache[url] = data;
+      } else {
+        // ebenfalls als "kein Thumb" markieren, um Re-Trys zu vermeiden
+        _videoThumbCache[url] = Uint8List(0);
+      }
       try {
         // optional: Tempdatei löschen
         await tmp.delete();
@@ -4702,7 +4745,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       return data;
     } catch (e) {
       debugPrint('🎬 Thumbnail error: $e');
-      return null;
+      // Fehler: einmalig als "kein Thumb" markieren
+      _videoThumbCache[url] = Uint8List(0);
+      return Uint8List(0);
+    } finally {
+      // Future-Cache bereinigen – Ergebnis liegt in _videoThumbCache
+      _videoThumbFutureCache.remove(url);
     }
   }
 
