@@ -1,12 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../theme/app_theme.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import '../services/firebase_storage_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/avatar_data.dart';
 import '../widgets/custom_text_field.dart';
+
+class _LocalImage {
+  final File? file;
+  final Uint8List? bytes;
+  final String? name;
+
+  _LocalImage.file(this.file)
+      : bytes = null,
+        name = null;
+
+  _LocalImage.bytes(this.bytes, {this.name}) : file = null;
+}
 
 class AvatarUploadMemoriesScreen extends StatefulWidget {
   const AvatarUploadMemoriesScreen({super.key});
@@ -21,7 +35,7 @@ class _AvatarUploadMemoriesScreenState
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _textController = TextEditingController();
 
-  final List<File> _uploadedImages = [];
+  final List<_LocalImage> _uploadedImages = [];
   final List<File> _uploadedVideos = [];
   final List<File> _uploadedTextFiles = [];
   final List<String> _writtenTexts = [];
@@ -192,59 +206,74 @@ class _AvatarUploadMemoriesScreenState
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 12),
-        SizedBox(
-          height: 100,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: _uploadedImages.length,
-            itemBuilder: (context, index) {
-              final isSelected = _selectedAvatarImageIndex == index;
-              return GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _selectedAvatarImageIndex = index;
-                  });
-                },
-                child: Container(
-                  width: 100,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: isSelected
-                          ? AppColors.accentGreenDark
-                          : Colors.grey.shade300,
-                      width: isSelected ? 3 : 1,
+          SizedBox(
+            height: 100,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: _uploadedImages.length,
+              itemBuilder: (context, index) {
+                final isSelected = _selectedAvatarImageIndex == index;
+                final img = _uploadedImages[index];
+                Widget imageWidget;
+                if (img.file != null) {
+                  imageWidget = Image.file(
+                    img.file!,
+                    width: 100,
+                    height: 100,
+                    fit: BoxFit.cover,
+                  );
+                } else if (img.bytes != null) {
+                  imageWidget = Image.memory(
+                    img.bytes!,
+                    width: 100,
+                    height: 100,
+                    fit: BoxFit.cover,
+                  );
+                } else {
+                  imageWidget = const SizedBox.shrink();
+                }
+
+                return GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedAvatarImageIndex = index;
+                    });
+                  },
+                  child: Container(
+                    width: 100,
+                    margin: const EdgeInsets.only(right: 12),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppColors.accentGreenDark
+                            : Colors.grey.shade300,
+                        width: isSelected ? 3 : 1,
+                      ),
+                    ),
+                    child: Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: imageWidget,
+                        ),
+                        if (isSelected)
+                          const Positioned(
+                            top: 4,
+                            right: 4,
+                            child: Icon(
+                              Icons.workspace_premium,
+                              color: Colors.amber,
+                              size: 24,
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  child: Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          _uploadedImages[index],
-                          width: 100,
-                          height: 100,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      if (isSelected)
-                        const Positioned(
-                          top: 4,
-                          right: 4,
-                          child: Icon(
-                            Icons.workspace_premium,
-                            color: Colors.amber,
-                            size: 24,
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
-        ),
       ],
     );
   }
@@ -265,6 +294,22 @@ class _AvatarUploadMemoriesScreenState
               scrollDirection: Axis.horizontal,
               itemCount: _uploadedImages.length,
               itemBuilder: (context, index) {
+                final img = _uploadedImages[index];
+                Widget imageWidget;
+                if (img.file != null) {
+                  imageWidget = Image.file(
+                    img.file!,
+                    fit: BoxFit.cover,
+                  );
+                } else if (img.bytes != null) {
+                  imageWidget = Image.memory(
+                    img.bytes!,
+                    fit: BoxFit.cover,
+                  );
+                } else {
+                  imageWidget = const SizedBox.shrink();
+                }
+
                 return Container(
                   width: 80,
                   margin: const EdgeInsets.only(right: 8),
@@ -274,10 +319,7 @@ class _AvatarUploadMemoriesScreenState
                   ),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(8),
-                    child: Image.file(
-                      _uploadedImages[index],
-                      fit: BoxFit.cover,
-                    ),
+                    child: imageWidget,
                   ),
                 );
               },
@@ -466,9 +508,23 @@ class _AvatarUploadMemoriesScreenState
         source: ImageSource.gallery,
       );
       if (image != null) {
-        setState(() {
-          _uploadedImages.add(File(image.path));
-        });
+        if (kIsWeb) {
+          // Web: arbeite mit Bytes, kein dart:io File
+          final bytes = await image.readAsBytes();
+          setState(() {
+            _uploadedImages.add(
+              _LocalImage.bytes(
+                bytes,
+                name: image.name,
+              ),
+            );
+          });
+        } else {
+          // Mobile/Desktop: wie bisher mit File arbeiten
+          setState(() {
+            _uploadedImages.add(_LocalImage.file(File(image.path)));
+          });
+        }
       }
     } catch (e) {
       _showErrorSnackBar('Fehler beim Auswählen des Bildes: $e');
@@ -581,9 +637,28 @@ class _AvatarUploadMemoriesScreenState
 
       // Upload Bilder
       if (_uploadedImages.isNotEmpty) {
-        _uploadedImageUrls = await FirebaseStorageService.uploadMultipleImages(
-          _uploadedImages,
-        );
+        if (kIsWeb) {
+          final bytesList = _uploadedImages
+              .map((img) => img.bytes)
+              .whereType<Uint8List>()
+              .toList();
+          final names = _uploadedImages
+              .map((img) => img.name ?? 'image.jpg')
+              .toList();
+          _uploadedImageUrls =
+              await FirebaseStorageService.uploadMultipleImagesBytes(
+            bytesList,
+            fileNames: names,
+          );
+        } else {
+          final files = _uploadedImages
+              .map((img) => img.file)
+              .whereType<File>()
+              .toList();
+          _uploadedImageUrls =
+              await FirebaseStorageService.uploadMultipleImages(files);
+        }
+
         uploadedFiles += _uploadedImages.length;
         if (!mounted) return;
         setState(() {

@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:ui' as ui;
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
@@ -4843,10 +4844,356 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
+  /// Gemeinsame Nachbearbeitung nach einem erfolgreichen Recrop‑Upload
+  Future<String> _handleRecropFinalize(String oldUrl, String newUrl) async {
+    // ERST: Altes thumbUrl aus Firestore holen UND alte Files aus Storage löschen
+    // (BEVOR Firestore geändert wird, wegen Storage Rules!)
+    String? oldThumbUrl;
+    String? savedOriginalFileName;
+    try {
+      final avatarId = _avatarData!.id;
+      final qs = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(avatarId)
+          .collection('images')
+          .where('url', isEqualTo: oldUrl)
+          .get();
+      debugPrint('RECROP: Query ergab ${qs.docs.length} Dokumente');
+      for (final d in qs.docs) {
+        final data = d.data();
+        debugPrint('RECROP: Dokument-Daten: ${data.keys.join(", ")}');
+        oldThumbUrl = (data['thumbUrl'] as String?);
+        savedOriginalFileName = (data['originalFileName'] as String?);
+      }
+
+      // Timeline-Daten vorbereiten (OHNE setState - kein UI rebuild!)
+      final oldDuration = _imageDurations[oldUrl];
+      final oldActive = _imageActive[oldUrl];
+      final oldExplorerVisible = _imageExplorerVisible[oldUrl];
+
+      if (oldDuration != null) {
+        _imageDurations[newUrl] = oldDuration;
+      }
+      if (oldActive != null) {
+        _imageActive[newUrl] = oldActive;
+      }
+      if (oldExplorerVisible != null) {
+        _imageExplorerVisible[newUrl] = oldExplorerVisible;
+      }
+
+      // Altes Image aus Storage löschen (inkl. Thumb)
+      final originalPath = FirebaseStorageService.pathFromUrl(oldUrl);
+      if (originalPath.isNotEmpty) {
+        await FirebaseStorageService.deleteFile(oldUrl);
+      }
+      if (oldThumbUrl != null && oldThumbUrl.isNotEmpty) {
+        await FirebaseStorageService.deleteFile(oldThumbUrl);
+      }
+
+      // Firestore updaten (neue URL + ggf. originalFileName beibehalten)
+      final qs2 = await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(_avatarData!.id)
+          .collection('images')
+          .where('url', isEqualTo: oldUrl)
+          .get();
+      for (final d in qs2.docs) {
+        await d.reference.update({
+          'url': newUrl,
+          if (savedOriginalFileName != null)
+            'originalFileName': savedOriginalFileName,
+        });
+      }
+
+      if (mounted) {
+        // Lokale Listen/State aktualisieren
+        _imageUrls.remove(oldUrl);
+        _imageUrls.add(newUrl);
+        if (_profileImageUrl == oldUrl) {
+          _profileImageUrl = newUrl;
+        }
+      }
+    } catch (e) {
+      debugPrint('RECROP: Fehler bei Finalisierung: $e');
+    }
+    return newUrl;
+  }
+
+  /// Web‑Variante: interaktives 9:16‑Cropping auf Basis von Bytes
+  Future<Uint8List?> _cropBytesToPortraitWeb(Uint8List input) async {
+    try {
+      // Versuche, das Bild vorab in ein kompatibles Format (JPEG) zu bringen,
+      // damit es im Web-Cropper sicher angezeigt werden kann (HEIC/WebP etc.).
+      Uint8List effectiveBytes = input;
+      try {
+        final decoded = img.decodeImage(input);
+        if (decoded != null) {
+          // Leicht verkleinern, damit der Crop-Dialog schneller reagiert
+          const int maxSize = 2048;
+          img.Image resized = decoded;
+          if (decoded.width > maxSize || decoded.height > maxSize) {
+            resized = img.copyResize(
+              decoded,
+              width: decoded.width > decoded.height ? maxSize : null,
+              height: decoded.height >= decoded.width ? maxSize : null,
+            );
+          }
+          effectiveBytes =
+              Uint8List.fromList(img.encodeJpg(resized, quality: 95));
+        }
+      } catch (_) {
+        // Wenn das Decoding fehlschlägt, verwenden wir die Original-Bytes.
+      }
+
+      final cropController = cyi.CropController();
+      Uint8List? result;
+
+      if (!mounted) return null;
+      await showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) => Dialog(
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 16,
+          ),
+          backgroundColor: Colors.black,
+          clipBehavior: Clip.hardEdge,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: LayoutBuilder(
+            builder: (dCtx, _) {
+              final sz = MediaQuery.of(dCtx).size;
+              final double dlgW = (sz.width * 0.9).clamp(320.0, 900.0);
+              final double dlgH = (sz.height * 0.9).clamp(480.0, 1200.0);
+              return SizedBox(
+                width: dlgW,
+                height: dlgH,
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: cyi.Crop(
+                        controller: cropController,
+                        image: effectiveBytes,
+                        aspectRatio: 9 / 16,
+                        withCircleUi: false,
+                        baseColor: Colors.black,
+                        maskColor: Colors.black38,
+                        onCropped: (cropped) {
+                          if (cropped is cyi.CropSuccess) {
+                            result = cropped.croppedImage;
+                          }
+                          Navigator.pop(ctx);
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                result = null;
+                                Navigator.pop(ctx);
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade800,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: Text(
+                                      'Abbrechen',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ElevatedButton(
+                              onPressed: () {
+                                cropController.crop();
+                              },
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.transparent,
+                                shadowColor: Colors.transparent,
+                                padding: EdgeInsets.zero,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: Ink(
+                                decoration: BoxDecoration(
+                                  gradient: Theme.of(dCtx)
+                                      .extension<AppGradients>()!
+                                      .magentaBlue,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 14),
+                                  child: Center(
+                                    child: Text(
+                                      'Zuschneiden',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      );
+
+      return result;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> _onAddImages() async {
     debugPrint('🖼️ _onAddImages START');
+
+    // Web: eigener Pfad mit FilePicker + Byte-Upload (kein dart:io / ImagePicker)
+    if (kIsWeb) {
+      try {
+        if (_avatarData == null) {
+          debugPrint('🖼️ Web: _avatarData == null → Abbruch');
+          return;
+        }
+
+        debugPrint('🖼️ Web: Öffne FilePicker für Bilder (Mehrfachauswahl)');
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.image,
+          allowMultiple: true,
+          withData: true,
+        );
+
+        if (result == null || result.files.isEmpty) {
+          debugPrint('🖼️ Web: keine Bilder ausgewählt');
+          return;
+        }
+
+        setState(() => _isDirty = true);
+        final String avatarId = _avatarData!.id;
+
+        for (int i = 0; i < result.files.length; i++) {
+          final file = result.files[i];
+          final Uint8List? bytes = file.bytes;
+          if (bytes == null) {
+            debugPrint('🖼️ Web: Bild ${i + 1} ohne Bytes → skip');
+            continue;
+          }
+
+          final String originalName = file.name;
+          String ext = p.extension(originalName).toLowerCase();
+          if (ext.isEmpty ||
+              (ext != '.png' && ext != '.jpg' && ext != '.jpeg' && ext != '.webp')) {
+            ext = '.jpg';
+          }
+          final safeName =
+              originalName.isEmpty ? 'image_$i$ext' : originalName;
+
+          // Interaktives Cropping wie auf iPhone, aber auf Bytes‑Basis
+          Uint8List? uploadBytes = await _cropBytesToPortraitWeb(bytes);
+          if (uploadBytes == null) {
+            debugPrint('🖼️ Web: Cropping abgebrochen → Bild übersprungen');
+            continue;
+          }
+
+          final String path =
+              'avatars/$avatarId/images/${DateTime.now().millisecondsSinceEpoch}_web$i$ext';
+          debugPrint('🖼️ Web: Starte Upload Bild ${i + 1}: $path');
+
+          final url = await FirebaseStorageService.uploadImageBytes(
+            uploadBytes,
+            fileName: safeName,
+            customPath: path,
+          );
+          debugPrint('🖼️ Web: Upload Bild ${i + 1} Ergebnis: $url');
+
+          if (url != null) {
+            if (!mounted) return;
+            setState(() {
+              _imageUrls.insert(0, url);
+              _imageDurations[url] = 60; // Default 1 Minute
+              _imageActive[url] = true; // Default: aktiv
+              if (_profileImageUrl == null || _profileImageUrl!.isEmpty) {
+                _setHeroImage(url);
+              }
+            });
+
+            // Sofort persistieren (Firestore aktualisieren)
+            await _persistTextFileUrls();
+            // Timeline-Daten speichern
+            await _saveTimelineData();
+            // Media-Doc anlegen → triggert Thumb-Generierung
+            await _addMediaDoc(
+              url,
+              AvatarMediaType.image,
+              originalFileName: originalName,
+            );
+          } else {
+            debugPrint('❌ Web: Bild ${i + 1} Upload fehlgeschlagen!');
+          }
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '${result.files.length} Bilder erfolgreich hochgeladen',
+              ),
+            ),
+          );
+        }
+      } catch (e, stack) {
+        debugPrint('❌ Web: Fehler in _onAddImages: $e');
+        debugPrint('Stack: $stack');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Fehler beim Bild-Upload im Web: $e'),
+            ),
+          );
+        }
+      }
+      return;
+    }
+
     ImageSource? source;
-    if (Platform.isMacOS || Platform.isWindows || Platform.isLinux) {
+    if (!kIsWeb &&
+        (Platform.isMacOS || Platform.isWindows || Platform.isLinux)) {
       source = ImageSource.gallery; // Kamera nicht unterstützen auf Desktop
       debugPrint('🖼️ Platform: Desktop → Galerie');
     } else {
@@ -5069,10 +5416,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
     try {
       // Direkt FilePicker für Desktop & Web (Mehrfachauswahl)
-      if (Platform.isMacOS ||
+      if (kIsWeb ||
+          Platform.isMacOS ||
           Platform.isWindows ||
-          Platform.isLinux ||
-          kIsWeb) {
+          Platform.isLinux) {
         debugPrint('🎬 Platform: Desktop/Web → Galerie (Mehrfachauswahl)');
         // Galerie: Mehrfachauswahl mit FilePicker
         debugPrint('🎬 Öffne Galerie-Picker (Mehrfachauswahl)...');
@@ -7049,6 +7396,64 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         );
         return;
       }
+      // Web: eigener Recrop‑Pfad auf Basis von Bytes (kein dart:io‑Tempfile)
+      if (kIsWeb) {
+        try {
+          final resp = await http.get(Uri.parse(url));
+          if (resp.statusCode != 200) {
+            throw Exception('HTTP ${resp.statusCode}');
+          }
+          final croppedBytes =
+              await _cropBytesToPortraitWeb(resp.bodyBytes);
+          if (croppedBytes == null) {
+            if (mounted) {
+              setState(() => _isRecropping.remove(url));
+            }
+            return;
+          }
+
+          final avatarIdNew = _avatarData!.id;
+          final ts = DateTime.now().millisecondsSinceEpoch;
+          const cropExt = '.jpg';
+          final newPath = 'avatars/$avatarIdNew/images/$ts$cropExt';
+
+          String newUrl;
+          try {
+            debugPrint('RECROP WEB: Starte Upload nach: $newPath');
+            final ref = FirebaseStorage.instance.ref().child(newPath);
+            await ref.putData(
+              croppedBytes,
+              SettableMetadata(contentType: 'image/jpeg'),
+            );
+            newUrl = await ref.getDownloadURL();
+            debugPrint('RECROP WEB: Upload erfolgreich! URL: $newUrl');
+          } catch (e) {
+            if (!mounted) return;
+            debugPrint('RECROP WEB: Upload FEHLER: $e');
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(
+              SnackBar(content: Text('Upload fehlgeschlagen: $e')),
+            );
+            return;
+          }
+
+          if (mounted) {
+            // Cache für alte URL leeren
+            PaintingBinding.instance.imageCache.evict(NetworkImage(url));
+          }
+
+          // Ab hier gleiche Logik wie unten (Timeline/Firestore‑Update) – deshalb
+          // in gemeinsamen Block springen:
+          url = await _handleRecropFinalize(url, newUrl);
+          return;
+        } finally {
+          if (mounted) {
+            setState(() => _isRecropping.remove(url));
+          }
+        }
+      }
+
       final newCrop = await _cropToPortrait916(source);
       if (newCrop == null) {
         if (mounted) {

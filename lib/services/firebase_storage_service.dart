@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -69,6 +70,61 @@ class FirebaseStorageService {
     } catch (e, stack) {
       debugPrint('❌ FEHLER beim Upload des Bildes: $e');
       debugPrint('Stack: $stack');
+      return null;
+    }
+  }
+
+  /// Upload ein Bild aus Bytes (z.B. Flutter Web / FilePicker)
+  static Future<String?> uploadImageBytes(
+    Uint8List bytes, {
+    String fileName = 'image.jpg',
+    String? customPath,
+  }) async {
+    try {
+      debugPrint('📤 uploadImageBytes START (size=${bytes.lengthInBytes} bytes)');
+
+      final user = _auth.currentUser;
+      if (user == null) {
+        debugPrint('❌ uploadImageBytes FEHLER: Benutzer nicht angemeldet');
+        throw Exception('Benutzer nicht angemeldet');
+      }
+      debugPrint('✅ User authenticated: ${user.uid}');
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final sanitizedName = fileName.isEmpty ? 'image.jpg' : fileName;
+      final filePath =
+          customPath ??
+          'users/${user.uid}/uploads/images/${timestamp}_$sanitizedName';
+      debugPrint('📁 Upload-Pfad (Bytes): $filePath');
+
+      final ref = _storage.ref().child(filePath);
+
+      // Content-Type anhand Dateiendung setzen
+      final String ext = path.extension(filePath).toLowerCase();
+      String contentType = 'image/jpeg';
+      if (ext == '.png') contentType = 'image/png';
+      if (ext == '.webp') contentType = 'image/webp';
+
+      final uploadTask = ref.putData(
+        bytes,
+        SettableMetadata(contentType: contentType),
+      );
+
+      uploadTask.snapshotEvents.listen((snapshot) {
+        final progress = (snapshot.bytesTransferred / snapshot.totalBytes * 100)
+            .toStringAsFixed(1);
+        debugPrint('📊 uploadImageBytes Fortschritt: $progress%');
+      });
+
+      final snapshot = await uploadTask;
+      debugPrint('✅ uploadImageBytes Upload abgeschlossen, hole Download-URL...');
+
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+      debugPrint('✅ uploadImageBytes OK → $downloadUrl');
+      return downloadUrl;
+    } catch (e, stack) {
+      debugPrint('❌ FEHLER beim Upload (Bytes): $e');
+      debugPrint('Stack (Bytes): $stack');
       return null;
     }
   }
@@ -236,6 +292,27 @@ class FirebaseStorageService {
       }
     }
     debugPrint('uploadMultipleImages count=${downloadUrls.length}');
+    return downloadUrls;
+  }
+
+  /// Upload mehrere Bilder aus Bytes (für Web)
+  static Future<List<String>> uploadMultipleImagesBytes(
+    List<Uint8List> imageBytes, {
+    List<String>? fileNames,
+  }) async {
+    final List<String> downloadUrls = [];
+
+    for (int i = 0; i < imageBytes.length; i++) {
+      final bytes = imageBytes[i];
+      final name = (fileNames != null && i < fileNames.length)
+          ? fileNames[i]
+          : 'image_$i.jpg';
+      final url = await uploadImageBytes(bytes, fileName: name);
+      if (url != null) {
+        downloadUrls.add(url);
+      }
+    }
+    debugPrint('uploadMultipleImagesBytes count=${downloadUrls.length}');
     return downloadUrls;
   }
 

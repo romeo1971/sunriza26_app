@@ -204,7 +204,7 @@
 				3B06AD1E1E4923F5004D2608 /* Thin Binary */,
 				5D6A39754A168082582A5EAF /* [CP] Embed Pods Frameworks */,
 				93045754D990D11831A29DDF /* [CP] Copy Pods Resources */,
-				248BE840F0279A27315CACE2 /* Copy WebRTC dSYMs - obsolete */,
+				B8B4225BC0673AF7AE96292A /* Copy WebRTC dSYMs */,
 			);
 			buildRules = (
 			);
@@ -277,26 +277,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		248BE840F0279A27315CACE2 /* Copy WebRTC dSYMs - obsolete */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-				"$(PODS_ROOT)/WebRTC-SDK/WebRTC.xcframework",
-			);
-			name = "Copy WebRTC dSYMs - obsolete";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM",
-			);
-			runOnlyForDeploymentPostprocessing = 1;
-			shellPath = /bin/sh;
-			shellScript = "#set -e\n\n#DST=\"${DWARF_DSYM_FOLDER_PATH}\"\n#RUNNER_DSYM=\"${DWARF_DSYM_FOLDER_PATH}/Runner.app.dSYM\"\n\n#CRASHLYTICS_RUN=\"${PODS_ROOT}/FirebaseCrashlytics/run\"\n\n#if [ -z \"$DST\" ]; then\n#  echo \"⚠️ DWARF_DSYM_FOLDER_PATH not set, nothing to do.\"\n#  exit 0\n#fi\n\n#mkdir -p \"$DST\"\n\n#if [ -d \"$RUNNER_DSYM\" ]; then\n#  echo \"Using Runner.app.dSYM at $RUNNER_DSYM\"\n#else\n#  echo \"⚠️ Runner.app.dSYM not found at $RUNNER_DSYM, trying default location\"\n#  RUNNER_DSYM=\"build/ios/archive/Runner.xcarchive/dSYMs/Runner.app.dSYM\"\n#  if [ ! -d \"$RUNNER_DSYM\" ]; then\n#    echo \"⚠️ No Runner dSYM found, skipping symbol upload.\"\n#    exit 0\n#  fi\n#fi\n\n#if [ -f \"$CRASHLYTICS_RUN\" ]; then\n#  echo \"Running Firebase Crashlytics run script...\"\n#  \"${CRASHLYTICS_RUN}\"\n#else\n# echo \"⚠️ Crashlytics run script not found at $CRASHLYTICS_RUN, make sure Firebase/Crashlytics pod is installed.\"\n#  exit 0\n#fi\n\n#echo \"✅ Crashlytics symbols processed successfully.\"\n#exit 0\n\n";
-		};
 		3B06AD1E1E4923F5004D2608 /* Thin Binary */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
@@ -311,7 +291,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin";
+			shellScript = "/bin/sh \"$FLUTTER_ROOT/packages/flutter_tools/bin/xcode_backend.sh\" embed_and_thin\n";
 		};
 		5D6A39754A168082582A5EAF /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -321,13 +301,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Embed Pods Frameworks";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-frameworks-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -364,13 +340,9 @@
 			inputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-input-files.xcfilelist",
 			);
-			inputPaths = (
-			);
 			name = "[CP] Copy Pods Resources";
 			outputFileListPaths = (
 				"${PODS_ROOT}/Target Support Files/Pods-Runner/Pods-Runner-resources-${CONFIGURATION}-output-files.xcfilelist",
-			);
-			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
@@ -449,6 +421,26 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "#!/bin/sh\nset -e\n\n# Pfad zum Crashlytics Run Script\nCRASHLYTICS_RUN=\"${PODS_ROOT}/FirebaseCrashlytics/run\"\n\n# Pfad zum aktuellen Archiv\nARCHIVE_PATH=\"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}\"\n\n# Nur die Runner.app.dSYM hochladen\nRUNNER_DSYM=\"$ARCHIVE_PATH/Runner.app.dSYM\"\n\nif [ -d \"$RUNNER_DSYM\" ]; then\n    echo \"Uploading Runner.app.dSYM to Crashlytics...\"\n    \"$CRASHLYTICS_RUN\" \"$RUNNER_DSYM\"\n    echo \"✅ Upload erfolgreich. WebRTC-dSYM wird ignoriert.\"\nelse\n    echo \"⚠️ Runner.app.dSYM nicht gefunden – Crashlytics Upload übersprungen.\"\nfi\n\n";
+		};
+		B8B4225BC0673AF7AE96292A /* Copy WebRTC dSYMs */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(PODS_ROOT)/WebRTC-SDK/WebRTC.xcframework",
+			);
+			name = "Copy WebRTC dSYMs";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DWARF_DSYM_FOLDER_PATH)/WebRTC.framework.dSYM",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "set -e\nSRC=\"${PODS_ROOT}/WebRTC-SDK/WebRTC.xcframework\"\nDST=\"${DWARF_DSYM_FOLDER_PATH}\"\n\n# 1) Mitgelieferte dSYMs finden (robust, beliebiger Unterordner mit ios-arm64)\nFOUND=0\nwhile IFS= read -r -d '' DS; do\n  cp -R \"$DS\" \"$DST\"\n  FOUND=1\ndone < <(find \"$SRC\" -path \"*ios-arm64*\" -name \"WebRTC*.dSYM\" -print0 2>/dev/null)\n\nif [ \"$FOUND\" -eq 0 ]; then\n  # 2) Fallback: dSYM aus dem Device‑Slice erzeugen\n  BIN=$(find \"$SRC\" -path \"*ios-arm64*\" -name WebRTC -type f | head -n 1)\n  if [ -n \"$BIN\" ]; then\n    /usr/bin/dsymutil \"$BIN\" -o \"$DST/WebRTC.framework.dSYM\" || true\n  fi\nfi\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

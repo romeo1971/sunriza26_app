@@ -12,6 +12,8 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'firebase_options.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'auth_gate.dart';
+import 'widgets/password_gate.dart';
+import 'widgets/responsive_content_wrapper.dart';
 import 'screens/auth_screen.dart';
 import 'services/bithuman_service.dart';
 import 'services/video_stream_service.dart';
@@ -440,7 +442,14 @@ class SunrizaApp extends StatelessWidget {
               shadowColor: AppColors.magenta.withValues(alpha: 0.5),
             ),
           ),
-          home: const _ResumeRouter(child: AuthGate()),
+          builder: (context, child) {
+            return ResponsiveContentWrapper(
+              child: child ?? const SizedBox(),
+            );
+          },
+          home: const _ResumeRouter(
+            child: PasswordGate(child: AuthGate()),
+          ),
           debugShowCheckedModeBanner: false,
           routes: {
             '/home': (context) => const HomeNavigationScreen(),
