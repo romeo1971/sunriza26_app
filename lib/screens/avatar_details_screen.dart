@@ -4396,51 +4396,28 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   // Cache für Thumbnail-Controller
   final Map<String, VideoPlayerController> _thumbControllers = {};
-  final Map<String, Future<VideoPlayerController?>> _thumbControllerFutureCache =
-      {};
 
   Future<VideoPlayerController?> _videoControllerForThumb(String url) async {
     try {
-      // Cache-Key OHNE Query-Parameter, damit wechselnde Tokens
-      // nicht dauernd neue Controller erzeugen.
-      String cacheKey(String u) {
-        final i = u.indexOf('?');
-        return i == -1 ? u : u.substring(0, i);
-      }
-      final key = cacheKey(url);
-
       // Cache-Check
-      if (_thumbControllers.containsKey(key)) {
-        final cached = _thumbControllers[key];
+      if (_thumbControllers.containsKey(url)) {
+        final cached = _thumbControllers[url];
         if (cached != null && cached.value.isInitialized) {
           return cached;
         }
       }
 
-      // Bereits laufendes Future wiederverwenden
-      if (_thumbControllerFutureCache.containsKey(key)) {
-        return _thumbControllerFutureCache[key]!;
-      }
-
       // Frische Download-URL holen
-      final future = () async {
-        final fresh = await _refreshDownloadUrl(url) ?? url;
-        debugPrint('🎬 _videoControllerForThumb url=$url | fresh=$fresh');
+      final fresh = await _refreshDownloadUrl(url) ?? url;
+      debugPrint('🎬 _videoControllerForThumb url=$url | fresh=$fresh');
 
-        final controller = VideoPlayerController.networkUrl(Uri.parse(fresh));
-        await controller.initialize();
-        await controller.setLooping(false);
-        // Nicht abspielen - nur erstes Frame zeigen
+      final controller = VideoPlayerController.networkUrl(Uri.parse(fresh));
+      await controller.initialize();
+      await controller.setLooping(false);
+      // Nicht abspielen - nur erstes Frame zeigen
 
-        _thumbControllers[key] = controller;
-        return controller;
-      }();
-
-      _thumbControllerFutureCache[key] = future;
-      final ctrl = await future;
-      // Future ist erledigt – wir behalten nur den Controller im Cache
-      _thumbControllerFutureCache.remove(key);
-      return ctrl;
+      _thumbControllers[url] = controller;
+      return controller;
     } catch (e) {
       debugPrint('🎬 _videoControllerForThumb error: $e');
       return null;
@@ -5650,6 +5627,67 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         int baseTimestamp = DateTime.now().millisecondsSinceEpoch;
         int uploadedCount = 0;
         final List<String> newlyUploadedUrls = [];
+
+        // 🔔 Dateigrößen-Check (nur Web/Desktop)
+        // Soft-Limit: 50 MB → Credits-Hinweis, Hard-Limit: 100 MB → Upload blocken
+        const double softLimitMb = 50.0;
+        const double hardLimitMb = 100.0;
+        const int creditsPerBlock = 5; // 5 Credits je 50 MB
+
+        // Prüfe alle gewählten Dateien anhand der bekannten Byte-Größe
+        final largeFiles = <PlatformFile>[];
+        final tooLargeFiles = <PlatformFile>[];
+        for (final f in result.files) {
+          final sizeMb = (f.size.toDouble() / (1024 * 1024));
+          if (sizeMb > hardLimitMb) {
+            tooLargeFiles.add(f);
+          } else if (sizeMb > softLimitMb) {
+            largeFiles.add(f);
+          }
+        }
+
+        if (tooLargeFiles.isNotEmpty) {
+          final names = tooLargeFiles.map((f) => f.name).join(', ');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Einige Videos sind zu groß (> ${hardLimitMb.toInt()} MB) und können nicht hochgeladen werden: $names',
+                ),
+              ),
+            );
+          }
+          // Entferne diese Dateien komplett aus der Upload-Liste
+          result.files.removeWhere((f) => tooLargeFiles.contains(f));
+          if (result.files.isEmpty) return;
+        }
+
+        if (largeFiles.isNotEmpty && mounted) {
+          final totalMb = largeFiles
+              .map((f) => f.size.toDouble() / (1024 * 1024))
+              .fold<double>(0.0, (a, b) => a + b);
+          final blocks = (totalMb / softLimitMb).ceil();
+          final totalCredits = blocks * creditsPerBlock;
+
+          await showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Große Videos'),
+              content: Text(
+                'Einige Videos sind größer als ${softLimitMb.toInt()} MB '
+                '(${totalMb.toStringAsFixed(1)} MB gesamt).\n\n'
+                'Richtwert: ca. $creditsPerBlock Credits je ${softLimitMb.toInt()} MB '
+                '→ ca. $totalCredits Credits für diesen Upload.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
 
         // WEB: Blockierender Progress-Dialog mit Fortschritt
         if (kIsWeb) {

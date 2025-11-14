@@ -776,44 +776,41 @@ class DetailsVideoMediaSection extends StatelessWidget {
           );
         },
         errorBuilder: (context, error, stackTrace) {
-          return Container(
-            color: Colors.black26,
-            child: const Icon(
-              Icons.play_circle_outline,
-              color: Colors.white70,
-              size: 64,
-            ),
-          );
+          return _buildGeneratingPlaceholder();
         },
       );
     }
 
-    // 2) Fallback: Video-Frame wie im Delete-Dialog via VideoPlayerController.
-    // Durch den Cache in _videoControllerForThumb (Key ohne Query) wird der
-    // Controller nur einmal pro Video erzeugt → kein Dauernachladen.
-    return FutureBuilder<VideoPlayerController?>(
-      future: videoControllerForThumb(url),
-      builder: (context, snapshot) {
-        final ctrl = snapshot.data;
-        if (snapshot.connectionState == ConnectionState.waiting || ctrl == null) {
-          return Container(
-            color: Colors.black26,
-            child: const Icon(
-              Icons.play_circle_outline,
-              color: Colors.white70,
-              size: 64,
-            ),
-          );
-        }
-        return FittedBox(
-          fit: BoxFit.cover,
-          child: SizedBox(
-            width: ctrl.value.size.width,
-            height: ctrl.value.size.height,
-            child: VideoPlayer(ctrl),
+    // 2) Fallback: neutraler Platzhalter (kein VideoPlayer, kein Dauernachladen)
+    return _buildGeneratingPlaceholder();
+  }
+
+  /// Placeholder, wenn das Thumbnail im Backend noch generiert wird.
+  /// Zeigt Icon + kleinen Spinner, damit der User versteht, dass noch gearbeitet wird.
+  Widget _buildGeneratingPlaceholder() {
+    return Container(
+      color: Colors.black26,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          const Icon(
+            Icons.play_circle_outline,
+            color: Colors.white70,
+            size: 64,
           ),
-        );
-      },
+          const Positioned(
+            bottom: 8,
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.lightBlue,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

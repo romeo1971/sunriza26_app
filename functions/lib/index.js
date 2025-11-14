@@ -1047,6 +1047,7 @@ exports.onMediaCreateSetImageThumb = functions
 // Firestore Trigger: Bei Video-Upload versuche vorhandenes Storage-Thumb zu setzen
 exports.onMediaCreateSetVideoThumb = functions
     .region('us-central1')
+    .runWith({ timeoutSeconds: 180, memory: '1GB' })
     .firestore.document('avatars/{avatarId}/{collectionId}/{mediaId}')
     .onCreate(async (snap, ctx) => {
     try {
