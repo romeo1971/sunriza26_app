@@ -788,14 +788,32 @@ class DetailsVideoMediaSection extends StatelessWidget {
       );
     }
 
-    // 2) Fallback: neutraler Platzhalter (kein VideoPlayer, kein Dauernachladen)
-    return Container(
-      color: Colors.black26,
-      child: const Icon(
-        Icons.play_circle_outline,
-        color: Colors.white70,
-        size: 64,
-      ),
+    // 2) Fallback: Video-Frame wie im Delete-Dialog via VideoPlayerController.
+    // Durch den Cache in _videoControllerForThumb (Key ohne Query) wird der
+    // Controller nur einmal pro Video erzeugt → kein Dauernachladen.
+    return FutureBuilder<VideoPlayerController?>(
+      future: videoControllerForThumb(url),
+      builder: (context, snapshot) {
+        final ctrl = snapshot.data;
+        if (snapshot.connectionState == ConnectionState.waiting || ctrl == null) {
+          return Container(
+            color: Colors.black26,
+            child: const Icon(
+              Icons.play_circle_outline,
+              color: Colors.white70,
+              size: 64,
+            ),
+          );
+        }
+        return FittedBox(
+          fit: BoxFit.cover,
+          child: SizedBox(
+            width: ctrl.value.size.width,
+            height: ctrl.value.size.height,
+            child: VideoPlayer(ctrl),
+          ),
+        );
+      },
     );
   }
 }

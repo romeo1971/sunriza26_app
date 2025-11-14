@@ -4396,28 +4396,51 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   // Cache für Thumbnail-Controller
   final Map<String, VideoPlayerController> _thumbControllers = {};
+  final Map<String, Future<VideoPlayerController?>> _thumbControllerFutureCache =
+      {};
 
   Future<VideoPlayerController?> _videoControllerForThumb(String url) async {
     try {
+      // Cache-Key OHNE Query-Parameter, damit wechselnde Tokens
+      // nicht dauernd neue Controller erzeugen.
+      String cacheKey(String u) {
+        final i = u.indexOf('?');
+        return i == -1 ? u : u.substring(0, i);
+      }
+      final key = cacheKey(url);
+
       // Cache-Check
-      if (_thumbControllers.containsKey(url)) {
-        final cached = _thumbControllers[url];
+      if (_thumbControllers.containsKey(key)) {
+        final cached = _thumbControllers[key];
         if (cached != null && cached.value.isInitialized) {
           return cached;
         }
       }
 
+      // Bereits laufendes Future wiederverwenden
+      if (_thumbControllerFutureCache.containsKey(key)) {
+        return _thumbControllerFutureCache[key]!;
+      }
+
       // Frische Download-URL holen
-      final fresh = await _refreshDownloadUrl(url) ?? url;
-      debugPrint('🎬 _videoControllerForThumb url=$url | fresh=$fresh');
+      final future = () async {
+        final fresh = await _refreshDownloadUrl(url) ?? url;
+        debugPrint('🎬 _videoControllerForThumb url=$url | fresh=$fresh');
 
-      final controller = VideoPlayerController.networkUrl(Uri.parse(fresh));
-      await controller.initialize();
-      await controller.setLooping(false);
-      // Nicht abspielen - nur erstes Frame zeigen
+        final controller = VideoPlayerController.networkUrl(Uri.parse(fresh));
+        await controller.initialize();
+        await controller.setLooping(false);
+        // Nicht abspielen - nur erstes Frame zeigen
 
-      _thumbControllers[url] = controller;
-      return controller;
+        _thumbControllers[key] = controller;
+        return controller;
+      }();
+
+      _thumbControllerFutureCache[key] = future;
+      final ctrl = await future;
+      // Future ist erledigt – wir behalten nur den Controller im Cache
+      _thumbControllerFutureCache.remove(key);
+      return ctrl;
     } catch (e) {
       debugPrint('🎬 _videoControllerForThumb error: $e');
       return null;
