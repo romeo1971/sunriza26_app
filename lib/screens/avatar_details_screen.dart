@@ -985,23 +985,35 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         });
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final args = ModalRoute.of(context)?.settings.arguments;
+      String? avatarIdFromArgs;
       if (args is AvatarData) {
         _applyAvatar(args);
-        // Frische Daten aus Firestore nachladen, um veraltete Argumente zu ersetzen
-        _fetchLatest(args.id);
+        avatarIdFromArgs = args.id;
       } else if (args is Map && args['avatarId'] is String) {
-        _pendingAvatarId = (args['avatarId'] as String).trim();
-        if (_pendingAvatarId!.isNotEmpty) {
-          _fetchLatest(_pendingAvatarId!);
-        }
+        avatarIdFromArgs = (args['avatarId'] as String).trim();
       } else if (args is String) {
-        _pendingAvatarId = args.trim();
-        if (_pendingAvatarId!.isNotEmpty) {
-          _fetchLatest(_pendingAvatarId!);
-        }
+        avatarIdFromArgs = args.trim();
       }
+
+      // Fallback: Browser-Reload (Web) oder verlorene Navigation → letzte Avatar-ID aus SharedPreferences
+      if ((avatarIdFromArgs == null || avatarIdFromArgs.isEmpty) &&
+          kIsWeb) {
+        final prefs = await SharedPreferences.getInstance();
+        avatarIdFromArgs = prefs.getString('lastAvatarDetailsId');
+      }
+
+      if (avatarIdFromArgs != null && avatarIdFromArgs.isNotEmpty) {
+        _pendingAvatarId = avatarIdFromArgs;
+        _fetchLatest(avatarIdFromArgs);
+        // Für spätere Reloads merken
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.setString('lastAvatarDetailsId', avatarIdFromArgs);
+        } catch (_) {}
+      }
+
       _loadElevenVoices();
     });
     // Einfacher Puls-Effekt (Opacity/Scale) für den Slug-Link
