@@ -4126,6 +4126,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
   // _imageThumbFile wurde im neuen Layout nicht mehr benötigt
   String? _getHeroVideoUrl() {
+    // Wenn es GAR KEINE Videos mehr gibt, darf es auch kein Hero-Video geben.
+    // Verhindert, dass nach dem Löschen des letzten Videos noch eine alte heroVideoUrl
+    // (z.B. aus training) geladen wird → 404 / leere Kachel.
+    if (_videoUrls.isEmpty) return null;
+
     // Strikte Logik: NUR training.heroVideoUrl zählt (kein Fallback auf _videoUrls)
     try {
       final v = (_avatarData?.training?['heroVideoUrl'] as String?)?.trim();
