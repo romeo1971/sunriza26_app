@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -961,7 +962,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       context: context,
       videoUrl: media.url,
       avatarId: widget.avatarId,
-      maxDuration: 10.0,
     );
 
     if (newVideoUrl == null) return; // Abbruch oder Fehler
@@ -1236,10 +1236,61 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     return filtered.sublist(start, end);
   }
 
+  /// Web-Helfer: konvertiert beliebige Bild-Bytes in ein sicheres JPEG-Format
+  /// (HEIC & Co. werden abgefangen) – angelehnt an Hero-Image-Upload.
+  Future<Uint8List?> _prepareWebImageBytes(Uint8List input) async {
+    try {
+      img.Image? decoded;
+      try {
+        decoded = img.decodeImage(input);
+      } catch (_) {
+        decoded = null;
+      }
+
+      if (decoded == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Dieses Bildformat wird im Web nicht unterstützt (z.B. HEIC). '
+                'Bitte JPEG/PNG verwenden.',
+              ),
+            ),
+          );
+        }
+        return null;
+      }
+
+      const int maxSize = 2048;
+      img.Image resized = decoded;
+      if (decoded.width > maxSize || decoded.height > maxSize) {
+        resized = img.copyResize(
+          decoded,
+          width: decoded.width > decoded.height ? maxSize : null,
+          height: decoded.height >= decoded.width ? maxSize : null,
+        );
+      }
+
+      return Uint8List.fromList(
+        img.encodeJpg(resized, quality: 95),
+      );
+    } catch (e) {
+      debugPrint('Fehler in _prepareWebImageBytes: $e');
+      return input;
+    }
+  }
+
   Future<void> _pickImageFrom(ImageSource source) async {
     final x = await _picker.pickImage(source: source, imageQuality: 95);
     if (x == null) return;
-    final bytes = await x.readAsBytes();
+
+    Uint8List bytes = await x.readAsBytes();
+    if (kIsWeb) {
+      final processed = await _prepareWebImageBytes(bytes);
+      if (processed == null) return;
+      bytes = processed;
+    }
+
     final originalName = p.basename(x.path);
     await _openCrop(bytes, p.extension(x.path), originalName);
   }
@@ -1411,6 +1462,33 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
   /// Multi-Upload: Mehrere Bilder auf einmal auswählen
   Future<void> _pickMultipleImages() async {
+    // Web: FilePicker + Bytes → interaktives Cropping (9:16 oder 16:9) wie Hero-Image
+    if (kIsWeb) {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: true,
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return;
+
+      for (int i = 0; i < result.files.length; i++) {
+        final file = result.files[i];
+        final bytes = file.bytes;
+        if (bytes == null) continue;
+
+        final processed = await _prepareWebImageBytes(bytes);
+        if (processed == null) continue;
+
+        final name = file.name.isNotEmpty ? file.name : 'image_$i.jpg';
+        final ext = p.extension(name).isNotEmpty ? p.extension(name) : '.jpg';
+
+        await _openCrop(processed, ext, name);
+      }
+      return;
+    }
+
+    // Mobile/Desktop: bestehender Multi-Upload mit Queue
     final List<XFile> images = await _picker.pickMultiImage();
     if (images.isEmpty) return;
 
@@ -1426,7 +1504,115 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   Future<void> _pickMultipleVideos() async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      // FilePicker mit Video-Filter (nur Videos erlaubt)
+      // 🔹 Web: 1:1 Upload-Mechanismus wie Hero-Video (Bytes + Progress-Balken)
+      if (kIsWeb) {
+        final result = await FilePicker.platform.pickFiles(
+          type: FileType.video,
+          allowMultiple: true,
+          withData: true,
+        );
+        if (!mounted) return;
+
+        if (result == null || result.files.isEmpty) return;
+
+        _isUploadingNotifier.value = true;
+        _uploadProgressNotifier.value = 0;
+        _uploadStatusNotifier.value = 'Videos werden hochgeladen...';
+
+        int uploadedCount = 0;
+        final int baseTimestamp = DateTime.now().millisecondsSinceEpoch;
+        final List<String> newlyCreatedVideoIds = [];
+
+        for (int i = 0; i < result.files.length; i++) {
+          final file = result.files[i];
+          final bytes = file.bytes;
+          if (bytes == null) continue;
+
+          final rawBase =
+              file.name.isNotEmpty ? file.name : 'video_$i.mp4';
+          final safeBase = _sanitizeName(rawBase);
+          final timestamp = baseTimestamp + i;
+          final videoPath =
+              'avatars/${widget.avatarId}/videos/${timestamp}_$safeBase';
+
+          final url = await FirebaseStorageService.uploadVideoBytes(
+            bytes,
+            fileName: safeBase,
+            customPath: videoPath,
+            onProgress: (progress) {
+              final perFileWeight = 1.0 / result.files.length;
+              final totalProgress =
+                  (i * perFileWeight) + (progress * perFileWeight);
+              _uploadProgressNotifier.value = (totalProgress * 100).toInt();
+              _uploadStatusNotifier.value =
+                  'Video ${i + 1}/${result.files.length} wird hochgeladen... ${(progress * 100).toInt()}%';
+            },
+          );
+
+          if (url == null) {
+            debugPrint('❌ Video-Upload fehlgeschlagen: $rawBase');
+            continue;
+          }
+
+          // Echte Aspect Ratio bestimmen (Portrait vs Landscape korrekt speichern)
+          double videoAspectRatio = 16 / 9; // Fallback
+          try {
+            final ctrl =
+                VideoPlayerController.networkUrl(Uri.parse(url));
+            await ctrl.initialize();
+            if (ctrl.value.aspectRatio != 0) {
+              videoAspectRatio = ctrl.value.aspectRatio;
+            }
+            await ctrl.dispose();
+          } catch (e) {
+            debugPrint(
+              '❌ Fehler bei Video-Dimensionen (Web) für $rawBase: $e',
+            );
+          }
+
+          final mediaId = timestamp.toString();
+          final media = AvatarMedia(
+            id: mediaId,
+            avatarId: widget.avatarId,
+            type: AvatarMediaType.video,
+            url: url,
+            createdAt: timestamp,
+            aspectRatio: videoAspectRatio,
+            tags: const ['video'],
+            originalFileName: rawBase,
+          );
+          await _mediaSvc.add(widget.avatarId, media);
+          newlyCreatedVideoIds.add(mediaId);
+          uploadedCount++;
+        }
+
+        // Auf Thumbnails warten (Cloud Function) wie beim bestehenden Flow
+        try {
+          await _waitForUploadedVideoThumbs(
+            widget.avatarId,
+            newlyCreatedVideoIds,
+          );
+        } catch (_) {
+          // Ignorieren – Liste wird beim nächsten _load aktualisiert
+        }
+
+        _isUploadingNotifier.value = false;
+        _uploadProgressNotifier.value = 0;
+        _uploadStatusNotifier.value = '';
+
+        await _load();
+
+        if (mounted && uploadedCount > 0) {
+          messenger.showSnackBar(
+            buildSuccessSnackBar(
+              '$uploadedCount Videos erfolgreich hochgeladen!',
+            ),
+          );
+        }
+        return;
+      }
+
+      // 🔹 Mobile/Desktop: bestehender Queue-Upload unverändert
       final result = await FilePicker.platform.pickFiles(
         type: FileType.video,
         allowMultiple: true,
@@ -1435,7 +1621,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       if (result == null || result.files.isEmpty) return;
 
-      // Konvertiere PlatformFile zu File
       final videos = result.files
           .where((file) => file.path != null)
           .map((file) => File(file.path!))
@@ -1465,6 +1650,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   Future<void> _processUploadQueue() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
+
+    int uploadedCount = 0;
 
     for (int i = 0; i < _uploadQueue.length; i++) {
       final file = _uploadQueue[i];
@@ -1496,6 +1683,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         );
 
         if (url != null) {
+          uploadedCount++;
           // Berechne Aspect Ratio
           final aspectRatio = await _calculateAspectRatio(file);
 
@@ -1518,8 +1706,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
 
     // Upload abgeschlossen
-    final uploadedCount =
-        _uploadQueue.length; // Speichere Anzahl VOR dem Leeren
     _isUploadingNotifier.value = false;
     _uploadQueue.clear();
     _uploadProgressNotifier.value = 0;
@@ -1883,8 +2069,48 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
-    final dir = await getTemporaryDirectory();
     final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final safeExt = (ext.isNotEmpty ? ext : '.jpg');
+    final storagePath = 'avatars/${widget.avatarId}/images/$timestamp$safeExt';
+
+    // Web: direkt Bytes hochladen (kein dart:io / temp File)
+    if (kIsWeb) {
+      String? url;
+      try {
+        url = await FirebaseStorageService.uploadImageBytes(
+          bytes,
+          fileName: originalFileName.isNotEmpty
+              ? originalFileName
+              : 'image_$timestamp$safeExt',
+          customPath: storagePath,
+        );
+      } catch (e) {
+        debugPrint('Fehler beim Web-Bild-Upload: $e');
+      }
+      if (url == null) return;
+
+      final m = AvatarMedia(
+        id: timestamp.toString(),
+        avatarId: widget.avatarId,
+        type: AvatarMediaType.image,
+        url: url,
+        createdAt: timestamp,
+        aspectRatio: _cropAspect,
+        originalFileName: originalFileName,
+      );
+      await _mediaSvc.add(widget.avatarId, m);
+      await _load();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bild erfolgreich hochgeladen')),
+        );
+      }
+      return;
+    }
+
+    // Mobile/Desktop: bisheriger Pfad über temporäre Datei + Vision API
+    final dir = await getTemporaryDirectory();
     final path = p.join(
       dir.path,
       'crop_$timestamp${ext.isNotEmpty ? ext : '.jpg'}',
@@ -1901,8 +2127,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       debugPrint('Fehler bei KI-Analyse: $e');
     }
 
-    final safeExt = (ext.isNotEmpty ? ext : '.jpg');
-    final storagePath = 'avatars/${widget.avatarId}/images/$timestamp$safeExt';
     final ref = FirebaseStorage.instance.ref().child(storagePath);
     final task = await ref.putFile(
       f,
@@ -4903,6 +5127,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
   Future<File?> _downloadToTemp(String url, {String? suffix}) async {
     try {
+      // Auf Web kein path_provider / File-System → hier abbrechen
+      if (kIsWeb) return null;
       final res = await http.get(Uri.parse(url));
       if (res.statusCode != 200) return null;
       final dir = await getTemporaryDirectory();
@@ -5204,8 +5430,23 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           bytes = null;
         }
       } else {
-        final source = await _downloadToTemp(media.url, suffix: '.png');
-        bytes = await source?.readAsBytes();
+        // Bilder/Videos: Quelle je nach Plattform holen
+        if (kIsWeb) {
+          // 🔹 Web: direkt Bytes über HTTP laden (kein dart:io / temp File)
+          try {
+            final resp = await http.get(Uri.parse(media.thumbUrl ?? media.url));
+            if (resp.statusCode == 200) {
+              bytes = resp.bodyBytes;
+            }
+          } catch (e) {
+            debugPrint('❌ Web: Fehler beim Laden des Preview-Bilds: $e');
+            bytes = null;
+          }
+        } else {
+          // Mobile/Desktop: bestehender Pfad über temporäre Datei
+          final source = await _downloadToTemp(media.url, suffix: '.png');
+          bytes = await source?.readAsBytes();
+        }
       }
 
       if (bytes == null || bytes.isEmpty) {
@@ -5507,17 +5748,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           : '.jpg';
       final newPath = '$baseDir/recrop_$timestamp$ext';
 
-      final dir = await getTemporaryDirectory();
-      final tempFile = File('${dir.path}/recrop_$timestamp$ext');
-      await tempFile.writeAsBytes(croppedBytes!, flush: true);
-
       // KI-Bildanalyse nur für Bilder (nicht für Videos)
       List<String> newTags = [];
-      if (media.type == AvatarMediaType.image) {
-        try {
-          newTags = await _visionSvc.analyzeImage(tempFile.path);
-        } catch (_) {}
-      }
 
       // ERST: Altes thumbUrl aus Firestore holen UND alte Files aus Storage löschen
       // (BEVOR Firestore geändert wird, wegen Storage Rules!)
@@ -5597,39 +5829,88 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
 
       // Upload neues recrop Image
-      final upload = await FirebaseStorageService.uploadImage(
-        tempFile,
-        customPath: newPath,
-      );
+      String? upload;
+      String? newThumbUrl;
+
+      if (kIsWeb) {
+        // 🔹 Web: komplett Bytes-basiert (kein getTemporaryDirectory / File)
+        upload = await FirebaseStorageService.uploadImageBytes(
+          croppedBytes!,
+          fileName: media.originalFileName ?? 'recrop_$timestamp$ext',
+          customPath: newPath,
+        );
+
+        if (upload != null) {
+          try {
+            final mediaFolder =
+                media.type == AvatarMediaType.image ? 'images' : 'videos';
+            final thumbPath =
+                'avatars/${widget.avatarId}/$mediaFolder/thumbs/recrop_$timestamp.jpg';
+
+            final decoded = img.decodeImage(croppedBytes!);
+            if (decoded != null) {
+              final resized = img.copyResize(decoded, width: 360);
+              final jpg = Uint8List.fromList(
+                img.encodeJpg(resized, quality: 70),
+              );
+              newThumbUrl = await FirebaseStorageService.uploadImageBytes(
+                jpg,
+                fileName: 'thumb_$timestamp.jpg',
+                customPath: thumbPath,
+              );
+              debugPrint('RECROP: Neues Thumbnail (Web) erstellt: $newThumbUrl');
+            }
+          } catch (e) {
+            debugPrint('RECROP: Fehler beim Thumbnail-Erstellen (Web): $e');
+          }
+        }
+      } else {
+        // 🔹 Mobile / Desktop: bestehender Pfad mit temporärer Datei
+        final dir = await getTemporaryDirectory();
+        final tempFile = File('${dir.path}/recrop_$timestamp$ext');
+        await tempFile.writeAsBytes(croppedBytes!, flush: true);
+
+        if (media.type == AvatarMediaType.image) {
+          try {
+            newTags = await _visionSvc.analyzeImage(tempFile.path);
+          } catch (_) {}
+        }
+
+        upload = await FirebaseStorageService.uploadImage(
+          tempFile,
+          customPath: newPath,
+        );
+
+        if (upload != null) {
+          // ERST neues Thumbnail erstellen, DANN Firestore updaten
+          try {
+            final mediaFolder =
+                media.type == AvatarMediaType.image ? 'images' : 'videos';
+            final thumbPath =
+                'avatars/${widget.avatarId}/$mediaFolder/thumbs/recrop_$timestamp.jpg';
+            final imgBytes = await tempFile.readAsBytes();
+            final decoded = img.decodeImage(imgBytes);
+            if (decoded != null) {
+              final resized = img.copyResize(decoded, width: 360);
+              final jpg = img.encodeJpg(resized, quality: 70);
+              final dir2 = await getTemporaryDirectory();
+              final thumbFile = await File(
+                '${dir2.path}/thumb_$timestamp.jpg',
+              ).create();
+              await thumbFile.writeAsBytes(jpg, flush: true);
+              newThumbUrl = await FirebaseStorageService.uploadImage(
+                thumbFile,
+                customPath: thumbPath,
+              );
+              debugPrint('RECROP: Neues Thumbnail erstellt: $newThumbUrl');
+            }
+          } catch (e) {
+            debugPrint('RECROP: Fehler beim Thumbnail-Erstellen: $e');
+          }
+        }
+      }
 
       if (upload != null && mounted) {
-        // ERST neues Thumbnail erstellen, DANN Firestore updaten
-        String? newThumbUrl;
-        try {
-          final mediaFolder = media.type == AvatarMediaType.image
-              ? 'images'
-              : 'videos';
-          final thumbPath =
-              'avatars/${widget.avatarId}/$mediaFolder/thumbs/recrop_$timestamp.jpg';
-          final imgBytes = await tempFile.readAsBytes();
-          final decoded = img.decodeImage(imgBytes);
-          if (decoded != null) {
-            final resized = img.copyResize(decoded, width: 360);
-            final jpg = img.encodeJpg(resized, quality: 70);
-            final dir2 = await getTemporaryDirectory();
-            final thumbFile = await File(
-              '${dir2.path}/thumb_$timestamp.jpg',
-            ).create();
-            await thumbFile.writeAsBytes(jpg, flush: true);
-            newThumbUrl = await FirebaseStorageService.uploadImage(
-              thumbFile,
-              customPath: thumbPath,
-            );
-            debugPrint('RECROP: Neues Thumbnail erstellt: $newThumbUrl');
-          }
-        } catch (e) {
-          debugPrint('RECROP: Fehler beim Thumbnail-Erstellen: $e');
-        }
 
         // 1) Firestore: Media-Dokument DELETE + SET MIT thumbUrl (verhindert Cloud Function onCreate!)
         try {
@@ -8849,108 +9130,135 @@ class _VideoThumbnailSelectorDialogState
                   ),
                 )
               else if (_controller != null && _controller!.value.isInitialized)
-                AspectRatio(
-                  aspectRatio: _controller!.value.aspectRatio,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        VideoPlayer(_controller!),
-                        Positioned(
-                          right: 12,
-                          bottom: 12,
-                          child: InkWell(
-                            onTap: () {
-                              setState(() {
-                                if (_controller!.value.isPlaying) {
-                                  _controller!.pause();
-                                } else {
-                                  _controller!.play();
-                                }
-                              });
-                            },
-                            borderRadius: BorderRadius.circular(22),
-                            child: Container(
-                              width: 36,
-                              height: 36,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    Color(0xFFE91E63),
-                                    AppColors.lightBlue,
-                                    Color(0xFF00E5FF),
-                                  ],
-                                  stops: [0.0, 0.6, 1.0],
-                                ),
-                              ),
-                              child: Icon(
-                                _controller!.value.isPlaying
-                                    ? Icons.pause
-                                    : Icons.play_arrow,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                            ),
-                          ),
-                        ),
-                        // Verwenden-Button oben mittig im Bild
-                        Positioned(
-                          top: 12,
-                          left: 0,
-                          right: 0,
-                          child: Center(
-                            child: TextButton(
-                              onPressed: _isGenerating
-                                  ? null
-                                  : _generateThumbnail,
-                              style: TextButton.styleFrom(
-                                backgroundColor: _isGenerating
-                                    ? Colors.grey
-                                    : Colors.white,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 8,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                              child: _isGenerating
-                                  ? const SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : ShaderMask(
-                                      shaderCallback: (bounds) =>
-                                          const LinearGradient(
-                                            colors: [
-                                              Color(0xFFE91E63),
-                                              AppColors.lightBlue,
-                                              Color(0xFF00E5FF),
-                                            ],
-                                          ).createShader(bounds),
-                                      child: const Text(
-                                        'Verwenden',
-                                        style: TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                        ),
+                Builder(
+                  builder: (context) {
+                    // Video so skalieren, dass es inklusive Buttons in die Dialog-Höhe passt
+                    final screenSize = MediaQuery.of(context).size;
+                    final dialogMaxWidth = min(screenSize.width * 0.8, 900.0);
+                    final videoAspect = _controller!.value.aspectRatio == 0
+                        ? 9 / 16
+                        : _controller!.value.aspectRatio;
+
+                    // Max. 55% der Bildschirmhöhe für das Video verwenden
+                    final maxVideoHeight = min(screenSize.height * 0.55, 520.0);
+
+                    // Erst Breite auf Dialogbreite setzen, dann Höhe berechnen
+                    double width = dialogMaxWidth;
+                    double height = width / videoAspect;
+
+                    // Wenn zu hoch → an Höhe kappen und Breite neu berechnen
+                    if (height > maxVideoHeight) {
+                      height = maxVideoHeight;
+                      width = height * videoAspect;
+                    }
+
+                    return Center(
+                      child: SizedBox(
+                        width: width,
+                        height: height,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              VideoPlayer(_controller!),
+                              Positioned(
+                                right: 12,
+                                bottom: 12,
+                                child: InkWell(
+                                  onTap: () {
+                                    setState(() {
+                                      if (_controller!.value.isPlaying) {
+                                        _controller!.pause();
+                                      } else {
+                                        _controller!.play();
+                                      }
+                                    });
+                                  },
+                                  borderRadius: BorderRadius.circular(22),
+                                  child: Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Color(0xFFE91E63),
+                                          AppColors.lightBlue,
+                                          Color(0xFF00E5FF),
+                                        ],
+                                        stops: [0.0, 0.6, 1.0],
                                       ),
                                     ),
-                            ),
+                                    child: Icon(
+                                      _controller!.value.isPlaying
+                                          ? Icons.pause
+                                          : Icons.play_arrow,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // Verwenden-Button oben mittig im Bild
+                              Positioned(
+                                top: 12,
+                                left: 0,
+                                right: 0,
+                                child: Center(
+                                  child: TextButton(
+                                    onPressed: _isGenerating
+                                        ? null
+                                        : _generateThumbnail,
+                                    style: TextButton.styleFrom(
+                                      backgroundColor: _isGenerating
+                                          ? Colors.grey
+                                          : Colors.white,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 8,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: _isGenerating
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : ShaderMask(
+                                            shaderCallback: (bounds) =>
+                                                const LinearGradient(
+                                              colors: [
+                                                Color(0xFFE91E63),
+                                                AppColors.lightBlue,
+                                                Color(0xFF00E5FF),
+                                              ],
+                                            ).createShader(bounds),
+                                            child: const Text(
+                                              'Verwenden',
+                                              style: TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    );
+                  },
                 )
               else
                 Container(

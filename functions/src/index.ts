@@ -1908,10 +1908,14 @@ export const trimVideo = functions
         const buf = Buffer.from(await (videoRes as any).arrayBuffer());
         fs.writeFileSync(src, buf);
 
-        // Video mit ffmpeg trimmen (SCHNELL: Stream Copy ohne Re-Encoding!)
+        // Video mit ffmpeg trimmen
         const duration = end_time - start_time;
+
+        const hasFraction = (n: number) =>
+          Math.abs(n - Math.round(n)) > 1e-3;
+        const useStreamCopy = !hasFraction(start_time) && !hasFraction(end_time);
         await new Promise<void>((resolve, reject) => {
-          (ffmpeg as any)(src)
+          const cmd = (ffmpeg as any)(src)
             .on('end', () => {
               console.log(`✅ Video getrimmt: ${duration}s`);
               resolve();
@@ -1921,11 +1925,17 @@ export const trimVideo = functions
               reject(e);
             })
             .seekInput(start_time)
-            .duration(duration)
-            .videoCodec('copy')  // STREAM COPY = SUPER SCHNELL!
-            .audioCodec('copy')  // STREAM COPY = SUPER SCHNELL!
-            .output(output)
-            .run();
+            .duration(duration);
+
+          if (useStreamCopy) {
+            // Exakte Sekunden bei Ganzzahlen sind mit Stream Copy ok und sehr schnell
+            cmd.videoCodec('copy').audioCodec('copy');
+          } else {
+            // Bei Nachkommastellen präziser trimmen → re-encode
+            cmd.videoCodec('libx264').audioCodec('aac');
+          }
+
+          cmd.output(output).run();
         });
 
         // Getrimmtes Video zurückgeben

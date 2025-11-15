@@ -24,6 +24,18 @@ class VideoTrimService {
   }) async {
     // Verwende lokalen Messenger statt BuildContext nach async Gaps
     final messenger = ScaffoldMessenger.maybeOf(context);
+
+    // Bereits getrimmte Videos (Dateiname enthält _trim) nur einmal erlauben
+    if (videoUrl.contains('_trim')) {
+      messenger?.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Dieses Video wurde bereits getrimmt. Bitte das Original erneut hochladen, um es weiter anzupassen.',
+          ),
+        ),
+      );
+      return null;
+    }
     // 1. Lade Video-Dauer
     double videoDuration = 0;
     try {
@@ -48,7 +60,7 @@ class VideoTrimService {
       context: context,
       builder: (ctx) => _TrimDialog(
         videoDuration: videoDuration,
-        maxDuration: maxDuration ?? 10.0,
+        maxDuration: maxDuration ?? videoDuration,
       ),
     );
 
@@ -362,7 +374,7 @@ class _TrimDialogState extends State<_TrimDialog> {
   void initState() {
     super.initState();
     _start = 0;
-    _end = widget.videoDuration.clamp(0, widget.maxDuration);
+    _end = widget.videoDuration;
   }
 
   @override
@@ -375,8 +387,7 @@ class _TrimDialogState extends State<_TrimDialog> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'Video-Länge: ${widget.videoDuration.toStringAsFixed(1)}s\n'
-            'Max. erlaubt: ${widget.maxDuration.toStringAsFixed(1)}s',
+            'Video-Länge: ${widget.videoDuration.toStringAsFixed(1)}s',
             style: const TextStyle(fontSize: 14, color: Colors.grey),
           ),
           const SizedBox(height: 6),
@@ -396,12 +407,6 @@ class _TrimDialogState extends State<_TrimDialog> {
             onChanged: (value) {
               setState(() {
                 _start = value;
-                if (_end - _start > widget.maxDuration) {
-                  _end = (_start + widget.maxDuration).clamp(
-                    0,
-                    widget.videoDuration,
-                  );
-                }
                 if (_end <= _start) {
                   _end = (_start + 0.1).clamp(0, widget.videoDuration);
                 }
@@ -418,12 +423,6 @@ class _TrimDialogState extends State<_TrimDialog> {
             onChanged: (value) {
               setState(() {
                 _end = value;
-                if (_end - _start > widget.maxDuration) {
-                  _start = (_end - widget.maxDuration).clamp(
-                    0,
-                    widget.videoDuration,
-                  );
-                }
                 if (_end <= _start) {
                   _start = (_end - 0.1).clamp(0, widget.videoDuration);
                 }
@@ -434,17 +433,13 @@ class _TrimDialogState extends State<_TrimDialog> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: duration <= widget.maxDuration
-                  ? Colors.green.withValues(alpha: 0.2)
-                  : Colors.orange.withValues(alpha: 0.2),
+              color: Colors.green.withValues(alpha: 0.2),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Text(
-              'Dauer: ${duration.toStringAsFixed(1)}s / ${widget.maxDuration.toStringAsFixed(1)}s',
+              'Dauer: ${duration.toStringAsFixed(1)}s',
               style: TextStyle(
-                color: duration <= widget.maxDuration
-                    ? Colors.green
-                    : Colors.orange,
+                color: Colors.green,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -457,9 +452,8 @@ class _TrimDialogState extends State<_TrimDialog> {
           child: const Text('Abbrechen'),
         ),
         ElevatedButton(
-          onPressed: duration <= widget.maxDuration
-              ? () => Navigator.of(context).pop({'start': _start, 'end': _end})
-              : null,
+          onPressed: () =>
+              Navigator.of(context).pop({'start': _start, 'end': _end}),
           child: const Text('Trimmen'),
         ),
       ],
