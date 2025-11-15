@@ -3992,7 +3992,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 bottom: 0,
                 child: Center(
                   child: InkWell(
-                    onTap: () => _trimVideo(it),
+                    // Bereits getrimmte Videos nicht erneut trimmen
+                    onTap: (it.url.contains('_trim') ||
+                            it.url.contains('_trimmed'))
+                        ? null
+                        : () => _trimVideo(it),
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
@@ -4000,11 +4004,27 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: const Color(0x66FFFFFF)),
                       ),
-                      child: const Icon(
-                        Icons.content_cut,
-                        color: Colors.white,
-                        size: 16,
-                      ),
+                      child: (it.url.contains('_trim') ||
+                              it.url.contains('_trimmed'))
+                          ? ShaderMask(
+                              shaderCallback: (bounds) =>
+                                  const LinearGradient(
+                                colors: [
+                                  AppColors.magenta,
+                                  AppColors.lightBlue,
+                                ],
+                              ).createShader(bounds),
+                              child: const Icon(
+                                Icons.content_cut,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.content_cut,
+                              color: Colors.white,
+                              size: 16,
+                            ),
                     ),
                   ),
                 ),

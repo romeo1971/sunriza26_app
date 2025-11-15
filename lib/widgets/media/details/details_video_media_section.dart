@@ -661,8 +661,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
                   ),
                 ),
                 // Trim Icon (unten links) - nur für Hero-Video in Galerie,
-                // solange kein frisch getrimmtes Video auf „Fertig stellen“ wartet
-                // und das aktuelle Video nicht bereits getrimmt ist.
+                // solange kein frisch getrimmtes Video auf „Fertig stellen“ wartet.
                 if (onTrimVideo != null &&
                     recentlyTrimmedVideoUrls.isEmpty &&
                     !url.contains('_trim') &&
@@ -686,6 +685,31 @@ class DetailsVideoMediaSection extends StatelessWidget {
                             color: Colors.white,
                             size: 16,
                           ),
+                        ),
+                      ),
+                    ),
+                  ),
+                // Bereits getrimmte Videos: zeige Schere in GMBC-Gradient,
+                // aber ohne weitere Interaktion.
+                if (url.contains('_trim') || url.contains('_trimmed'))
+                  Positioned(
+                    left: 6,
+                    bottom: 6,
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0x30000000),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: const Color(0x66FFFFFF)),
+                      ),
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => const LinearGradient(
+                          colors: [AppColors.magenta, AppColors.lightBlue],
+                        ).createShader(bounds),
+                        child: const Icon(
+                          Icons.content_cut,
+                          color: Colors.white,
+                          size: 16,
                         ),
                       ),
                     ),
