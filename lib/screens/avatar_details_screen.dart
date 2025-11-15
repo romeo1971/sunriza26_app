@@ -1737,6 +1737,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             onTrimHeroVideo: _showTrimDialogForHeroVideo,
             // Trim beliebiges Video
             onTrimVideo: (url) => _showTrimDialogForVideo(url),
+            // Web: Zusätzlicher „Fertig stellen“-Button auf Trim-Kacheln
+            onFinalizeTrim: _finalizeTrimTile,
           ),
         const SizedBox.shrink(),
 
@@ -9295,6 +9297,54 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     _showVideoTrimDialog();
   }
 
+  /// Web-Only: Zusätzlicher „Fertig stellen“-Button auf Trim-Kachel
+  /// Entfernt das ausgewählte Trim-Video komplett (Storage + Firestore + UI),
+  /// damit die „unnötige“ Kachel verschwindet.
+  Future<void> _finalizeTrimTile(String url) async {
+    if (!kIsWeb) return;
+    if (_avatarData == null) return;
+
+    final avatarId = _avatarData!.id;
+
+    // Nur offensichtliche Trim-Dateien anfassen (Namenssicherheit)
+    final base = p.basename(url);
+    final isTrimmed = base.contains('_trim') || base.contains('_trimmed');
+    if (!isTrimmed) return;
+
+    // 1) Storage + Thumbs + Video-Doc löschen (best effort)
+    try {
+      await VideoTrimService.deleteVideo(
+        avatarId: avatarId,
+        videoUrl: url,
+      );
+    } catch (e) {
+      debugPrint('⚠️ _finalizeTrimTile deleteVideo Fehler: $e');
+    }
+
+    // 2) Lokale Liste bereinigen (ohne Query-Parameter, Token kann sich ändern)
+    String stripQuery(String u) {
+      final i = u.indexOf('?');
+      return i == -1 ? u : u.substring(0, i);
+    }
+
+    setState(() {
+      _videoUrls.removeWhere((v) => stripQuery(v) == stripQuery(url));
+    });
+
+    // 3) Firestore videoUrls nachziehen
+    try {
+      await FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(avatarId)
+          .update({
+        'videoUrls': _videoUrls,
+        'updatedAt': DateTime.now().millisecondsSinceEpoch,
+      });
+    } catch (e) {
+      debugPrint('⚠️ _finalizeTrimTile Firestore-Update Fehler: $e');
+    }
+  }
+
   // Trim beliebiges Video aus der Galerie
   Future<void> _showTrimDialogForVideo(String videoUrl) async {
     if (_avatarData == null) return;
@@ -9345,6 +9395,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             updatedAt: DateTime.now(),
           );
         });
+
+        // Web: Thumbnails für das neue getrimmte Video im Hintergrund nachziehen,
+        // damit der Spinner in der Kachel automatisch verschwindet.
+        if (kIsWeb) {
+          _waitForVideoThumbs(_avatarData!.id, [newVideoUrl]);
+        }
       } catch (e) {
         debugPrint(
           '❌ Firestore-Update videoUrls (normal trim) fehlgeschlagen: $e',
@@ -9548,6 +9604,51 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             updatedAt: DateTime.now(),
           );
         });
+
+        // Web: Thumbnails für das neue getrimmte Video im Hintergrund nachziehen,
+        // damit der Spinner in der Kachel automatisch verschwindet (kein User-Klick nötig).
+        if (kIsWeb) {
+          _waitForVideoThumbs(_avatarData!.id, [newVideoUrl]);
+        }
+
+        // NUR Web: alte Trim‑Versionen automatisch aufräumen, damit keine
+        // „überflüssigen“ Trim‑Kacheln in der Galerie stehen bleiben.
+        if (kIsWeb) {
+          final avatarId = _avatarData!.id;
+          // Kopie, damit wir während Iteration aus _videoUrls entfernen können
+          final existing = List<String>.from(_videoUrls);
+          for (final url in existing) {
+            if (url == newVideoUrl) continue;
+            final base = p.basename(url);
+            // Nur offensichtliche Trim‑Artefakte löschen
+            final isTrimmed =
+                base.contains('_trim') || base.contains('_trimmed');
+            if (!isTrimmed) continue;
+
+            try {
+              await VideoTrimService.deleteVideo(
+                avatarId: avatarId,
+                videoUrl: url,
+              );
+              _videoUrls.remove(url);
+            } catch (_) {
+              // „Best effort“ – Fehler hier sind fürs UI egal
+            }
+          }
+
+          // Firestore videoUrls nach Cleanup synchronisieren
+          try {
+            await FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(avatarId)
+                .update({'videoUrls': _videoUrls});
+          } catch (_) {
+            // Ignore – UI ist trotzdem lokal korrekt
+          }
+          if (mounted) {
+            setState(() {});
+          }
+        }
       } catch (e) {
         debugPrint(
           '❌ Firestore-Update videoUrls/heroVideoUrl fehlgeschlagen: $e',
