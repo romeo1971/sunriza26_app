@@ -3992,11 +3992,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 bottom: 0,
                 child: Center(
                   child: InkWell(
-                    // Bereits getrimmte Videos nicht erneut trimmen
-                    onTap: (it.url.contains('_trim') ||
-                            it.url.contains('_trimmed'))
-                        ? null
-                        : () => _trimVideo(it),
+                    // Immer _trimVideo aufrufen:
+                    // - bei Originalvideos öffnet das den Trim-Dialog
+                    // - bei bereits getrimmten Videos zeigt der Service nur den Hinweis-Snackbar
+                    onTap: () => _trimVideo(it),
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(

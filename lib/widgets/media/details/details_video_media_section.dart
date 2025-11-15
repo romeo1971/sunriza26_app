@@ -690,26 +690,37 @@ class DetailsVideoMediaSection extends StatelessWidget {
                     ),
                   ),
                 // Bereits getrimmte Videos: zeige Schere in GMBC-Gradient,
-                // aber ohne weitere Interaktion.
+                // Tipp: bei Tap wird derselbe Trim-Flow aufgerufen,
+                // der den Hinweis-Snackbar "Original erneut hochladen" zeigt.
                 if (url.contains('_trim') || url.contains('_trimmed'))
                   Positioned(
                     left: 6,
                     bottom: 6,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: const Color(0x30000000),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: const Color(0x66FFFFFF)),
-                      ),
-                      child: ShaderMask(
-                        shaderCallback: (bounds) => const LinearGradient(
-                          colors: [AppColors.magenta, AppColors.lightBlue],
-                        ).createShader(bounds),
-                        child: const Icon(
-                          Icons.content_cut,
-                          color: Colors.white,
-                          size: 16,
+                    child: MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: onTrimVideo == null
+                            ? null
+                            : () => onTrimVideo!(url),
+                        child: Container(
+                          padding: const EdgeInsets.all(6),
+                          decoration: BoxDecoration(
+                            color: const Color(0x30000000),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: const Color(0x66FFFFFF),
+                            ),
+                          ),
+                          child: ShaderMask(
+                            shaderCallback: (bounds) => const LinearGradient(
+                              colors: [AppColors.magenta, AppColors.lightBlue],
+                            ).createShader(bounds),
+                            child: const Icon(
+                              Icons.content_cut,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
                         ),
                       ),
                     ),
