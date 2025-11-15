@@ -4818,6 +4818,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           final thumb = (data['thumbUrl'] as String?) ?? '';
           if (thumb.isNotEmpty) {
             _mediaThumbUrls[url] = thumb;
+            debugPrint('🎬 _waitForVideoThumbs: thumbUrl gefunden für $url');
             changed = true;
           }
         }
@@ -9373,6 +9374,19 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     final heroVideoUrl = _getHeroVideoUrl();
     if (heroVideoUrl == null) return;
 
+    // Bereits getrimmtes Video (Dateiname enthält _trim/_trimmed) nicht erneut trimmen,
+    // um Fehler im Backend/Flow zu vermeiden.
+    final baseName = p.basename(heroVideoUrl);
+    if (baseName.contains('_trim') || baseName.contains('_trimmed')) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Dieses Video ist bereits getrimmt. Bitte ein Original-Video wählen.'),
+        ),
+      );
+      return;
+    }
+
     double startTime = 0.0;
     double endTime = 10.0; // Max 10 Sekunden
     final maxDuration = _heroVideoDuration;
@@ -9397,6 +9411,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 Text(
                   'Wähle 0-10 Sekunden aus dem ${maxDuration.toStringAsFixed(1)}s Video:',
                   style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Hinweis: Bereits getrimmte Videos können nicht erneut getrimmt werden. '
+                  'Bitte dafür das Original-Video verwenden.',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 11,
+                  ),
+                  textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 20),
 

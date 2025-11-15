@@ -475,7 +475,9 @@ class DetailsVideoMediaSection extends StatelessWidget {
     final audioOn = isHero
         ? false
         : (videoAudioEnabled[url] ?? false); // Hero = IMMER OFF
-
+    // Prüfe, ob es ein Trim-Video ist (für Icon-Ausblendung)
+    final isTrimmed = url.contains('_trim') || url.contains('_trimmed');
+    // Web: Button "Fertig stellen" erst zeigen, wenn ein echtes Thumbnail vorliegt
     return Stack(
       children: [
         Positioned.fill(
@@ -498,47 +500,48 @@ class DetailsVideoMediaSection extends StatelessWidget {
               ),
             ),
           ),
-        // Audio ON/OFF Toggle (oben rechts)
-        Positioned(
-          top: 4,
-          right: 6,
-          child: MouseRegion(
-            cursor: isHero
-                ? SystemMouseCursors.basic
-                : SystemMouseCursors.click,
-            child: GestureDetector(
-              onTap: isHero ? null : () => toggleVideoAudio(url),
-              child: Container(
-                width: 40,
-                height: 40,
-                padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(color: Colors.transparent),
-                child: audioOn
-                    ? ShaderMask(
-                        blendMode: BlendMode.srcIn,
-                        shaderCallback: (bounds) =>
-                            const LinearGradient(
-                              colors: [AppColors.magenta, AppColors.lightBlue],
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                            ).createShader(
-                              Rect.fromLTWH(0, 0, bounds.width, bounds.height),
-                            ),
-                        child: const Icon(
-                          Icons.volume_up,
+        // Audio ON/OFF Toggle (oben rechts) - NUR wenn kein Trim-Video
+        if (!isTrimmed)
+          Positioned(
+            top: 4,
+            right: 6,
+            child: MouseRegion(
+              cursor: isHero
+                  ? SystemMouseCursors.basic
+                  : SystemMouseCursors.click,
+              child: GestureDetector(
+                onTap: isHero ? null : () => toggleVideoAudio(url),
+                child: Container(
+                  width: 40,
+                  height: 40,
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(color: Colors.transparent),
+                  child: audioOn
+                      ? ShaderMask(
+                          blendMode: BlendMode.srcIn,
+                          shaderCallback: (bounds) =>
+                              const LinearGradient(
+                                colors: [AppColors.magenta, AppColors.lightBlue],
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                              ).createShader(
+                                Rect.fromLTWH(0, 0, bounds.width, bounds.height),
+                              ),
+                          child: const Icon(
+                            Icons.volume_up,
+                            color: Colors.white,
+                            size: 28,
+                          ),
+                        )
+                      : const Icon(
+                          Icons.volume_off,
                           color: Colors.white,
                           size: 28,
                         ),
-                      )
-                    : const Icon(
-                        Icons.volume_off,
-                        color: Colors.white,
-                        size: 28,
-                      ),
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -634,7 +637,10 @@ class DetailsVideoMediaSection extends StatelessWidget {
                   ),
                 ),
                 // Trim Icon (unten links) - NUR für Hero-Video in Galerie
-                if (onTrimVideo != null)
+                // und nur, wenn es sich NICHT bereits um ein getrimmtes Video handelt
+                if (onTrimVideo != null &&
+                    !url.contains('_trim') &&
+                    !url.contains('_trimmed'))
                   Positioned(
                     left: 6,
                     bottom: 6,
@@ -698,7 +704,10 @@ class DetailsVideoMediaSection extends StatelessWidget {
                 },
               ),
             // Tap: setzt Hero-Video (nur wenn nicht bereits Hero)
-            if (!isHero)
+            // Web: Kachel erst klickbar, wenn JPEG-Thumbnail vorhanden ist
+            if (!isHero &&
+                (!kIsWeb ||
+                    (thumbUrlForMedia?.call(url)?.isNotEmpty ?? false)))
               Positioned.fill(
                 child: MouseRegion(
                   cursor: SystemMouseCursors.click,
@@ -708,44 +717,48 @@ class DetailsVideoMediaSection extends StatelessWidget {
                   ),
                 ),
               ),
-            // Trash Icon (unten rechts) mit Cursor Pointer
-            Positioned(
-              right: 6,
-              bottom: 6,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: () => onTrashIconTap(url),
-                  child: Container(
-                    width: 32,
-                    height: 32,
-                    alignment: Alignment.center,
-                    decoration: BoxDecoration(
-                      color: selected ? null : const Color(0x30000000),
-                      gradient: selected
-                          ? Theme.of(
-                              context,
-                            ).extension<AppGradients>()!.magentaBlue
-                          : null,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: selected
-                            ? AppColors.lightBlue.withValues(alpha: 0.7)
-                            : const Color(0x66FFFFFF),
+            // Trash Icon (unten rechts) mit Cursor Pointer - NUR wenn kein Trim-Video
+            if (!url.contains('_trim') && !url.contains('_trimmed'))
+              Positioned(
+                right: 6,
+                bottom: 6,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => onTrashIconTap(url),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: selected ? null : const Color(0x30000000),
+                        gradient: selected
+                            ? Theme.of(
+                                context,
+                              ).extension<AppGradients>()!.magentaBlue
+                            : null,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                          color: selected
+                              ? AppColors.lightBlue.withValues(alpha: 0.7)
+                              : const Color(0x66FFFFFF),
+                        ),
                       ),
-                    ),
-                    child: const Icon(
-                      Icons.delete_outline,
-                      color: Colors.white,
-                      size: 16,
+                      child: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.white,
+                        size: 16,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
             // Web-Only: kleiner "Fertig stellen"-Button auf der Kachel,
             // der exakt denselben Tap auslöst wie ein Klick auf die ganze Kachel.
-            if (kIsWeb && !isHero)
+            // Wird erst angezeigt, wenn das JPEG-Thumbnail vorhanden ist.
+            if (!isHero &&
+                kIsWeb &&
+                (thumbUrlForMedia?.call(url)?.isNotEmpty ?? false))
               Positioned(
                 left: 6,
                 bottom: 6,
@@ -794,6 +807,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
 
     // 1) Bevorzugt: JPEG-Thumb aus Storage/Media-Docs
     if (thumbUrl != null && thumbUrl.isNotEmpty) {
+      debugPrint('🎬 _buildWebThumbnail: benutze thumbUrl für $url');
       return Image.network(
         thumbUrl,
         fit: BoxFit.cover,
@@ -816,6 +830,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
     }
 
     // 2) Fallback: neutraler Platzhalter (kein VideoPlayer, kein Dauernachladen)
+    debugPrint('🎬 _buildWebThumbnail: kein thumbUrl vorhanden für $url');
     return _buildGeneratingPlaceholder();
   }
 
