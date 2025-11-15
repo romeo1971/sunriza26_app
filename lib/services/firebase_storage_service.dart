@@ -309,6 +309,57 @@ class FirebaseStorageService {
     }
   }
 
+  /// Upload Audiodatei aus Bytes (z.B. Flutter Web / FilePicker)
+  static Future<String?> uploadAudioBytes(
+    Uint8List bytes, {
+    String fileName = 'audio.mp3',
+    String? customPath,
+    void Function(double progress)? onProgress,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('Benutzer nicht angemeldet');
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final sanitizedName = fileName.isEmpty ? 'audio.mp3' : fileName;
+      final filePath =
+          customPath ??
+          'users/${user.uid}/uploads/audio/${timestamp}_$sanitizedName';
+
+      final ref = _storage.ref().child(filePath);
+
+      // Content-Type anhand Dateiendung setzen
+      final ext = path.extension(filePath).toLowerCase();
+      String contentType = 'audio/mpeg';
+      if (ext == '.m4a') contentType = 'audio/mp4';
+      if (ext == '.wav') contentType = 'audio/wav';
+      if (ext == '.aac') contentType = 'audio/aac';
+      if (ext == '.ogg') contentType = 'audio/ogg';
+
+      final uploadTask = ref.putData(
+        bytes,
+        SettableMetadata(contentType: contentType),
+      );
+
+      uploadTask.snapshotEvents.listen((snapshot) {
+        if (snapshot.totalBytes > 0) {
+          final progress =
+              snapshot.bytesTransferred / snapshot.totalBytes;
+          onProgress?.call(progress);
+        }
+      });
+
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      debugPrint('uploadAudioBytes OK → $downloadUrl');
+      return downloadUrl;
+    } catch (e) {
+      debugPrint('Fehler beim Upload der Audiodatei (Bytes): $e');
+      return null;
+    }
+  }
+
   /// Upload eine Textdatei zu Firebase Storage
   static Future<String?> uploadTextFile(
     File textFile, {

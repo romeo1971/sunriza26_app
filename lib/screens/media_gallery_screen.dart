@@ -430,6 +430,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       final head = builder.takeBytes();
       if (head.isEmpty) return false;
 
+      // Harte Blockade: klassische Windows-EXE (MZ Header)
+      if (head.length >= 2 && head[0] == 0x4D && head[1] == 0x5A) {
+        return false;
+      }
+
       // PDF: %PDF-
       final isPdf =
           head.length >= 5 &&
@@ -451,9 +456,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               (head[2] == 0x05 && head[3] == 0x06) ||
               (head[2] == 0x07 && head[3] == 0x08));
       if (isZip) {
-        final lower = file.path.toLowerCase();
-        if (lower.endsWith('.docx') || lower.endsWith('.pptx')) return true;
-        return false;
+        // Beliebige ZIP-basierten Dokumente erlauben (docx, pptx, odt, odp, ...)
+        return true;
       }
 
       // Text/Markdown: keine Null-Bytes im Anfangsblock
@@ -462,9 +466,57 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         final hasNull = head.any((b) => b == 0x00);
         return !hasNull;
       }
-      return false;
+      // Unbekannte, aber nicht leere Dokument-Typen erlauben
+      return true;
     } catch (_) {
-      return false;
+      // Im Zweifel nicht blockieren, damit alle Dokument-Typen hochgeladen werden können
+      return true;
+    }
+  }
+
+  // Magic-Bytes Validierung für Dokumente (Web-Variante mit Bytes)
+  Future<bool> _validateDocumentBytes(Uint8List bytes, String fileName) async {
+    try {
+      if (bytes.isEmpty) return false;
+      final head = bytes.length > 512 ? bytes.sublist(0, 512) : bytes;
+
+      // Harte Blockade: klassische Windows-EXE (MZ Header)
+      if (head.length >= 2 && head[0] == 0x4D && head[1] == 0x5A) {
+        return false;
+      }
+
+      // PDF: %PDF-
+      final isPdf =
+          head.length >= 5 &&
+          String.fromCharCodes(head.sublist(0, 5)) == '%PDF-';
+      if (isPdf) return true;
+
+      // RTF: {\rtf
+      final isRtf =
+          head.length >= 5 &&
+          String.fromCharCodes(head.sublist(0, 5)) == '{\\rtf';
+      if (isRtf) return true;
+
+      // Office OpenXML (docx/pptx): ZIP Header (PK...)
+      final isZip =
+          head.length >= 4 &&
+          head[0] == 0x50 &&
+          head[1] == 0x4B &&
+          ((head[2] == 0x03 && head[3] == 0x04) ||
+              (head[2] == 0x05 && head[3] == 0x06) ||
+              (head[2] == 0x07 && head[3] == 0x08));
+      if (isZip) {
+        return true;
+      }
+
+      final lower = fileName.toLowerCase();
+      if (lower.endsWith('.txt') || lower.endsWith('.md') || lower.endsWith('.csv')) {
+        final hasNull = head.any((b) => b == 0x00);
+        return !hasNull;
+      }
+      return true;
+    } catch (_) {
+      return true;
     }
   }
 
@@ -2561,38 +2613,43 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       int baseTimestamp = DateTime.now().millisecondsSinceEpoch;
       for (int i = 0; i < result.files.length; i++) {
         final file = result.files[i];
-        if (file.path == null) continue;
+        if (file.path == null && file.bytes == null) continue;
 
-        final rawBase = file.name.isNotEmpty
-            ? file.name
-            : p.basename(file.path!);
+        final rawBase =
+            file.name.isNotEmpty ? file.name : (file.path != null ? p.basename(file.path!) : 'audio_$i.mp3');
         final safeBase = _sanitizeName(rawBase);
+        // Dateiendung wird aktuell nur geloggt – alle Audio-Typen sind erlaubt
         final ext = (file.extension ?? 'mp3').toLowerCase();
-        const audioAllowed = ['mp3', 'wav', 'm4a', 'aac'];
-        if (!audioAllowed.contains(ext)) {
-          debugPrint('Blockiert: Audio-Erweiterung nicht erlaubt: $ext');
-          continue;
-        }
+        debugPrint('🎵 Audio-Datei: $safeBase (.$ext)');
 
         final timestamp = DateTime.now().millisecondsSinceEpoch;
         final audioPath =
             'avatars/${widget.avatarId}/audio/${timestamp}_$safeBase';
 
-        // Upload mit Echtzeit-Progress
-        final url = await FirebaseStorageService.uploadWithProgress(
-          File(file.path!),
-          'audio',
-          customPath: audioPath,
-          onProgress: (progress) {
-            // Berechne Gesamt-Progress: vorherige Dateien + aktueller Upload
-            final perFileWeight = 1.0 / result.files.length;
-            final totalProgress =
-                (i * perFileWeight) + (progress * perFileWeight);
-            _uploadProgressNotifier.value = (totalProgress * 100).toInt();
-            _uploadStatusNotifier.value =
-                'Audio ${i + 1}/${result.files.length} wird hochgeladen... ${(progress * 100).toInt()}%';
-          },
-        );
+        // Upload mit Echtzeit-Progress – Web nutzt Bytes, Mobile/Desktop File
+        String? url;
+        if (kIsWeb) {
+          final bytes = file.bytes;
+          if (bytes == null) continue;
+          url = await FirebaseStorageService.uploadAudioBytes(
+            bytes,
+            fileName: safeBase,
+            customPath: audioPath,
+            onProgress: (progress) {
+              final perFileWeight = 1.0 / result.files.length;
+              final totalProgress =
+                  (i * perFileWeight) + (progress * perFileWeight);
+              _uploadProgressNotifier.value = (totalProgress * 100).toInt();
+              _uploadStatusNotifier.value =
+                  'Audio ${i + 1}/${result.files.length} wird hochgeladen... ${(progress * 100).toInt()}%';
+            },
+          );
+        } else {
+          url = await FirebaseStorageService.uploadAudio(
+            File(file.path!),
+            customPath: audioPath,
+          );
+        }
 
         if (url == null) {
           debugPrint('❌ Audio-Upload fehlgeschlagen: $safeBase');
@@ -2638,11 +2695,15 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       await _load();
 
-      if (mounted) {
+      if (mounted && uploaded > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
           buildSuccessSnackBar(
             '$uploaded Audio-Dateien erfolgreich hochgeladen!',
           ),
+        );
+      } else if (mounted && uploaded == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          buildErrorSnackBar('Keine Audio-Dateien hochgeladen.'),
         );
       }
     } catch (e) {
@@ -3412,8 +3473,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     try {
       final res = await FilePicker.platform.pickFiles(
         allowMultiple: true,
-        type: FileType.custom,
-        allowedExtensions: ['pdf', 'txt', 'docx', 'pptx', 'md', 'rtf'],
+        // Alle Dateitypen erlauben – die eigentliche Validierung erfolgt in _validateDocumentFile
+        type: FileType.any,
       );
       if (res == null || res.files.isEmpty) return;
 
@@ -3423,28 +3484,58 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       int idx = 0;
       for (final picked in res.files) {
-        final path = picked.path;
-        if (path == null) {
-          debugPrint('⚠️ Dokument ${idx + 1}: Kein Pfad verfügbar');
-          continue;
-        }
-        final file = File(path);
-        debugPrint(
-          '📄 Dokument ${idx + 1}/${res.files.length}: ${p.basename(path)}',
-        );
+        AvatarMedia? media;
+        if (kIsWeb) {
+          // Web: arbeite ausschließlich mit Bytes (kein dart:io File)
+          final bytes = picked.bytes;
+          if (bytes == null) {
+            debugPrint('⚠️ Dokument ${idx + 1}: Keine Bytes verfügbar');
+            idx++;
+            continue;
+          }
+          final name = picked.name.isNotEmpty
+              ? picked.name
+              : 'document_${DateTime.now().millisecondsSinceEpoch}.dat';
+          debugPrint(
+            '📄 (Web) Dokument ${idx + 1}/${res.files.length}: $name',
+          );
+          media = await _uploadDocumentBytes(
+            bytes,
+            fileName: name,
+            onProgress: (progress) {
+              final perFileWeight = 1.0 / res.files.length;
+              final totalProgress =
+                  (idx * perFileWeight) + (progress * perFileWeight);
+              _uploadProgressNotifier.value = (totalProgress * 100).toInt();
+              _uploadStatusNotifier.value =
+                  'Dokument ${idx + 1}/${res.files.length} wird hochgeladen... ${(progress * 100).toInt()}%';
+            },
+          );
+        } else {
+          final path = picked.path;
+          if (path == null) {
+            debugPrint('⚠️ Dokument ${idx + 1}: Kein Pfad verfügbar');
+            idx++;
+            continue;
+          }
+          final file = File(path);
+          debugPrint(
+            '📄 Dokument ${idx + 1}/${res.files.length}: ${p.basename(path)}',
+          );
 
-        final media = await _uploadDocumentFile(
-          file,
-          onProgress: (progress) {
-            // Berechne Gesamt-Progress: vorherige Dateien + aktueller Upload
-            final perFileWeight = 1.0 / res.files.length;
-            final totalProgress =
-                (idx * perFileWeight) + (progress * perFileWeight);
-            _uploadProgressNotifier.value = (totalProgress * 100).toInt();
-            _uploadStatusNotifier.value =
-                'Dokument ${idx + 1}/${res.files.length} wird hochgeladen... ${(progress * 100).toInt()}%';
-          },
-        );
+          media = await _uploadDocumentFile(
+            file,
+            onProgress: (progress) {
+              // Berechne Gesamt-Progress: vorherige Dateien + aktueller Upload
+              final perFileWeight = 1.0 / res.files.length;
+              final totalProgress =
+                  (idx * perFileWeight) + (progress * perFileWeight);
+              _uploadProgressNotifier.value = (totalProgress * 100).toInt();
+              _uploadStatusNotifier.value =
+                  'Dokument ${idx + 1}/${res.files.length} wird hochgeladen... ${(progress * 100).toInt()}%';
+            },
+          );
+        }
         if (media != null) {
           debugPrint(
             '✅ Dokument ${idx + 1} in Firestore gespeichert: ${media.id}',
@@ -3485,17 +3576,6 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       final base = p.basename(file.path);
       final ext = p.extension(base).toLowerCase().replaceFirst('.', '');
       debugPrint('📝 Prüfe Dokument: $base (.$ext)');
-      // Clientseitige Allowlist
-      const allowed = ['pdf', 'txt', 'docx', 'pptx', 'md', 'rtf'];
-      if (!allowed.contains(ext)) {
-        debugPrint('❌ Blockiert: nicht erlaubte Dokument-Erweiterung: .$ext');
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(buildErrorSnackBar('Dateityp nicht erlaubt.'));
-        }
-        return null;
-      }
 
       // Magic-Bytes Validierung – blocke getarnte Dateien
       debugPrint('🔍 Magic-Bytes-Validierung für $base...');
@@ -3603,6 +3683,129 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     } catch (e, stackTrace) {
       debugPrint('❌ Dokument-Upload fehlgeschlagen: $e');
       debugPrint('Stack: $stackTrace');
+      return null;
+    }
+  }
+
+  // Web: Dokument-Upload aus Bytes (kein dart:io File)
+  Future<AvatarMedia?> _uploadDocumentBytes(
+    Uint8List bytes, {
+    required String fileName,
+    Function(double)? onProgress,
+  }) async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) {
+        debugPrint('❌ Kein User eingeloggt');
+        return null;
+      }
+
+      final base = _sanitizeName(fileName);
+      final ext = p.extension(base).toLowerCase().replaceFirst('.', '');
+      debugPrint('📝 (Web) Prüfe Dokument: $base (.$ext)');
+
+      // Magic-Bytes Validierung
+      debugPrint('🔍 (Web) Magic-Bytes-Validierung für $base...');
+      final isValidByMagic = await _validateDocumentBytes(bytes, base);
+      if (!isValidByMagic) {
+        debugPrint('❌ (Web) Magic-Bytes-Validierung fehlgeschlagen für $base');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Dateiinhalt entspricht nicht dem Typ. Upload abgebrochen.',
+              ),
+            ),
+          );
+        }
+        return null;
+      }
+      debugPrint('✅ (Web) Magic-Bytes-Validierung erfolgreich für $base');
+
+      String contentType;
+      switch (ext) {
+        case 'pdf':
+          contentType = 'application/pdf';
+          break;
+        case 'docx':
+          contentType =
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+          break;
+        case 'pptx':
+          contentType =
+              'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+          break;
+        case 'rtf':
+          contentType = 'text/rtf';
+          break;
+        case 'md':
+        case 'txt':
+        case 'csv':
+          contentType = 'text/plain';
+          break;
+        default:
+          contentType = 'application/octet-stream';
+      }
+
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      final storageRef = FirebaseStorage.instance.ref().child(
+        'avatars/${widget.avatarId}/documents/${ts}_$base',
+      );
+      debugPrint('📤 (Web) Lade $base nach Storage hoch...');
+
+      final uploadTask = storageRef.putData(
+        bytes,
+        SettableMetadata(
+          contentType: contentType,
+          contentDisposition: 'attachment; filename="$base"',
+          customMetadata: {'type': 'document', 'ext': ext},
+        ),
+      );
+
+      uploadTask.snapshotEvents.listen((snapshot) {
+        if (snapshot.totalBytes > 0 && onProgress != null) {
+          final progress = snapshot.bytesTransferred / snapshot.totalBytes;
+          onProgress(progress);
+        }
+      });
+
+      final task = await uploadTask;
+      final url = await task.ref.getDownloadURL();
+      debugPrint('✅ (Web) Storage-Upload erfolgreich: $url');
+
+      final doc = FirebaseFirestore.instance
+          .collection('avatars')
+          .doc(widget.avatarId)
+          .collection('documents')
+          .doc();
+
+      await doc.set({
+        'id': doc.id,
+        'avatarId': widget.avatarId,
+        'type': 'document',
+        'url': url,
+        'thumbUrl': null,
+        'createdAt': ts,
+        'durationMs': null,
+        'aspectRatio': null,
+        'tags': null,
+        'originalFileName': base,
+      });
+
+      return AvatarMedia(
+        id: doc.id,
+        avatarId: widget.avatarId,
+        type: AvatarMediaType.document,
+        url: url,
+        thumbUrl: null,
+        createdAt: ts,
+        durationMs: null,
+        aspectRatio: null,
+        tags: null,
+        originalFileName: base,
+      );
+    } catch (e) {
+      debugPrint('❌ (Web) Fehler beim Dokument-Upload: $e');
       return null;
     }
   }
@@ -3848,6 +4051,45 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       ),
               ),
             ),
+            // Dateiname unten als Overlay – nur für Dokumente
+            if (it.type == AvatarMediaType.document)
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: const BorderRadius.vertical(
+                      bottom: Radius.circular(8),
+                    ),
+                  ),
+                  child: Builder(
+                    builder: (context) {
+                      String name = it.originalFileName ??
+                          Uri.parse(it.url).pathSegments.last;
+                      // Falls Präfix wie "123456789_name.ext" vorhanden ist, nur "name.ext" zeigen
+                      final underscoreIndex = name.indexOf('_');
+                      if (underscoreIndex > 0 &&
+                          int.tryParse(name.substring(0, underscoreIndex)) !=
+                              null) {
+                        name = name.substring(underscoreIndex + 1);
+                      }
+                      return Text(
+                        name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
             // Preis-Badge oben rechts (Bild/Video/Dokument): Override ODER globaler Preis wenn aktiviert
             if ((it.type == AvatarMediaType.image ||
                     it.type == AvatarMediaType.video ||
@@ -5240,7 +5482,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
     if (lower.endsWith('.txt') ||
         lower.endsWith('.md') ||
-        lower.endsWith('.rtf')) {
+        lower.endsWith('.rtf') ||
+        lower.endsWith('.csv')) {
       final f = _docPreviewTextFuture[it.url] ??= _fetchTextSnippet(
         it.url,
         lower.endsWith('.rtf'),
@@ -5469,6 +5712,30 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
 
       if (bytes == null || bytes.isEmpty) {
+        // Fallback: Für reine Text-Dokumente (txt/md/rtf/csv) kein visuelles Cropping,
+        // aber Aspect-Ratio einmalig auf 9:16 setzen, damit sie wie Portrait behandelt werden.
+        if (media.type == AvatarMediaType.document) {
+          final lower = (media.originalFileName ?? media.url).toLowerCase();
+          if (lower.endsWith('.txt') ||
+              lower.endsWith('.md') ||
+              lower.endsWith('.rtf') ||
+              lower.endsWith('.csv')) {
+            try {
+              await FirebaseFirestore.instance
+                  .collection('avatars')
+                  .doc(widget.avatarId)
+                  .collection('documents')
+                  .doc(media.id)
+                  .set(
+                {
+                  'aspectRatio': 9 / 16,
+                },
+                SetOptions(merge: true),
+              );
+            } catch (_) {}
+            return;
+          }
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             buildErrorSnackBar('Kein Preview-Bild zum Zuschneiden verfügbar.'),
