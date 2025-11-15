@@ -191,6 +191,7 @@ class VideoTrimService {
 
         // Versuche Original-Video-Dokument zu finden, um originalFileName zu übernehmen
         String? trimmedOriginalFileName;
+        double? originalAspectRatio;
         try {
           final qs = await FirebaseFirestore.instance
               .collection('avatars')
@@ -202,6 +203,8 @@ class VideoTrimService {
           if (qs.docs.isNotEmpty) {
             final data = qs.docs.first.data();
             final origName = (data['originalFileName'] as String?) ?? '';
+            originalAspectRatio =
+                (data['aspectRatio'] as num?)?.toDouble();
             if (origName.isNotEmpty) {
               final dot = origName.lastIndexOf('.');
               if (dot > 0) {
@@ -223,7 +226,8 @@ class VideoTrimService {
           'url': newVideoUrl,
           'type': 'video',
           'createdAt': FieldValue.serverTimestamp(),
-          'aspectRatio': 16 / 9,
+          // Übernimm Aspect Ratio des Originalvideos, damit Portrait/Landscape erhalten bleibt
+          'aspectRatio': originalAspectRatio ?? 16 / 9,
           'durationMs': null,
         };
         if (trimmedOriginalFileName != null) {
