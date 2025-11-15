@@ -9518,7 +9518,14 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
       // Aus lokaler Liste entfernen
       setState(() {
-        _videoUrls.remove(videoUrl);
+        // Vergleich ohne Query-Parameter (Download-Token kann sich ändern)
+        String stripQuery(String u) {
+          final i = u.indexOf('?');
+          return i == -1 ? u : u.substring(0, i);
+        }
+        _videoUrls.removeWhere(
+          (v) => stripQuery(v) == stripQuery(videoUrl),
+        );
       });
 
       // Persistiere NUR videoUrls und heroVideoUrl gezielt (kein Whole-Object)

@@ -99,7 +99,9 @@ class DetailsVideoMediaSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> remoteFour = videoUrls.take(15).toList();
+    // Duplikate vermeiden (z.B. wenn dieselbe Video-URL mehrfach in videoUrls landet)
+    final List<String> remoteFour =
+        videoUrls.toSet().toList().take(15).toList();
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: LayoutBuilder(
