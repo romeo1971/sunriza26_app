@@ -67,9 +67,6 @@ class DetailsVideoMediaSection extends StatelessWidget {
   final VoidCallback? onTrimHeroVideo;
   final ValueChanged<String>? onTrimVideo;
 
-  // Optional: „Fertig stellen“-Callback für Web (z.B. nach Video-Trimming)
-  final ValueChanged<String>? onFinalizeTrim;
-
   // Video Controller Helper
   final Future<VideoPlayerController?> Function(String url)
   videoControllerForThumb;
@@ -97,7 +94,6 @@ class DetailsVideoMediaSection extends StatelessWidget {
     required this.fileNameFromUrl,
     this.onTrimHeroVideo,
     this.onTrimVideo,
-    this.onFinalizeTrim,
     this.thumbUrlForMedia,
   });
 
@@ -747,44 +743,36 @@ class DetailsVideoMediaSection extends StatelessWidget {
                 ),
               ),
             ),
-
-            // Web-spezifischer „Fertig stellen“-Button für getrimmte Nicht‑Hero‑Videos
-            if (kIsWeb && !isHero && onFinalizeTrim != null)
+            // Web-Only: kleiner "Fertig stellen"-Button auf der Kachel,
+            // der exakt denselben Tap auslöst wie ein Klick auf die ganze Kachel.
+            if (kIsWeb && !isHero)
               Positioned(
                 left: 6,
-                top: 6,
-                child: Builder(
-                  builder: (context) {
-                    final name = fileNameFromUrl(url);
-                    final isTrimmed =
-                        name.contains('_trim') || name.contains('_trimmed');
-                    if (!isTrimmed) return const SizedBox.shrink();
-                    return MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => onFinalizeTrim!(url),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.black.withValues(alpha: 0.7),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.white54),
-                          ),
-                          child: const Text(
-                            'Fertig stellen',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
+                bottom: 6,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () => setHeroVideo(url),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.6),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0x66FFFFFF)),
+                      ),
+                      child: const Text(
+                        'Fertig stellen',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                    );
-                  },
+                    ),
+                  ),
                 ),
               ),
           ],

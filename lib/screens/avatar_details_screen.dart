@@ -1737,8 +1737,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             onTrimHeroVideo: _showTrimDialogForHeroVideo,
             // Trim beliebiges Video
             onTrimVideo: (url) => _showTrimDialogForVideo(url),
-            // Web: Zusätzlicher „Fertig stellen“-Button auf Trim-Kacheln
-            onFinalizeTrim: _finalizeTrimTile,
           ),
         const SizedBox.shrink(),
 
@@ -4789,7 +4787,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   ) async {
     if (urls.isEmpty) return;
     final remaining = urls.toSet();
-    const int maxTries = 16; // ~8s bei 500ms Delay (Thumbs sind i.d.R. schnell da)
+    const int maxTries =
+        60; // ~30s bei 500ms Delay – genug Zeit für Cloud Functions + Cold Starts
 
     for (int attempt = 0;
         attempt < maxTries && remaining.isNotEmpty && mounted;
@@ -9295,54 +9294,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   // Alias für Widget-Callback (Hero-Video)
   void _showTrimDialogForHeroVideo() {
     _showVideoTrimDialog();
-  }
-
-  /// Web-Only: Zusätzlicher „Fertig stellen“-Button auf Trim-Kachel
-  /// Entfernt das ausgewählte Trim-Video komplett (Storage + Firestore + UI),
-  /// damit die „unnötige“ Kachel verschwindet.
-  Future<void> _finalizeTrimTile(String url) async {
-    if (!kIsWeb) return;
-    if (_avatarData == null) return;
-
-    final avatarId = _avatarData!.id;
-
-    // Nur offensichtliche Trim-Dateien anfassen (Namenssicherheit)
-    final base = p.basename(url);
-    final isTrimmed = base.contains('_trim') || base.contains('_trimmed');
-    if (!isTrimmed) return;
-
-    // 1) Storage + Thumbs + Video-Doc löschen (best effort)
-    try {
-      await VideoTrimService.deleteVideo(
-        avatarId: avatarId,
-        videoUrl: url,
-      );
-    } catch (e) {
-      debugPrint('⚠️ _finalizeTrimTile deleteVideo Fehler: $e');
-    }
-
-    // 2) Lokale Liste bereinigen (ohne Query-Parameter, Token kann sich ändern)
-    String stripQuery(String u) {
-      final i = u.indexOf('?');
-      return i == -1 ? u : u.substring(0, i);
-    }
-
-    setState(() {
-      _videoUrls.removeWhere((v) => stripQuery(v) == stripQuery(url));
-    });
-
-    // 3) Firestore videoUrls nachziehen
-    try {
-      await FirebaseFirestore.instance
-          .collection('avatars')
-          .doc(avatarId)
-          .update({
-        'videoUrls': _videoUrls,
-        'updatedAt': DateTime.now().millisecondsSinceEpoch,
-      });
-    } catch (e) {
-      debugPrint('⚠️ _finalizeTrimTile Firestore-Update Fehler: $e');
-    }
   }
 
   // Trim beliebiges Video aus der Galerie
