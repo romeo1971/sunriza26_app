@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:video_player/video_player.dart';
+import '../theme/app_theme.dart';
 import 'firebase_storage_service.dart';
 import 'package:path/path.dart' as p;
 
@@ -10,6 +11,8 @@ import 'package:path/path.dart' as p;
 class VideoTrimService {
   static const String _firebaseFunctionUrl =
       'https://us-central1-sunriza26.cloudfunctions.net/trimVideo';
+  // Globaler Fortschritt für Trim+Upload (0–100), für alle Plattformen
+  static final ValueNotifier<int> trimProgress = ValueNotifier<int>(0);
 
   /// Zeigt Trim-Dialog und trimmt Video
   /// Gibt die neue Video-URL zurück oder null bei Abbruch/Fehler
@@ -38,8 +41,9 @@ class VideoTrimService {
       return null;
     }
 
-    // 2. Zeige Trim-Dialog
+    // 2. Zeige Trim-Dialog (reine Bereichsauswahl, ohne Progress)
     if (!context.mounted) return null;
+
     final result = await showDialog<Map<String, double>>(
       context: context,
       builder: (ctx) => _TrimDialog(
@@ -77,21 +81,42 @@ class VideoTrimService {
     final messenger = ScaffoldMessenger.maybeOf(context);
 
     try {
-      // Loading Dialog anzeigen
+      // Progress zurücksetzen und Loading Dialog anzeigen
+      trimProgress.value = 0;
       showDialog(
         context: context,
         barrierDismissible: false,
-        builder: (ctx) => const AlertDialog(
+        builder: (ctx) => AlertDialog(
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text('⏳ Video wird getrimmt...'),
-              SizedBox(height: 8),
-              Text(
-                'Dies kann 10-30 Sekunden dauern',
+              const Text('⏳ Video wird getrimmt...'),
+              const SizedBox(height: 8),
+              const Text(
+                'Dies kann 10–30 Sekunden dauern.',
                 style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 16),
+              ValueListenableBuilder<int>(
+                valueListenable: trimProgress,
+                builder: (context, value, _) {
+                  final safe = value.clamp(0, 100);
+                  return Column(
+                    children: [
+                      LinearProgressIndicator(
+                        value: safe / 100.0,
+                        backgroundColor: Colors.grey.shade800,
+                        color: AppColors.lightBlue,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '$safe %',
+                        style:
+                            const TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
+                    ],
+                  );
+                },
               ),
             ],
           ),
@@ -133,10 +158,15 @@ class VideoTrimService {
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final storagePath = 'avatars/$avatarId/videos/${timestamp}_trimmed.mp4';
 
+      // Upload-Fortschritt an globalen Trim-Dialog melden
       newVideoUrl = await FirebaseStorageService.uploadVideoBytes(
         trimmedBytes,
         fileName: 'trimmed_$timestamp.mp4',
         customPath: storagePath,
+        onProgress: (p) {
+          VideoTrimService.trimProgress.value =
+              (p * 100).clamp(0, 100).round();
+        },
       );
 
       if (newVideoUrl == null) {
@@ -146,20 +176,77 @@ class VideoTrimService {
       // Erstelle Firestore Video-Dokument für Thumbnail-Generierung
       try {
         final mediaId = 'trimmed_${DateTime.now().millisecondsSinceEpoch}';
-        await FirebaseFirestore.instance
+
+        // Versuche Original-Video-Dokument zu finden, um originalFileName zu übernehmen
+        String? trimmedOriginalFileName;
+        try {
+          final qs = await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(avatarId)
+              .collection('videos')
+              .where('url', isEqualTo: videoUrl)
+              .limit(1)
+              .get();
+          if (qs.docs.isNotEmpty) {
+            final data = qs.docs.first.data();
+            final origName = (data['originalFileName'] as String?) ?? '';
+            if (origName.isNotEmpty) {
+              final dot = origName.lastIndexOf('.');
+              if (dot > 0) {
+                final base = origName.substring(0, dot);
+                final ext = origName.substring(dot);
+                trimmedOriginalFileName = '${base}_trimmed$ext';
+              } else {
+                trimmedOriginalFileName = '${origName}_trimmed';
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ Konnte originalFileName für Trim nicht ermitteln: $e');
+        }
+
+        final Map<String, dynamic> docData = {
+          'id': mediaId,
+          'avatarId': avatarId,
+          'url': newVideoUrl,
+          'type': 'video',
+          'createdAt': FieldValue.serverTimestamp(),
+          'aspectRatio': 16 / 9,
+          'durationMs': null,
+        };
+        if (trimmedOriginalFileName != null) {
+          docData['originalFileName'] = trimmedOriginalFileName;
+        }
+
+        final docRef = FirebaseFirestore.instance
             .collection('avatars')
             .doc(avatarId)
             .collection('videos')
-            .doc(mediaId)
-            .set({
-              'url': newVideoUrl,
-              'type': 'video',
-              'createdAt': FieldValue.serverTimestamp(),
-              'aspectRatio': 16 / 9,
-            });
+            .doc(mediaId);
+        await docRef.set(docData);
         debugPrint(
           '✅ Firestore Video-Dokument erstellt für Thumbnail-Generierung',
         );
+
+        // Warte (max. ~30s) darauf, dass die Cloud Function thumbUrl gesetzt hat,
+        // damit der „Video wird getrimmt…“-Dialog erst verschwindet, wenn die Kachel fertig ist.
+        try {
+          const maxTries = 60;
+          for (var i = 0; i < maxTries; i++) {
+            await Future.delayed(const Duration(milliseconds: 500));
+            final snap = await docRef.get();
+            final data = snap.data();
+            final thumb = (data?['thumbUrl'] as String?) ?? '';
+            if (thumb.isNotEmpty) {
+              debugPrint(
+                '🎬 trimVideo: thumbUrl gefunden, Dialog kann geschlossen werden.',
+              );
+              break;
+            }
+          }
+        } catch (e) {
+          debugPrint('⚠️ trimVideo: Fehler beim Warten auf thumbUrl (ignoriert): $e');
+        }
       } catch (e) {
         debugPrint('⚠️ Fehler beim Erstellen Video-Dokument: $e');
       }
@@ -291,6 +378,13 @@ class _TrimDialogState extends State<_TrimDialog> {
             'Video-Länge: ${widget.videoDuration.toStringAsFixed(1)}s\n'
             'Max. erlaubt: ${widget.maxDuration.toStringAsFixed(1)}s',
             style: const TextStyle(fontSize: 14, color: Colors.grey),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Hinweis: Jedes Original-Video kann nur einmal getrimmt werden. '
+            'Für weitere Anpassungen bitte erneut das Original hochladen.',
+            style: TextStyle(fontSize: 11, color: Colors.grey),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
           Text('Start: ${_start.toStringAsFixed(1)}s'),

@@ -210,6 +210,7 @@ class FirebaseStorageService {
     Uint8List bytes, {
     String fileName = 'video.mp4',
     String? customPath,
+    void Function(double progress)? onProgress,
   }) async {
     try {
       debugPrint(
@@ -247,6 +248,9 @@ class FirebaseStorageService {
         final progress = (snapshot.bytesTransferred / snapshot.totalBytes * 100)
             .toStringAsFixed(1);
         debugPrint('📊 uploadVideoBytes Fortschritt: $progress%');
+        if (onProgress != null && snapshot.totalBytes > 0) {
+          onProgress(snapshot.bytesTransferred / snapshot.totalBytes);
+        }
       });
 
       final snapshot = await uploadTask;

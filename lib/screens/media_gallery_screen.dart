@@ -1943,6 +1943,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) return;
 
+    // Merke IDs der neu hochgeladenen Videos, um auf Thumbnails zu warten
+    final List<String> newlyCreatedVideoIds = [];
+
     for (int i = 0; i < _uploadQueue.length; i++) {
       final file = _uploadQueue[i];
 
@@ -2005,13 +2008,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           originalFileName: rawBase, // Original, nicht sanitized
         );
         await _mediaSvc.add(widget.avatarId, media);
+        newlyCreatedVideoIds.add(media.id);
 
         // Nach Upload: "Verarbeitung läuft..." anzeigen
         _uploadProgressNotifier.value = 100;
         _uploadStatusNotifier.value = 'Daten werden verarbeitet...';
-
-        // Warte kurz auf Cloud Function (Video-Thumbnail-Generierung)
-        await Future.delayed(const Duration(seconds: 2));
 
         debugPrint(
           '✅ Video ${i + 1} gespeichert: ID=${media.id}, URL=$url, AspectRatio=$videoAspectRatio',
@@ -2019,6 +2020,16 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       } catch (e) {
         debugPrint('❌ Fehler beim Upload von Video ${i + 1}: $e');
       }
+    }
+
+    // Auf Thumbnails für alle neu hochgeladenen Videos warten (Cloud Functions)
+    try {
+      await _waitForUploadedVideoThumbs(
+        widget.avatarId,
+        newlyCreatedVideoIds,
+      );
+    } catch (_) {
+      // Fehler beim Warten ignorieren – UI wird später bei _load aktualisiert
     }
 
     // Upload abgeschlossen
@@ -2034,6 +2045,48 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         buildSuccessSnackBar('$uploadedCount Videos erfolgreich hochgeladen!'),
       );
+    }
+  }
+
+  /// Wartet (kurz) darauf, dass für neu hochgeladene Videos die thumbUrl
+  /// in den Media-Dokumenten gesetzt wird (Cloud Functions), bevor der
+  /// Upload-Dialog verschwindet.
+  Future<void> _waitForUploadedVideoThumbs(
+    String avatarId,
+    List<String> mediaIds,
+  ) async {
+    if (mediaIds.isEmpty) return;
+    final remaining = mediaIds.toSet();
+    const int maxTries = 60; // ~30s bei 500ms Delay
+
+    for (int attempt = 0;
+        attempt < maxTries && remaining.isNotEmpty && mounted;
+        attempt++) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      try {
+        final col = FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(avatarId)
+            .collection('videos');
+
+        final snaps = await Future.wait(
+          remaining.map((id) => col.doc(id).get()),
+        );
+
+        int idx = 0;
+        for (final snap in snaps) {
+          final mediaId = remaining.elementAt(idx);
+          idx++;
+          if (!snap.exists) continue;
+          final data = snap.data();
+          final thumb = (data?['thumbUrl'] as String?) ?? '';
+          if (thumb.isNotEmpty) {
+            remaining.remove(mediaId);
+          }
+        }
+      } catch (_) {
+        // Ignorieren und im nächsten Versuch erneut probieren
+      }
     }
   }
 

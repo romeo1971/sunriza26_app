@@ -171,6 +171,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   String? _pendingAvatarId; // für Navigation mit nur avatarId
   final List<String> _imageUrls = [];
   final List<String> _videoUrls = [];
+  // Web-Only: URLs von frisch getrimmten Videos, für die die „Fertig stellen“-Kachel angezeigt wird
+  final Set<String> _recentlyTrimmedVideoUrls = {};
   final List<String> _textFileUrls = [];
   final Map<String, String> _mediaOriginalNames = {}; // URL -> originalFileName
   bool _mediaOriginalNamesLoaded = false; // verhindert kurzzeitigen Zahlennamen
@@ -1704,6 +1706,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             isDeleteMode: _isDeleteMode,
             selectedRemoteVideos: _selectedRemoteVideos,
             selectedLocalVideos: _selectedLocalVideos,
+            recentlyTrimmedVideoUrls: _recentlyTrimmedVideoUrls,
             // Callbacks
             getHeroVideoUrl: _getHeroVideoUrl,
             playNetworkInline: _playNetworkInline,
@@ -4336,6 +4339,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       debugPrint('🎯 updateAvatar returned $ok');
       if (ok) {
         _applyAvatar(updated);
+        // Web: „Fertig stellen“-Zustand zurücksetzen, sobald Hero-Video erfolgreich gesetzt wurde
+        if (kIsWeb) {
+          setState(() {
+            _recentlyTrimmedVideoUrls.clear();
+          });
+        }
         await _initInlineFromHero();
         if (!mounted) return;
         _showSystemSnack(
@@ -5696,7 +5705,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           );
         }
 
-        // WEB: Blockierender Progress-Dialog mit Fortschritt
+        // WEB: Blockierender Progress-Dialog mit echtem Fortschritt (0–100 %)
         if (kIsWeb) {
           final locSvc = context.read<LocalizationService>();
           final progress = ValueNotifier<double>(0.0);
@@ -5732,6 +5741,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     bytes,
                     fileName: origName,
                     customPath: path,
+                    onProgress: (p) {
+                      final perFileWeight = 1.0 / result.files.length;
+                      final total =
+                          (i * perFileWeight) + (p * perFileWeight);
+                      progress.value = total.clamp(0.0, 1.0);
+                    },
                   );
 
                   if (url != null) {
@@ -5760,9 +5775,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                   }
                 } catch (e) {
                   debugPrint('❌ Fehler bei Video ${i + 1}: $e');
-                } finally {
-                  final perFile = 1.0 / result.files.length;
-                  progress.value = (i + 1) * perFile;
+                }
+              }
+
+              // Nach Abschluss aller Uploads auf Thumbnails warten,
+              // damit der Dialog erst schließt, wenn alle JPEGs da sind
+              if (newlyUploadedUrls.isNotEmpty) {
+                try {
+                  await _waitForVideoThumbs(avatarId, newlyUploadedUrls);
+                } catch (_) {
+                  // Ignorieren – Fallback ist normales Reload unten
                 }
               }
             },
@@ -9318,6 +9340,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           // Fallback: falls nicht gefunden, vorn einfügen
           _videoUrls.insert(0, newVideoUrl);
         }
+        // Web: frisch getrimmtes Video für „Fertig stellen“-Kachel markieren
+        if (kIsWeb) {
+          _recentlyTrimmedVideoUrls
+            ..clear()
+            ..add(newVideoUrl);
+        }
       });
 
       // Altes Video in Storage löschen (best effort)
@@ -9535,6 +9563,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       setState(() {
         if (!_videoUrls.contains(newVideoUrl)) {
           _videoUrls.insert(0, newVideoUrl);
+        }
+        // Web: frisch getrimmtes Hero-Video für „Fertig stellen“-Kachel markieren
+        if (kIsWeb) {
+          _recentlyTrimmedVideoUrls
+            ..clear()
+            ..add(newVideoUrl);
         }
       });
 

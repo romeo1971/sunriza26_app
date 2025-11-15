@@ -51,6 +51,9 @@ class DetailsVideoMediaSection extends StatelessWidget {
   final Set<String> selectedRemoteVideos;
   final Set<String> selectedLocalVideos;
 
+  // Web-Only: frisch getrimmte Video-URLs, für die „Fertig stellen“ angezeigt wird
+  final Set<String> recentlyTrimmedVideoUrls;
+
   // Callbacks
   final String? Function() getHeroVideoUrl;
   final Future<void> Function(String url) playNetworkInline;
@@ -82,6 +85,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
     required this.isDeleteMode,
     required this.selectedRemoteVideos,
     required this.selectedLocalVideos,
+    required this.recentlyTrimmedVideoUrls,
     required this.getHeroVideoUrl,
     required this.playNetworkInline,
     required this.thumbnailForRemote,
@@ -477,11 +481,20 @@ class DetailsVideoMediaSection extends StatelessWidget {
         : (videoAudioEnabled[url] ?? false); // Hero = IMMER OFF
     // Prüfe, ob es ein Trim-Video ist (für Icon-Ausblendung)
     final isTrimmed = url.contains('_trim') || url.contains('_trimmed');
+    // Web: Solange eine frisch getrimmte Kachel existiert, sind alle anderen Videos gesperrt
+    final bool lockOtherInteractions = kIsWeb &&
+        recentlyTrimmedVideoUrls.isNotEmpty &&
+        !recentlyTrimmedVideoUrls.contains(url);
     // Web: Button "Fertig stellen" erst zeigen, wenn ein echtes Thumbnail vorliegt
     return Stack(
       children: [
         Positioned.fill(
-          child: _buildVideoThumbNetwork(context, url, isHero: isHero),
+          child: _buildVideoThumbNetwork(
+            context,
+            url,
+            isHero: isHero,
+            hideTrash: kIsWeb && recentlyTrimmedVideoUrls.contains(url),
+          ),
         ),
         // Hero-Video-Overlay (star)
         if (isHero)
@@ -500,17 +513,20 @@ class DetailsVideoMediaSection extends StatelessWidget {
               ),
             ),
           ),
-        // Audio ON/OFF Toggle (oben rechts) - NUR wenn kein Trim-Video
-        if (!isTrimmed)
+        // Audio ON/OFF Toggle (oben rechts) - nur auf Mobile/Desktop, nicht im Web
+        // und nur wenn kein Trim-Video
+        if (!kIsWeb && !isTrimmed)
           Positioned(
             top: 4,
             right: 6,
             child: MouseRegion(
-              cursor: isHero
+              cursor: (isHero || lockOtherInteractions)
                   ? SystemMouseCursors.basic
                   : SystemMouseCursors.click,
               child: GestureDetector(
-                onTap: isHero ? null : () => toggleVideoAudio(url),
+                onTap: (isHero || lockOtherInteractions)
+                    ? null
+                    : () => toggleVideoAudio(url),
                 child: Container(
                   width: 40,
                   height: 40,
@@ -551,11 +567,15 @@ class DetailsVideoMediaSection extends StatelessWidget {
     BuildContext context,
     String url, {
     required bool isHero,
+    bool hideTrash = false,
   }) {
     final selected = selectedRemoteVideos.contains(url);
 
     // Hero-Video bekommt GMBC Gradient Border
     if (isHero) {
+      final bool lockHeroInteractions = kIsWeb &&
+          recentlyTrimmedVideoUrls.isNotEmpty &&
+          !recentlyTrimmedVideoUrls.contains(url);
       return AspectRatio(
         aspectRatio: 9 / 16,
         child: Container(
@@ -601,14 +621,18 @@ class DetailsVideoMediaSection extends StatelessWidget {
                       return Container(color: Colors.black26);
                     },
                   ),
-                // Trash Icon (unten rechts)
+                // Trash Icon (unten rechts) – Hero immer mit Trash, unabhängig von Trim-Status
                 Positioned(
                   right: 6,
                   bottom: 6,
                   child: MouseRegion(
-                    cursor: SystemMouseCursors.click,
+                    cursor: lockHeroInteractions
+                        ? SystemMouseCursors.basic
+                        : SystemMouseCursors.click,
                     child: GestureDetector(
-                      onTap: () => onTrashIconTap(url),
+                      onTap: lockHeroInteractions
+                          ? null
+                          : () => onTrashIconTap(url),
                       child: Container(
                         width: 32,
                         height: 32,
@@ -636,9 +660,11 @@ class DetailsVideoMediaSection extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Trim Icon (unten links) - NUR für Hero-Video in Galerie
-                // und nur, wenn es sich NICHT bereits um ein getrimmtes Video handelt
+                // Trim Icon (unten links) - nur für Hero-Video in Galerie,
+                // solange kein frisch getrimmtes Video auf „Fertig stellen“ wartet
+                // und das aktuelle Video nicht bereits getrimmt ist.
                 if (onTrimVideo != null &&
+                    recentlyTrimmedVideoUrls.isEmpty &&
                     !url.contains('_trim') &&
                     !url.contains('_trimmed'))
                   Positioned(
@@ -705,27 +731,50 @@ class DetailsVideoMediaSection extends StatelessWidget {
               ),
             // Tap: setzt Hero-Video (nur wenn nicht bereits Hero)
             // Web: Kachel erst klickbar, wenn JPEG-Thumbnail vorhanden ist
+            // UND keine andere frisch getrimmte Kachel gerade auf „Fertig stellen“ wartet
             if (!isHero &&
                 (!kIsWeb ||
-                    (thumbUrlForMedia?.call(url)?.isNotEmpty ?? false)))
+                    ((thumbUrlForMedia?.call(url)?.isNotEmpty ?? false) &&
+                        !(kIsWeb &&
+                            recentlyTrimmedVideoUrls.isNotEmpty &&
+                            !recentlyTrimmedVideoUrls.contains(url)))))
               Positioned.fill(
                 child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
+                  cursor: (kIsWeb &&
+                          recentlyTrimmedVideoUrls.isNotEmpty &&
+                          !recentlyTrimmedVideoUrls.contains(url))
+                      ? SystemMouseCursors.basic
+                      : SystemMouseCursors.click,
                   child: Material(
                     color: Colors.transparent,
-                    child: InkWell(onTap: () => setHeroVideo(url)),
+                    child: InkWell(
+                      onTap: (kIsWeb &&
+                              recentlyTrimmedVideoUrls.isNotEmpty &&
+                              !recentlyTrimmedVideoUrls.contains(url))
+                          ? null
+                          : () => setHeroVideo(url),
+                    ),
                   ),
                 ),
               ),
-            // Trash Icon (unten rechts) mit Cursor Pointer - NUR wenn kein Trim-Video
-            if (!url.contains('_trim') && !url.contains('_trimmed'))
+            // Trash Icon (unten rechts) mit Cursor Pointer
+            // Web: bleibt sichtbar, außer auf der einen „Fertig stellen“-Kachel (hideTrash=true)
+            if (!hideTrash)
               Positioned(
                 right: 6,
                 bottom: 6,
                 child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
+                  cursor: (kIsWeb &&
+                          recentlyTrimmedVideoUrls.isNotEmpty &&
+                          !recentlyTrimmedVideoUrls.contains(url))
+                      ? SystemMouseCursors.basic
+                      : SystemMouseCursors.click,
                   child: GestureDetector(
-                    onTap: () => onTrashIconTap(url),
+                    onTap: (kIsWeb &&
+                            recentlyTrimmedVideoUrls.isNotEmpty &&
+                            !recentlyTrimmedVideoUrls.contains(url))
+                        ? null
+                        : () => onTrashIconTap(url),
                     child: Container(
                       width: 32,
                       height: 32,
@@ -755,9 +804,14 @@ class DetailsVideoMediaSection extends StatelessWidget {
               ),
             // Web-Only: kleiner "Fertig stellen"-Button auf der Kachel,
             // der exakt denselben Tap auslöst wie ein Klick auf die ganze Kachel.
-            // Wird erst angezeigt, wenn das JPEG-Thumbnail vorhanden ist.
+            // Variante A: nur auf der „hängenden“ Trim-Kachel anzeigen:
+            //  - Web
+            //  - nicht Hero
+            //  - URL ist als „frisch getrimmt“ markiert (recentlyTrimmedVideoUrls)
+            //  - JPEG-Thumbnail ist bereits vorhanden
             if (!isHero &&
                 kIsWeb &&
+                recentlyTrimmedVideoUrls.contains(url) &&
                 (thumbUrlForMedia?.call(url)?.isNotEmpty ?? false))
               Positioned(
                 left: 6,
@@ -772,8 +826,10 @@ class DetailsVideoMediaSection extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(6),
+                        gradient: Theme.of(context)
+                            .extension<AppGradients>()!
+                            .magentaBlue,
                         border: Border.all(color: const Color(0x66FFFFFF)),
                       ),
                       child: const Text(
@@ -781,7 +837,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
                         style: TextStyle(
                           color: Colors.white,
                           fontSize: 10,
-                          fontWeight: FontWeight.w500,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
