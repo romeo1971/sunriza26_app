@@ -1,8 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:video_player/video_player.dart';
 import 'firebase_storage_service.dart';
@@ -21,8 +19,7 @@ class VideoTrimService {
     required String avatarId,
     double? maxDuration,
   }) async {
-    // Verwende lokale Handles statt BuildContext nach async Gaps
-    final navigator = Navigator.of(context);
+    // Verwende lokalen Messenger statt BuildContext nach async Gaps
     final messenger = ScaffoldMessenger.maybeOf(context);
     // 1. Lade Video-Dauer
     double videoDuration = 0;
@@ -73,8 +70,6 @@ class VideoTrimService {
     required String avatarId,
     required double start,
     required double end,
-    NavigatorState? nav,
-    ScaffoldMessengerState? messenger,
   }) async {
     String? newVideoUrl;
     // BuildContext nicht über async Gaps verwenden → vorab Handles sichern
@@ -129,21 +124,18 @@ class VideoTrimService {
 
       debugPrint('✅ Video getrimmt, speichere...');
 
-      // Temporäre Datei erstellen
-      final tempDir = await getTemporaryDirectory();
-      final outputFile = File(
-        '${tempDir.path}/trimmed_${DateTime.now().millisecondsSinceEpoch}.mp4',
+      // Getrimmtes Video direkt aus Bytes zu Firebase hochladen (plattformunabhängig, auch Web)
+      final trimmedBytes = trimResponse.bodyBytes;
+      debugPrint(
+        '💾 Getrimmtes Video-Bytes erhalten: ${trimmedBytes.lengthInBytes} bytes',
       );
 
-      await outputFile.writeAsBytes(trimResponse.bodyBytes);
-      debugPrint('💾 Video gespeichert: ${outputFile.path}');
-
-      // Getrimmtes Video zu Firebase hochladen
       final timestamp = DateTime.now().millisecondsSinceEpoch;
       final storagePath = 'avatars/$avatarId/videos/${timestamp}_trimmed.mp4';
 
-      newVideoUrl = await FirebaseStorageService.uploadVideo(
-        outputFile,
+      newVideoUrl = await FirebaseStorageService.uploadVideoBytes(
+        trimmedBytes,
+        fileName: 'trimmed_$timestamp.mp4',
         customPath: storagePath,
       );
 
@@ -171,11 +163,6 @@ class VideoTrimService {
       } catch (e) {
         debugPrint('⚠️ Fehler beim Erstellen Video-Dokument: $e');
       }
-
-      // Cleanup temp file
-      try {
-        await outputFile.delete();
-      } catch (_) {}
 
       // Close loading dialog
       navigator.pop();
