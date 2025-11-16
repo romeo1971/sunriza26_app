@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -2768,6 +2769,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   }
 
   Future<void> _startRecording() async {
+    if (kIsWeb) {
+      _showSystemSnack(
+        'Sprachaufnahme ist im Web-Browser noch nicht verfügbar. Bitte die mobile App verwenden.',
+      );
+      return;
+    }
     try {
       // Berechtigungen und Start
       bool has = await _recorder.hasPermission();
@@ -2802,14 +2809,20 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   }
 
   Future<void> _startNewSegment() async {
-    // Temporären Pfad für Aufnahme generieren
-    final dir = await getTemporaryDirectory();
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    final path = '${dir.path}/segment_$timestamp.wav';
+    // Temporären Pfad nur auf Nicht‑Web generieren – Web braucht keinen FS-Zugriff
+    String? path;
+    if (kIsWeb) {
+      path = null;
+    } else {
+      final dir = await getTemporaryDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      path = '${dir.path}/segment_$timestamp.wav';
+    }
 
     await _recorder.start(
-      RecordConfig(encoder: AudioEncoder.wav, sampleRate: 16000),
-      path: path,
+      const RecordConfig(encoder: AudioEncoder.wav, sampleRate: 16000),
+      // Web ignoriert den Pfad, native Plattformen nutzen temporäres Verzeichnis
+      path: path ?? '',
     );
     _segmentStartAt = DateTime.now();
     _ampSub?.cancel();
