@@ -1185,8 +1185,9 @@ class ExploreScreenState extends State<ExploreScreen> {
         // Provider-Name ermitteln
         String providerName = (m['providerName'] as String?) ?? '';
         if (providerName.isEmpty) {
-          if (id == 'tiktok') providerName = 'TikTok';
-          else if (id == 'instagram') providerName = 'Instagram';
+          if (id == 'tiktok') {
+            providerName = 'TikTok';
+          } else if (id == 'instagram') providerName = 'Instagram';
           else if (id == 'facebook') providerName = 'Facebook';
           else providerName = id;
         }

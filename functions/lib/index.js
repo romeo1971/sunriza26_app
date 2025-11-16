@@ -43,7 +43,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateMissingVideoThumbs = exports.trimVideo = exports.extractVideoFrameAtPosition = exports.backfillVideoDocuments = exports.backfillOriginalFileNames = exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.fixVideoAspectRatios = exports.onMediaCreateSetDocumentThumb = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = exports.handleMediaPurchaseWebhook = exports.mediaCheckoutWebhook = exports.createMediaCheckoutSession = exports.copyMediaToMoments = void 0;
+exports.generateMissingVideoThumbs = exports.trimVideo = exports.extractVideoFrameAtPosition = exports.backfillVideoDocuments = exports.backfillOriginalFileNames = exports.onTimelineAssetDelete = exports.onMediaDeleteCleanup = exports.validateRAGSystem = exports.generateAvatarResponse = exports.processDocument = exports.talkingHeadCallback = exports.talkingHeadStatus = exports.createTalkingHeadJob = exports.llm = exports.restoreAvatarCovers = exports.spendServiceCredits = exports.fixVideoAspectRatios = exports.onMediaCreateSetDocumentThumb = exports.onMediaCreateSetVideoThumb = exports.onMediaCreateSetImageThumb = exports.onMediaCreateSetAudioThumb = exports.onMediaCreateSetAvatarImage = exports.onMediaObjectDelete = exports.backfillAudioWaveforms = exports.scheduledBackfillAudioThumbs = exports.backfillAudioThumbsAllAvatars = exports.scheduledBackfillThumbs = exports.backfillThumbsAllAvatars = exports.cleanAllAvatarsNow = exports.scheduledStorageClean = exports.cleanStorageAndFixDocThumbs = exports.tts = exports.testTTS = exports.healthCheck = exports.generateLiveVideo = exports.handleMediaPurchaseWebhook = exports.mediaCheckoutWebhook = exports.createMediaCheckoutSession = exports.copyMediaToMoments = void 0;
 require("dotenv/config");
 const functions = __importStar(require("firebase-functions/v1"));
 const admin = __importStar(require("firebase-admin"));
@@ -63,6 +63,7 @@ const path = __importStar(require("path"));
 const sharp_1 = __importDefault(require("sharp"));
 const functionsStorage = __importStar(require("firebase-functions/v2/storage"));
 const https_1 = require("firebase-functions/v2/https");
+const https_2 = require("firebase-functions/v2/https");
 // Exports
 __exportStar(require("./avatarChat"), exports);
 __exportStar(require("./memoryApi"), exports);
@@ -1196,6 +1197,49 @@ exports.fixVideoAspectRatios = functions
         }
     });
 });
+// 🧮 Credits für Services (Dynamics, LiveAvatar, VoiceClone) abbuchen
+exports.spendServiceCredits = (0, https_2.onCall)({ region: 'us-central1' }, async (req) => {
+    var _a;
+    const uid = (_a = req.auth) === null || _a === void 0 ? void 0 : _a.uid;
+    if (!uid) {
+        throw new https_2.HttpsError('unauthenticated', 'User must be authenticated');
+    }
+    const { credits, service, avatarId, metadata } = req.data || {};
+    const creditNum = parseInt(String(credits), 10);
+    if (!creditNum || creditNum <= 0) {
+        throw new https_2.HttpsError('invalid-argument', 'credits must be a positive integer');
+    }
+    if (!service || typeof service !== 'string') {
+        throw new https_2.HttpsError('invalid-argument', 'service is required');
+    }
+    const db = admin.firestore();
+    const userRef = db.collection('users').doc(uid);
+    return await db.runTransaction(async (tx) => {
+        var _a;
+        const snap = await tx.get(userRef);
+        const data = snap.data() || {};
+        const current = (_a = data.credits) !== null && _a !== void 0 ? _a : 0;
+        if (current < creditNum) {
+            throw new https_2.HttpsError('failed-precondition', 'NOT_ENOUGH_CREDITS');
+        }
+        tx.set(userRef, {
+            credits: admin.firestore.FieldValue.increment(-creditNum),
+            creditsSpent: admin.firestore.FieldValue.increment(creditNum),
+        }, { merge: true });
+        const txRef = userRef.collection('transactions').doc();
+        tx.set(txRef, {
+            userId: uid,
+            type: 'service_spent',
+            service,
+            credits: creditNum,
+            avatarId: avatarId || null,
+            metadata: metadata || null,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            status: 'completed',
+        });
+        return { ok: true, remaining: current - creditNum };
+    });
+});
 // Restore/Set avatar cover images if missing or broken
 exports.restoreAvatarCovers = functions
     .region('us-central1')
@@ -1981,10 +2025,12 @@ exports.trimVideo = functions
             }
             const buf = Buffer.from(await videoRes.arrayBuffer());
             fs.writeFileSync(src, buf);
-            // Video mit ffmpeg trimmen (SCHNELL: Stream Copy ohne Re-Encoding!)
+            // Video mit ffmpeg trimmen
             const duration = end_time - start_time;
+            const hasFraction = (n) => Math.abs(n - Math.round(n)) > 1e-3;
+            const useStreamCopy = !hasFraction(start_time) && !hasFraction(end_time);
             await new Promise((resolve, reject) => {
-                fluent_ffmpeg_1.default(src)
+                const cmd = fluent_ffmpeg_1.default(src)
                     .on('end', () => {
                     console.log(`✅ Video getrimmt: ${duration}s`);
                     resolve();
@@ -1994,11 +2040,16 @@ exports.trimVideo = functions
                     reject(e);
                 })
                     .seekInput(start_time)
-                    .duration(duration)
-                    .videoCodec('copy') // STREAM COPY = SUPER SCHNELL!
-                    .audioCodec('copy') // STREAM COPY = SUPER SCHNELL!
-                    .output(output)
-                    .run();
+                    .duration(duration);
+                if (useStreamCopy) {
+                    // Exakte Sekunden bei Ganzzahlen sind mit Stream Copy ok und sehr schnell
+                    cmd.videoCodec('copy').audioCodec('copy');
+                }
+                else {
+                    // Bei Nachkommastellen präziser trimmen → re-encode
+                    cmd.videoCodec('libx264').audioCodec('aac');
+                }
+                cmd.output(output).run();
             });
             // Getrimmtes Video zurückgeben
             const trimmedBuffer = fs.readFileSync(output);

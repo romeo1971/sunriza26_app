@@ -177,12 +177,25 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   bool _voiceCloneEnabled = true;
   int _userCredits = 0;
   int _lastVoiceChars = 0;
+  int _voiceCloneTotalChars = 0;
 
   Future<void> _loadUserCredits() async {
     try {
       final c = await CreditsService.getUserCredits();
       if (mounted) {
         setState(() => _userCredits = c);
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _loadVoiceCloneUsage() async {
+    try {
+      final total = await CreditsService.getVoiceCloneChatChars();
+      if (mounted) {
+        setState(() {
+          _voiceCloneTotalChars = total;
+          _lastVoiceChars = total % 250;
+        });
       }
     } catch (_) {}
   }
@@ -761,8 +774,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         .snapshots()
         .listen((snapshot) {
           if (snapshot.exists && mounted) {
+            final data = AvatarData.fromMap(snapshot.data()!);
+            final bool chatVoiceEnabled =
+                (data.training?['voiceCloneChatEnabled'] as bool?) ?? true;
             setState(() {
-              _avatarData = AvatarData.fromMap(snapshot.data()!);
+              _avatarData = data;
+              _voiceCloneEnabled = chatVoiceEnabled;
             });
             // WICHTIG: Timeline NEU LADEN bei Änderungen (Bilder gelöscht/verschoben/etc.)
             _loadAndStartImageTimeline(avatarId);
@@ -776,8 +793,9 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    // Credits für Anzeige laden
+    // Credits & VoiceClone-Nutzung für Anzeige laden
     unawaited(_loadUserCredits());
+    unawaited(_loadVoiceCloneUsage());
 
     // Initialize Lipsync Strategy (Streaming bevorzugt; fallback per Flag)
     final useOrch = EnvService.orchestratorEnabled();
@@ -906,8 +924,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             .get()
             .timeout(const Duration(seconds: 5));
         if (doc.exists && mounted) {
+          final data = AvatarData.fromMap(doc.data()!);
+          final bool chatVoiceEnabled =
+              (data.training?['voiceCloneChatEnabled'] as bool?) ?? true;
           setState(() {
-            _avatarData = AvatarData.fromMap(doc.data()!);
+            _avatarData = data;
+            _voiceCloneEnabled = chatVoiceEnabled;
           });
         }
         // Starte Firestore-Listener für Live-Updates
@@ -922,8 +944,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             .get()
             .timeout(const Duration(seconds: 5));
         if (doc.exists && mounted) {
+          final data = AvatarData.fromMap(doc.data()!);
+          final bool chatVoiceEnabled =
+              (data.training?['voiceCloneChatEnabled'] as bool?) ?? true;
           setState(() {
-            _avatarData = AvatarData.fromMap(doc.data()!);
+            _avatarData = data;
+            _voiceCloneEnabled = chatVoiceEnabled;
           });
           // Starte Firestore-Listener für Live-Updates
           _startAvatarListener(widget.avatarId!);
@@ -3089,13 +3115,18 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       return;
     }
 
-    // Credits: VoiceClone im Chat (250 Zeichen = 1 Credit)
-      try {
-        final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-        final int charCount = normalized.length;
-        if (charCount > 0) {
-          final int creditsNeeded =
-              (charCount / 250).ceil().clamp(1, 1000);
+    // Credits: VoiceClone im Chat (250 Zeichen = 1 Credit, kumuliert & persistent)
+    try {
+      final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+      final int charCount = normalized.length;
+      if (charCount > 0) {
+        final int prevTotal = _voiceCloneTotalChars;
+        final int newTotal = prevTotal + charCount;
+        final int prevCredits = prevTotal ~/ 250;
+        final int newCredits = newTotal ~/ 250;
+        final int creditsNeeded = (newCredits - prevCredits).clamp(0, 1000);
+
+        if (creditsNeeded > 0) {
           final ok = await CreditsService.trySpendCredits(
             credits: creditsNeeded,
             actionType: 'voiceCloneChat',
@@ -3109,19 +3140,27 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             );
             return;
           }
-          setState(() {
-            // Zeichen zyklisch zählen: Rest nach vollen 250er-Blöcken
-            final total = _lastVoiceChars + charCount;
-            _lastVoiceChars = total % 250;
-            _userCredits = (_userCredits - creditsNeeded).clamp(0, 1000000);
-          });
         }
-      } catch (e) {
-        debugPrint('⚠️ VoiceClone Chat Credits Fehler: $e');
+
+        // Persistiere neuen Zeichenzähler (auch wenn kein voller Credit erreicht)
+        await CreditsService.setVoiceCloneChatChars(newTotal);
+
+        setState(() {
+          _voiceCloneTotalChars = newTotal;
+          _lastVoiceChars = newTotal % 250;
+          if (creditsNeeded > 0) {
+            _userCredits =
+                (_userCredits - creditsNeeded).clamp(0, 1000000);
+          }
+        });
       }
+    } catch (e) {
+      debugPrint('⚠️ VoiceClone Chat Credits Fehler: $e');
+    }
 
     // PRIORITÄT: Streaming (schnell!)
-    if (_lipsync.visemeStream != null &&
+    if (_voiceCloneEnabled &&
+        _lipsync.visemeStream != null &&
         _cachedVoiceId != null &&
         _cachedVoiceId!.isNotEmpty) {
       await _addMessage(text, false);

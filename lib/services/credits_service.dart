@@ -22,6 +22,32 @@ class CreditsService {
     }
   }
 
+  /// Lädt den kumulierten VoiceClone-Chat-Zeichenzähler (für 250er-Zyklen).
+  static Future<int> getVoiceCloneChatChars() async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return 0;
+    try {
+      final doc = await _fs.collection('users').doc(uid).get();
+      final data = doc.data();
+      if (data == null) return 0;
+      return (data['voiceCloneChatChars'] as num?)?.toInt() ?? 0;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  /// Speichert den kumulierten VoiceClone-Chat-Zeichenzähler.
+  static Future<void> setVoiceCloneChatChars(int chars) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      await _fs
+          .collection('users')
+          .doc(uid)
+          .set({'voiceCloneChatChars': chars}, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
   /// Versucht, eine bestimmte Anzahl Credits für eine Aktion zu verbrauchen.
   /// Gibt `true` zurück, wenn genug Credits vorhanden waren und die Abbuchung
   /// erfolgreich war, sonst `false`.
