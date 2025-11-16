@@ -8,6 +8,7 @@ class LiveAvatarTile extends StatefulWidget {
   final Function(String model)? onGenerate; // ← Jetzt mit Model parameter!
   final bool isGenerating;
   final String? agentId;
+  final int? costCredits;
 
   const LiveAvatarTile({
     super.key,
@@ -16,6 +17,7 @@ class LiveAvatarTile extends StatefulWidget {
     this.onGenerate,
     this.isGenerating = false,
     this.agentId,
+    this.costCredits,
   });
 
   @override
@@ -204,6 +206,17 @@ class _LiveAvatarTileState extends State<LiveAvatarTile> {
               ),
             ),
           ),
+
+          if (widget.costCredits != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Kosten: ${widget.costCredits} Credits',
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 11,
+              ),
+            ),
+          ],
 
           // Agent ID Anzeige
           if (widget.agentId != null) ...[

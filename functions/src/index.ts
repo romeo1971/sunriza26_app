@@ -22,6 +22,7 @@ import * as path from 'path';
 import sharp from 'sharp';
 import * as functionsStorage from 'firebase-functions/v2/storage';
 import { onRequest } from 'firebase-functions/v2/https';
+import { onCall, HttpsError } from 'firebase-functions/v2/https';
 
 // Exports
 export * from './avatarChat';
@@ -1114,6 +1115,60 @@ export const fixVideoAspectRatios = functions
       }
     });
   });
+
+// 🧮 Credits für Services (Dynamics, LiveAvatar, VoiceClone) abbuchen
+export const spendServiceCredits = onCall({ region: 'us-central1' }, async (req) => {
+  const uid = req.auth?.uid;
+  if (!uid) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { credits, service, avatarId, metadata } = req.data || {};
+
+  const creditNum = parseInt(String(credits), 10);
+  if (!creditNum || creditNum <= 0) {
+    throw new HttpsError('invalid-argument', 'credits must be a positive integer');
+  }
+  if (!service || typeof service !== 'string') {
+    throw new HttpsError('invalid-argument', 'service is required');
+  }
+
+  const db = admin.firestore();
+  const userRef = db.collection('users').doc(uid);
+
+  return await db.runTransaction(async (tx) => {
+    const snap = await tx.get(userRef);
+    const data = snap.data() || {};
+    const current = (data.credits as number | undefined) ?? 0;
+
+    if (current < creditNum) {
+      throw new HttpsError('failed-precondition', 'NOT_ENOUGH_CREDITS');
+    }
+
+    tx.set(
+      userRef,
+      {
+        credits: admin.firestore.FieldValue.increment(-creditNum),
+        creditsSpent: admin.firestore.FieldValue.increment(creditNum),
+      },
+      { merge: true },
+    );
+
+    const txRef = userRef.collection('transactions').doc();
+    tx.set(txRef, {
+      userId: uid,
+      type: 'service_spent',
+      service,
+      credits: creditNum,
+      avatarId: avatarId || null,
+      metadata: metadata || null,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      status: 'completed',
+    });
+
+    return { ok: true, remaining: current - creditNum };
+  });
+});
 
 // Restore/Set avatar cover images if missing or broken
 export const restoreAvatarCovers = functions

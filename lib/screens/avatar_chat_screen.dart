@@ -30,6 +30,7 @@ import '../services/moments_service.dart';
 import '../services/media_purchase_service.dart';
 import '../models/media_models.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/credits_service.dart';
 import '../widgets/liveportrait_canvas.dart';
 import '../widgets/chat_bubbles/user_message_bubble.dart';
 import '../widgets/chat_bubbles/avatar_message_bubble.dart';
@@ -171,6 +172,20 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   Map<String, bool> _imageActive = {}; // URL -> aktiv
   bool _isImageLoopMode = true;
   bool _isTimelineEnabled = true;
+
+  // VoiceClone On/Off (wird pro Avatar gespeichert)
+  bool _voiceCloneEnabled = true;
+  int _userCredits = 0;
+  int _lastVoiceChars = 0;
+
+  Future<void> _loadUserCredits() async {
+    try {
+      final c = await CreditsService.getUserCredits();
+      if (mounted) {
+        setState(() => _userCredits = c);
+      }
+    } catch (_) {}
+  }
 
   // Timeline-Daten aus Firebase laden und Timer starten
   Future<void> _loadAndStartImageTimeline(String avatarId) async {
@@ -761,6 +776,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Credits für Anzeige laden
+    unawaited(_loadUserCredits());
 
     // Initialize Lipsync Strategy (Streaming bevorzugt; fallback per Flag)
     final useOrch = EnvService.orchestratorEnabled();
@@ -2580,22 +2597,108 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             ],
           ),
         ),
-        ValueListenableBuilder<bool>(
-          valueListenable: LiveKitService().connected,
-          builder: (context, connected, _) {
-            if (!connected) return const SizedBox.shrink();
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: Colors.green, // verbunden = grün
-                borderRadius: BorderRadius.circular(10),
+        Row(
+          children: [
+            if (_userCredits > 0 || _lastVoiceChars > 0) ...[
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                margin: const EdgeInsets.only(right: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      '${_lastVoiceChars > 0 ? _lastVoiceChars : 0}/250',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.diamond, size: 11, color: Colors.white),
+                    const SizedBox(width: 2),
+                    Text(
+                      '$_userCredits',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              child: const Text(
-                'LKC',
-                style: TextStyle(color: Colors.white, fontSize: 11),
+            ],
+            Tooltip(
+              message: _voiceCloneEnabled
+                  ? 'VoiceClone an – Antworten mit Stimme (Credits werden verbraucht)'
+                  : 'VoiceClone aus – nur Textantworten (keine Credits)',
+              child: GestureDetector(
+                onTap: () async {
+                  setState(() => _voiceCloneEnabled = !_voiceCloneEnabled);
+                  final avatarId = _avatarData?.id;
+                  if (avatarId != null) {
+                    try {
+                      await FirebaseFirestore.instance
+                          .collection('avatars')
+                          .doc(avatarId)
+                          .update({
+                        'training.voiceCloneChatEnabled': _voiceCloneEnabled,
+                      });
+                    } catch (_) {}
+                  }
+                },
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: _voiceCloneEnabled
+                        ? Colors.purple
+                        : Colors.black.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.record_voice_over,
+                        size: 14,
+                        color: Colors.white.withValues(alpha: 0.9),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        _voiceCloneEnabled ? 'VC on' : 'VC off',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            );
-          },
+            ),
+            const SizedBox(width: 8),
+            ValueListenableBuilder<bool>(
+              valueListenable: LiveKitService().connected,
+              builder: (context, connected, _) {
+                if (!connected) return const SizedBox.shrink();
+                return Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: Colors.green, // verbunden = grün
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Text(
+                    'LKC',
+                    style: TextStyle(color: Colors.white, fontSize: 11),
+                  ),
+                );
+              },
+            ),
+          ],
         ),
       ],
     );
@@ -2864,7 +2967,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   bool _isTtsEnabled() {
     final v = (dotenv.env['TTS_ENABLED'] ?? '').trim().toLowerCase();
     if (v == '0' || v == 'false' || v == 'off') return false;
-    return true; // Default: an
+    return _voiceCloneEnabled; // zusätzlich per UI toggelbar
   }
 
   String _formatStopwatch(Duration d) {
@@ -2985,6 +3088,37 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       debugPrint('📝 TTS disabled → text-only response');
       return;
     }
+
+    // Credits: VoiceClone im Chat (250 Zeichen = 1 Credit)
+      try {
+        final normalized = text.replaceAll(RegExp(r'\s+'), ' ').trim();
+        final int charCount = normalized.length;
+        if (charCount > 0) {
+          final int creditsNeeded =
+              (charCount / 250).ceil().clamp(1, 1000);
+          final ok = await CreditsService.trySpendCredits(
+            credits: creditsNeeded,
+            actionType: 'voiceCloneChat',
+            avatarId: _avatarData?.id,
+            metadata: {'chars': charCount},
+          );
+          if (!ok) {
+            await _addMessage(text, false);
+            _showSystemSnack(
+              'Zu wenig Credits für VoiceClone-Audio. Text wird ohne Stimme angezeigt.',
+            );
+            return;
+          }
+          setState(() {
+            // Zeichen zyklisch zählen: Rest nach vollen 250er-Blöcken
+            final total = _lastVoiceChars + charCount;
+            _lastVoiceChars = total % 250;
+            _userCredits = (_userCredits - creditsNeeded).clamp(0, 1000000);
+          });
+        }
+      } catch (e) {
+        debugPrint('⚠️ VoiceClone Chat Credits Fehler: $e');
+      }
 
     // PRIORITÄT: Streaming (schnell!)
     if (_lipsync.visemeStream != null &&
@@ -4888,7 +5022,12 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   Future<void> _applyAvatar(AvatarData data) async {
     if (!mounted) return;
-    setState(() => _avatarData = data);
+    final bool chatVoiceEnabled =
+        (data.training?['voiceCloneChatEnabled'] as bool?) ?? true;
+    setState(() {
+      _avatarData = data;
+      _voiceCloneEnabled = chatVoiceEnabled;
+    });
 
     // Auto‑Join LiveKit: nur wenn Lipsync am Avatar aktiviert ist
     final lipsyncEnabled = (data.training?['lipsyncEnabled'] as bool?) ?? true;

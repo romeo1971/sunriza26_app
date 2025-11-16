@@ -30,6 +30,7 @@ import '../data/countries.dart';
 import '../models/avatar_data.dart';
 import '../services/avatar_service.dart';
 import '../services/bithuman_service.dart';
+import '../services/credits_service.dart';
 import '../services/elevenlabs_service.dart';
 import '../services/env_service.dart';
 import '../services/firebase_storage_service.dart';
@@ -395,8 +396,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final TextEditingController _greetingController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final AvatarService _avatarService = AvatarService();
-  // Credits
-  static const int _creditsPerDynamicsGeneration = 25; // TODO: Feintuning
+  // Credits-Konstanten
+  static const int _creditsPerDynamicsGeneration = 5;
+  static const int _creditsPerLiveAvatarGeneration = 25;
+  static const int _creditsPerVoiceCloneGeneration = 5;
   final List<File> _newImageFiles = [];
   final List<File> _newVideoFiles = [];
   final List<File> _newTextFiles = [];
@@ -3202,6 +3205,41 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     'avatars.details.defaultGreeting',
                   ));
 
+      // Credits: 1x kostenloses Probehören, danach 250 Zeichen = 1 Credit
+      try {
+        final Map<String, dynamic> training =
+            Map<String, dynamic>.from(_avatarData?.training ?? {});
+        final bool freeUsed =
+            (training['voiceClonePreviewFreeUsed'] as bool?) ?? false;
+        final normalized =
+            greeting.replaceAll(RegExp(r'\s+'), ' ').trim();
+        final int charCount = normalized.length;
+
+        if (!freeUsed) {
+          await FirebaseFirestore.instance
+              .collection('avatars')
+              .doc(_avatarData!.id)
+              .update({'training.voiceClonePreviewFreeUsed': true});
+        } else if (charCount > 0) {
+          final int creditsNeeded =
+              (charCount / 250).ceil().clamp(1, 1000);
+          final ok = await CreditsService.trySpendCredits(
+            credits: creditsNeeded,
+            actionType: 'voiceClonePreview',
+            avatarId: _avatarData!.id,
+            metadata: {'chars': charCount},
+          );
+          if (!ok) {
+            _showSystemSnack(
+              'Zu wenig Credits für VoiceClone-Vorschau.',
+            );
+            return;
+          }
+        }
+      } catch (e) {
+        debugPrint('⚠️ VoiceClone Preview Credits Fehler: $e');
+      }
+
       final payload = <String, dynamic>{
         'text': greeting,
         if (isCf) 'voiceId': voiceId else 'voice_id': voiceId,
@@ -3307,6 +3345,33 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
       );
       return;
+    }
+
+    // Credits: 1x kostenlos, danach 5 Credits pro Klon
+    try {
+      final training = Map<String, dynamic>.from(_avatarData!.training ?? {});
+      final bool freeUsed =
+          (training['voiceCloneFreeUsed'] as bool?) ?? false;
+      if (!freeUsed) {
+        training['voiceCloneFreeUsed'] = true;
+        await FirebaseFirestore.instance
+            .collection('avatars')
+            .doc(_avatarData!.id)
+            .update({'training.voiceCloneFreeUsed': true});
+      } else {
+        final ok = await CreditsService.trySpendCredits(
+          credits: _creditsPerVoiceCloneGeneration,
+          actionType: 'voiceClone',
+          avatarId: _avatarData!.id,
+          metadata: const {'reason': 'cloneVoice'},
+        );
+        if (!ok) {
+          _showSystemSnack('Zu wenig Credits für VoiceClone-Stimme.');
+          return;
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ VoiceClone Credits/Free Flag Fehler: $e');
     }
 
     // SOFORT setState um Button zu disabled
@@ -8803,6 +8868,33 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       return;
     }
 
+    // 🧮 LiveAvatar-Generierung kostet immer Credits
+    final ok = await CreditsService.trySpendCredits(
+      credits: _creditsPerLiveAvatarGeneration,
+      actionType: 'liveAvatar',
+      avatarId: _avatarData!.id,
+      metadata: {'model': model},
+    );
+    if (!ok) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Zu wenig Credits für Live Avatar.'),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Credits kaufen',
+              textColor: Colors.white,
+              onPressed: () {
+                Navigator.of(context).pushNamed('/credits-shop');
+              },
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
     setState(() => _isGeneratingLiveAvatar = true);
 
     try {
@@ -8901,23 +8993,38 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Future<void> _generateDynamics(String dynamicsId) async {
     if (_avatarData == null) return;
 
-    // 🧮 Credits-Check: Dynamics-Generierung kostet Credits
-    try {
-      final uid = FirebaseAuth.instance.currentUser?.uid;
-      if (uid == null) return;
-      final userDoc =
-          await FirebaseFirestore.instance.collection('users').doc(uid).get();
-      final data = userDoc.data() ?? {};
-      final currentCredits = (data['credits'] as num?)?.toInt() ?? 0;
+    // 🧮 1x kostenlos pro Avatar, danach 5 Credits pro Run
+    final training = Map<String, dynamic>.from(_avatarData!.training ?? {});
+    final bool freeUsed = (training['dynamicsFreeUsed'] as bool?) ?? false;
 
-      if (currentCredits < _creditsPerDynamicsGeneration) {
+    if (!freeUsed) {
+      // Ersten Run als "free" markieren (nur pro Avatar einmal)
+      try {
+        training['dynamicsFreeUsed'] = true;
+        final updatedAvatar = _avatarData!.copyWith(
+          training: training,
+          updatedAt: DateTime.now(),
+        );
+        final ok = await _avatarService.updateAvatar(updatedAvatar);
+        if (ok && mounted) {
+          await _applyAvatar(updatedAvatar);
+        }
+      } catch (e) {
+        debugPrint('⚠️ dynamicsFreeUsed konnte nicht gespeichert werden: $e');
+      }
+    } else {
+      // Weitere Runs kosten Credits
+      final ok = await CreditsService.trySpendCredits(
+        credits: _creditsPerDynamicsGeneration,
+        actionType: 'dynamics',
+        avatarId: _avatarData!.id,
+        metadata: {'dynamicsId': dynamicsId},
+      );
+      if (!ok) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(
-                'Zu wenig Credits für Dynamics. '
-                'Benötigt: $_creditsPerDynamicsGeneration, verfügbar: $currentCredits.',
-              ),
+              content: const Text('Zu wenig Credits für Dynamics.'),
               backgroundColor: Colors.redAccent,
               duration: const Duration(seconds: 4),
               action: SnackBarAction(
@@ -8932,8 +9039,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         }
         return;
       }
-    } catch (e) {
-      debugPrint('⚠️ Credits-Check für Dynamics fehlgeschlagen: $e');
     }
 
     // Verhindere mehrfaches Starten

@@ -440,6 +440,7 @@ class DynamicsExpansionTile extends StatelessWidget {
                 onGenerate: onGenerateLiveAvatar,
                 isGenerating: isGeneratingLiveAvatar,
                 agentId: liveAvatarAgentId,
+                costCredits: 25,
               ),
             ),
 
