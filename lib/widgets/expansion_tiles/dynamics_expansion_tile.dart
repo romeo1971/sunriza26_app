@@ -430,17 +430,18 @@ class DynamicsExpansionTile extends StatelessWidget {
             );
           }),
 
-          // Live Avatar Tile (unter Basic)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: LiveAvatarTile(
-              heroImageUrl: heroImageUrl,
-              heroAudioUrl: heroAudioUrl,
-              onGenerate: onGenerateLiveAvatar,
-              isGenerating: isGeneratingLiveAvatar,
-              agentId: liveAvatarAgentId,
+          // Live Avatar Tile (unter Basic) – nur wenn Lipsync aktiviert ist
+          if (lipsyncEnabled)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: LiveAvatarTile(
+                heroImageUrl: heroImageUrl,
+                heroAudioUrl: heroAudioUrl,
+                onGenerate: onGenerateLiveAvatar,
+                isGenerating: isGeneratingLiveAvatar,
+                agentId: liveAvatarAgentId,
+              ),
             ),
-          ),
 
           // const SizedBox(height: 16),
 

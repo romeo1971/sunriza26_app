@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -393,6 +395,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final TextEditingController _greetingController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
   final AvatarService _avatarService = AvatarService();
+  // Credits
+  static const int _creditsPerDynamicsGeneration = 25; // TODO: Feintuning
   final List<File> _newImageFiles = [];
   final List<File> _newVideoFiles = [];
   final List<File> _newTextFiles = [];
@@ -8896,6 +8900,41 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   }
   Future<void> _generateDynamics(String dynamicsId) async {
     if (_avatarData == null) return;
+
+    // 🧮 Credits-Check: Dynamics-Generierung kostet Credits
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      final userDoc =
+          await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      final data = userDoc.data() ?? {};
+      final currentCredits = (data['credits'] as num?)?.toInt() ?? 0;
+
+      if (currentCredits < _creditsPerDynamicsGeneration) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Zu wenig Credits für Dynamics. '
+                'Benötigt: $_creditsPerDynamicsGeneration, verfügbar: $currentCredits.',
+              ),
+              backgroundColor: Colors.redAccent,
+              duration: const Duration(seconds: 4),
+              action: SnackBarAction(
+                label: 'Credits kaufen',
+                textColor: Colors.white,
+                onPressed: () {
+                  Navigator.of(context).pushNamed('/credits-shop');
+                },
+              ),
+            ),
+          );
+        }
+        return;
+      }
+    } catch (e) {
+      debugPrint('⚠️ Credits-Check für Dynamics fehlgeschlagen: $e');
+    }
 
     // Verhindere mehrfaches Starten
     if (_generatingDynamics.contains(dynamicsId)) {

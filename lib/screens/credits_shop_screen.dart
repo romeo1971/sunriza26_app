@@ -13,6 +13,7 @@ class CreditsShopScreen extends StatefulWidget {
 
 class _CreditsShopScreenState extends State<CreditsShopScreen> {
   String _currency = '€'; // € oder $
+  // Basis-Euro-Beträge für Standardpakete (Kauflogik bleibt kompatibel)
   final List<int> _creditPackages = [5, 10, 25, 50, 100]; // in Euro (Basis)
   final double _stripeFeeCents = 25; // Stripe-Gebühr: 0,25 € fix
   double _exchangeRate = 1.10; // EUR -> USD (wird live aktualisiert)
@@ -31,6 +32,115 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
         child: CircularProgressIndicator(
           strokeWidth: strokeWidth,
           valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+        ),
+      ),
+    );
+  }
+
+  /// Abo-Karte (jährlich/monatlich) – nutzt dieselbe Purchase-Logik
+  Widget _buildSubscriptionCard({
+    required String title,
+    required String subtitle,
+    required int euroAmount,
+    required int credits,
+  }) {
+    final price = _calculatePrice(euroAmount);
+    final totalPrice = _calculateTotalPrice(euroAmount);
+    final currencySymbol = _currency;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.15),
+          width: 1,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _purchaseCredits(euroAmount, credits, price, totalPrice),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        Color(0xFFE91E63),
+                        AppColors.lightBlue,
+                        Color(0xFF00E5FF),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.workspace_premium,
+                    color: Colors.white,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 13,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        '$credits Credits inkl.',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${price.toStringAsFixed(2)} $currencySymbol',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Gesamt: ${totalPrice.toStringAsFixed(2)} $currencySymbol',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
@@ -167,9 +277,35 @@ class _CreditsShopScreenState extends State<CreditsShopScreen> {
             _buildCurrencySelector(),
             const SizedBox(height: 24),
 
-            // Credit-Pakete
+            // Abo-Pakete (Rabattierte Credits)
             const Text(
-              'Wähle dein Paket:',
+              'Abo-Pakete (empfohlen):',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _buildSubscriptionCard(
+              title: 'Jährliches Abo',
+              subtitle: '9 € pro Monat (jährlich abgerechnet)',
+              euroAmount: 108,
+              credits: 1200,
+            ),
+            const SizedBox(height: 12),
+            _buildSubscriptionCard(
+              title: 'Monatliches Abo',
+              subtitle: '10 € pro Monat (monatlich kündbar)',
+              euroAmount: 10,
+              credits: 100,
+            ),
+
+            const SizedBox(height: 32),
+
+            // Einmalige Credit-Pakete
+            const Text(
+              'Einmalige Credits:',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 18,

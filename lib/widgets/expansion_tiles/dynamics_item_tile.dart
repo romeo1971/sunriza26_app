@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-// import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
 import '../../theme/app_theme.dart';
 import 'expansion_tile_base.dart';
@@ -230,19 +230,36 @@ class _DynamicsItemTileState extends State<DynamicsItemTile> {
                           borderRadius: BorderRadius.circular(8),
                           child: AspectRatio(
                             aspectRatio: _videoController!.value.aspectRatio,
-                            child: widget.dynamicsData['status'] == 'ready'
-                                ? VideoPlayer(_videoController!)
-                                : ColorFiltered(
-                                    colorFilter: const ColorFilter.matrix(
-                                      <double>[
-                                        0.2126, 0.7152, 0.0722, 0, 0, // Rot
-                                        0.2126, 0.7152, 0.0722, 0, 0, // Grün
-                                        0.2126, 0.7152, 0.0722, 0, 0, // Blau
-                                        0, 0, 0, 1, 0, // Alpha
-                                      ],
-                                    ),
-                                    child: VideoPlayer(_videoController!),
-                                  ),
+                            child: kIsWeb
+                                ? Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      VideoPlayer(_videoController!),
+                                      if (widget.dynamicsData['status'] !=
+                                          'ready')
+                                        Container(
+                                          color: Colors.grey.withValues(
+                                            alpha: 0.6,
+                                          ),
+                                        ),
+                                    ],
+                                  )
+                                : widget.dynamicsData['status'] == 'ready'
+                                    ? VideoPlayer(_videoController!)
+                                    : ColorFiltered(
+                                        colorFilter: const ColorFilter.matrix(
+                                          <double>[
+                                            0.2126, 0.7152, 0.0722, 0,
+                                            0, // Rot
+                                            0.2126, 0.7152, 0.0722, 0,
+                                            0, // Grün
+                                            0.2126, 0.7152, 0.0722, 0,
+                                            0, // Blau
+                                            0, 0, 0, 1, 0, // Alpha
+                                          ],
+                                        ),
+                                        child: VideoPlayer(_videoController!),
+                                      ),
                           ),
                         ),
                       )
