@@ -245,21 +245,21 @@ class _DynamicsItemTileState extends State<DynamicsItemTile> {
                                     ],
                                   )
                                 : widget.dynamicsData['status'] == 'ready'
-                                    ? VideoPlayer(_videoController!)
-                                    : ColorFiltered(
-                                        colorFilter: const ColorFilter.matrix(
-                                          <double>[
+                                ? VideoPlayer(_videoController!)
+                                : ColorFiltered(
+                                    colorFilter: const ColorFilter.matrix(
+                                      <double>[
                                             0.2126, 0.7152, 0.0722, 0,
                                             0, // Rot
                                             0.2126, 0.7152, 0.0722, 0,
                                             0, // Grün
                                             0.2126, 0.7152, 0.0722, 0,
                                             0, // Blau
-                                            0, 0, 0, 1, 0, // Alpha
-                                          ],
-                                        ),
-                                        child: VideoPlayer(_videoController!),
-                                      ),
+                                        0, 0, 0, 1, 0, // Alpha
+                                      ],
+                                    ),
+                                    child: VideoPlayer(_videoController!),
+                                  ),
                           ),
                         ),
                       )

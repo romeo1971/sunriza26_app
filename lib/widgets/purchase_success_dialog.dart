@@ -40,25 +40,29 @@ Future<void> showPurchaseSuccessDialog({
 
   await showDialog(
     context: context,
-    barrierDismissible: false,
-    builder: (_) => AlertDialog(
+    barrierDismissible: true,
+    builder: (dialogContext) => AlertDialog(
       backgroundColor: const Color(0xFF1A1A1A),
-      title: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      title: Row(
+        children: [
+          Expanded(
+            child: Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, color: Colors.white70),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+          ),
+        ],
+      ),
       content: Text(
         body,
         style: const TextStyle(color: Colors.white70),
       ),
       actions: [
-        TextButton(
-          onPressed: () {
-            if (Navigator.canPop(context)) {
-              Navigator.pop(context); // schließt nur den Dialog
-            }
-          },
-          child: const Text('Schließen', style: TextStyle(color: Colors.white70)),
-        ),
         if (data.downloadUrl != null && data.downloadUrl!.isNotEmpty)
-          TextButton(
+          TextButton.icon(
+            icon: const Icon(Icons.download),
+            label: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
             onPressed: () async {
               try {
                 final uri = Uri.parse(data.downloadUrl!);
@@ -70,10 +74,13 @@ Future<void> showPurchaseSuccessDialog({
                   );
                 }
               } catch (_) {}
-              if (Navigator.canPop(context)) Navigator.pop(context);
+              Navigator.of(dialogContext).pop();
             },
-            child: const Text('Download', style: TextStyle(color: Color(0xFF00FF94))),
           ),
+        TextButton(
+          onPressed: () => Navigator.of(dialogContext).pop(),
+          child: const Text('Schließen', style: TextStyle(color: Colors.white)),
+        ),
       ],
     ),
   );

@@ -2,20 +2,27 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import '../models/media_models.dart';
-import '../models/user_profile.dart';
 
 /// Service für Media-Käufe (Credits oder Stripe)
 class MediaPurchaseService {
   final _firestore = FirebaseFirestore.instance;
   final _functions = FirebaseFunctions.instance;
 
-  /// Prüft ob User genug Credits hat
+  /// Prüft ob User genug Credits hat (direkt über das `credits` Feld im User-Dokument).
   Future<bool> hasEnoughCredits(String userId, int requiredCredits) async {
-    final userDoc = await _firestore.collection('users').doc(userId).get();
-    if (!userDoc.exists) return false;
-
-    final profile = UserProfile.fromMap(userDoc.data()!);
-    return profile.credits >= requiredCredits;
+    try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      if (!userDoc.exists) return false;
+      final data = userDoc.data() ?? <String, dynamic>{};
+      final currentCredits = (data['credits'] as num?)?.toInt() ?? 0;
+      debugPrint(
+        '🔍 [PurchaseService] hasEnoughCredits: user=$userId credits=$currentCredits required=$requiredCredits',
+      );
+      return currentCredits >= requiredCredits;
+    } catch (e) {
+      debugPrint('⚠️ [PurchaseService] hasEnoughCredits Fehler: $e');
+      return false;
+    }
   }
 
   /// Prüft, ob der Avatar‑Owner alle notwendigen Verkäuferdaten bereitgestellt hat
@@ -55,8 +62,9 @@ class MediaPurchaseService {
     return purchaseDoc.exists;
   }
 
-  /// Kauft Media mit Credits
-  Future<bool> purchaseMediaWithCredits({
+  /// Kauft Media mit Credits (serverseitig via Cloud Function)
+  /// Gibt die Download-URL zurück oder null bei Fehler
+  Future<String?> purchaseMediaWithCredits({
     required String userId,
     required AvatarMedia media,
   }) async {
@@ -65,171 +73,40 @@ class MediaPurchaseService {
     final price = media.price ?? 0.0;
     final currency = media.currency ?? '€';
 
-    // Preis in Credits umrechnen (1 Credit = 0,1 €)
-    final requiredCredits = (price / 0.1).round();
-    debugPrint('🔵 [PurchaseService] Preis: $price, Credits: $requiredCredits');
-
-    // Prüfen ob genug Credits vorhanden
-    final hasCredits = await hasEnoughCredits(userId, requiredCredits);
-    if (!hasCredits) {
-      debugPrint('🔴 [PurchaseService] Nicht genug Credits');
-      return false;
-    }
-    debugPrint('✅ [PurchaseService] Credits verfügbar');
-
     try {
-      // Ermittle Avatar-Owner (Verkäufer)
-      String? sellerId;
-      try {
-        final avatarDoc = await _firestore.collection('avatars').doc(media.avatarId).get();
-        sellerId = (avatarDoc.data()?['userId'] as String?);
-      } catch (e) {
-        debugPrint('⚠️ [PurchaseService] Avatar-Owner konnte nicht geladen werden: $e');
-      }
-      
-      debugPrint('🔵 [PurchaseService] Verkäufer: $sellerId');
-      
-      final userRef = _firestore.collection('users').doc(userId);
-
-      // Batch-Operation für Atomarität
-      final batch = _firestore.batch();
-
-      // 1. Credits abziehen (Käufer)
-      debugPrint('🔵 [PurchaseService] Ziehe $requiredCredits Credits ab...');
-      batch.set(userRef, {
-        'credits': FieldValue.increment(-requiredCredits),
-        'creditsSpent': FieldValue.increment(requiredCredits),
-      }, SetOptions(merge: true));
-
-      // 2. Transaktion anlegen (Käufer = Ausgabe)
-      final transactionRef = userRef.collection('transactions').doc();
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final invoiceNumber = '20${now.toString().substring(now.toString().length - 6)}-D${now.toString().substring(now.toString().length - 5)}';
-      final transactionData = {
-        'userId': userId,
-        'type': 'credit_spent',
-        'credits': requiredCredits,
-        'amount': (price * 100).round(),
-        'currency': currency == '\$' ? 'usd' : 'eur',
+      final callable = _functions.httpsCallable('purchaseMediaWithCredits');
+      final result = await callable.call({
         'mediaId': media.id,
+        'avatarId': media.avatarId,
+        'price': price,
+        'currency': currency == '\$' ? 'usd' : 'eur',
         'mediaType': _getMediaTypeString(media.type),
         'mediaUrl': media.url,
         'mediaName': media.originalFileName ?? 'Media',
-        'avatarId': media.avatarId,
-        'sellerId': sellerId,
-        'status': 'completed',
-        'invoiceNumber': invoiceNumber,
-        'createdAt': FieldValue.serverTimestamp(),
-      };
-      debugPrint('🔵 [PurchaseService] Erstelle Transaktion: ${transactionRef.id}');
-      debugPrint('🔵 [PurchaseService] Transaction Data: $transactionData');
-      batch.set(transactionRef, transactionData);
-
-      // 3. Media als gekauft markieren
-      final purchaseRef = userRef.collection('purchased_media').doc(media.id);
-      debugPrint('🔵 [PurchaseService] Markiere Media als gekauft: ${media.id}');
-      batch.set(purchaseRef, {
-        'mediaId': media.id,
-        'avatarId': media.avatarId,
-        'type': _getMediaTypeString(media.type),
-        'price': price,
-        'currency': currency,
-        'credits': requiredCredits,
-        'purchasedAt': FieldValue.serverTimestamp(),
       });
 
-      // 4. Verkäufer Einnahmen gutschreiben (IMMER, auch bei Selbstkauf!)
-      String? sellerTxId;
-      if (sellerId != null && sellerId.isNotEmpty) {
-        debugPrint('🔵 [PurchaseService] Schreibe Einnahmen für Verkäufer $sellerId gut...');
-        final sellerRef = _firestore.collection('users').doc(sellerId);
-        
-        // Gutschrift Einnahmen
-        batch.set(sellerRef, {
-          'creditsEarned': FieldValue.increment(requiredCredits),
-        }, SetOptions(merge: true));
-        
-        // Transaktion für Verkäufer (Einnahme)
-        final sellerTxRef = sellerRef.collection('transactions').doc();
-        sellerTxId = sellerTxRef.id; // ID für später speichern
-        final sellerInvoiceNumber = '20${now.toString().substring(now.toString().length - 6)}-E${now.toString().substring(now.toString().length - 5)}';
-        batch.set(sellerTxRef, {
-          'userId': sellerId,
-          'type': 'credit_earned',
-          'credits': requiredCredits,
-          'amount': (price * 100).round(),
-          'currency': currency == '\$' ? 'usd' : 'eur',
-          'mediaId': media.id,
-          'mediaType': _getMediaTypeString(media.type),
-          'mediaUrl': media.url,
-          'mediaName': media.originalFileName ?? 'Media',
-          'avatarId': media.avatarId,
-          'buyerId': userId,
-          'status': 'completed',
-          'invoiceNumber': sellerInvoiceNumber,
-          'createdAt': FieldValue.serverTimestamp(),
-        });
-        debugPrint('✅ [PurchaseService] Verkäufer-Transaktion erstellt (ID: $sellerTxId)');
+      final data = result.data as Map?;
+      final ok = data?['ok'] == true;
+      final downloadUrl = data?['downloadUrl'] as String?;
+      
+      if (ok) {
+        debugPrint('✅ [PurchaseService] Media-Kauf erfolgreich, downloadUrl=$downloadUrl');
+        return downloadUrl ?? media.url; // Fallback auf Original-URL
       } else {
-        debugPrint('⚠️ [PurchaseService] Kein Verkäufer gefunden → keine Einnahmen-Gutschrift');
+        debugPrint('🔴 [PurchaseService] Media-Kauf fehlgeschlagen (ok=false)');
+        return null;
       }
-
-      debugPrint('🔵 [PurchaseService] Committe Batch...');
-      await batch.commit();
-      debugPrint('✅ [PurchaseService] Batch erfolgreich committed!');
-      
-      // PDF-Rechnung erzeugen (KÄUFER)
-      try {
-        debugPrint('🔵 [PurchaseService] Erzeuge PDF-Rechnung für Käufer...');
-        final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
-        final ensure = fns.httpsCallable('ensureInvoiceFiles');
-        final res = await ensure.call({'transactionId': transactionRef.id});
-        final data = Map<String, dynamic>.from(res.data as Map? ?? {});
-        final pdf = data['invoicePdfUrl'] as String?;
-        final nr = data['invoiceNumber'] as String?;
-        if ((pdf != null && pdf.isNotEmpty) || (nr != null && nr.isNotEmpty)) {
-          await transactionRef.set({
-            if (pdf != null && pdf.isNotEmpty) 'invoicePdfUrl': pdf,
-            if (nr != null && nr.isNotEmpty) 'invoiceNumber': nr,
-          }, SetOptions(merge: true));
-          debugPrint('✅ [PurchaseService] Käufer-Rechnung gespeichert (nr=${nr ?? '-'}).');
-        }
-      } catch (e) {
-        debugPrint('⚠️ [PurchaseService] ensureInvoiceFiles (Käufer) fehlgeschlagen: $e');
+    } on FirebaseFunctionsException catch (e) {
+      if (e.code == 'failed-precondition') {
+        debugPrint('🔴 [PurchaseService] Nicht genug Credits');
+      } else {
+        debugPrint('🔴 [PurchaseService] Function error: ${e.code} ${e.message}');
       }
-      
-      // PDF-Rechnung erzeugen (VERKÄUFER)
-      if (sellerId != null && sellerId.isNotEmpty && sellerTxId != null) {
-        try {
-          debugPrint('🔵 [PurchaseService] Erzeuge PDF-Rechnung für Verkäufer...');
-          final fns = FirebaseFunctions.instanceFor(region: 'us-central1');
-          final ensure = fns.httpsCallable('ensureInvoiceFiles');
-          final res = await ensure.call({'transactionId': sellerTxId});
-          final data = Map<String, dynamic>.from(res.data as Map? ?? {});
-          final pdf = data['invoicePdfUrl'] as String?;
-          final nr = data['invoiceNumber'] as String?;
-          if ((pdf != null && pdf.isNotEmpty) || (nr != null && nr.isNotEmpty)) {
-            await _firestore
-                .collection('users')
-                .doc(sellerId)
-                .collection('transactions')
-                .doc(sellerTxId)
-                .set({
-              if (pdf != null && pdf.isNotEmpty) 'invoicePdfUrl': pdf,
-              if (nr != null && nr.isNotEmpty) 'invoiceNumber': nr,
-            }, SetOptions(merge: true));
-            debugPrint('✅ [PurchaseService] Verkäufer-Rechnung gespeichert (nr=${nr ?? '-'}).');
-          }
-        } catch (e) {
-          debugPrint('⚠️ [PurchaseService] ensureInvoiceFiles (Verkäufer) fehlgeschlagen: $e');
-        }
-      }
-      
-      return true;
+      return null;
     } catch (e, stackTrace) {
       debugPrint('🔴 [PurchaseService] Fehler beim Media-Kauf: $e');
       debugPrint('🔴 [PurchaseService] StackTrace: $stackTrace');
-      return false;
+      return null;
     }
   }
 

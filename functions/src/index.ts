@@ -32,6 +32,7 @@ export * from './invoiceGenerator';
 export * from './mediaCheckout';
 export * from './stripeConnect';
 export * from './paymentMethods';
+export * from './mediaPurchase';
 
 // Explizite Re-Exports für mediaCheckout
 export { copyMediaToMoments, createMediaCheckoutSession, mediaCheckoutWebhook, handleMediaPurchaseWebhook } from './mediaCheckout';
@@ -1167,8 +1168,8 @@ export const spendServiceCredits = onCall({ region: 'us-central1' }, async (req)
     });
 
     return { ok: true, remaining: current - creditNum };
+    });
   });
-});
 
 // Restore/Set avatar cover images if missing or broken
 export const restoreAvatarCovers = functions

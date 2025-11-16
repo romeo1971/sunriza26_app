@@ -41,6 +41,8 @@ import '../widgets/media/timeline_media_overlay.dart';
 import 'hero_chat_screen.dart';
 import '../services/audio_cover_service.dart';
 import '../widgets/purchase_success_dialog.dart';
+import '../helpers/web_audio_recorder.dart';
+import '../services/stt_service.dart';
 
 // GLOBAL: Legacy MuseTalk Guard entfernt – MuseTalk wurde ausgebaut
 final Map<String, DateTime> _globalActiveMuseTalkRooms = {};
@@ -179,6 +181,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
   int _userCredits = 0;
   int _lastVoiceChars = 0;
   int _voiceCloneTotalChars = 0;
+
+  // Web STT (Speech-to-Text) Tracking
+  DateTime? _webSttStartTime;
+  int _totalSttSeconds = 0; // kumulierte Sprechzeit in Sekunden
 
   Future<void> _loadUserCredits() async {
     try {
@@ -2707,23 +2713,23 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
               ),
             ),
             const SizedBox(width: 8),
-            ValueListenableBuilder<bool>(
-              valueListenable: LiveKitService().connected,
-              builder: (context, connected, _) {
-                if (!connected) return const SizedBox.shrink();
-                return Container(
+        ValueListenableBuilder<bool>(
+          valueListenable: LiveKitService().connected,
+          builder: (context, connected, _) {
+            if (!connected) return const SizedBox.shrink();
+            return Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: Colors.green, // verbunden = grün
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Text(
-                    'LKC',
-                    style: TextStyle(color: Colors.white, fontSize: 11),
-                  ),
-                );
-              },
+              decoration: BoxDecoration(
+                color: Colors.green, // verbunden = grün
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Text(
+                'LKC',
+                style: TextStyle(color: Colors.white, fontSize: 11),
+              ),
+            );
+          },
             ),
           ],
         ),
@@ -2770,11 +2776,27 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   Future<void> _startRecording() async {
     if (kIsWeb) {
-      _showSystemSnack(
-        'Sprachaufnahme ist im Web-Browser noch nicht verfügbar. Bitte die mobile App verwenden.',
-      );
+      // Web: nutze WebAudioRecorder
+      if (!WebAudioRecorder.isSupported) {
+        _showSystemSnack('Browser unterstützt keine Audioaufnahme');
+        return;
+      }
+      try {
+        final started = await WebAudioRecorder.start();
+        if (!started) {
+          _showSystemSnack('Mikrofon-Start fehlgeschlagen');
+          return;
+        }
+        _webSttStartTime = DateTime.now();
+        if (mounted) setState(() => _isRecording = true);
+        debugPrint('🎤 Web STT Recording gestartet');
+      } catch (e) {
+        _showSystemSnack('Aufnahme-Start fehlgeschlagen: $e');
+      }
       return;
     }
+    
+    // Mobile: bestehender Pfad
     try {
       // Berechtigungen und Start
       bool has = await _recorder.hasPermission();
@@ -2814,8 +2836,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
     if (kIsWeb) {
       path = null;
     } else {
-      final dir = await getTemporaryDirectory();
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final dir = await getTemporaryDirectory();
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
       path = '${dir.path}/segment_$timestamp.wav';
     }
 
@@ -5337,46 +5359,104 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
           );
         }
       } else {
-        // Für kostenpflichtige Items: Stripe Checkout
+        // Für kostenpflichtige Items: Credits ODER Stripe
         final uid = FirebaseAuth.instance.currentUser?.uid;
         if (uid == null) {
           throw Exception('Nicht angemeldet');
         }
 
-        // Stripe Checkout (nach Erfolg als bestätigt markieren)
-        final checkoutUrl = await _purchaseService.purchaseMediaWithStripe(
-          userId: uid,
-          media: widget.media,
-        );
-
-        if (checkoutUrl == null) {
-          throw Exception('Stripe Checkout URL nicht verfügbar');
-        }
-
-        if (!mounted) return;
-        Navigator.pop(context);
-
-        // Öffne Stripe Checkout URL IM SELBEN TAB, damit der Redirect
-        // mit session_id von unserer App abgefangen wird
-        final uri = Uri.parse(checkoutUrl);
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(
-            uri,
-            mode: LaunchMode.platformDefault,
-            webOnlyWindowName: '_self',
+        if (_paymentMethod == 'credits') {
+          // Credits-Zahlung via Cloud Function (erstellt auch das Moment!)
+          final downloadUrl = await _purchaseService.purchaseMediaWithCredits(
+            userId: uid,
+            media: widget.media,
           );
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('💳 Stripe Checkout geöffnet...'),
-              backgroundColor: AppColors.magenta,
+
+          if (downloadUrl == null) {
+            throw Exception('Credit-Kauf fehlgeschlagen');
+          }
+
+          // Markiere als confirmed (optional, für Playlist-Filter)
+          try {
+            final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+            final avatarId = chatState?._avatarData?.id;
+            final playlistId = chatState?._timelineItemsMetadata.isNotEmpty == true
+                ? (chatState!._timelineItemsMetadata[chatState._timelineCurrentIndex]['playlistId'] as String?)
+                : null;
+            if (uid != null && avatarId != null && playlistId != null) {
+              await FirebaseFirestore.instance
+                  .collection('avatars')
+                  .doc(avatarId)
+                  .collection('playlists')
+                  .doc(playlistId)
+                  .collection('confirmedItems')
+                  .add({
+                'userId': uid,
+                'mediaId': widget.media.id,
+                'confirmedAt': FieldValue.serverTimestamp(),
+              });
+            }
+          } catch (_) {}
+
+          // Update Purchase Status Cache
+          if (context.mounted) {
+            final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+            if (chatState != null) {
+              chatState._purchaseStatusCache[widget.media.id] = true;
+              chatState.setState(() {});
+            }
+          }
+
+          if (!mounted) return;
+          Navigator.pop(context);
+
+          // Success-Dialog (Download-URL kommt von der Cloud Function)
+          final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+          final avatarName = chatState?._avatarData?.displayName 
+              ?? chatState?._avatarData?.fullName 
+              ?? 'Avatar';
+
+          await showPurchaseSuccessDialog(
+            context: context,
+            data: PurchaseSuccessData(
+              mediaName: widget.media.originalFileName ?? 'Media',
+              avatarName: avatarName,
+              source: 'chat',
+              variant: 'credits',
+              downloadUrl: downloadUrl,
             ),
           );
-          // Hinweis: Nach Redirect zurück kann der Erfolg nicht hier erkannt werden.
-          // Wir markieren daher NICHT sofort confirmed; der Erfolg wird im
-          // Webhook/Backend in Moments gespeichert. Optional später listener-basiert filtern.
         } else {
-          throw Exception('Checkout URL konnte nicht geöffnet werden');
+          // Stripe Checkout
+          final checkoutUrl = await _purchaseService.purchaseMediaWithStripe(
+            userId: uid,
+            media: widget.media,
+          );
+
+          if (checkoutUrl == null) {
+            throw Exception('Stripe Checkout URL nicht verfügbar');
+          }
+
+          if (!mounted) return;
+          Navigator.pop(context);
+
+          final uri = Uri.parse(checkoutUrl);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(
+              uri,
+              mode: LaunchMode.platformDefault,
+              webOnlyWindowName: '_self',
+            );
+            
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('💳 Stripe Checkout geöffnet...'),
+                backgroundColor: AppColors.magenta,
+              ),
+            );
+          } else {
+            throw Exception('Checkout URL konnte nicht geöffnet werden');
+          }
         }
       }
     } catch (e) {
