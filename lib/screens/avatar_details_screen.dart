@@ -9139,22 +9139,22 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       http.Response response;
       try {
         response = await http
-            .post(
-              Uri.parse(
-                'https://romeo1971--sunriza-dynamics-api-generate-dynamics.modal.run',
-              ),
-              headers: {'Content-Type': 'application/json'},
-              body: jsonEncode({
-                'avatar_id': _avatarData!.id,
-                'dynamics_id': dynamicsId,
-                'parameters': {
-                  'driving_multiplier': _drivingMultipliers[dynamicsId] ?? 0.41,
-                  'scale': _animationScales[dynamicsId] ?? 1.7,
-                  'source_max_dim': _sourceMaxDims[dynamicsId] ?? 1600,
-                  'animation_region': _animationRegions[dynamicsId] ?? 'all',
-                },
-              }),
-            )
+          .post(
+            Uri.parse(
+              'https://romeo1971--sunriza-dynamics-api-generate-dynamics.modal.run',
+            ),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'avatar_id': _avatarData!.id,
+              'dynamics_id': dynamicsId,
+              'parameters': {
+                'driving_multiplier': _drivingMultipliers[dynamicsId] ?? 0.41,
+                'scale': _animationScales[dynamicsId] ?? 1.7,
+                'source_max_dim': _sourceMaxDims[dynamicsId] ?? 1600,
+                'animation_region': _animationRegions[dynamicsId] ?? 'all',
+              },
+            }),
+          )
             .timeout(
               const Duration(seconds: 30),
               onTimeout: () {

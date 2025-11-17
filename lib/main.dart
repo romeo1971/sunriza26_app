@@ -38,6 +38,7 @@ import 'screens/home_navigation_screen.dart';
 import 'screens/explore_screen.dart';
 import 'screens/favorites_screen.dart';
 import 'screens/user_profile_public_screen.dart';
+import 'screens/public_avatar_entry_screen.dart';
 import 'models/playlist_models.dart';
 import 'widgets/legal/privacy.dart';
 import 'widgets/legal/terms.dart';
@@ -457,6 +458,22 @@ class SunrizaApp extends StatelessWidget {
             child: PasswordGate(child: AuthGate()),
           ),
           debugShowCheckedModeBanner: false,
+          onGenerateRoute: (settings) {
+            final name = settings.name ?? '';
+            // Public Avatar Route: /avatar/<slug>
+            try {
+              final uri = Uri.parse(name);
+              if (uri.pathSegments.length == 2 &&
+                  uri.pathSegments[0] == 'avatar') {
+                final slug = uri.pathSegments[1];
+                return MaterialPageRoute(
+                  builder: (_) => PublicAvatarEntryScreen(slug: slug),
+                  settings: settings,
+                );
+              }
+            } catch (_) {}
+            return null; // Standard-Routing benutzen
+          },
           routes: {
             '/home': (context) => const HomeNavigationScreen(),
             // Embed-Route: erwartet avatarId via Query (?avatarId=...) oder Route-Args
