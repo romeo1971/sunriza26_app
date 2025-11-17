@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import '../theme/app_theme.dart';
+import '../theme/app_layout.dart';
 import 'dart:math' as math;
 
 /// Wrapper für Web/macOS: Begrenzt Content auf iPad-Breite, außen animierter GMBC-Gradient
@@ -43,7 +44,7 @@ class _ResponsiveContentWrapperState extends State<ResponsiveContentWrapper>
       return widget.child;
     }
 
-    // Web/macOS: iPad-Breite (768px) + chaotischer animierter Gradient
+    // Web/macOS: zentrierter Content mit begrenzter Maximalbreite + animierter GMBC-Gradient
     return AnimatedBuilder(
       animation: _controller,
       builder: (context, child) {
@@ -89,7 +90,7 @@ class _ResponsiveContentWrapperState extends State<ResponsiveContentWrapper>
           ),
           child: Center(
             child: SizedBox(
-              width: 768, // iPad Portrait Breite - feste Breite
+              width: AppLayout.contentWidth(context),
               child: widget.child,
             ),
           ),

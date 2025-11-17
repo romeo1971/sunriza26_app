@@ -453,6 +453,17 @@ class _DynamicsItemTileState extends State<DynamicsItemTile> {
           ),
         ),
 
+      if (hasVideo && !widget.heroVideoTooLong) ...[
+        const SizedBox(height: 8),
+        const Text(
+          '1x kostenlos, danach 5 Credits pro Dynamics‑Generierung',
+          style: TextStyle(
+            color: Colors.white70,
+            fontSize: 11,
+          ),
+        ),
+      ],
+
       // Löschen-Button für generiertes Basic Dynamics Video - DIREKT unter Generieren
       if (widget.dynamicsId == 'basic' &&
           widget.dynamicsData['status'] == 'ready' &&

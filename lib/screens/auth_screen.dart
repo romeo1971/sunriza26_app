@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
 import 'package:provider/provider.dart';
 import '../widgets/custom_text_field.dart';
 import '../theme/app_theme.dart';
+import '../theme/app_layout.dart';
 import '../services/auth_service.dart';
 import '../services/language_service.dart';
 import '../services/localization_service.dart';
@@ -203,9 +204,9 @@ class _AuthScreenState extends State<AuthScreen> {
                   // Scrollbarer Inhalt mit Content Wrapper
                   Center(
                     child: ConstrainedBox(
-                      constraints: const BoxConstraints(
+                      constraints: BoxConstraints(
                         minWidth: 300,
-                        maxWidth: 768, // iPad portrait width
+                        maxWidth: AppLayout.maxContentWidth,
                       ),
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.symmetric(

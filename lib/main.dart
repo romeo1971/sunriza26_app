@@ -49,6 +49,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'theme/app_theme.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/services.dart';
 import 'l10n/app_localizations.dart';
 import 'package:flutter_localized_locales/flutter_localized_locales.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -75,6 +76,11 @@ void main() async {
 
   // .env zwingend laden (fehlende Keys sollen hart fehlschlagen)
   await dotenv.load(fileName: '.env');
+
+  // Orientierung global auf Portrait fixieren (immer "Mobile View")
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+  ]);
 
   // Alle Keys in .env sind Pflicht: leer/fehlend -> harter Fehler
   _validateAllEnvStrict();

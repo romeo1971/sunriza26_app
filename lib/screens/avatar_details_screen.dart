@@ -9013,6 +9013,38 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         debugPrint('⚠️ dynamicsFreeUsed konnte nicht gespeichert werden: $e');
       }
     } else {
+      // Weitere Runs kosten Credits → vorher bestätigen
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          backgroundColor: const Color(0xFF121212),
+          title: const Text(
+            'Dynamics generieren?',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
+          content: Text(
+            'Diese Dynamics‑Generierung kostet $_creditsPerDynamicsGeneration Credits '
+            '(die erste war kostenlos). Möchtest du fortfahren?',
+            style: const TextStyle(color: Colors.white70),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Abbrechen'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text(
+                'Ja, 5 Credits verwenden',
+                style: TextStyle(color: AppColors.lightBlue),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      if (confirmed != true) return;
+
       // Weitere Runs kosten Credits
       final ok = await CreditsService.trySpendCredits(
         credits: _creditsPerDynamicsGeneration,

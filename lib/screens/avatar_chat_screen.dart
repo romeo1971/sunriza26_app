@@ -5277,25 +5277,25 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
 
         // Markiere als confirmed
         try {
-          final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
-          final avatarId = chatState?._avatarData?.id;
-          final playlistId = chatState?._timelineItemsMetadata.isNotEmpty == true
-              ? (chatState!._timelineItemsMetadata[chatState._timelineCurrentIndex]['playlistId'] as String?)
-              : null;
-          if (uid != null && avatarId != null && playlistId != null) {
-            await FirebaseFirestore.instance
-                .collection('avatars')
-                .doc(avatarId)
-                .collection('playlists')
-                .doc(playlistId)
-                .collection('confirmedItems')
-                .add({
-              'userId': uid,
-              'mediaId': widget.media.id,
-              'confirmedAt': FieldValue.serverTimestamp(),
-            });
-          }
-        } catch (_) {}
+            final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+            final avatarId = chatState?._avatarData?.id;
+            final playlistId = chatState?._timelineItemsMetadata.isNotEmpty == true
+                ? (chatState!._timelineItemsMetadata[chatState._timelineCurrentIndex]['playlistId'] as String?)
+                : null;
+            if (uid != null && avatarId != null && playlistId != null) {
+              await FirebaseFirestore.instance
+                  .collection('avatars')
+                  .doc(avatarId)
+                  .collection('playlists')
+                  .doc(playlistId)
+                  .collection('confirmedItems')
+                  .add({
+                'userId': uid,
+                'mediaId': widget.media.id,
+                'confirmedAt': FieldValue.serverTimestamp(),
+              });
+            }
+          } catch (_) {}
 
         // Update Purchase Status Cache
         if (context.mounted) {
@@ -5316,15 +5316,15 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
             ?? 'Avatar';
 
         await showPurchaseSuccessDialog(
-          context: context,
+            context: context,
           data: PurchaseSuccessData(
             mediaName: widget.media.originalFileName ?? 'Media',
             avatarName: avatarName,
             source: 'chat',
             variant: 'accept',
             downloadUrl: widget.media.url,
-          ),
-        );
+            ),
+          );
       } else {
         // Für kostenpflichtige Items: Credits ODER Stripe
         final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -5395,34 +5395,34 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
           );
         } else {
           // Stripe Checkout
-          final checkoutUrl = await _purchaseService.purchaseMediaWithStripe(
-            userId: uid,
-            media: widget.media,
+        final checkoutUrl = await _purchaseService.purchaseMediaWithStripe(
+          userId: uid,
+          media: widget.media,
+        );
+
+        if (checkoutUrl == null) {
+          throw Exception('Stripe Checkout URL nicht verfügbar');
+        }
+
+        if (!mounted) return;
+        Navigator.pop(context);
+
+        final uri = Uri.parse(checkoutUrl);
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(
+            uri,
+            mode: LaunchMode.platformDefault,
+            webOnlyWindowName: '_self',
           );
-
-          if (checkoutUrl == null) {
-            throw Exception('Stripe Checkout URL nicht verfügbar');
-          }
-
-          if (!mounted) return;
-          Navigator.pop(context);
-
-          final uri = Uri.parse(checkoutUrl);
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(
-              uri,
-              mode: LaunchMode.platformDefault,
-              webOnlyWindowName: '_self',
-            );
-            
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('💳 Stripe Checkout geöffnet...'),
-                backgroundColor: AppColors.magenta,
-              ),
-            );
-          } else {
-            throw Exception('Checkout URL konnte nicht geöffnet werden');
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('💳 Stripe Checkout geöffnet...'),
+              backgroundColor: AppColors.magenta,
+            ),
+          );
+        } else {
+          throw Exception('Checkout URL konnte nicht geöffnet werden');
           }
         }
       }
