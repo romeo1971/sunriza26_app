@@ -1113,7 +1113,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
     ctrl.text = _slugify(parts.join(' '));
 
-    List<String> _buildSuggestions() {
+    List<String> buildSuggestions() {
       final String first = _avatarData!.firstName.trim();
       final String? nick = (_avatarData!.nickname ?? '').trim().isNotEmpty ? _avatarData!.nickname!.trim() : null;
       final String? last = (_avatarData!.lastName ?? '').trim().isNotEmpty ? _avatarData!.lastName!.trim() : null;
@@ -1133,7 +1133,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         bool available = false;
         bool checked = false;
         bool checking = false;
-        List<String> suggestions = _buildSuggestions();
+        List<String> suggestions = buildSuggestions();
         return StatefulBuilder(
           builder: (ctx2, setDlg) => AlertDialog(
             backgroundColor: const Color(0xFF1A1A1A),
@@ -3162,7 +3162,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     try {
       // TTS nutzt eigene Basis‑URL, unabhängig von Memory‑API
       final base = EnvService.ttsApiBaseUrl();
-      if (base == null || base.isEmpty) {
+      if (base.isEmpty) {
         _showSystemSnack(
           context.read<LocalizationService>().t(
             'avatars.details.backendUrlMissing',
@@ -9104,24 +9104,46 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
 
       // 🚀 Sende Request an Modal.com (läuft asynchron!)
-      final response = await http
-          .post(
-            Uri.parse(
-              'https://romeo1971--sunriza-dynamics-api-generate-dynamics.modal.run',
-            ),
-            headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({
-              'avatar_id': _avatarData!.id,
-              'dynamics_id': dynamicsId,
-              'parameters': {
-                'driving_multiplier': _drivingMultipliers[dynamicsId] ?? 0.41,
-                'scale': _animationScales[dynamicsId] ?? 1.7,
-                'source_max_dim': _sourceMaxDims[dynamicsId] ?? 1600,
-                'animation_region': _animationRegions[dynamicsId] ?? 'all',
+      http.Response response;
+      try {
+        response = await http
+            .post(
+              Uri.parse(
+                'https://romeo1971--sunriza-dynamics-api-generate-dynamics.modal.run',
+              ),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'avatar_id': _avatarData!.id,
+                'dynamics_id': dynamicsId,
+                'parameters': {
+                  'driving_multiplier': _drivingMultipliers[dynamicsId] ?? 0.41,
+                  'scale': _animationScales[dynamicsId] ?? 1.7,
+                  'source_max_dim': _sourceMaxDims[dynamicsId] ?? 1600,
+                  'animation_region': _animationRegions[dynamicsId] ?? 'all',
+                },
+              }),
+            )
+            .timeout(
+              const Duration(seconds: 30),
+              onTimeout: () {
+                throw Exception('Modal.com Timeout - Function schläft oder überlastet. Bitte nochmal versuchen.');
               },
-            }),
-          )
-          .timeout(const Duration(minutes: 10));
+            );
+      } catch (e) {
+        debugPrint('🔴 Modal.com Request Error: $e');
+        _dynamicsTimers[dynamicsId]?.cancel();
+        setState(() => _generatingDynamics.remove(dynamicsId));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Modal.com nicht erreichbar:\n$e\n\nBitte nochmal versuchen (Cold Start 10-15 Sek)'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        }
+        return;
+      }
 
       // Backend antwortet jetzt asynchron mit {status: "generating"}
       // → Timer NICHT stoppen; wir warten auf Firestore-Update

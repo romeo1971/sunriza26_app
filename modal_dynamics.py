@@ -190,10 +190,21 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     print(f"📊 Hero-Video: {hero_video_size / 1024 / 1024:.2f} MB")
     print(f"📊 Hero-Image: {hero_image_size / 1024:.2f} KB")
     
+    # WICHTIG:
+    # - Wir wollen IMMER ein sauberes 10‑Sekunden‑Video mit VIDEOSTREAM erzeugen.
+    # - Deshalb NICHT mehr nur `-c:v copy`, sondern neu nach H.264 encoden.
+    # - Audio ist für LivePortrait egal → wir deaktivieren Audio explizit.
     trim_cmd = [
-        FFMPEG_BIN, '-i', hero_video_path,
-        '-ss', '0', '-t', '10',
-        '-c:v', 'copy', '-y', trimmed_video_path
+        FFMPEG_BIN,
+        '-y',
+        '-i', hero_video_path,
+        '-ss', '0',
+        '-t', '10',
+        '-c:v', 'libx264',
+        '-preset', 'ultrafast',
+        '-crf', '18',
+        '-an',  # kein Audio nötig
+        trimmed_video_path,
     ]
     result = subprocess.run(trim_cmd, capture_output=True)
     if result.returncode != 0:
@@ -215,11 +226,14 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
     liveportrait_path = '/opt/liveportrait/inference.py'
     
     norm = _norm_params(parameters)
+    # LivePortrait soll IMMER mit dem neuen, 10s getrimmten Video laufen.
+    driving_video_path = trimmed_video_path
+
     lp_cmd = [
         python_executable,
         liveportrait_path,
         '-s', hero_image_path,
-        '-d', trimmed_video_path,
+        '-d', driving_video_path,
         '-o', lp_output_dir,
         '--driving_multiplier', str(norm.get('driving_multiplier')),
     ]
@@ -603,7 +617,18 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
 def api_generate_dynamics():
     """REST API Endpoint für Flutter App"""
     from fastapi import FastAPI, Request, HTTPException
+    from fastapi.middleware.cors import CORSMiddleware
+    
     web_app = FastAPI()
+    
+    # CORS aktivieren für Flutter Web
+    web_app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Für Produktion: Nur deine Domains
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     
     @web_app.post("/")
     async def generate(request: Request):

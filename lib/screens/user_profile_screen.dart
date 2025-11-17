@@ -589,7 +589,7 @@ class _UserProfileScreenState extends State<UserProfileScreen> with WidgetsBindi
 
       if (kIsWeb) {
         debugPrint('🖼️ (Web) Original bytes length: ${webBytes!.lengthInBytes}');
-        final croppedBytes = await _cropBytesToPortraitWeb(webBytes!);
+        final croppedBytes = await _cropBytesToPortraitWeb(webBytes);
         if (croppedBytes == null) {
           debugPrint('❌ (Web) Cropping cancelled or failed');
           setState(() => _uploadingPhoto = false);

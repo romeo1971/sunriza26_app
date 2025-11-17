@@ -80,7 +80,7 @@ Future<void> showPurchaseSuccessDialog({
         TextButton(
           onPressed: () => Navigator.of(dialogContext).pop(),
           child: const Text('Schließen', style: TextStyle(color: Colors.white)),
-        ),
+          ),
       ],
     ),
   );

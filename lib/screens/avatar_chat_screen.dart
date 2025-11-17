@@ -1964,13 +1964,10 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         }
       }
     } else {
-      debugPrint('❌ Room is NULL!');
+      // Room is NULL - expected if not in LiveKit call
     }
     
-    debugPrint('📺 No remote video - showing fallback');
-    
     // PRIORITÄT 2: Sequential Chunked Video
-    debugPrint('🎬 _liveAvatarEnabled=$_liveAvatarEnabled, _currentChunk=$_currentChunk');
     if (_liveAvatarEnabled) {
       VideoPlayerController? activeCtrl;
       switch (_currentChunk) {
@@ -1979,9 +1976,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         case 3: activeCtrl = _chunk3Controller; break;
         case 4: activeCtrl = _idleController; break;
       }
-      debugPrint('🎬 activeCtrl=${activeCtrl != null ? "EXISTS" : "NULL"}, initialized=${activeCtrl?.value.isInitialized ?? false}, playing=${activeCtrl?.value.isPlaying ?? false}');
       if (activeCtrl != null && activeCtrl.value.isInitialized) {
-        debugPrint('✅ RENDERING CHUNK VIDEO (chunk $_currentChunk)');
         return FittedBox(
           fit: BoxFit.cover,
           child: SizedBox(
@@ -1990,11 +1985,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
             child: VideoPlayer(activeCtrl),
           ),
         );
-      } else {
-        debugPrint('⚠️ activeCtrl not ready - showing static image/black');
       }
-    } else {
-      debugPrint('⚠️ _liveAvatarEnabled=false - skipping chunk videos');
     }
     
     // PRIORITÄT 3: Statisches Hero-Image
@@ -5256,108 +5247,84 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
     setState(() => _isProcessing = true);
 
     try {
-        // Für kostenlose Items: Direkt speichern und als bestätigt markieren
+        // Für kostenlose Items: Nur Client-seitig speichern (schnell!)
       if (widget.isFree) {
-        final saved = await _momentsService.saveMoment(
-          media: widget.media,
-          price: 0.0,
-          paymentMethod: 'free',
-        );
+        final uid = FirebaseAuth.instance.currentUser?.uid;
+        if (uid == null) throw Exception('Nicht angemeldet');
 
-          // Markiere als confirmed für diesen Nutzer
-          try {
-            final uid = FirebaseAuth.instance.currentUser?.uid;
-            final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
-            final avatarId = chatState?._avatarData?.id;
-            final playlistId = chatState?._timelineItemsMetadata.isNotEmpty == true
-                ? (chatState!._timelineItemsMetadata[chatState._timelineCurrentIndex]['playlistId'] as String?)
-                : null;
-            if (uid != null && avatarId != null && playlistId != null) {
-              await FirebaseFirestore.instance
-                  .collection('avatars')
-                  .doc(avatarId)
-                  .collection('playlists')
-                  .doc(playlistId)
-                  .collection('confirmedItems')
-                  .add({
-                'userId': uid,
-                'mediaId': widget.media.id,
-                'confirmedAt': FieldValue.serverTimestamp(),
-              });
-            }
-          } catch (_) {}
+        // Direkt Moment anlegen (kein Backend-Call, nur Firestore)
+        final momentsCol = FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .collection('moments');
+        final momentId = momentsCol.doc().id;
+        
+        await momentsCol.doc(momentId).set({
+          'id': momentId,
+          'userId': uid,
+          'avatarId': widget.media.avatarId,
+          'type': _getMediaTypeString(widget.media.type),
+          'mediaId': widget.media.id,
+          'originalUrl': widget.media.url,
+          'storedUrl': widget.media.url, // Direkt Original-URL nutzen
+          'originalFileName': widget.media.originalFileName ?? 'Media',
+          'acquiredAt': DateTime.now().millisecondsSinceEpoch,
+          'price': 0.0,
+          'currency': '€',
+          'paymentMethod': 'free',
+          'tags': [],
+        });
+
+        // Markiere als confirmed
+        try {
+          final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
+          final avatarId = chatState?._avatarData?.id;
+          final playlistId = chatState?._timelineItemsMetadata.isNotEmpty == true
+              ? (chatState!._timelineItemsMetadata[chatState._timelineCurrentIndex]['playlistId'] as String?)
+              : null;
+          if (uid != null && avatarId != null && playlistId != null) {
+            await FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(avatarId)
+                .collection('playlists')
+                .doc(playlistId)
+                .collection('confirmedItems')
+                .add({
+              'userId': uid,
+              'mediaId': widget.media.id,
+              'confirmedAt': FieldValue.serverTimestamp(),
+            });
+          }
+        } catch (_) {}
 
         // Update Purchase Status Cache
         if (context.mounted) {
           final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
           if (chatState != null) {
             chatState._purchaseStatusCache[widget.media.id] = true;
-            chatState.setState(() {}); // UI refresh
+            chatState.setState(() {});
           }
         }
 
         if (!mounted) return;
-        
-        // Schließe Dialog
         Navigator.pop(context);
 
-        // Erfolg: Download automatisch starten und Hinweis anzeigen
+        // Success-Dialog (vereinheitlicht)
         final chatState = context.findAncestorStateOfType<_AvatarChatScreenState>();
         final avatarName = chatState?._avatarData?.displayName 
             ?? chatState?._avatarData?.fullName 
             ?? 'Avatar';
-        // Auto-Download
-        try {
-          final uri = Uri.parse(saved.storedUrl);
-          if (await canLaunchUrl(uri)) {
-            await launchUrl(
-              uri,
-              mode: LaunchMode.externalApplication,
-              webOnlyWindowName: '_blank',
-            );
-          }
-        } catch (_) {}
 
-        if (mounted) {
-          await showDialog(
-            context: context,
-            builder: (_) => AlertDialog(
-              backgroundColor: AppColors.darkSurface,
-              title: const Text('Annahme bestätigt', style: TextStyle(color: Colors.white)),
-              content: Text(
-                '"${widget.media.originalFileName ?? 'Media'}" von "$avatarName" wurde zu deinen Momenten hinzugefügt. Der Download wurde gestartet.',
-                style: const TextStyle(color: Colors.white70),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    final navLocal = Navigator.of(context, rootNavigator: false);
-                    if (navLocal.canPop()) navLocal.pop();
-                    final navRoot = Navigator.of(context, rootNavigator: true);
-                    if (navRoot.canPop()) navRoot.pop();
-                  },
-                  child: const Text('Schließen', style: TextStyle(color: Colors.white70)),
-                ),
-                TextButton(
-                  onPressed: () async {
-                    try {
-                      final uri = Uri.parse(saved.storedUrl);
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(
-                          uri,
-                          mode: LaunchMode.externalApplication,
-                          webOnlyWindowName: '_blank',
-                        );
-                      }
-                    } catch (_) {}
-                    if (Navigator.canPop(context)) Navigator.pop(context);
-                  },
-                  child: const Text('Download', style: TextStyle(color: AppColors.lightBlue)),
-                ),
-              ],
-            ),
-          );
-        }
+        await showPurchaseSuccessDialog(
+          context: context,
+          data: PurchaseSuccessData(
+            mediaName: widget.media.originalFileName ?? 'Media',
+            avatarName: avatarName,
+            source: 'chat',
+            variant: 'accept',
+            downloadUrl: widget.media.url,
+          ),
+        );
       } else {
         // Für kostenpflichtige Items: Credits ODER Stripe
         final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -5472,6 +5439,19 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
       );
     } finally {
       if (mounted) setState(() => _isProcessing = false);
+    }
+  }
+
+  String _getMediaTypeString(AvatarMediaType type) {
+    switch (type) {
+      case AvatarMediaType.image:
+        return 'image';
+      case AvatarMediaType.video:
+        return 'video';
+      case AvatarMediaType.audio:
+        return 'audio';
+      case AvatarMediaType.document:
+        return 'document';
     }
   }
 

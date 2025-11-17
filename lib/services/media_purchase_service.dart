@@ -11,8 +11,8 @@ class MediaPurchaseService {
   /// Prüft ob User genug Credits hat (direkt über das `credits` Feld im User-Dokument).
   Future<bool> hasEnoughCredits(String userId, int requiredCredits) async {
     try {
-      final userDoc = await _firestore.collection('users').doc(userId).get();
-      if (!userDoc.exists) return false;
+    final userDoc = await _firestore.collection('users').doc(userId).get();
+    if (!userDoc.exists) return false;
       final data = userDoc.data() ?? <String, dynamic>{};
       final currentCredits = (data['credits'] as num?)?.toInt() ?? 0;
       debugPrint(
@@ -101,7 +101,7 @@ class MediaPurchaseService {
         debugPrint('🔴 [PurchaseService] Nicht genug Credits');
       } else {
         debugPrint('🔴 [PurchaseService] Function error: ${e.code} ${e.message}');
-      }
+          }
       return null;
     } catch (e, stackTrace) {
       debugPrint('🔴 [PurchaseService] Fehler beim Media-Kauf: $e');

@@ -109,11 +109,11 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
               ),
             ),
             Builder(builder: (_) {
-              final bool _enabled = _isValid(_addCtrl.text);
+              final bool enabled = _isValid(_addCtrl.text);
               return IconButton(
               tooltip: 'Hinzufügen',
-              icon: Icon(Icons.check, color: _enabled ? Colors.white : Colors.white24),
-              onPressed: _enabled ? () async {
+              icon: Icon(Icons.check, color: enabled ? Colors.white : Colors.white24),
+              onPressed: enabled ? () async {
                 String u = _addCtrl.text.trim();
                 if (widget.providerId == 'x') {
                   final extracted = _extractXStatusUrl(u);
@@ -230,8 +230,10 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
         ),
       ),
       child: DragTarget<int>(
-        onWillAccept: (from) => from != null && from != index,
-        onAccept: (from) async {
+        onWillAcceptWithDetails: (details) => details.data != null && details.data != index,
+        onAcceptWithDetails: (details) async {
+          final from = details.data;
+          if (from == null || from == index || from < 0 || from >= list.length) return;
           final item = list.removeAt(from);
           list.insert(index, item);
           widget.manualCtrl.text = list.join('\n');
@@ -755,8 +757,8 @@ class _SocialMediaExpansionTileState extends State<SocialMediaExpansionTile> {
   final _urlCtrl = TextEditingController();
   final _loginCtrl = TextEditingController();
   final _pwdCtrl = TextEditingController();
-  bool _showPassword = false;
-  bool _connecting = false;
+  final bool _showPassword = false;
+  final bool _connecting = false;
 
   @override
   void initState() {
@@ -1288,11 +1290,11 @@ class _IgEditorState extends State<_IgEditor> {
               ),
             ),
             Builder(builder: (_) {
-              final bool _enabled = _isValidIg(_addUrlCtrl.text);
+              final bool enabled = _isValidIg(_addUrlCtrl.text);
               return IconButton(
               tooltip: 'Hinzufügen',
-              icon: Icon(Icons.check, color: _enabled ? Colors.white : Colors.white24),
-              onPressed: _enabled
+              icon: Icon(Icons.check, color: enabled ? Colors.white : Colors.white24),
+              onPressed: enabled
                   ? () async {
                       final permalink = _extractInstagramPermalink(_addUrlCtrl.text)!;
                       _urls.add(permalink);
@@ -1586,7 +1588,7 @@ class _IgEditorState extends State<_IgEditor> {
 
 // Einheitliches Preview-Overlay für oEmbed-Provider (instagram/tiktok)
 Future<void> _openOEmbedPreview(BuildContext context, {required String provider, required String postUrl}) async {
-  Future<InAppWebViewInitialData> _buildData() async {
+  Future<InAppWebViewInitialData> buildData() async {
     // API-frei: reines Client-Embed über blockquote + embed.js
     String body;
     if (provider.toLowerCase() == 'instagram') {
@@ -1631,7 +1633,7 @@ Future<void> _openOEmbedPreview(BuildContext context, {required String provider,
     builder: (ctx) {
       return SafeArea(
         child: FutureBuilder<InAppWebViewInitialData>(
-          future: _buildData(),
+          future: buildData(),
           builder: (context, snap) {
             if (!snap.hasData) return const Center(child: CircularProgressIndicator());
             return InAppWebView(
@@ -1729,7 +1731,7 @@ class _TikTokEditorState extends State<_TikTokEditor> {
   int _page = 0; // dynamisch nach Breite
   // Toggle/Updater entfernt: nur manuelle URLs
   static const String _ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
-  bool _editingProfile = false;
+  final bool _editingProfile = false;
   final TextEditingController _addUrlCtrl = TextEditingController();
   final Map<String, String> _thumbByUrl = <String, String>{};
   int? _dragFromIndex;
@@ -1780,11 +1782,11 @@ class _TikTokEditorState extends State<_TikTokEditor> {
               ),
             ),
             Builder(builder: (_) {
-              final bool _enabled = (_addUrlCtrl.text.contains('www.tiktok.com') && (_addUrlCtrl.text.contains('/video/') || _addUrlCtrl.text.contains('/photo/')));
+              final bool enabled = (_addUrlCtrl.text.contains('www.tiktok.com') && (_addUrlCtrl.text.contains('/video/') || _addUrlCtrl.text.contains('/photo/')));
               return IconButton(
               tooltip: 'Hinzufügen',
-              icon: Icon(Icons.check, color: _enabled ? Colors.white : Colors.white24),
-              onPressed: _enabled ? () async {
+              icon: Icon(Icons.check, color: enabled ? Colors.white : Colors.white24),
+              onPressed: enabled ? () async {
                 final u = _addUrlCtrl.text.trim();
                 if (!(u.contains('/video/') || u.contains('/photo/'))) { _toast(context, 'Bitte gültige TikTok URL (/video/ oder /photo/)'); return; }
                 final list = widget.manualCtrl.text.split('\n').where((e) => e.trim().isNotEmpty).map((e) => e.trim()).toList();
@@ -1917,8 +1919,10 @@ class _TikTokEditorState extends State<_TikTokEditor> {
         ),
       ),
       child: DragTarget<int>(
-        onWillAccept: (from) => from != null && from != index,
-        onAccept: (from) async {
+        onWillAcceptWithDetails: (details) => details.data != null && details.data != index,
+        onAcceptWithDetails: (details) async {
+          final from = details.data;
+          if (from == null || from == index || from < 0 || from >= urls.length) return;
           final list = urls;
           final item = list.removeAt(from);
           list.insert(index, item);

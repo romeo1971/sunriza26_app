@@ -349,22 +349,22 @@ class _MediaPurchaseDialogState extends State<MediaPurchaseDialog> {
       
       // Avatar-Name laden für bessere Success-Message
       String avatarName = 'Avatar';
-      if (widget.media.avatarId.isNotEmpty) {
-        try {
-          final avatarDoc = await FirebaseFirestore.instance
-              .collection('avatars')
-              .doc(widget.media.avatarId)
-              .get();
-          if (avatarDoc.exists) {
-            final data = avatarDoc.data()!;
-            final nickname = (data['nickname'] as String?)?.trim();
-            final firstName = (data['firstName'] as String?)?.trim();
-            avatarName = (nickname != null && nickname.isNotEmpty) ? nickname : (firstName ?? 'Avatar');
+        if (widget.media.avatarId.isNotEmpty) {
+          try {
+            final avatarDoc = await FirebaseFirestore.instance
+                .collection('avatars')
+                .doc(widget.media.avatarId)
+                .get();
+            if (avatarDoc.exists) {
+              final data = avatarDoc.data()!;
+              final nickname = (data['nickname'] as String?)?.trim();
+              final firstName = (data['firstName'] as String?)?.trim();
+              avatarName = (nickname != null && nickname.isNotEmpty) ? nickname : (firstName ?? 'Avatar');
+            }
+          } catch (e) {
+            debugPrint('⚠️ [MediaPurchase] Avatar-Name konnte nicht geladen werden: $e');
           }
-        } catch (e) {
-          debugPrint('⚠️ [MediaPurchase] Avatar-Name konnte nicht geladen werden: $e');
         }
-      }
 
       if (!mounted) return;
       
