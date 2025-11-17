@@ -19,7 +19,21 @@ import '../widgets/timeline_items_sheet.dart';
 class ExploreScreen extends StatefulWidget {
   final Function(String avatarId)? onCurrentAvatarChanged;
 
-  const ExploreScreen({super.key, this.onCurrentAvatarChanged});
+  /// Optional: Wenn gesetzt, wird der Explore-Screen auf genau diesen Avatar fokussiert.
+  /// In Kombination mit [publicEntry] wird nur dieser eine Avatar gezeigt.
+  final String? initialAvatarId;
+
+  /// Öffentlicher Einstieg (z.B. /#/avatar/<slug>):
+  /// - nur ein Avatar, kein vertikales Scrollen
+  /// - Chat/Aktionen können zusätzlich gegated werden
+  final bool publicEntry;
+
+  const ExploreScreen({
+    super.key,
+    this.onCurrentAvatarChanged,
+    this.initialAvatarId,
+    this.publicEntry = false,
+  });
 
   @override
   State<ExploreScreen> createState() => ExploreScreenState();
@@ -646,11 +660,18 @@ class ExploreScreenState extends State<ExploreScreen> {
           );
         }
 
-        final avatars = snapshot.data!.docs
+        var avatars = snapshot.data!.docs
             .map(
               (doc) => AvatarData.fromMap(doc.data() as Map<String, dynamic>),
             )
             .toList();
+
+        // Öffentlicher Einstieg mit initialAvatarId → nur diesen Avatar anzeigen
+        if (widget.publicEntry && widget.initialAvatarId != null) {
+          avatars = avatars
+              .where((a) => a.id == widget.initialAvatarId)
+              .toList();
+        }
 
         // Cache nur beim ersten Mal oder wenn sich die Anzahl ändert
         if (!_isInitialized || _cachedAvatars.length != avatars.length) {
@@ -719,6 +740,9 @@ class ExploreScreenState extends State<ExploreScreen> {
           controller: _pageController,
           scrollDirection: Axis.vertical,
           itemCount: _cachedAvatars.length,
+          physics: widget.publicEntry
+              ? const NeverScrollableScrollPhysics()
+              : const BouncingScrollPhysics(),
           onPageChanged: (index) async {
             _currentPageIndex = index; // Position speichern
             final avatarId = _cachedAvatars[index].id;
@@ -923,7 +947,16 @@ class ExploreScreenState extends State<ExploreScreen> {
                     // Chat starten (Button, weißer Text)
                     Expanded(
                       child: ElevatedButton.icon(
-                        onPressed: () {
+                        onPressed: () async {
+                          // Öffentlicher Einstieg: Chat nur mit Login
+                          if (widget.publicEntry &&
+                              FirebaseAuth.instance.currentUser == null) {
+                            // Zur Auth-Route wechseln (zeigt Login/Register inkl. Google)
+                            if (context.mounted) {
+                              Navigator.of(context).pushNamed('/');
+                            }
+                            return;
+                          }
                           final homeNav = context
                               .findAncestorStateOfType<HomeNavigationScreenState>();
                           if (homeNav != null) {

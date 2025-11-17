@@ -764,7 +764,7 @@ class _TimelineItemsSheetState extends State<TimelineItemsSheet> {
                     child: Row(
                       children: [
                         TextButton(
-                          onPressed: () => Navigator.pop(bCtx),
+                          onPressed: _confirmProcessing ? null : () => Navigator.pop(bCtx),
                           child: const Text('Abbrechen'),
                         ),
                         const Spacer(),

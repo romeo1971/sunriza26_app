@@ -5,7 +5,8 @@ library;
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
 import 'package:provider/provider.dart';
 import '../widgets/custom_text_field.dart';
@@ -729,13 +730,21 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       if (kIsWeb) {
-        // Web: Firebase Popup-Flow (kein google_sign_in Plugin nötig)
-        final provider = GoogleAuthProvider();
-        provider.setCustomParameters({'prompt': 'select_account'});
-        final result = await FirebaseAuth.instance.signInWithPopup(provider);
-        // User-Profil in Firestore anlegen (wie bei Mobile)
-        if (result.user != null) {
-          await _authService.createUserProfile(result.user!);
+        // Web:
+        // - Desktop/Android-Browser → Popup-Flow
+        // - iOS Safari → MUSS Redirect nutzen (Popup wird blockiert / sofort geschlossen)
+        final provider = GoogleAuthProvider()..setCustomParameters({
+          'prompt': 'select_account',
+        });
+
+        if (defaultTargetPlatform == TargetPlatform.iOS) {
+          await FirebaseAuth.instance.signInWithRedirect(provider);
+          // Ergebnis wird beim nächsten App-Start/Reload geliefert
+        } else {
+          final result = await FirebaseAuth.instance.signInWithPopup(provider);
+          if (result.user != null) {
+            await _authService.createUserProfile(result.user!);
+          }
         }
       } else {
         // Mobile: zentral über AuthService (legt User-Dokument in Firestore an)

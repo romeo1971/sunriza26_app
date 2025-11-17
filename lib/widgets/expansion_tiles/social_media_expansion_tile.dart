@@ -250,7 +250,7 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
           return Stack(
             children: [
               SizedBox(
-                width: 90,
+                width: widget.providerId == 'x' ? 150 : 90,
                 child: AspectRatio(
                   aspectRatio: 9 / 16,
                   child: ClipRRect(
@@ -419,20 +419,27 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
               Positioned(
                 right: 12,
                 top: 8,
-                child: GestureDetector(
-                  onTap: () async {
-                    try { await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank'))); } catch (_) {}
-                    if (ctx.mounted) Navigator.pop(ctx);
-                  },
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.7),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white24),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () async {
+                      try {
+                        await controller?.loadUrl(
+                          urlRequest: URLRequest(url: WebUri('about:blank')),
+                        );
+                      } catch (_) {}
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.7),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Icon(Icons.close, color: Colors.white, size: 20),
                     ),
-                    child: const Icon(Icons.close, color: Colors.white, size: 20),
                   ),
                 ),
               ),
@@ -475,20 +482,27 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
               Positioned(
                 right: 12,
                 top: 8,
-                child: GestureDetector(
-                  onTap: () async {
-                    try { await controller?.loadUrl(urlRequest: URLRequest(url: WebUri('about:blank'))); } catch (_) {}
-                    if (ctx.mounted) Navigator.pop(ctx);
-                  },
-                  child: Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.7),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white24),
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: () async {
+                      try {
+                        await controller?.loadUrl(
+                          urlRequest: URLRequest(url: WebUri('about:blank')),
+                        );
+                      } catch (_) {}
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.7),
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white24),
+                      ),
+                      child: const Icon(Icons.close, color: Colors.white, size: 20),
                     ),
-                    child: const Icon(Icons.close, color: Colors.white, size: 20),
                   ),
                 ),
               ),
