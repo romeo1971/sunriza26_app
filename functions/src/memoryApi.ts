@@ -49,10 +49,13 @@ export const avatarMemoryInsert = onRequest({
     // Store in Pinecone
     await pinecone.storeDocument(documentId, full_text, metadata);
 
+    const globalIndexName =
+      process.env.PINECONE_GLOBAL_INDEX || 'sunriza26-avatar-data';
+
     res.status(200).json({
       namespace: `${user_id}_${avatar_id}`,
       inserted: 1,
-      index_name: 'sunriza26-avatar-data',
+      index_name: globalIndexName,
       model: 'text-embedding-3-small',
     });
   } catch (error: any) {

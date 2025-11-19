@@ -59,11 +59,11 @@ class RAGService {
         var _a, _b, _c, _d;
         try {
             console.log(`Generating avatar response for user ${request.userId}`);
-            // Kontext aus ähnlichen Dokumenten generieren (user+avatar-spezifisch + global sunriza26-avatar-data)
+            // Kontext aus ähnlichen Dokumenten generieren (user+avatar-spezifisch + globaler Avatar-Index)
             const maxCtx = 2000;
             // 1) User-spezifische Daten (avatars-index, namespace userId_avatarId)
             const userDocs = await this.pineconeService.searchSimilarDocuments(request.query, request.userId, 8, undefined, request.avatarId);
-            // 2) Globale Cases (sunriza26-avatar-data, namespace 'global')
+            // 2) Globale Cases (globaler Avatar-Index, namespace 'global')
             const globalDocs = await this.pineconeService.searchSimilarDocumentsGlobal(request.query, 6);
             const assembleContext = (docs, label) => {
                 var _a, _b;

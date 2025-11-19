@@ -241,7 +241,8 @@ async def entrypoint(ctx: JobContext):
     openai_api_key = os.getenv("OPENAI_API_KEY")
     elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
     pinecone_api_key = os.getenv("PINECONE_API_KEY")
-    pinecone_index = os.getenv("PINECONE_INDEX_NAME", "sunriza26-avatar-data")
+    # global avatar index (Bestand: sunriza26-avatar-data; via Env übersteuerbar)
+    pinecone_index = os.getenv("PINECONE_GLOBAL_INDEX", "sunriza26-avatar-data")
     
     # Validierung
     if not bithuman_api_secret:

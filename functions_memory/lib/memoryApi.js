@@ -81,7 +81,7 @@ exports.avatarMemoryInsertV2 = (0, https_1.onRequest)({
             res.status(500).json({ error: 'Server secrets missing' });
             return;
         }
-        const indexName = 'sunriza26-avatar-data';
+        const indexName = process.env.PINECONE_GLOBAL_INDEX || 'sunriza26-avatar-data';
         const namespace = `${user_id}_${avatar_id}`;
         // Pinecone Host abrufen (einmalig)
         const hostResp = await (0, node_fetch_1.default)(`https://api.pinecone.io/indexes/${indexName}`, {

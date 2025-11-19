@@ -95,7 +95,8 @@ def memory_insert(request):  # entry-point: memory_insert
         if not OPENAI_API_KEY or not PINECONE_API_KEY:
             return (json.dumps({"error": "Server secrets missing"}), 500, {**headers, "Content-Type": "application/json"})
 
-        index_name = "sunriza26-avatar-data"
+        # global avatar index (Bestand: sunriza26-avatar-data; via Env übersteuerbar)
+        index_name = os.getenv("PINECONE_GLOBAL_INDEX", "sunriza26-avatar-data")
         namespace = f"{user_id}_{avatar_id}"
 
         # Embeddings + Upsert strikt in Minibatches (Peak-RAM minimieren)

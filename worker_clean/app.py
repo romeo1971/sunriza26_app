@@ -30,8 +30,8 @@ def process():
         if not OPENAI_KEY or not PINECONE_KEY:
             return jsonify({"error": "API keys missing"}), 500
 
-        # Get Pinecone host
-        index_name = "sunriza26-avatar-data"
+        # Get Pinecone host (Bestand: sunriza26-avatar-data; via Env übersteuerbar)
+        index_name = os.getenv("PINECONE_GLOBAL_INDEX", "sunriza26-avatar-data")
         namespace = f"{user_id}_{avatar_id}"
         host_resp = requests.get(
             f"https://api.pinecone.io/indexes/{index_name}",

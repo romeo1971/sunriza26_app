@@ -156,12 +156,12 @@ class PineconeService {
             return [];
         }
     }
-    /// Sucht ähnliche Dokumente (global, sunriza26-avatar-data)
+    /// Sucht ähnliche Dokumente (globaler Avatar-Index, Bestand)
     async searchSimilarDocumentsGlobal(query, topK = 5) {
         var _a, _b;
         try {
-            const globalIndexName = 'sunriza26-avatar-data';
-            // Prüfe, ob Index existiert
+            const globalIndexName = process.env.PINECONE_GLOBAL_INDEX || 'sunriza26-avatar-data';
+            // Prüfe, ob Index existiert – kein Auto-Create
             const indexes = await this.pinecone.listIndexes();
             const indexExists = (_a = indexes.indexes) === null || _a === void 0 ? void 0 : _a.some(index => index.name === globalIndexName);
             if (!indexExists) {

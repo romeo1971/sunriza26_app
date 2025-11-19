@@ -1,8 +1,8 @@
 import 'firebase_options.dart';
-import 'main.dart' show bootstrapSunrizaApp;
+import 'main.dart' show bootstrapHauauApp;
 
 Future<void> main() async {
-  await bootstrapSunrizaApp(
+  await bootstrapHauauApp(
     envFileName: '.env.prod',
     firebaseOptions: DefaultFirebaseOptions.currentPlatform,
   );

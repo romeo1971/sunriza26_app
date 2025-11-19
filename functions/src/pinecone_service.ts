@@ -45,7 +45,9 @@ export class PineconeService {
   async initializeIndex(): Promise<void> {
     try {
       const indexes = await this.pinecone.listIndexes();
-      const indexExists = indexes.indexes?.some(index => index.name === this.indexName);
+      const indexExists = indexes.indexes?.some(
+        (index) => index.name === this.indexName,
+      );
 
       if (!indexExists) {
         console.log(`Creating Pinecone index: ${this.indexName}`);
@@ -62,7 +64,7 @@ export class PineconeService {
         });
 
         // Warten bis Index bereit ist
-        await this.waitForIndexReady();
+        await this.waitForIndexReady(this.indexName);
       }
 
       console.log(`Pinecone index ${this.indexName} is ready`);
@@ -72,14 +74,14 @@ export class PineconeService {
     }
   }
 
-  /// Wartet bis Index bereit ist
-  private async waitForIndexReady(): Promise<void> {
+  /// Wartet bis ein Index bereit ist
+  private async waitForIndexReady(indexName: string): Promise<void> {
     const maxRetries = 30;
     let retries = 0;
 
     while (retries < maxRetries) {
       try {
-        const index = this.pinecone.index(this.indexName);
+        const index = this.pinecone.index(indexName);
         const stats = await index.describeIndexStats();
         
         if (stats.totalRecordCount !== undefined) {
@@ -204,19 +206,24 @@ export class PineconeService {
     }
   }
 
-  /// Sucht ähnliche Dokumente (global, sunriza26-avatar-data)
+  /// Sucht ähnliche Dokumente (global, bestehender Pinecone-Index)
   async searchSimilarDocumentsGlobal(
     query: string,
     topK: number = 5
   ): Promise<DocumentVector[]> {
     try {
-      const globalIndexName = 'sunriza26-avatar-data';
-      
-      // Prüfe, ob Index existiert
+      const globalIndexName =
+        process.env.PINECONE_GLOBAL_INDEX || 'sunriza26-avatar-data';
+
+      // Prüfe, ob Index existiert – wenn nicht, still überspringen (kein Auto-Create)
       const indexes = await this.pinecone.listIndexes();
-      const indexExists = indexes.indexes?.some(index => index.name === globalIndexName);
+      const indexExists = indexes.indexes?.some(
+        (index) => index.name === globalIndexName,
+      );
       if (!indexExists) {
-        console.log(`Global index ${globalIndexName} does not exist, skipping`);
+        console.log(
+          `Global index ${globalIndexName} does not exist, skipping global search`,
+        );
         return [];
       }
 

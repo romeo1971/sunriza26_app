@@ -71,7 +71,7 @@ class NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
   }
 }
 
-Future<void> bootstrapSunrizaApp({
+Future<void> bootstrapHauauApp({
   required String envFileName,
   required FirebaseOptions firebaseOptions,
 }) async {
@@ -127,7 +127,7 @@ Future<void> bootstrapSunrizaApp({
 Future<void> main() async {
   // Default-Einstieg nutzt Prod-Konfiguration; für explizite Dev/Prod-Builds
   // bitte `main_dev.dart` bzw. `main_prod.dart` verwenden.
-  await bootstrapSunrizaApp(
+  await bootstrapHauauApp(
     envFileName: '.env.prod',
     firebaseOptions: DefaultFirebaseOptions.currentPlatform,
   );

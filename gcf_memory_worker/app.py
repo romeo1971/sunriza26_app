@@ -57,8 +57,8 @@ def process_task():
         OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
         PINECONE_API_KEY = (os.getenv("PINECONE_API_KEY") or "").strip()
 
-        # Pinecone host
-        index_name = "sunriza26-avatar-data"
+        # Pinecone host (Bestand: sunriza26-avatar-data; via Env übersteuerbar)
+        index_name = os.getenv("PINECONE_GLOBAL_INDEX", "sunriza26-avatar-data")
         namespace = f"{user_id}_{avatar_id}"
         host_resp = requests.get(
             f"https://api.pinecone.io/indexes/{index_name}", headers={"Api-Key": PINECONE_API_KEY}, timeout=15
