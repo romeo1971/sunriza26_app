@@ -51,7 +51,7 @@ import 'theme/app_theme.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/services.dart';
-import 'l10n/app_localizations.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_localized_locales/flutter_localized_locales.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -115,58 +115,13 @@ Future<void> bootstrapSunrizaApp({
   // Firebase Auth Sprache auf Gerätesprache setzen
   await FirebaseAuth.instance.setLanguageCode(null);
 
-  // Sprache laden: Firebase ist Master, Prefs ist Cache
-  String initialLang = 'en';
-
-  // 1) Zuerst aus Prefs laden (schnell, ohne Flackern)
-  try {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getString('language_code');
-    if (saved != null && saved.isNotEmpty) initialLang = saved;
-  } catch (_) {}
-
-  // 2) Falls User eingeloggt: Firebase-Sprache holen (Master)
-  try {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get()
-          .timeout(const Duration(seconds: 2));
-
-      final fbLang = (doc.data()?['language'] as String?)?.trim();
-      if (fbLang != null && fbLang.isNotEmpty) {
-        // Firebase hat Sprache → das ist der Master
-        initialLang = fbLang;
-        // In Prefs cachen für nächsten Start
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('language_code', fbLang);
-        } catch (_) {}
-      } else {
-        // Firebase hat noch keine Sprache → Default 'en' setzen
-        await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
-          'language': 'en',
-        }, SetOptions(merge: true));
-        initialLang = 'en';
-        try {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('language_code', 'en');
-        } catch (_) {}
-      }
-    }
-  } catch (_) {
-    // Timeout oder Fehler → mit Prefs-Wert weitermachen ja ok
-  }
-
   // Debug: Base-URL ausgeben immer
   // debugPrint('BASE=${EnvService.memoryApiBaseUrl()}');
 
   // Engineering-Anker nur im Debug registrieren (kein Boot-Log)
   // Engineering-Logs vollständig entfernt
 
-  runApp(SunrizaApp(initialLanguageCode: initialLang));
+  runApp(const HauauApp());
 }
 
 Future<void> main() async {
@@ -199,9 +154,8 @@ void _validateAllEnvStrict() {
   }
 }
 
-class SunrizaApp extends StatelessWidget {
-  final String initialLanguageCode;
-  const SunrizaApp({super.key, this.initialLanguageCode = 'en'});
+class HauauApp extends StatelessWidget {
+  const HauauApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -234,10 +188,12 @@ class SunrizaApp extends StatelessWidget {
           Future.microtask(() => locSvc.useLanguageCode(desiredCode));
         }
         return MaterialApp(
-          title: 'Sunriza26 - Live AI Assistant',
-          localizationsDelegates: [
-            ...AppLocalizations.localizationsDelegates,
-            const LocaleNamesLocalizationsDelegate(),
+          title: 'hauau - HOW ARE YOU',
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            LocaleNamesLocalizationsDelegate(),
           ],
           supportedLocales: const [
             Locale('en'),
@@ -569,12 +525,10 @@ class SunrizaApp extends StatelessWidget {
         Provider<VideoStreamService>(create: (_) => VideoStreamService()),
         Provider<AuthService>(create: (_) => AuthService()),
         ChangeNotifierProvider<LanguageService>(
-          create: (_) =>
-              LanguageService(initialLanguageCode: initialLanguageCode),
+          create: (_) => LanguageService(initialLanguageCode: 'en'),
         ),
         ChangeNotifierProvider<LocalizationService>(
-          create: (_) =>
-              LocalizationService()..useLanguageCode(initialLanguageCode),
+          create: (_) => LocalizationService()..useLanguageCode('en'),
         ),
       ],
       child: isMacOS ? ExcludeSemantics(child: app) : app,

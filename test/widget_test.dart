@@ -12,9 +12,9 @@ import 'package:sunriza26/main.dart';
 void main() {
   testWidgets('AI Assistant app loads correctly', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const SunrizaApp());
+    await tester.pumpWidget(const HauauApp());
 
     // Verify that the app loads with the correct title.
-    expect(find.text('Sunriza26 - Live AI Assistant'), findsOneWidget);
+    expect(find.text('hauau - HOW ARE YOU'), findsOneWidget);
   });
 }
