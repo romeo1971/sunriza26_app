@@ -174,7 +174,7 @@ modal deploy modal_dynamics.py
 
 ### Alle Apps deployen
 ```bash
-cd /Users/hhsw/Desktop/sunriza/sunriza26
+cd /Users/hhsw/Desktop/hauau/hauau
 source venv/bin/activate
 
 # 1. Orchestrator (zuerst, da andere Apps davon abhängen)

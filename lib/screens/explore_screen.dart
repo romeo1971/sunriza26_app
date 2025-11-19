@@ -2137,7 +2137,10 @@ class _TikTokOverviewOverlayState extends State<_TikTokOverviewOverlay> {
 class _TikTokFullscreenViewer extends StatefulWidget {
   final List<String> urls;
   final int? initialIndex;
-  const _TikTokFullscreenViewer({required this.urls, this.initialIndex});
+  const _TikTokFullscreenViewer({
+    required this.urls,
+    this.initialIndex,
+  });
 
   @override
   State<_TikTokFullscreenViewer> createState() => _TikTokFullscreenViewerState();

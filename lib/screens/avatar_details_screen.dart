@@ -5,12 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:ui' as ui;
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:file_picker/file_picker.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -3424,8 +3421,8 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         task: () async {
           final uid = FirebaseAuth.instance.currentUser!.uid;
-          final base = dotenv.env['MEMORY_API_BASE_URL'];
-          if (base == null || base.isEmpty) {
+          final base = (dotenv.env['MEMORY_API_BASE_URL'] ?? '').trim();
+          if (base.isEmpty) {
             _showSystemSnack(
               context.read<LocalizationService>().t(
                 'avatars.details.backendUrlMissing',

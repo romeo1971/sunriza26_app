@@ -68,14 +68,14 @@ modal secret create firebase-admin \
 ### **SCHRITT 3: Agent auf Modal deployen**
 
 ```bash
-cd /Users/hhsw/Desktop/sunriza/sunriza26
+cd /Users/hhsw/Desktop/hauau/hauau
 modal deploy modal_bithuman_final.py
 ```
 
 **Output:**
 ```
 ✓ Created objects.
-├── 🔨 Created mount /Users/hhsw/Desktop/sunriza/sunriza26/modal_bithuman_final.py
+├── 🔨 Created mount /Users/hhsw/Desktop/hauau/hauau/modal_bithuman_final.py
 └── 🔨 Created function start_agent => bithuman-complete-agent-start-agent
 └── 🔨 Created web function join => https://romeo1971--bithuman-complete-agent-join.modal.run
 └── 🔨 Created web function health => https://romeo1971--bithuman-complete-agent-health.modal.run
@@ -89,7 +89,7 @@ modal deploy modal_bithuman_final.py
 
 ### **SCHRITT 4: Flutter .env anpassen**
 
-Öffne `/Users/hhsw/Desktop/sunriza/sunriza26/.env`:
+Öffne `/Users/hhsw/Desktop/hauau/hauau/.env`:
 
 ```env
 # WICHTIG: Setze die Modal URL als Orchestrator
@@ -171,7 +171,7 @@ Jeder Avatar braucht:
 
 ```bash
 # Flutter App starten
-cd /Users/hhsw/Desktop/sunriza/sunriza26
+cd /Users/hhsw/Desktop/hauau/hauau
 flutter run
 
 # Im App:

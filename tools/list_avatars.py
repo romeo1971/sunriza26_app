@@ -2,7 +2,7 @@
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-cred_path = '/Users/hhsw/Desktop/sunriza/sunriza26/service-account-key.json'
+cred_path = '/Users/hhsw/Desktop/hauau/hauau/service-account-key.json'
 if not firebase_admin._apps:
     cred = credentials.Certificate(cred_path)
     firebase_admin.initialize_app(cred)

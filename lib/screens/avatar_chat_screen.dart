@@ -184,7 +184,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
 
   // Web STT (Speech-to-Text) Tracking
   DateTime? _webSttStartTime;
-  int _totalSttSeconds = 0; // kumulierte Sprechzeit in Sekunden
+  final int _totalSttSeconds = 0; // kumulierte Sprechzeit in Sekunden
 
   Future<void> _loadUserCredits() async {
     try {
@@ -391,7 +391,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         // Explizit gesetzter Token‑Endpoint (Orchestrator o.ä.)
         tokenUri = Uri.parse(tokenUrlEnv);
       } else if (base.isEmpty) {
-        // Fallback: Direkt aus .env joinen, wenn ein Test‑Token hinterlegt ist
+        // Fallback: Direkt aus der Env-Datei joinen, wenn ein Test‑Token hinterlegt ist
         final testToken = (dotenv.env['LIVEKIT_TEST_TOKEN'] ?? '').trim();
         final url = (dotenv.env['LIVEKIT_URL'] ?? '').trim();
         if (testToken.isNotEmpty && url.isNotEmpty) {
@@ -477,7 +477,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
         }
 
         if (data == null) {
-          // Letzter Fallback: .env Test‑Join
+          // Letzter Fallback: Env-Test‑Join
           final testToken = (dotenv.env['LIVEKIT_TEST_TOKEN'] ?? '').trim();
           final url = (dotenv.env['LIVEKIT_URL'] ?? '').trim();
           final fallbackRoom = (dotenv.env['LIVEKIT_TEST_ROOM'] ?? 'sunriza')
@@ -549,7 +549,7 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
           }
         } catch (_) {}
 
-        // Fallback: .env Test‑Join
+        // Fallback: Env-Test‑Join
         final testToken = (dotenv.env['LIVEKIT_TEST_TOKEN'] ?? '').trim();
         final url = (dotenv.env['LIVEKIT_URL'] ?? '').trim();
         final fallbackRoom = (dotenv.env['LIVEKIT_TEST_ROOM'] ?? 'sunriza')
@@ -5282,7 +5282,7 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
             final playlistId = chatState?._timelineItemsMetadata.isNotEmpty == true
                 ? (chatState!._timelineItemsMetadata[chatState._timelineCurrentIndex]['playlistId'] as String?)
                 : null;
-            if (uid != null && avatarId != null && playlistId != null) {
+            if (avatarId != null && playlistId != null) {
               await FirebaseFirestore.instance
                   .collection('avatars')
                   .doc(avatarId)
@@ -5350,7 +5350,7 @@ class _TimelinePurchaseDialogState extends State<_TimelinePurchaseDialog> {
             final playlistId = chatState?._timelineItemsMetadata.isNotEmpty == true
                 ? (chatState!._timelineItemsMetadata[chatState._timelineCurrentIndex]['playlistId'] as String?)
                 : null;
-            if (uid != null && avatarId != null && playlistId != null) {
+            if (avatarId != null && playlistId != null) {
               await FirebaseFirestore.instance
                   .collection('avatars')
                   .doc(avatarId)

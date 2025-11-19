@@ -11,7 +11,7 @@ import requests
 
 def main():
     # Firebase initialisieren
-    cred_path = '/Users/hhsw/Desktop/sunriza/sunriza26/service-account-key.json'
+    cred_path = '/Users/hhsw/Desktop/hauau/hauau/service-account-key.json'
     if not firebase_admin._apps:
         cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred)
@@ -77,7 +77,7 @@ def main():
     # LivePortrait starten
     print("\n🎬 Starte LivePortrait mit DEINEM Hero-Video!")
     
-    source_image = '/Users/hhsw/Desktop/sunriza/sunriza26/schatzy_hero.jpg'
+    source_image = '/Users/hhsw/Desktop/hauau/hauau/schatzy_hero.jpg'
     output_path = '/tmp/idle_from_hero.mp4'
     
     lp_cmd = [
@@ -120,7 +120,7 @@ def main():
     # Zu H.264 konvertieren + Crossfade für seamless loop
     print("\n🔄 Konvertiere zu H.264 + Crossfade für seamless loop...")
     temp_output = '/tmp/idle_temp.mp4'
-    final_output = '/Users/hhsw/Desktop/sunriza/sunriza26/assets/avatars/schatzy/idle.mp4'
+    final_output = '/Users/hhsw/Desktop/hauau/hauau/assets/avatars/schatzy/idle.mp4'
     
     # Schritt 1: H.264 Konvertierung (OHNE AUDIO!)
     ffmpeg_cmd = [

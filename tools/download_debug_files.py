@@ -11,7 +11,7 @@ def main():
     avatar_id = sys.argv[1] if len(sys.argv) > 1 else 'OBIEVfYOXT3BoDAJfUSv'
     
     # Firebase initialisieren
-    cred_path = '/Users/hhsw/Desktop/sunriza/sunriza26/service-account-key.json'
+    cred_path = '/Users/hhsw/Desktop/hauau/hauau/service-account-key.json'
     if not firebase_admin._apps:
         cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred, {
@@ -21,7 +21,7 @@ def main():
     bucket = storage.bucket()
     
     # Erstelle lokalen Ordner
-    local_dir = f'/Users/hhsw/Desktop/sunriza/sunriza26/brain/hilfeLP/{avatar_id}'
+    local_dir = f'/Users/hhsw/Desktop/hauau/hauau/brain/hilfeLP/{avatar_id}'
     os.makedirs(local_dir, exist_ok=True)
     
     print(f"📥 Lade Debug-Dateien für Avatar {avatar_id}...")

@@ -3,7 +3,7 @@
 ## Installation
 
 ```bash
-cd /Users/hhsw/Desktop/sunriza/sunriza26/backend
+cd /Users/hhsw/Desktop/hauau/hauau/backend
 
 # Python venv erstellen
 python3 -m venv venv

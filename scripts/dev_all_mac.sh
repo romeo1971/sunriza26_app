@@ -12,7 +12,7 @@ pkill -f "flutter_tools" || true
 pkill -f "dart .*flutter" || true
 
 # Pfade
-BACKEND_DIR="/Users/hhsw/Desktop/sunriza/sunriza26"
+BACKEND_DIR="/Users/hhsw/Desktop/hauau/hauau"
 AGENT_DIR="/Users/hhsw/Desktop/sunriza/chatAgent/basic-mcp"
 
 # Befehle

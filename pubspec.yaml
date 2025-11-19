@@ -127,7 +127,8 @@ flutter:
     - assets/logo/logo_hauau.png
     - assets/screenshots/
     - assets/scraped/data/
-    - .env
+    - .env.dev
+    - .env.prod
     - assets/lang/
     - assets/legal/
   generate: true

@@ -5,7 +5,7 @@ class AppConfig {
   static const lipsyncMode =
       LipsyncMode.streaming; // Live Lipsync via Orchestrator
 
-  // Backend URLs (Prod Hauau – Dev wird über .env / EnvService konfiguriert)
+  // Backend URLs (Prod Hauau – Dev wird über .env.dev/.env.prod via EnvService konfiguriert)
   static const backendUrl = 'https://us-central1-hauau-prod.cloudfunctions.net';
   static const memoryApiBaseUrl = backendUrl; // Memory API als Cloud Function (Fallback)
   static const orchestratorUrl =

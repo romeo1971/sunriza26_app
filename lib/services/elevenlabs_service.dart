@@ -10,30 +10,36 @@ class ElevenLabsService {
   static String? _apiKey;
   static String? _voiceId;
 
-  /// Initialisiert ElevenLabs mit API Key aus .env
+  static String? _resolveApiKey() {
+    try {
+      final env = dotenv.env;
+      String? v = env['ELEVENLABS_API_KEY'];
+      if (v != null && v.trim().isNotEmpty) {
+        v = v.trim();
+        if (v.startsWith("'") && v.endsWith("'") && v.length > 1) {
+          v = v.substring(1, v.length - 1);
+        } else if (v.startsWith('"') && v.endsWith('"') && v.length > 1) {
+          v = v.substring(1, v.length - 1);
+        }
+        return v;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// Initialisiert ElevenLabs mit API Key aus der aktuell geladenen Env-Datei
   static Future<void> initialize() async {
     try {
-      // .env wird bereits in main.dart geladen – hier nur lesen
-      // Unterstütze beide Schreibweisen: ELEVENLABS_API_KEY und ELEVENLABS_API_KEY
-      _apiKey ??=
-          (dotenv.env['ELEVENLABS_API_KEY'] ??
-          dotenv.env['ELEVENLABS_API_KEY']);
-      // Fallback: falls zur Laufzeit nicht geladen, versuche einmal zu laden
-      if (_apiKey == null || _apiKey!.isEmpty) {
-        try {
-          await dotenv.load(fileName: '.env');
-          _apiKey =
-              dotenv.env['ELEVENLABS_API_KEY'] ??
-              dotenv.env['ELEVENLABS_API_KEY'];
-        } catch (_) {}
-      }
-      _voiceId ??=
-          dotenv.env['ELEVENLABS_VOICE_ID'] ??
-          'pNInz6obpgDQGcFmaJgB'; // Default Voice
+      // Env wird in main_dev/main_prod geladen – hier nur lesen
+      _apiKey ??= _resolveApiKey();
+
+      // Voice-ID ebenfalls getrimmt lesen
+      final rawVoice =
+          (dotenv.env['ELEVENLABS_VOICE_ID'] ?? 'pNInz6obpgDQGcFmaJgB').trim();
+      _voiceId = rawVoice.isEmpty ? 'pNInz6obpgDQGcFmaJgB' : rawVoice;
 
       if (_apiKey == null || _apiKey!.isEmpty) {
-        final keys = dotenv.env.keys.toList();
-        debugPrint('⚠️ ElevenLabs API Key nicht in .env gefunden (Keys: $keys)');
+        debugPrint('⚠️ ElevenLabs API Key nicht in Env-Konfiguration gefunden');
       } else {
         final masked = _apiKey!.length > 6
             ? '${_apiKey!.substring(0, 3)}***${_apiKey!.substring(_apiKey!.length - 3)}'

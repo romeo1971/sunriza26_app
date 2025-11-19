@@ -122,14 +122,19 @@ class _AvatarListScreenState extends State<AvatarListScreen>
     } on FirebaseException catch (e) {
       if (mounted) {
         final loc = context.read<LocalizationService>();
-        final msg = e.code == 'failed-precondition'
-            ? loc.t('avatars.errorIndexMissing')
-            : (e.message ?? e.toString());
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(loc.t('avatars.errorLoad', params: {'msg': msg})),
-          ),
-        );
+        // Technische Firestore-Index-Fehler nicht mehr im UI anzeigen,
+        // sondern nur intern loggen, damit Nutzer nach Login/Registrierung
+        // keinen schwachen Fehler-Hinweis unten sehen.
+        if (e.code == 'failed-precondition') {
+          debugPrint('AvatarListScreen: Firestore index missing: ${e.message}');
+        } else {
+          final msg = e.message ?? e.toString();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(loc.t('avatars.errorLoad', params: {'msg': msg})),
+            ),
+          );
+        }
       }
       setState(() {
         _isLoading = false;

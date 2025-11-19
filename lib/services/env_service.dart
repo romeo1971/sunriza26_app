@@ -82,7 +82,7 @@ class EnvService {
   /// Basis-URL für TTS-/ElevenLabs-Backend (z. B. FastAPI oder Cloud Function Proxy)
   /// Reihenfolge:
   /// - Compile-time define: ELEVENLABS_API_BASE_URL oder TTS_API_BASE_URL
-  /// - .env: ELEVENLABS_API_BASE_URL oder TTS_API_BASE_URL
+  /// - Env-Datei (.env.dev / .env.prod): ELEVENLABS_API_BASE_URL oder TTS_API_BASE_URL
   /// - Fallback: memoryApiBaseUrl() → bestehendes Verhalten
   static String ttsApiBaseUrl() {
     // Defines haben Vorrang (CI/Release)
@@ -91,7 +91,7 @@ class EnvService {
     const fromDefine2 = String.fromEnvironment('TTS_API_BASE_URL', defaultValue: '');
     if (fromDefine2.isNotEmpty) return _normalizeBase(fromDefine2.trim());
 
-    // .env
+    // Env-Datei
     final fromEnv1 = _safeEnv('ELEVENLABS_API_BASE_URL');
     if (fromEnv1.isNotEmpty) return _normalizeBase(fromEnv1);
     final fromEnv2 = _safeEnv('TTS_API_BASE_URL');
@@ -104,7 +104,7 @@ class EnvService {
   }
 
   /// Basis-URL für generische Cloud Functions (Thumbs, Social Embeds, etc.)
-  /// DEV/PROD werden primär über .env gesteuert (CLOUDFUNCTIONS_BASE_URL).
+  /// DEV/PROD werden primär über die jeweilige Env-Datei (CLOUDFUNCTIONS_BASE_URL) gesteuert.
   static String cloudFunctionsBaseUrl() {
     const fromDefine = String.fromEnvironment(
       'CLOUDFUNCTIONS_BASE_URL',
@@ -137,7 +137,7 @@ class EnvService {
   /// Basis-URL für Orchestrator-/LiveKit-Hilfsendpunkte (z. B. /livekit/token, /avatar/info)
   /// Reihenfolge:
   /// - Compile-time: LIVEKIT_API_BASE_URL oder ORCHESTRATOR_API_BASE_URL
-  /// - .env: LIVEKIT_API_BASE_URL oder ORCHESTRATOR_API_BASE_URL
+  /// - Env-Datei (.env.dev / .env.prod): LIVEKIT_API_BASE_URL oder ORCHESTRATOR_API_BASE_URL
   /// - Fallback: memoryApiBaseUrl() (für Abwärtskompatibilität)
   static String livekitApiBaseUrl() {
     const fromDefine1 = String.fromEnvironment('LIVEKIT_API_BASE_URL', defaultValue: '');

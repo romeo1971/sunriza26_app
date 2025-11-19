@@ -231,10 +231,10 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
         ),
       ),
       child: DragTarget<int>(
-        onWillAcceptWithDetails: (details) => details.data != null && details.data != index,
+        onWillAcceptWithDetails: (details) => details.data != index,
         onAcceptWithDetails: (details) async {
           final from = details.data;
-          if (from == null || from == index || from < 0 || from >= list.length) return;
+          if (from == index || from < 0 || from >= list.length) return;
           final item = list.removeAt(from);
           list.insert(index, item);
           widget.manualCtrl.text = list.join('\n');
@@ -1934,10 +1934,10 @@ class _TikTokEditorState extends State<_TikTokEditor> {
         ),
       ),
       child: DragTarget<int>(
-        onWillAcceptWithDetails: (details) => details.data != null && details.data != index,
+        onWillAcceptWithDetails: (details) => details.data != index,
         onAcceptWithDetails: (details) async {
           final from = details.data;
-          if (from == null || from == index || from < 0 || from >= urls.length) return;
+          if (from == index || from < 0 || from >= urls.length) return;
           final list = urls;
           final item = list.removeAt(from);
           list.insert(index, item);

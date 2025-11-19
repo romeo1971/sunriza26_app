@@ -78,7 +78,7 @@ Future<void> bootstrapSunrizaApp({
   WidgetsFlutterBinding.ensureInitialized();
   // Hinweis: Keyboard-Assertion ist ein Flutter-Desktop-Issue; kein App-Code-Fix nötig
 
-  // .env zwingend laden (fehlende Keys sollen hart fehlschlagen)
+  // Env-Datei zwingend laden (fehlende Keys sollen hart fehlschlagen)
   await dotenv.load(fileName: envFileName);
 
   // Orientierung global auf Portrait fixieren (immer "Mobile View")
@@ -86,7 +86,7 @@ Future<void> bootstrapSunrizaApp({
     DeviceOrientation.portraitUp,
   ]);
 
-  // Alle Keys in .env sind Pflicht: leer/fehlend -> harter Fehler
+  // Alle Keys in der geladenen Env-Datei sind Pflicht: leer/fehlend -> harter Fehler
   _validateAllEnvStrict();
 
   // Firebase immer initialisieren (nur wenn noch nicht initialisiert)
@@ -170,8 +170,10 @@ Future<void> bootstrapSunrizaApp({
 }
 
 Future<void> main() async {
+  // Default-Einstieg nutzt Prod-Konfiguration; für explizite Dev/Prod-Builds
+  // bitte `main_dev.dart` bzw. `main_prod.dart` verwenden.
   await bootstrapSunrizaApp(
-    envFileName: '.env',
+    envFileName: '.env.prod',
     firebaseOptions: DefaultFirebaseOptions.currentPlatform,
   );
 }
@@ -191,7 +193,9 @@ void _validateAllEnvStrict() {
     // Hinweis: Kritische Fehler zeigen sich später im Feature selbst
     // (z.B. Pinecone/ElevenLabs), aber der Start bleibt stabil.
     // ignore: avoid_print
-    debugPrint('⚠️ Fehlende/leer .env Keys: ${missing.join(', ')}');
+    debugPrint(
+      '⚠️ Fehlende/leer Env-Keys (aktive Env-Datei): ${missing.join(', ')}',
+    );
   }
 }
 

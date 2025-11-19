@@ -7,14 +7,50 @@ class BitHumanService {
   static const String _baseUrl = 'https://public.api.bithuman.ai';
   static String? _apiSecret;
 
-  /// Initialisiert BitHuman mit API Secret aus .env
+  static String? _resolveSecret() {
+    try {
+      // 1) Compile-time define
+      const fromDefine = String.fromEnvironment('BITHUMAN_API_SECRET', defaultValue: '');
+      if (fromDefine.trim().isNotEmpty) {
+        final cleaned = fromDefine.trim().replaceAll(RegExp(r'''['"]+'''), '');
+        if (cleaned.isNotEmpty) return cleaned;
+      }
+
+      // 2) Runtime dotenv
+      if (!dotenv.isInitialized) return null;
+      final env = dotenv.env;
+
+      // Direkt BITHUMAN_API_SECRET
+      final direct = env['BITHUMAN_API_SECRET'];
+      if (direct != null) {
+        final cleaned = direct.trim().replaceAll(RegExp(r'''['"]+'''), '');
+        if (cleaned.isNotEmpty) return cleaned;
+      }
+
+      // Fallback: alle Keys durchsuchen
+      for (final entry in env.entries) {
+        final k = entry.key.trim().toUpperCase();
+        if (k.contains('BITHUMAN') && (k.contains('SECRET') || k.contains('API_KEY'))) {
+          final cleaned = entry.value.trim().replaceAll(RegExp(r'''['"]+'''), '');
+          if (cleaned.isNotEmpty) return cleaned;
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('⚠️ _resolveSecret Exception: $e');
+    }
+    return null;
+  }
+
+  /// Initialisiert BitHuman mit API Secret aus der aktuell geladenen Env-Datei
   static Future<void> initialize() async {
     try {
-      _apiSecret = dotenv.env['BITHUMAN_API_SECRET'];
+      _apiSecret = _resolveSecret();
 
       if (_apiSecret == null || _apiSecret!.isEmpty) {
-        debugPrint('⚠️ BITHUMAN_API_SECRET nicht in .env gefunden');
-        debugPrint('   Hole API Secret von: imaginex.bithuman.ai');
+        if (kDebugMode) {
+          debugPrint('⚠️ BITHUMAN_API_SECRET nicht in der Env-Konfiguration gefunden');
+          debugPrint('   Hole API Secret von: imaginex.bithuman.ai');
+        }
       } else {
         final masked = _apiSecret!.length > 8
             ? '${_apiSecret!.substring(0, 4)}***${_apiSecret!.substring(_apiSecret!.length - 4)}'
@@ -27,13 +63,6 @@ class BitHumanService {
   }
 
   /// Erstellt einen BitHuman Agent via REST API
-  /// 
-  /// [imageUrl] - URL zum Hero-Image
-  /// [audioUrl] - URL zum Hero-Audio
-  /// [prompt] - System Prompt für den Agent
-  /// [videoUrl] - Optional: Video URL
-  /// 
-  /// Returns agent_id oder null bei Fehler
   static Future<String?> createAgent({
     String? imageUrl,
     String? audioUrl,
@@ -151,4 +180,3 @@ class BitHumanService {
   }
 
 }
-

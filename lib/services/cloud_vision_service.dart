@@ -19,10 +19,11 @@ class CloudVisionService {
     if (_initialized) return;
 
     try {
-      // API Key aus .env laden
-      final apiKey = dotenv.env['GOOGLE_CLOUD_VISION_API_KEY'];
-      if (apiKey == null || apiKey.isEmpty) {
-        throw Exception('GOOGLE_CLOUD_VISION_API_KEY fehlt in .env');
+      // API Key aus Env-Datei laden (getrimmt)
+      final raw = dotenv.env['GOOGLE_CLOUD_VISION_API_KEY'] ?? '';
+      final apiKey = raw.trim();
+      if (apiKey.isEmpty) {
+        throw Exception('GOOGLE_CLOUD_VISION_API_KEY fehlt in Env-Konfiguration');
       }
 
       final authClient = clientViaApiKey(apiKey);

@@ -176,8 +176,16 @@ class AvatarService {
       return querySnapshot.docs
           .map((doc) => AvatarData.fromMap(doc.data()))
           .toList();
-    } on FirebaseException {
-      // Reiche spezifische Firestore-Fehler nach oben weiter (Index, Rules etc.)
+    } on FirebaseException catch (e) {
+      // Firestore-Index-Fehler in allen Envs leise behandeln,
+      // damit kein "Error loading avatars: Firestore index missing" im UI erscheint.
+      if (e.code == 'failed-precondition') {
+        debugPrint(
+          'AvatarService.getUserAvatars: Firestore index missing (failed-precondition): ${e.message}',
+        );
+        return [];
+      }
+      // Andere Firestore-Fehler weiterreichen (z.B. Permission/RULES)
       rethrow;
     } catch (e) {
       debugPrint('Fehler beim Laden der Avatare: $e');

@@ -60,7 +60,7 @@ modal secret create firebase-admin \
 ### **2. Agent auf Modal deployen:**
 
 ```bash
-cd /Users/hhsw/Desktop/sunriza/sunriza26
+cd /Users/hhsw/Desktop/hauau/hauau
 modal deploy modal_bithuman_elevenlabs.py
 ```
 

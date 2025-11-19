@@ -9,7 +9,7 @@
 ## 🎯 SCHNELLSTART
 
 ```bash
-cd /Users/hhsw/Desktop/sunriza/sunriza26
+cd /Users/hhsw/Desktop/hauau/hauau
 source venv/bin/activate
 python tools/generate_idle_from_hero_video.py
 ```

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:js_interop';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 
 /// External JS functions für Web Audio Recording

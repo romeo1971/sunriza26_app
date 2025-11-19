@@ -3,14 +3,14 @@
 Pfad zum Repo (Flutter-App):
 
 ```
-/Users/hhsw/Desktop/sunriza/sunriza26
+/Users/hhsw/Desktop/hauau/hauau
 ```
 
 ## Dev-CLI (empfohlen)
 Kurzbefehle für häufige Tasks:
 
 ```
-cd /Users/hhsw/Desktop/sunriza/sunriza26
+cd /Users/hhsw/Desktop/hauau/hauau
 bash scripts/dev.sh help          # Hilfe/Übersicht
 bash scripts/dev.sh stack         # Stack-Report -> brain/stack_versions_last.txt
 bash scripts/dev.sh hooks         # Git pre-push Hook installieren
