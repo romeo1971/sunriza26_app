@@ -5,12 +5,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:video_player/video_player.dart';
 import '../theme/app_theme.dart';
 import 'firebase_storage_service.dart';
+import 'env_service.dart';
 import 'package:path/path.dart' as p;
 
 /// Service für Video-Trimming mit Firebase Function
 class VideoTrimService {
-  static const String _firebaseFunctionUrl =
-      'https://us-central1-sunriza26.cloudfunctions.net/trimVideo';
+  static String _firebaseFunctionUrl() {
+    return '${EnvService.cloudFunctionsBaseUrl()}/trimVideo';
+  }
   // Globaler Fortschritt für Trim+Upload (0–100), für alle Plattformen
   static final ValueNotifier<int> trimProgress = ValueNotifier<int>(0);
 
@@ -138,7 +140,7 @@ class VideoTrimService {
       // Firebase Function aufrufen
       final trimResponse = await http
           .post(
-            Uri.parse(_firebaseFunctionUrl),
+            Uri.parse(_firebaseFunctionUrl()),
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode({
               'video_url': videoUrl,

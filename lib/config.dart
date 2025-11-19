@@ -5,9 +5,9 @@ class AppConfig {
   static const lipsyncMode =
       LipsyncMode.streaming; // Live Lipsync via Orchestrator
 
-  // Backend URLs
-  static const backendUrl = 'https://us-central1-sunriza26.cloudfunctions.net';
-  static const memoryApiBaseUrl = backendUrl; // Memory API als Cloud Function
+  // Backend URLs (Prod Hauau – Dev wird über .env / EnvService konfiguriert)
+  static const backendUrl = 'https://us-central1-hauau-prod.cloudfunctions.net';
+  static const memoryApiBaseUrl = backendUrl; // Memory API als Cloud Function (Fallback)
   static const orchestratorUrl =
       'wss://romeo1971--lipsync-orchestrator-asgi.modal.run/';
   // LivePortrait Streaming WS (Modal)

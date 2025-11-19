@@ -13,7 +13,7 @@ Alle Production-Services laufen jetzt auf:
 ### Cloud Functions (Firebase):
 - `functions/src/memoryApi.ts` → `avatarMemoryInsert` 
 - `functions/src/avatarChat.ts` → `avatarChat`
-- URL: `https://us-central1-sunriza26.cloudfunctions.net/`
+- URL: `https://us-central1-hauau-prod.cloudfunctions.net/`
 
 ### Modal Apps:
 - Dynamics → `modal_dynamics.py`

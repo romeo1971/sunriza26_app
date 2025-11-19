@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, TargetPlatform, kDebugMode;
+    show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import '../config.dart';
 
@@ -100,6 +100,22 @@ class EnvService {
     // Fallback auf bisherige Logik
     final mem = memoryApiBaseUrl();
     if (mem.isNotEmpty) return mem;
+    return AppConfig.backendUrl;
+  }
+
+  /// Basis-URL für generische Cloud Functions (Thumbs, Social Embeds, etc.)
+  /// DEV/PROD werden primär über .env gesteuert (CLOUDFUNCTIONS_BASE_URL).
+  static String cloudFunctionsBaseUrl() {
+    const fromDefine = String.fromEnvironment(
+      'CLOUDFUNCTIONS_BASE_URL',
+      defaultValue: '',
+    );
+    if (fromDefine.isNotEmpty) return _normalizeBase(fromDefine.trim());
+
+    final fromEnv = _safeEnv('CLOUDFUNCTIONS_BASE_URL');
+    if (fromEnv.isNotEmpty) return _normalizeBase(fromEnv);
+
+    // Fallback: Prod-Backend-URL
     return AppConfig.backendUrl;
   }
 

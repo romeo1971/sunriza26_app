@@ -357,9 +357,9 @@ npm run build
 firebase deploy --only functions
 ```
 
-**Deployed Function URL:**
+**Deployed Function URL (Prod Hauau):**
 ```
-https://us-central1-sunriza26.cloudfunctions.net/trimVideo
+https://us-central1-hauau-prod.cloudfunctions.net/trimVideo
 ```
 
 #### 5. Firebase Functions Konfiguration
@@ -483,7 +483,7 @@ class DynamicsServiceModal {
 ```dart
 class VideoTrimService {
   static const String firebaseFunctionUrl = 
-    'https://us-central1-sunriza26.cloudfunctions.net/trimVideo';
+    'https://us-central1-hauau-prod.cloudfunctions.net/trimVideo';
 
   static Future<String?> showTrimDialogAndTrim({
     required BuildContext context,

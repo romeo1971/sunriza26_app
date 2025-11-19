@@ -9,7 +9,7 @@ const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
-const CF_URL = 'https://us-central1-sunriza26.cloudfunctions.net/processDocument';
+const CF_URL = 'https://us-central1-hauau-prod.cloudfunctions.net/processDocument';
 const PERSONA_DIR = path.join(__dirname, '..', 'assets', 'personas');
 
 function chunkText(text, size = 700, overlap = 120) {

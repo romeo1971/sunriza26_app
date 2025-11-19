@@ -15,7 +15,7 @@ def main():
     if not firebase_admin._apps:
         cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred, {
-            'storageBucket': 'sunriza26.firebasestorage.app'
+            'storageBucket': 'hauau-prod.firebasestorage.app'
         })
     
     bucket = storage.bucket()

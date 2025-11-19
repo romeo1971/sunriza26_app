@@ -790,8 +790,8 @@ function parseAvatarPath(objectName: string | undefined) {
   return { avatarId, kind, inThumbs, fileName: parts[parts.length - 1], objectName };
 }
 
-// Storage-Delete: zugehörige Thumbs löschen
-export const onMediaObjectDelete = functionsStorage.onObjectDeleted({ region: 'europe-west9' }, async (event) => {
+// Storage-Delete: zugehörige Thumbs löschen (Region: us-central1 wie alle anderen Funktionen)
+export const onMediaObjectDelete = functionsStorage.onObjectDeleted({ region: 'us-central1' }, async (event) => {
   try {
     const obj = parseAvatarPath(event.data.name);
     if (!obj) return;

@@ -8,7 +8,7 @@ import 'package:flutter/foundation.dart'
 ///
 /// Example:
 /// ```dart
-/// import 'firebase_options.dart';
+/// import 'firebase_options_dev.dart';
 /// // ...
 /// await Firebase.initializeApp(
 ///   options: DefaultFirebaseOptions.currentPlatform,
@@ -27,10 +27,7 @@ class DefaultFirebaseOptions {
       case TargetPlatform.macOS:
         return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -44,38 +41,48 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyC1zmQxsXRgGT0HvCxjYFIZoEggnXji7Gc',
-    appId: '1:676848888036:web:14abd5d64e8a2c971d24f1',
-    messagingSenderId: '676848888036',
-    projectId: 'hauau-prod',
-    authDomain: 'hauau-prod.firebaseapp.com',
-    storageBucket: 'hauau-prod.firebasestorage.app',
-    measurementId: 'G-HH172B3QXY',
+    apiKey: 'AIzaSyAeRdAKnkLN4P_O3ahbHEUz1Z6QPa51ZPU',
+    appId: '1:198085957474:web:4e496bdac31e4a5f9ffe3b',
+    messagingSenderId: '198085957474',
+    projectId: 'hauau-dev',
+    authDomain: 'hauau-dev.firebaseapp.com',
+    storageBucket: 'hauau-dev.firebasestorage.app',
+    measurementId: 'G-FBBT9D49YV',
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyD2aR5p-xZ1wIUK5gHbAH32g6_BQWa2rCk',
-    appId: '1:676848888036:android:1c0f3ad0ca16519e1d24f1',
-    messagingSenderId: '676848888036',
-    projectId: 'hauau-prod',
-    storageBucket: 'hauau-prod.firebasestorage.app',
+    apiKey: 'AIzaSyCxsCCoqrTPn3zutnueeo4v7A6qf6kP-bc',
+    appId: '1:198085957474:android:dca198229407239f9ffe3b',
+    messagingSenderId: '198085957474',
+    projectId: 'hauau-dev',
+    storageBucket: 'hauau-dev.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCbuRa6jMj6o7xdPrbsy51ng2IP5RTx7lc',
-    appId: '1:676848888036:ios:86db61f72f74cfe81d24f1',
-    messagingSenderId: '676848888036',
-    projectId: 'hauau-prod',
-    storageBucket: 'hauau-prod.firebasestorage.app',
+    apiKey: 'AIzaSyBWs518yC94CZf86OYXFYxrVStuAe_ZEy8',
+    appId: '1:198085957474:ios:baf6cc6dbadf8b7b9ffe3b',
+    messagingSenderId: '198085957474',
+    projectId: 'hauau-dev',
+    storageBucket: 'hauau-dev.firebasestorage.app',
     iosBundleId: 'de.hauau.hauauapp',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyCbuRa6jMj6o7xdPrbsy51ng2IP5RTx7lc',
-    appId: '1:676848888036:ios:ec01eefa94b078d21d24f1',
-    messagingSenderId: '676848888036',
-    projectId: 'hauau-prod',
-    storageBucket: 'hauau-prod.firebasestorage.app',
+    apiKey: 'AIzaSyBWs518yC94CZf86OYXFYxrVStuAe_ZEy8',
+    appId: '1:198085957474:ios:c4815466d46d58f39ffe3b',
+    messagingSenderId: '198085957474',
+    projectId: 'hauau-dev',
+    storageBucket: 'hauau-dev.firebasestorage.app',
     iosBundleId: 'com.example.sunriza26',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyAeRdAKnkLN4P_O3ahbHEUz1Z6QPa51ZPU',
+    appId: '1:198085957474:web:a26226a8f9d1d0759ffe3b',
+    messagingSenderId: '198085957474',
+    projectId: 'hauau-dev',
+    authDomain: 'hauau-dev.firebaseapp.com',
+    storageBucket: 'hauau-dev.firebasestorage.app',
+    measurementId: 'G-M3Q0LL2HXB',
   );
 }

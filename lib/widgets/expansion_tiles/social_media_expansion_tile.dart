@@ -11,6 +11,7 @@ import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../theme/app_theme.dart';
 import 'package:http/http.dart' as http;
+import '../../services/env_service.dart';
 import '../custom_text_field.dart';
 import 'expansion_tile_base.dart';
 
@@ -580,7 +581,7 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
       if (widget.providerId == 'x') {
         final effective = _extractXStatusUrl(url) ?? url;
         final cf = await http.get(
-          Uri.parse('https://us-central1-sunriza26.cloudfunctions.net/xThumb?url=${Uri.encodeComponent(effective)}'),
+          Uri.parse('${EnvService.cloudFunctionsBaseUrl()}/xThumb?url=${Uri.encodeComponent(effective)}'),
           headers: const {'Accept': 'application/json'},
         );
         print('[X Thumb] CF status: ${cf.statusCode}, body: ${cf.body}');
@@ -592,7 +593,7 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
             print('[X Thumb] Found: $t');
             final cleaned = t.replaceAll('&amp;', '&');
             // Für X immer über CF-Bild-Proxy laden, um 403 zu vermeiden
-            final proxied = 'https://us-central1-sunriza26.cloudfunctions.net/xThumb?img=${Uri.encodeComponent(cleaned)}';
+            final proxied = '${EnvService.cloudFunctionsBaseUrl()}/xThumb?img=${Uri.encodeComponent(cleaned)}';
             setState(() { 
               _thumbByUrl[url] = proxied; 
               if (s.isNotEmpty) _titleByUrl[url] = s;
@@ -628,7 +629,7 @@ class _SimpleManualUrlsEditorState extends State<_SimpleManualUrlsEditor> {
         // Für Thumbnail immer kanonische Seite nutzen (ohne /embed/ und ohne Query)
         final effective = effectiveRaw.replaceFirst('/embed/', '/').split('?').first;
         final cf = await http.get(
-          Uri.parse('https://us-central1-sunriza26.cloudfunctions.net/linkedinThumb?url=${Uri.encodeComponent(effective)}'),
+        Uri.parse('${EnvService.cloudFunctionsBaseUrl()}/linkedinThumb?url=${Uri.encodeComponent(effective)}'),
           headers: const {'Accept': 'application/json'},
         );
         print('[LI Thumb] CF status: ${cf.statusCode}, body: ${cf.body}');
@@ -1459,7 +1460,7 @@ class _IgEditorState extends State<_IgEditor> {
     try {
       // 0) Server-Proxy (robuster gegen IG-Blockaden)
       final cf = await http.get(
-        Uri.parse('https://us-central1-sunriza26.cloudfunctions.net/instagramThumb?url=${Uri.encodeComponent(url)}'),
+        Uri.parse('${EnvService.cloudFunctionsBaseUrl()}/instagramThumb?url=${Uri.encodeComponent(url)}'),
         headers: const {
           'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
           'Accept': 'application/json',

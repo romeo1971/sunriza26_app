@@ -14,6 +14,7 @@ import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import '../services/env_service.dart';
 import 'package:image/image.dart' as img;
 import '../widgets/custom_price_field.dart';
 import '../widgets/custom_currency_select.dart';
@@ -9197,7 +9198,7 @@ class _VideoThumbnailSelectorDialogState
       // Call Cloud Function
       final response = await http.post(
         Uri.parse(
-          'https://us-central1-sunriza26.cloudfunctions.net/extractVideoFrameAtPosition',
+          '${EnvService.cloudFunctionsBaseUrl()}/extractVideoFrameAtPosition',
         ),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({

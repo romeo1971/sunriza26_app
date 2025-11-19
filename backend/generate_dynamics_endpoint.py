@@ -31,12 +31,12 @@ def init_firebase():
         if SERVICE_ACCOUNT_KEY and SERVICE_ACCOUNT_KEY.exists():
             cred = credentials.Certificate(str(SERVICE_ACCOUNT_KEY))
             firebase_admin.initialize_app(cred, {
-                'storageBucket': 'sunriza26.firebasestorage.app'
+                'storageBucket': 'hauau-prod.firebasestorage.app'
             })
         else:
             # Cloud Run / Production: Default Credentials
             firebase_admin.initialize_app(options={
-                'storageBucket': 'sunriza26.firebasestorage.app'
+                'storageBucket': 'hauau-prod.firebasestorage.app'
             })
     return storage.bucket(), firestore.client()
 

@@ -9,7 +9,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>de.hauau.hauauapp</string>
+	<string>com.example.sunriza26</string>
 	<key>PROJECT_ID</key>
 	<string>hauau-dev</string>
 	<key>STORAGE_BUCKET</key>
@@ -25,6 +25,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:198085957474:ios:baf6cc6dbadf8b7b9ffe3b</string>
+	<string>1:198085957474:ios:c4815466d46d58f39ffe3b</string>
 </dict>
 </plist>

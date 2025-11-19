@@ -111,8 +111,9 @@ def generate_dynamics(avatar_id: str, dynamics_id: str, parameters: dict):
         else:
             cred = None
         
+        # Hauau-Prod Bucket verwenden (neues Firebase-Projekt)
         firebase_admin.initialize_app(cred, {
-            'storageBucket': 'sunriza26.firebasestorage.app'
+            'storageBucket': 'hauau-prod.firebasestorage.app'
         })
     
     bucket = storage.bucket()

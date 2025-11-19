@@ -3481,8 +3481,8 @@ class _AvatarChatScreenState extends State<AvatarChatScreen>
       // CHAT: Python Memory API (gleicher Pinecone-Index/Namensraum wie Inserts)
       final base = EnvService.memoryApiBaseUrl();
       final chatUri = Uri.parse('$base/avatar/chat');
-      // Fallback: alte Cloud Function (zur Sicherheit, um Ausfälle zu vermeiden)
-      final fallbackUri = Uri.parse('https://us-central1-sunriza26.cloudfunctions.net/avatarChat');
+      // Fallback: Cloud Function im Hauau-Prod-Projekt
+      final fallbackUri = Uri.parse('${EnvService.cloudFunctionsBaseUrl()}/avatarChat');
 
       // Stimme robust ermitteln
       String? voiceId = (_avatarData?.training != null)

@@ -71,12 +71,15 @@ class NoAnimationPageTransitionsBuilder extends PageTransitionsBuilder {
   }
 }
 
-void main() async {
+Future<void> bootstrapSunrizaApp({
+  required String envFileName,
+  required FirebaseOptions firebaseOptions,
+}) async {
   WidgetsFlutterBinding.ensureInitialized();
   // Hinweis: Keyboard-Assertion ist ein Flutter-Desktop-Issue; kein App-Code-Fix nötig
 
   // .env zwingend laden (fehlende Keys sollen hart fehlschlagen)
-  await dotenv.load(fileName: '.env');
+  await dotenv.load(fileName: envFileName);
 
   // Orientierung global auf Portrait fixieren (immer "Mobile View")
   await SystemChrome.setPreferredOrientations([
@@ -88,7 +91,7 @@ void main() async {
 
   // Firebase immer initialisieren (nur wenn noch nicht initialisiert)
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    await Firebase.initializeApp(options: firebaseOptions);
   } catch (e) {
     // Firebase bereits initialisiert (z.B. bei Hot Reload) - ignorieren
     if (!e.toString().contains('duplicate-app')) rethrow;
@@ -164,6 +167,13 @@ void main() async {
   // Engineering-Logs vollständig entfernt
 
   runApp(SunrizaApp(initialLanguageCode: initialLang));
+}
+
+Future<void> main() async {
+  await bootstrapSunrizaApp(
+    envFileName: '.env',
+    firebaseOptions: DefaultFirebaseOptions.currentPlatform,
+  );
 }
 
 void _validateAllEnvStrict() {

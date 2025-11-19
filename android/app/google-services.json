@@ -1,36 +1,26 @@
 {
   "project_info": {
-    "project_number": "590744030274",
-    "project_id": "sunriza26",
-    "storage_bucket": "sunriza26.firebasestorage.app"
+    "project_number": "198085957474",
+    "project_id": "hauau-dev",
+    "storage_bucket": "hauau-dev.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:590744030274:android:3127e193b4a471843b31db",
+        "mobilesdk_app_id": "1:198085957474:android:dca198229407239f9ffe3b",
         "android_client_info": {
           "package_name": "com.example.sunriza26"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "590744030274-ajb16p9sfpfgqhnn6imc6lvlimbceipo.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDF_npJHEnCQcmqZTBRfWeho9BLwhCexow"
+          "current_key": "AIzaSyCxsCCoqrTPn3zutnueeo4v7A6qf6kP-bc"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "590744030274-ajb16p9sfpfgqhnn6imc6lvlimbceipo.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }

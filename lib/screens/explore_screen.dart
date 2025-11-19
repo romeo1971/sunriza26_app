@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../services/env_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -1166,13 +1167,13 @@ class ExploreScreenState extends State<ExploreScreen> {
   String _buildSocialEmbedUrl(String provider, String avatarId) {
     final p = provider.toLowerCase();
     if (p == 'instagram') {
-      return 'https://us-central1-sunriza26.cloudfunctions.net/socialEmbedPage?provider=instagram&avatarId=$avatarId';
+      return '${EnvService.cloudFunctionsBaseUrl()}/socialEmbedPage?provider=instagram&avatarId=$avatarId';
     }
     if (p == 'facebook') {
-      return 'https://us-central1-sunriza26.cloudfunctions.net/socialEmbedPage?provider=facebook&avatarId=$avatarId';
+      return '${EnvService.cloudFunctionsBaseUrl()}/socialEmbedPage?provider=facebook&avatarId=$avatarId';
     }
     if (p == 'tiktok') {
-      return 'https://us-central1-sunriza26.cloudfunctions.net/socialEmbedPage?provider=tiktok&avatarId=$avatarId';
+      return '${EnvService.cloudFunctionsBaseUrl()}/socialEmbedPage?provider=tiktok&avatarId=$avatarId';
     }
     return 'about:blank';
   }
@@ -1817,7 +1818,7 @@ body>div{margin:0 !important;padding:0 !important;}
       final effectiveRaw = _extractLinkedInUrl(url) ?? url;
       final effective = effectiveRaw.replaceFirst('/embed/', '/').split('?').first;
       final cf = await http.get(
-        Uri.parse('https://us-central1-sunriza26.cloudfunctions.net/linkedinThumb?url=${Uri.encodeComponent(effective)}'),
+        Uri.parse('${EnvService.cloudFunctionsBaseUrl()}/linkedinThumb?url=${Uri.encodeComponent(effective)}'),
         headers: const {'Accept': 'application/json'},
       );
       if (cf.statusCode == 200) {
