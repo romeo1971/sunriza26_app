@@ -52,23 +52,28 @@ class _AuthScreenState extends State<AuthScreen>
     super.initState();
     _logoAnimController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2400),
+      duration: const Duration(milliseconds: 10000),
     );
+    // Logo startet IM Content (richtige Breite), fährt hoch in farbige Position
     _logoSlide = Tween<Offset>(
-      begin: const Offset(0, 0.4), // von unten
-      end: const Offset(0, 0.0),
+      begin: Offset.zero, // startet an Content-Position
+      end: const Offset(0, -0.5), // fährt nach oben
     ).animate(
       CurvedAnimation(
         parent: _logoAnimController,
-        curve: Curves.easeOutCubic,
+        curve: const Interval(0.0, 0.3, curve: Curves.easeInOutCubic),
       ),
     );
-    _logoOpacity = Tween<double>(begin: 0.1, end: 1.0).animate(
-      CurvedAnimation(
-        parent: _logoAnimController,
-        curve: Curves.easeIn,
+    _logoOpacity = TweenSequence<double>([
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.1, end: 1.0).chain(CurveTween(curve: Curves.easeIn)),
+        weight: 95.0, // 95% der Zeit: fade in und halten
       ),
-    );
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.0).chain(CurveTween(curve: Curves.easeOut)),
+        weight: 5.0, // 5% der Zeit: fade out (nur letzte 500ms)
+      ),
+    ]).animate(_logoAnimController);
     _initializeLanguage();
     _initIntroVideoIfNeeded();
     // Schließt jedes offene Auth-Dialog-Fenster sofort, sobald ein User eingeloggt ist
@@ -247,27 +252,30 @@ class _AuthScreenState extends State<AuthScreen>
       debugPrint('[INTRO] Controller erstellt, initialisiere...');
       await controller.initialize();
       debugPrint('[INTRO] Video initialized: ${controller.value.isInitialized}, Dauer: ${controller.value.duration.inSeconds}s, Size: ${controller.value.size}');
-      controller.setLooping(false);
+      await controller.setLooping(true);
       // Lautstärke initial muted für Autoplay-Compliance
       await controller.setVolume(0.0);
       _introMuted = true;
       debugPrint('[INTRO] Volume auf 0.0 (muted) gesetzt für Autoplay');
-      // Listener: wenn Video komplett fertig ist -> Content nach Delay einblenden
+      // Manueller Loop-Fallback: wenn Video am Ende ist, wieder von vorne starten
       controller.addListener(() {
         if (!mounted) return;
         final val = controller.value;
-        debugPrint('[INTRO] Listener: isPlaying=${val.isPlaying}, position=${val.position.inSeconds}s/${val.duration.inSeconds}s');
         if (val.isInitialized &&
             !val.isPlaying &&
-            val.position >= val.duration &&
-            !_showContent) {
-          debugPrint('[INTRO] Video FERTIG → Content nach 500ms einblenden');
-          Future.delayed(const Duration(milliseconds: 500), () {
-            if (mounted) {
-              setState(() {
-                _showContent = true;
-              });
-            }
+            val.duration > Duration.zero &&
+            val.position >= val.duration) {
+          debugPrint('[INTRO] Ende erreicht → manueller Loop-Restart');
+          controller.seekTo(Duration.zero);
+          controller.play();
+        }
+      });
+      // Content nach 8 Sekunden einblenden
+      Future.delayed(const Duration(seconds: 8), () {
+        if (mounted && !_showContent) {
+          debugPrint('[INTRO] 8s vorbei → Content einblenden');
+          setState(() {
+            _showContent = true;
           });
         }
       });
@@ -1047,80 +1055,81 @@ class _AuthScreenState extends State<AuthScreen>
     final mainContent = Column(
           children: [
             // Top Navigation - Sprache + Login/Register
-            SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    // Landesflagge (aktuelle Sprache) - größerer Touch-Bereich
-                    InkWell(
-                      onTap: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (context) => const LanguageScreen(),
+            if (_showContent)
+              SafeArea(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      // Landesflagge (aktuelle Sprache) - größerer Touch-Bereich
+                      InkWell(
+                        onTap: () {
+                          Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (context) => const LanguageScreen(),
+                            ),
+                          );
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(8.0),
+                          child: Text(
+                            currentFlag,
+                            style: const TextStyle(fontSize: 28),
                           ),
-                        );
-                      },
-                      child: Padding(
-                        padding: const EdgeInsets.all(8.0),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Textlinks für Login/Register - größere Touch-Bereiche
+                      TextButton(
+                        onPressed: _isAuthenticating ? null : () => _showAuthDialog(isLogin: true),
+                        style: TextButton.styleFrom(
+                          overlayColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          minimumSize: const Size(80, 44),
+                        ),
                         child: Text(
-                          currentFlag,
-                          style: const TextStyle(fontSize: 28),
+                          loc.t('auth.login'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    // Textlinks für Login/Register - größere Touch-Bereiche
-                    TextButton(
-                      onPressed: _isAuthenticating ? null : () => _showAuthDialog(isLogin: true),
-                      style: TextButton.styleFrom(
-                        overlayColor: Colors.transparent,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        minimumSize: const Size(80, 44),
+                      const Text(
+                        '/',
+                        style: TextStyle(color: Color(0xFF444444), fontSize: 16),
                       ),
-                      child: Text(
-                        loc.t('auth.login'),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
+                      TextButton(
+                        onPressed: _isAuthenticating ? null : () => _showAuthDialog(isLogin: false),
+                        style: TextButton.styleFrom(
+                          overlayColor: Colors.transparent,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          minimumSize: const Size(100, 44),
                         ),
-                      ),
-                    ),
-                    const Text(
-                      '/',
-                      style: TextStyle(color: Color(0xFF444444), fontSize: 16),
-                    ),
-                    TextButton(
-                      onPressed: _isAuthenticating ? null : () => _showAuthDialog(isLogin: false),
-                      style: TextButton.styleFrom(
-                        overlayColor: Colors.transparent,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        minimumSize: const Size(100, 44),
-                      ),
-                      child: Text(
-                        loc.t('auth.register'),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
+                        child: Text(
+                          loc.t('auth.register'),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
             // Main Content - scrollable
             Expanded(
               child: Center(
@@ -1131,13 +1140,27 @@ class _AuthScreenState extends State<AuthScreen>
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
                       const SizedBox(height: 20),
-                      // Logo - 70vw Breite, NICHT umbrechend
+                      // Logo - 70vw Breite (entweder weißes animiertes oder farbiges statisches)
                       Center(
-                        child: Image.asset(
-                          'assets/logo/logo_hauau.png',
-                          width: MediaQuery.of(context).size.width * 0.7,
-                          fit: BoxFit.contain,
-                        ),
+                        child: _showIntro && !_showContent
+                            ? SlideTransition(
+                                position: _logoSlide,
+                                child: FadeTransition(
+                                  opacity: _logoOpacity,
+                                  child: Image.asset(
+                                    'assets/logo/logo_hauau.png',
+                                    width: MediaQuery.of(context).size.width * 0.7,
+                                    fit: BoxFit.contain,
+                                    color: Colors.white,
+                                    colorBlendMode: BlendMode.srcIn,
+                                  ),
+                                ),
+                              )
+                            : Image.asset(
+                                'assets/logo/logo_hauau.png',
+                                width: MediaQuery.of(context).size.width * 0.7,
+                                fit: BoxFit.contain,
+                              ),
                       ),
                       const SizedBox(height: 32),
 
@@ -1306,19 +1329,6 @@ class _AuthScreenState extends State<AuthScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Gradient-Background (nur sichtbar wenn Content angezeigt wird)
-          if (_showContent)
-            Positioned.fill(
-              child: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [Color(0xFF000000), Color(0xFF111111)],
-                  ),
-                ),
-              ),
-            ),
           // Intro-Video (immer sichtbar während Intro, auch nach Ende)
           if (_showIntro &&
               _introVideoController != null &&
@@ -1333,23 +1343,13 @@ class _AuthScreenState extends State<AuthScreen>
                 ),
               ),
             ),
-          // Weißes Logo, bleibt bis Content kommt
-          if (_showIntro && !_showContent)
-            IgnorePointer(
-              ignoring: true,
-              child: Center(
-                child: SlideTransition(
-                  position: _logoSlide,
-                  child: FadeTransition(
-                    opacity: _logoOpacity,
-                    child: Image.asset(
-                      'assets/logo/logo_hauau.png',
-                      width: MediaQuery.of(context).size.width * 0.5,
-                      fit: BoxFit.contain,
-                      color: Colors.white,
-                      colorBlendMode: BlendMode.srcIn,
-                    ),
-                  ),
+          // Schwarzer Overlay-Hintergrund für Content (über Video, unter Text)
+          if (_showContent)
+            Positioned.fill(
+              child: Opacity(
+                opacity: 0.3,
+                child: Container(
+                  color: Colors.black,
                 ),
               ),
             ),
