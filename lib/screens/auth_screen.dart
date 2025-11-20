@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart'
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_player/video_player.dart';
 import '../widgets/custom_text_field.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_layout.dart';
@@ -25,7 +26,8 @@ class AuthScreen extends StatefulWidget {
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen> {
+class _AuthScreenState extends State<AuthScreen>
+    with SingleTickerProviderStateMixin {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   var _enteredEmail = '';
@@ -33,6 +35,12 @@ class _AuthScreenState extends State<AuthScreen> {
   var _isLoading = false;
   var _isAuthenticating = false; // Flag: Verhindert Dialog nach Login
   bool _pwaHintScheduled = false;
+  bool _showIntro = false;
+  bool _introMuted = false;
+  VideoPlayerController? _introVideoController;
+  late final AnimationController _logoAnimController;
+  late final Animation<Offset> _logoSlide;
+  late final Animation<double> _logoOpacity;
 
   // GoogleSignIn wird über AuthService genutzt
   final AuthService _authService = AuthService();
@@ -41,7 +49,35 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   void initState() {
     super.initState();
+    _logoAnimController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2400),
+    );
+    _logoSlide = Tween<Offset>(
+      begin: const Offset(0, 0.4), // von unten
+      end: const Offset(0, 0.0),
+    ).animate(
+      CurvedAnimation(
+        parent: _logoAnimController,
+        curve: Curves.easeOutCubic,
+      ),
+    );
+    _logoOpacity = TweenSequence<double>([
+      // sanft von 0.1 → 1.0
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 0.1, end: 1.0)
+            .chain(CurveTween(curve: Curves.easeIn)),
+        weight: 60,
+      ),
+      // dann von 1.0 → 0.0 ausblenden
+      TweenSequenceItem(
+        tween: Tween<double>(begin: 1.0, end: 0.0)
+            .chain(CurveTween(curve: Curves.easeOut)),
+        weight: 40,
+      ),
+    ]).animate(_logoAnimController);
     _initializeLanguage();
+    _initIntroVideoIfNeeded();
     // Schließt jedes offene Auth-Dialog-Fenster sofort, sobald ein User eingeloggt ist
     _authSubscription =
         FirebaseAuth.instance.authStateChanges().listen((User? user) {
@@ -192,6 +228,87 @@ class _AuthScreenState extends State<AuthScreen> {
     } catch (_) {
       // Bei Fehlern einfach keine Hint anzeigen
     }
+  }
+
+  bool get _isDesktopWeb {
+    if (!kIsWeb) return false;
+    return defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux;
+  }
+
+  Future<void> _initIntroVideoIfNeeded() async {
+    if (!_isDesktopWeb) {
+      debugPrint('[INTRO] Nicht Desktop-Web, kein Intro');
+      return;
+    }
+    _showIntro = true;
+    debugPrint('[INTRO] Start: Desktop-Web, _showIntro=true');
+    try {
+      debugPrint('[INTRO] Lade Video: assets/universalVideo/kling_hauau1.mp4');
+      final controller = VideoPlayerController.asset(
+        'assets/universalVideo/kling_hauau1.mp4',
+        videoPlayerOptions: VideoPlayerOptions(mixWithOthers: false, allowBackgroundPlayback: false),
+      );
+      _introVideoController = controller;
+      debugPrint('[INTRO] Controller erstellt, initialisiere...');
+      await controller.initialize();
+      debugPrint('[INTRO] Video initialized: ${controller.value.isInitialized}, Dauer: ${controller.value.duration.inSeconds}s, Size: ${controller.value.size}');
+      controller.setLooping(false);
+      // Lautstärke initial muted für Autoplay-Compliance
+      await controller.setVolume(0.0);
+      _introMuted = true;
+      debugPrint('[INTRO] Volume auf 0.0 (muted) gesetzt für Autoplay');
+      // Listener: wenn Video komplett fertig ist -> Intro beenden, Content zeigen
+      controller.addListener(() {
+        if (!mounted) return;
+        final val = controller.value;
+        debugPrint('[INTRO] Listener: isPlaying=${val.isPlaying}, position=${val.position.inSeconds}s/${val.duration.inSeconds}s');
+        if (val.isInitialized &&
+            !val.isPlaying &&
+            val.position >= val.duration &&
+            _showIntro) {
+          debugPrint('[INTRO] Video FERTIG → _showIntro=false');
+          setState(() {
+            _showIntro = false;
+          });
+        }
+      });
+      // Play starten
+      await controller.play();
+      debugPrint('[INTRO] play() aufgerufen, isPlaying=${controller.value.isPlaying}');
+      // Fallback: wenn nach 500ms immer noch nicht playing, nochmal triggern
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (!controller.value.isPlaying) {
+        debugPrint('[INTRO] FALLBACK: Video spielt nicht, triggere erneut...');
+        await controller.seekTo(Duration.zero);
+        await controller.play();
+      }
+      debugPrint('[INTRO] Nach Fallback: isPlaying=${controller.value.isPlaying}');
+      // Logo-Animation starten
+      _logoAnimController.forward(from: 0.0);
+      debugPrint('[INTRO] Logo-Animation gestartet');
+      if (mounted) {
+        setState(() {});
+      }
+    } catch (e, stack) {
+      debugPrint('[INTRO] FEHLER beim Video-Load: $e\n$stack');
+      if (mounted) {
+        setState(() {
+          _showIntro = false;
+        });
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _logoAnimController.dispose();
+    _introVideoController?.dispose();
+    _authSubscription?.cancel();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   // Flag-Emoji für Sprachcode
@@ -930,17 +1047,7 @@ class _AuthScreenState extends State<AuthScreen> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFF000000),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFF000000), Color(0xFF111111)],
-          ),
-        ),
-        child: Column(
+    final mainContent = Column(
           children: [
             // Top Navigation - Sprache + Login/Register
             SafeArea(
@@ -1177,7 +1284,112 @@ class _AuthScreenState extends State<AuthScreen> {
               ),
             ),
           ],
+        );
+
+    if (!_isDesktopWeb) {
+      return Scaffold(
+        backgroundColor: const Color(0xFF000000),
+        body: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [Color(0xFF000000), Color(0xFF111111)],
+            ),
+          ),
+          child: mainContent,
         ),
+      );
+    }
+
+    // Desktop-Web: Intro-Video im Hintergrund, Content blendet nach Ende ein
+    debugPrint('[INTRO] build() Desktop: _showIntro=$_showIntro, videoController=${_introVideoController != null ? "exists" : "null"}, videoInit=${_introVideoController?.value.isInitialized}');
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Gradient-Background (immer sichtbar, UNTER Video während Intro)
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF000000), Color(0xFF111111)],
+                ),
+              ),
+            ),
+          ),
+          // Intro-Video (NUR während _showIntro=true)
+          if (_showIntro &&
+              _introVideoController != null &&
+              _introVideoController!.value.isInitialized)
+            Positioned.fill(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _introVideoController!.value.size.width,
+                  height: _introVideoController!.value.size.height,
+                  child: VideoPlayer(_introVideoController!),
+                ),
+              ),
+            ),
+          // Weißes Logo, das von unten hochfährt NUR während des Intros
+          if (_showIntro)
+            IgnorePointer(
+              ignoring: true,
+              child: Center(
+                child: SlideTransition(
+                  position: _logoSlide,
+                  child: FadeTransition(
+                    opacity: _logoOpacity,
+                    child: Image.asset(
+                      'assets/logo/logo_hauau.png',
+                      width: MediaQuery.of(context).size.width * 0.5,
+                      fit: BoxFit.contain,
+                      color: Colors.white,
+                      colorBlendMode: BlendMode.srcIn,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          // Lautsprecher-Icon rechts unten NUR während des Intros
+          if (_showIntro)
+            Positioned(
+              right: 24,
+              bottom: 24,
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _introMuted = !_introMuted;
+                  });
+                  _introVideoController?.setVolume(_introMuted ? 0.0 : 1.0);
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.transparent,
+                    borderRadius: BorderRadius.circular(40),
+                  ),
+                  child: Icon(
+                    _introMuted
+                        ? Icons.volume_off_rounded
+                        : Icons.volume_up_rounded,
+                    color: Colors.white,
+                    size: 48,
+                  ),
+                ),
+              ),
+            ),
+          // Inhalt NUR nach Intro-Ende
+          AnimatedOpacity(
+            opacity: _showIntro ? 0.0 : 1.0,
+            duration: const Duration(milliseconds: 800),
+            child: mainContent,
+          ),
+        ],
       ),
     );
   }
@@ -1306,11 +1518,4 @@ class _AuthScreenState extends State<AuthScreen> {
     );
   }
 
-  @override
-  void dispose() {
-    _authSubscription?.cancel();
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
 }
