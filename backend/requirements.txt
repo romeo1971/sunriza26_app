@@ -26,7 +26,7 @@ openai>=1.35.0
 mistralai>=1.0.0
 whisper-timestamped==1.15.3
 pinecone>=5.0.0
-google-cloud-texttospeech>=2.16.3
+google-cloud-texttospeech==2.31.0
 
 # Additional Utilities
 firebase-admin==6.4.0
