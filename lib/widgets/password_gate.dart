@@ -34,6 +34,16 @@ class _PasswordGateState extends State<PasswordGate> {
       return;
     }
 
+    // Nur auf Produktions-Domain schützen, auf Dev/Localhost direkt durchlassen
+    final host = Uri.base.host;
+    if (host != 'www.hauau.de' && host != 'hauau.de') {
+      setState(() {
+        _isAuthenticated = true;
+        _isLoading = false;
+      });
+      return;
+    }
+
     // Web: Prüfe ob Passwort bereits eingegeben wurde
     try {
       final prefs = await SharedPreferences.getInstance();

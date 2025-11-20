@@ -425,8 +425,7 @@ class HauauApp extends StatelessWidget {
             );
           },
           home: const _ResumeRouter(
-         // child: PasswordGate(child: AuthGate()),
-            child: AuthGate(),
+            child: PasswordGate(child: AuthGate()),
           ),
           debugShowCheckedModeBanner: false,
           onGenerateRoute: (settings) {
