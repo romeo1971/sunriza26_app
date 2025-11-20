@@ -24,10 +24,10 @@ def process():
             chunks.append({"index": idx, "text": full_text[i:i+3000]})
             idx += 1
 
-        OPENAI_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+        MISTRAL_KEY = os.getenv("MISTRAL_API_KEY", "").strip()
         PINECONE_KEY = os.getenv("PINECONE_API_KEY", "").strip()
         
-        if not OPENAI_KEY or not PINECONE_KEY:
+        if not MISTRAL_KEY or not PINECONE_KEY:
             return jsonify({"error": "API keys missing"}), 500
 
         # Get Pinecone host (Bestand: sunriza26-avatar-data; via Env übersteuerbar)
@@ -57,12 +57,12 @@ def process():
             
             # Get embeddings
             emb_resp = requests.post(
-                "https://api.openai.com/v1/embeddings",
+                "https://api.mistral.ai/v1/embeddings",
                 headers={
-                    "Authorization": f"Bearer {OPENAI_KEY}",
+                    "Authorization": f"Bearer {MISTRAL_KEY}",
                     "Content-Type": "application/json"
                 },
-                json={"model": "text-embedding-3-small", "input": texts},
+                json={"model": os.getenv("MISTRAL_EMBED_MODEL", "mistral-embed"), "input": texts},
                 timeout=30
             )
             if emb_resp.status_code != 200:
@@ -73,9 +73,16 @@ def process():
             # Upsert to Pinecone
             vectors = []
             for j, chunk in enumerate(batch):
+                vec = emb_data["data"][j]["embedding"]
+                # Auf 1536 Dimension bringen (Padding/Truncation) für bestehenden Index
+                target_dim = int(os.getenv("EMB_DIM", "1536"))
+                if len(vec) > target_dim:
+                    vec = vec[:target_dim]
+                elif len(vec) < target_dim:
+                    vec = vec + [0.0] * (target_dim - len(vec))
                 vectors.append({
                     "id": f"{avatar_id}-{doc_id}-{chunk['index']}",
-                    "values": emb_data["data"][j]["embedding"],
+                    "values": vec,
                     "metadata": {
                         "user_id": user_id,
                         "avatar_id": avatar_id,

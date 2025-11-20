@@ -2,7 +2,6 @@
 /// Stand: 04.09.2025 - Vektordatenbank für KI-Avatar Training
 
 import { Pinecone } from '@pinecone-database/pinecone';
-import { OpenAI } from 'openai';
 
 export interface DocumentMetadata {
   type: 'image' | 'video' | 'text' | 'audio';
@@ -23,8 +22,8 @@ export interface DocumentVector {
 
 export class PineconeService {
   private pinecone: Pinecone;
-  private openai: OpenAI;
   private indexName: string;
+  private embeddingDim: number;
 
   constructor() {
     // Pinecone initialisieren
@@ -32,13 +31,9 @@ export class PineconeService {
       apiKey: process.env.PINECONE_API_KEY!.trim(),
     });
 
-    // OpenAI für Embeddings
-    this.openai = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY!.trim(),
-    });
-
     // PYTHON-KOMPATIBILITÄT: Nutze gleichen Index wie Python-Backend
     this.indexName = process.env.PINECONE_INDEX || 'avatars-index';
+    this.embeddingDim = Number(process.env.EMB_DIM || 1536);
   }
 
   /// Initialisiert den Pinecone Index
@@ -102,12 +97,47 @@ export class PineconeService {
   /// Generiert Embeddings für Text
   async generateTextEmbedding(text: string): Promise<number[]> {
     try {
-      const response = await this.openai.embeddings.create({
-        model: 'text-embedding-3-small',
-        input: text,
-      });
+      const apiKey = process.env.MISTRAL_API_KEY?.trim();
+      const model = process.env.MISTRAL_EMBED_MODEL || 'mistral-embed';
+      if (!apiKey) {
+        throw new Error('MISTRAL_API_KEY ist nicht gesetzt');
+      }
 
-      return response.data[0].embedding;
+      const r = await (globalThis as any).fetch(
+        'https://api.mistral.ai/v1/embeddings' as any,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model,
+            input: text,
+          }),
+        },
+      );
+
+      if (!(r as any).ok) {
+        const body = await (r as any).text();
+        throw new Error(`Mistral embeddings failed: ${body}`);
+      }
+
+      const j = await (r as any).json();
+      let vec: number[] = (j.data?.[0]?.embedding as number[]) || [];
+      // Auf Index-Dimension bringen (Padding/Truncation), damit bestehende
+      // Pinecone-Indizes mit 1536 Dimension weiterverwendet werden können.
+      if (vec.length !== this.embeddingDim) {
+        if (vec.length > this.embeddingDim) {
+          vec = vec.slice(0, this.embeddingDim);
+        } else {
+          vec = [
+            ...vec,
+            ...new Array(this.embeddingDim - vec.length).fill(0),
+          ];
+        }
+      }
+      return vec;
     } catch (error) {
       console.error('Error generating text embedding:', error);
       throw error;

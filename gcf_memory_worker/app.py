@@ -55,6 +55,7 @@ def process_task():
             return jsonify({"ok": True, "inserted": 0})
 
         OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
+        MISTRAL_API_KEY = (os.getenv("MISTRAL_API_KEY") or "").strip()
         PINECONE_API_KEY = (os.getenv("PINECONE_API_KEY") or "").strip()
 
         # Pinecone host (Bestand: sunriza26-avatar-data; via Env übersteuerbar)
@@ -76,9 +77,9 @@ def process_task():
             part = chunks[i:i+BATCH]
             part_texts = [c["text"] for c in part]
             emb_resp = requests.post(
-                "https://api.openai.com/v1/embeddings",
-                headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-                json={"model": "text-embedding-3-small", "input": part_texts},
+            "https://api.mistral.ai/v1/embeddings",
+            headers={"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json"},
+            json={"model": os.getenv("MISTRAL_EMBED_MODEL", "mistral-embed"), "input": part_texts},
                 timeout=60,
             )
             emb = emb_resp.json()
@@ -92,9 +93,15 @@ def process_task():
                     "created_at": created_at,
                     "source": (source or "app"),
                 }
+                vec = emb["data"][off]["embedding"]
+                target_dim = int(os.getenv("EMB_DIM", "1536"))
+                if len(vec) > target_dim:
+                    vec = vec[:target_dim]
+                elif len(vec) < target_dim:
+                    vec = vec + [0.0] * (target_dim - len(vec))
                 vectors.append({
                     "id": f"{avatar_id}-{doc_id}-{ch['index']}",
-                    "values": emb["data"][off]["embedding"],
+                    "values": vec,
                     "metadata": meta,
                 })
             up = requests.post(
