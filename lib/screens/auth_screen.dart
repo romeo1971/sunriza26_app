@@ -730,21 +730,14 @@ class _AuthScreenState extends State<AuthScreen> {
 
     try {
       if (kIsWeb) {
-        // Web:
-        // - Desktop/Android-Browser → Popup-Flow
-        // - iOS Safari → MUSS Redirect nutzen (Popup wird blockiert / sofort geschlossen)
-        final provider = GoogleAuthProvider()..setCustomParameters({
-          'prompt': 'select_account',
-        });
-
-        if (defaultTargetPlatform == TargetPlatform.iOS) {
-          await FirebaseAuth.instance.signInWithRedirect(provider);
-          // Ergebnis wird beim nächsten App-Start/Reload geliefert
-        } else {
-          final result = await FirebaseAuth.instance.signInWithPopup(provider);
-          if (result.user != null) {
-            await _authService.createUserProfile(result.user!);
-          }
+        // Web: immer Popup nutzen, Redirect macht auf iOS/Safari Probleme
+        final provider = GoogleAuthProvider()
+          ..setCustomParameters({
+            'prompt': 'select_account',
+          });
+        final result = await FirebaseAuth.instance.signInWithPopup(provider);
+        if (result.user != null) {
+          await _authService.createUserProfile(result.user!);
         }
       } else {
         // Mobile: zentral über AuthService (legt User-Dokument in Firestore an)

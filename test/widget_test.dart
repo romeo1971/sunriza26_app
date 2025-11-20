@@ -15,6 +15,6 @@ void main() {
     await tester.pumpWidget(const HauauApp());
 
     // Verify that the app loads with the correct title.
-    expect(find.text('hauau - HOW ARE YOU'), findsOneWidget);
+    expect(find.text('hauau - HOW•ARE•U'), findsOneWidget);
   });
 }

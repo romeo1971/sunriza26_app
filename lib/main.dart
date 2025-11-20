@@ -188,7 +188,7 @@ class HauauApp extends StatelessWidget {
           Future.microtask(() => locSvc.useLanguageCode(desiredCode));
         }
         return MaterialApp(
-          title: 'hauau - HOW ARE YOU',
+          title: 'hauau - HOW•ARE•U',
           localizationsDelegates: const [
             GlobalMaterialLocalizations.delegate,
             GlobalWidgetsLocalizations.delegate,
