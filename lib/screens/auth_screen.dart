@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart'
     show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:firebase_auth/firebase_auth.dart' hide EmailAuthProvider;
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../widgets/custom_text_field.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_layout.dart';
@@ -31,6 +32,7 @@ class _AuthScreenState extends State<AuthScreen> {
   var _enteredPassword = '';
   var _isLoading = false;
   var _isAuthenticating = false; // Flag: Verhindert Dialog nach Login
+  bool _pwaHintScheduled = false;
 
   // GoogleSignIn wird über AuthService genutzt
   final AuthService _authService = AuthService();
@@ -52,6 +54,7 @@ class _AuthScreenState extends State<AuthScreen> {
         setState(() => _isAuthenticating = true);
       }
     });
+    _maybeShowPwaHint();
   }
 
   // Device-Locale als Startsprache setzen (falls noch keine gesetzt)
@@ -107,6 +110,87 @@ class _AuthScreenState extends State<AuthScreen> {
       } else {
         languageService.setLanguage('en'); // Fallback: Englisch
       }
+    }
+  }
+
+  Future<void> _maybeShowPwaHint() async {
+    if (_pwaHintScheduled || !kIsWeb) return;
+    // Fokus: iOS Safari / Mobile-Browser
+    if (defaultTargetPlatform != TargetPlatform.iOS) return;
+    _pwaHintScheduled = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final dismissed = prefs.getBool('pwa_hint_dismissed') ?? false;
+      if (dismissed || !mounted) return;
+      // Kleiner Delay, damit der Screen steht
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (ctx) {
+          return Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+            ),
+            insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Besser als im Browser',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Füge hauau einmal deinem Homescreen hinzu, dann läuft die App ohne Safari-Leiste im Vollbild.',
+                    style: TextStyle(fontSize: 14, height: 1.4),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    '1. Tippe unten auf das Teilen-Symbol.\n'
+                    '2. Wähle „Zum Home-Bildschirm“ (nur einmal nötig).\n'
+                    '3. Öffne hauau danach immer über das Icon.',
+                    style: TextStyle(fontSize: 13, height: 1.5),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                        },
+                        child: const Text('Später'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.accentGreenDark,
+                          foregroundColor: Colors.black,
+                        ),
+                        child: const Text('Verstanden'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+      await prefs.setBool('pwa_hint_dismissed', true);
+    } catch (_) {
+      // Bei Fehlern einfach keine Hint anzeigen
     }
   }
 

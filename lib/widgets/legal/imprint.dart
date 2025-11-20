@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class ImprintWidget extends StatelessWidget {
   static const String title = 'Impressum';
   static const String body = '''
-Impressum – HAU·AU
+Impressum – HAUAU
 
 frentle GmbH
 Musterstraße 12

@@ -114,7 +114,7 @@ class _PasswordGateState extends State<PasswordGate> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 const Text(
-                  'HAU·AU',
+                  'HAUAU',
                   style: TextStyle(
                     fontSize: 32,
                     fontWeight: FontWeight.bold,

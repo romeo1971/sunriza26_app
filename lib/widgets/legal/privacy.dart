@@ -4,13 +4,13 @@ class PrivacyWidget extends StatelessWidget {
   static const String title = 'Datenschutz';
   // Single Source of Truth: Inhalt hier pflegen (Markdown/Plaintext möglich)
   static const String body = '''
-Datenschutz – HAU·AU
+Datenschutz – HAUAU
 
 frentle GmbH
 Support / Datenschutz: privacy@hauau.de
 
 1. Einleitung
-Diese Datenschutzrichtlinie erklärt, welche personenbezogenen Daten die App HAU·AU ("App") verarbeitet, zu welchem Zweck und auf welchen Rechtsgrundlagen. Sie gilt für alle Nutzer:innen der App und der zugehörigen Webdienste.
+Diese Datenschutzrichtlinie erklärt, welche personenbezogenen Daten die App HAUAU ("App") verarbeitet, zu welchem Zweck und auf welchen Rechtsgrundlagen. Sie gilt für alle Nutzer:innen der App und der zugehörigen Webdienste.
 
 2. Verantwortlicher
 frentle GmbH
