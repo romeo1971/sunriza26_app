@@ -4,26 +4,22 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.PineconeService = void 0;
 const pinecone_1 = require("@pinecone-database/pinecone");
-const openai_1 = require("openai");
 class PineconeService {
     constructor() {
         // Pinecone initialisieren
         this.pinecone = new pinecone_1.Pinecone({
             apiKey: process.env.PINECONE_API_KEY.trim(),
         });
-        // OpenAI für Embeddings
-        this.openai = new openai_1.OpenAI({
-            apiKey: process.env.OPENAI_API_KEY.trim(),
-        });
         // PYTHON-KOMPATIBILITÄT: Nutze gleichen Index wie Python-Backend
         this.indexName = process.env.PINECONE_INDEX || 'avatars-index';
+        this.embeddingDim = Number(process.env.EMB_DIM || 1536);
     }
     /// Initialisiert den Pinecone Index
     async initializeIndex() {
         var _a;
         try {
             const indexes = await this.pinecone.listIndexes();
-            const indexExists = (_a = indexes.indexes) === null || _a === void 0 ? void 0 : _a.some(index => index.name === this.indexName);
+            const indexExists = (_a = indexes.indexes) === null || _a === void 0 ? void 0 : _a.some((index) => index.name === this.indexName);
             if (!indexExists) {
                 console.log(`Creating Pinecone index: ${this.indexName}`);
                 await this.pinecone.createIndex({
@@ -38,7 +34,7 @@ class PineconeService {
                     },
                 });
                 // Warten bis Index bereit ist
-                await this.waitForIndexReady();
+                await this.waitForIndexReady(this.indexName);
             }
             console.log(`Pinecone index ${this.indexName} is ready`);
         }
@@ -47,13 +43,13 @@ class PineconeService {
             throw error;
         }
     }
-    /// Wartet bis Index bereit ist
-    async waitForIndexReady() {
+    /// Wartet bis ein Index bereit ist
+    async waitForIndexReady(indexName) {
         const maxRetries = 30;
         let retries = 0;
         while (retries < maxRetries) {
             try {
-                const index = this.pinecone.index(this.indexName);
+                const index = this.pinecone.index(indexName);
                 const stats = await index.describeIndexStats();
                 if (stats.totalRecordCount !== undefined) {
                     console.log('Pinecone index is ready');
@@ -70,12 +66,44 @@ class PineconeService {
     }
     /// Generiert Embeddings für Text
     async generateTextEmbedding(text) {
+        var _a, _b, _c;
         try {
-            const response = await this.openai.embeddings.create({
-                model: 'text-embedding-3-small',
-                input: text,
+            const apiKey = (_a = process.env.MISTRAL_API_KEY) === null || _a === void 0 ? void 0 : _a.trim();
+            const model = process.env.MISTRAL_EMBED_MODEL || 'mistral-embed';
+            if (!apiKey) {
+                throw new Error('MISTRAL_API_KEY ist nicht gesetzt');
+            }
+            const r = await globalThis.fetch('https://api.mistral.ai/v1/embeddings', {
+                method: 'POST',
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model,
+                    input: text,
+                }),
             });
-            return response.data[0].embedding;
+            if (!r.ok) {
+                const body = await r.text();
+                throw new Error(`Mistral embeddings failed: ${body}`);
+            }
+            const j = await r.json();
+            let vec = ((_c = (_b = j.data) === null || _b === void 0 ? void 0 : _b[0]) === null || _c === void 0 ? void 0 : _c.embedding) || [];
+            // Auf Index-Dimension bringen (Padding/Truncation), damit bestehende
+            // Pinecone-Indizes mit 1536 Dimension weiterverwendet werden können.
+            if (vec.length !== this.embeddingDim) {
+                if (vec.length > this.embeddingDim) {
+                    vec = vec.slice(0, this.embeddingDim);
+                }
+                else {
+                    vec = [
+                        ...vec,
+                        ...new Array(this.embeddingDim - vec.length).fill(0),
+                    ];
+                }
+            }
+            return vec;
         }
         catch (error) {
             console.error('Error generating text embedding:', error);
@@ -156,16 +184,16 @@ class PineconeService {
             return [];
         }
     }
-    /// Sucht ähnliche Dokumente (globaler Avatar-Index, Bestand)
+    /// Sucht ähnliche Dokumente (global, bestehender Pinecone-Index)
     async searchSimilarDocumentsGlobal(query, topK = 5) {
         var _a, _b;
         try {
             const globalIndexName = process.env.PINECONE_GLOBAL_INDEX || 'sunriza26-avatar-data';
-            // Prüfe, ob Index existiert – kein Auto-Create
+            // Prüfe, ob Index existiert – wenn nicht, still überspringen (kein Auto-Create)
             const indexes = await this.pinecone.listIndexes();
-            const indexExists = (_a = indexes.indexes) === null || _a === void 0 ? void 0 : _a.some(index => index.name === globalIndexName);
+            const indexExists = (_a = indexes.indexes) === null || _a === void 0 ? void 0 : _a.some((index) => index.name === globalIndexName);
             if (!indexExists) {
-                console.log(`Global index ${globalIndexName} does not exist, skipping`);
+                console.log(`Global index ${globalIndexName} does not exist, skipping global search`);
                 return [];
             }
             const index = this.pinecone.index(globalIndexName);
