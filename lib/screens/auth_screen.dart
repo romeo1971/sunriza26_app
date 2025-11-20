@@ -37,6 +37,7 @@ class _AuthScreenState extends State<AuthScreen>
   bool _pwaHintScheduled = false;
   bool _showIntro = false;
   bool _introMuted = false;
+  bool _showContent = false;
   VideoPlayerController? _introVideoController;
   late final AnimationController _logoAnimController;
   late final Animation<Offset> _logoSlide;
@@ -62,20 +63,12 @@ class _AuthScreenState extends State<AuthScreen>
         curve: Curves.easeOutCubic,
       ),
     );
-    _logoOpacity = TweenSequence<double>([
-      // sanft von 0.1 → 1.0
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 0.1, end: 1.0)
-            .chain(CurveTween(curve: Curves.easeIn)),
-        weight: 60,
+    _logoOpacity = Tween<double>(begin: 0.1, end: 1.0).animate(
+      CurvedAnimation(
+        parent: _logoAnimController,
+        curve: Curves.easeIn,
       ),
-      // dann von 1.0 → 0.0 ausblenden
-      TweenSequenceItem(
-        tween: Tween<double>(begin: 1.0, end: 0.0)
-            .chain(CurveTween(curve: Curves.easeOut)),
-        weight: 40,
-      ),
-    ]).animate(_logoAnimController);
+    );
     _initializeLanguage();
     _initIntroVideoIfNeeded();
     // Schließt jedes offene Auth-Dialog-Fenster sofort, sobald ein User eingeloggt ist
@@ -259,7 +252,7 @@ class _AuthScreenState extends State<AuthScreen>
       await controller.setVolume(0.0);
       _introMuted = true;
       debugPrint('[INTRO] Volume auf 0.0 (muted) gesetzt für Autoplay');
-      // Listener: wenn Video komplett fertig ist -> Intro beenden, Content zeigen
+      // Listener: wenn Video komplett fertig ist -> Content nach Delay einblenden
       controller.addListener(() {
         if (!mounted) return;
         final val = controller.value;
@@ -267,10 +260,14 @@ class _AuthScreenState extends State<AuthScreen>
         if (val.isInitialized &&
             !val.isPlaying &&
             val.position >= val.duration &&
-            _showIntro) {
-          debugPrint('[INTRO] Video FERTIG → _showIntro=false');
-          setState(() {
-            _showIntro = false;
+            !_showContent) {
+          debugPrint('[INTRO] Video FERTIG → Content nach 500ms einblenden');
+          Future.delayed(const Duration(milliseconds: 500), () {
+            if (mounted) {
+              setState(() {
+                _showContent = true;
+              });
+            }
           });
         }
       });
@@ -1303,25 +1300,26 @@ class _AuthScreenState extends State<AuthScreen>
     }
 
     // Desktop-Web: Intro-Video im Hintergrund, Content blendet nach Ende ein
-    debugPrint('[INTRO] build() Desktop: _showIntro=$_showIntro, videoController=${_introVideoController != null ? "exists" : "null"}, videoInit=${_introVideoController?.value.isInitialized}');
+    debugPrint('[INTRO] build() Desktop: _showIntro=$_showIntro, _showContent=$_showContent, videoController=${_introVideoController != null ? "exists" : "null"}, videoInit=${_introVideoController?.value.isInitialized}');
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Gradient-Background (immer sichtbar, UNTER Video während Intro)
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF000000), Color(0xFF111111)],
+          // Gradient-Background (nur sichtbar wenn Content angezeigt wird)
+          if (_showContent)
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Color(0xFF000000), Color(0xFF111111)],
+                  ),
                 ),
               ),
             ),
-          ),
-          // Intro-Video (NUR während _showIntro=true)
+          // Intro-Video (immer sichtbar während Intro, auch nach Ende)
           if (_showIntro &&
               _introVideoController != null &&
               _introVideoController!.value.isInitialized)
@@ -1335,8 +1333,8 @@ class _AuthScreenState extends State<AuthScreen>
                 ),
               ),
             ),
-          // Weißes Logo, das von unten hochfährt NUR während des Intros
-          if (_showIntro)
+          // Weißes Logo, bleibt bis Content kommt
+          if (_showIntro && !_showContent)
             IgnorePointer(
               ignoring: true,
               child: Center(
@@ -1355,8 +1353,8 @@ class _AuthScreenState extends State<AuthScreen>
                 ),
               ),
             ),
-          // Lautsprecher-Icon rechts unten NUR während des Intros
-          if (_showIntro)
+          // Lautsprecher-Icon rechts unten während Intro
+          if (_showIntro && !_showContent)
             Positioned(
               right: 24,
               bottom: 24,
@@ -1383,9 +1381,9 @@ class _AuthScreenState extends State<AuthScreen>
                 ),
               ),
             ),
-          // Inhalt NUR nach Intro-Ende
+          // Inhalt wird eingeblendet wenn _showContent=true
           AnimatedOpacity(
-            opacity: _showIntro ? 0.0 : 1.0,
+            opacity: _showContent ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 800),
             child: mainContent,
           ),
