@@ -10,7 +10,6 @@ import logging
 from pydantic import BaseModel
 from dotenv import load_dotenv, find_dotenv
 from pathlib import Path
-from openai import OpenAI
 from mistralai import Mistral
 from google.cloud import texttospeech
 import base64, requests, json, tempfile, subprocess, threading
@@ -98,7 +97,6 @@ if env_path.exists():
 else:
     load_dotenv(find_dotenv(), override=False)
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
 PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
 PINECONE_INDEX = os.getenv("PINECONE_INDEX", "sunriza")
@@ -111,9 +109,8 @@ LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY", "").strip()
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET", "").strip()
 
 # Standard-Modelle (nur ändern, wenn explizit angewiesen)
-GPT_MODEL = os.getenv("GPT_MODEL", "gpt-4o-mini")
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-small")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "mistral-embed")
 EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1536"))
 GPT_SYSTEM_PROMPT = os.getenv(
     "GPT_SYSTEM_PROMPT",
@@ -130,8 +127,6 @@ GPT_SYSTEM_PROMPT = os.getenv(
     ),
 )
 
-if not OPENAI_API_KEY:
-    raise RuntimeError("OPENAI_API_KEY fehlt in .env")
 if not MISTRAL_API_KEY:
     raise RuntimeError("MISTRAL_API_KEY fehlt in .env")
 if not PINECONE_API_KEY:
@@ -139,7 +134,6 @@ if not PINECONE_API_KEY:
 
 app = FastAPI(title="Avatar Memory API", version="0.1.0")
 logger = logging.getLogger("uvicorn.error")
-client = OpenAI(api_key=OPENAI_API_KEY, timeout=20, max_retries=0)
 mistral_client = Mistral(api_key=MISTRAL_API_KEY)
 pc = get_pinecone(PINECONE_API_KEY)
 
@@ -552,15 +546,14 @@ def _build_day_summary_with_llm(messages: list[dict], lang_hint: str | None = No
         )
         if lang_hint:
             prompt += f" Schreibe in Sprache: {lang_hint}."
-        comp = client.chat.completions.create(
-            model=GPT_MODEL,
+        comp = mistral_client.chat.complete(
+            model=MISTRAL_MODEL,
             messages=[
                 {"role": "system", "content": "Du bist ein genauer Tageszusammenfasser. Antworte nur mit JSON."},
                 {"role": "user", "content": prompt + "\n\n" + convo},
             ],
             temperature=0.2,
             max_tokens=300,
-            timeout=10,
         )
         raw = (comp.choices[0].message.content or "").strip()
         try:
@@ -791,15 +784,14 @@ def _maybe_rolling_summary(index_name: str, namespace: str, new_texts: list[str]
             "Physisch/Biologisch, Soziale Interaktionen. Konzentriere dich auf Muster und Tendenzen.\n\n"
         ) + "\n\n".join(f"- {t.strip()}" for t in recent if t.strip())
 
-        comp = client.chat.completions.create(
-            model=GPT_MODEL,
+        comp = mistral_client.chat.complete(
+            model=MISTRAL_MODEL,
             messages=[
                 {"role": "system", "content": "Du bist ein präziser Zusammenfasser. Antworte kurz und strukturiert."},
                 {"role": "user", "content": prompt},
             ],
             temperature=0.2,
             max_tokens=220,
-            timeout=10,
         )
         summary = (comp.choices[0].message.content or "").strip()
         if not summary:
@@ -1002,12 +994,11 @@ def _extract_chat_facts(
                 "content": prompt + "\n\nNutzertext:\n" + conversation,
             },
         ]
-        comp = client.chat.completions.create(
-            model=GPT_MODEL,
+        comp = mistral_client.chat.complete(
+            model=MISTRAL_MODEL,
             messages=messages,
             temperature=0,
             max_tokens=180,
-            timeout=8,
         )
         raw = (comp.choices[0].message.content or "").strip()
         data = None
@@ -1227,8 +1218,19 @@ def _create_embeddings_with_timeout(texts: List[str], model: str, timeout_sec: i
 
     def _worker() -> None:
         try:
-            emb = client.embeddings.create(model=model, input=texts, timeout=timeout_sec)
-            result["emb"] = emb
+            # Mistral Embeddings API
+            resp = requests.post(
+                "https://api.mistral.ai/v1/embeddings",
+                headers={
+                    "Authorization": f"Bearer {MISTRAL_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={"model": model, "input": texts, "encoding_format": "float"},
+                timeout=timeout_sec,
+            )
+            resp.raise_for_status()
+            emb_data = resp.json()
+            result["emb"] = emb_data
         except Exception as e:  # noqa: BLE001
             errors.append(e)
 
@@ -1236,13 +1238,21 @@ def _create_embeddings_with_timeout(texts: List[str], model: str, timeout_sec: i
     th.start()
     th.join(timeout=timeout_sec + 5)
     if "emb" in result:
-        emb = result["emb"]
+        emb_data = result["emb"]
         try:
-            real_dim = len(emb.data[0].embedding)  # type: ignore[index]
+            embeddings = [item["embedding"] for item in emb_data["data"]]
+            real_dim = len(embeddings[0]) if embeddings else EMBEDDING_DIM
+            # Pad to 1536 if needed
+            vectors = []
+            for emb in embeddings:
+                if len(emb) < EMBEDDING_DIM:
+                    emb = emb + [0.0] * (EMBEDDING_DIM - len(emb))
+                elif len(emb) > EMBEDDING_DIM:
+                    emb = emb[:EMBEDDING_DIM]
+                vectors.append(emb)
+            return vectors, EMBEDDING_DIM
         except Exception:  # noqa: BLE001
-            real_dim = EMBEDDING_DIM
-        vectors = [emb.data[i].embedding for i in range(len(texts))]  # type: ignore[index]
-        return vectors, real_dim
+            raise ValueError("Invalid Mistral embedding response")
     if errors:
         raise errors[0]
     raise TimeoutError("Embedding timeout")
@@ -2241,15 +2251,14 @@ def chat_with_avatar(payload: ChatRequest, request: Request) -> ChatResponse:
                 " aber es klar erkennbare Fremdsprach-Teile gibt. Andernfalls false."
                 "\nText:\n" + (text or "")
             )
-            comp = client.chat.completions.create(
-                model=GPT_MODEL,
+            comp = mistral_client.chat.complete(
+                model=MISTRAL_MODEL,
                 messages=[
                     {"role": "system", "content": "Du bist ein präziser Sprachdetektor. Antworte nur mit JSON."},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0,
                 max_tokens=60,
-                timeout=8,
             )
             raw = (comp.choices[0].message.content or "").strip()
             data = json.loads(raw)
@@ -2693,11 +2702,26 @@ def debug_upsert(payload: DebugUpsertRequest) -> InsertResponse:
 
 @app.post("/debug/embedding")
 def debug_embedding(req: DebugEmbeddingRequest) -> Dict[str, Any]:
-    """Testet OpenAI Embeddings direkt und liefert Dimension & Dauer zurück."""
+    """Testet Mistral Embeddings direkt und liefert Dimension & Dauer zurück."""
     try:
         t0 = time.time()
-        emb = client.embeddings.create(model=EMBEDDING_MODEL, input=[req.text], timeout=20)
-        vec = emb.data[0].embedding  # type: ignore[index]
+        resp = requests.post(
+            "https://api.mistral.ai/v1/embeddings",
+            headers={
+                "Authorization": f"Bearer {MISTRAL_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"model": EMBEDDING_MODEL, "input": [req.text], "encoding_format": "float"},
+            timeout=20,
+        )
+        resp.raise_for_status()
+        emb_data = resp.json()
+        vec = emb_data["data"][0]["embedding"]
+        # Pad to 1536 if needed
+        if len(vec) < EMBEDDING_DIM:
+            vec = vec + [0.0] * (EMBEDDING_DIM - len(vec))
+        elif len(vec) > EMBEDDING_DIM:
+            vec = vec[:EMBEDDING_DIM]
         ms = int((time.time() - t0) * 1000)
         return {"ok": True, "dim": len(vec), "ms": ms, "model": EMBEDDING_MODEL}
     except Exception as e:
