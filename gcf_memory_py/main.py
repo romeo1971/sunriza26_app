@@ -91,8 +91,9 @@ def memory_insert(request):  # entry-point: memory_insert
             return (json.dumps({"error": "full_text ist leer"}), 400, {**headers, "Content-Type": "application/json"})
 
         OPENAI_API_KEY = (os.getenv("OPENAI_API_KEY") or "").strip()
+        MISTRAL_API_KEY = (os.getenv("MISTRAL_API_KEY") or "").strip()
         PINECONE_API_KEY = (os.getenv("PINECONE_API_KEY") or "").strip()
-        if not OPENAI_API_KEY or not PINECONE_API_KEY:
+        if not MISTRAL_API_KEY or not PINECONE_API_KEY:
             return (json.dumps({"error": "Server secrets missing"}), 500, {**headers, "Content-Type": "application/json"})
 
         # global avatar index (Bestand: sunriza26-avatar-data; via Env übersteuerbar)
@@ -133,19 +134,27 @@ def memory_insert(request):  # entry-point: memory_insert
                 part_embeddings = [[0.001 * (j + 1)] * dim for j in range(len(part_texts))]
             else:
                 emb_resp = requests.post(
-                    "https://api.openai.com/v1/embeddings",
-                    headers={"Authorization": f"Bearer {OPENAI_API_KEY}", "Content-Type": "application/json"},
-                    json={"model": "text-embedding-3-small", "input": part_texts},
+                    "https://api.mistral.ai/v1/embeddings",
+                    headers={"Authorization": f"Bearer {MISTRAL_API_KEY}", "Content-Type": "application/json"},
+                    json={"model": os.getenv("MISTRAL_EMBED_MODEL", "mistral-embed"), "input": part_texts},
                     timeout=30,
                 )
                 if emb_resp.status_code >= 300:
                     return (
-                        json.dumps({"error": f"OpenAI embeddings failed: {emb_resp.text}"}),
+                        json.dumps({"error": f"Mistral embeddings failed: {emb_resp.text}"}),
                         emb_resp.status_code,
                         {**headers, "Content-Type": "application/json"},
                     )
                 emb_json = emb_resp.json()
-                part_embeddings = [d["embedding"] for d in emb_json.get("data", [])]
+                raw_embeddings = [d["embedding"] for d in emb_json.get("data", [])]
+                dim = int(os.getenv("EMB_DIM", "1536"))
+                part_embeddings = []
+                for vec in raw_embeddings:
+                    if len(vec) > dim:
+                        vec = vec[:dim]
+                    elif len(vec) < dim:
+                        vec = vec + [0.0] * (dim - len(vec))
+                    part_embeddings.append(vec)
 
             # Isolationsmodus: Nur Embeddings testen, kein Pinecone
             if os.getenv("ONLY_EMB", "0") == "1":
@@ -195,7 +204,7 @@ def memory_insert(request):  # entry-point: memory_insert
                 "namespace": namespace,
                 "inserted": total_inserted,
                 "index_name": index_name,
-                "model": "text-embedding-3-small",
+                "model": os.getenv("MISTRAL_EMBED_MODEL", "mistral-embed"),
                 "batches": (len(chunks) + BATCH - 1) // BATCH,
                 "only_embeddings": os.getenv("ONLY_EMB", "0") == "1",
             }),

@@ -75,9 +75,9 @@ exports.avatarMemoryInsertV2 = (0, https_1.onRequest)({
             return;
         }
         // Secrets
-        const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
+        const MISTRAL_API_KEY = (process.env.MISTRAL_API_KEY || '').trim();
         const PINECONE_API_KEY = (process.env.PINECONE_API_KEY || '').trim();
-        if (!OPENAI_API_KEY || !PINECONE_API_KEY) {
+        if (!MISTRAL_API_KEY || !PINECONE_API_KEY) {
             res.status(500).json({ error: 'Server secrets missing' });
             return;
         }
@@ -108,14 +108,14 @@ exports.avatarMemoryInsertV2 = (0, https_1.onRequest)({
         for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
             const batchChunks = chunks.slice(i, i + BATCH_SIZE);
             const batchTexts = batchChunks.map(c => c.text);
-            // 1) Embeddings für diesen Batch
-            const embResp = await (0, node_fetch_1.default)('https://api.openai.com/v1/embeddings', {
+            // 1) Embeddings für diesen Batch (Mistral)
+            const embResp = await (0, node_fetch_1.default)('https://api.mistral.ai/v1/embeddings', {
                 method: 'POST',
                 headers: {
-                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'Authorization': `Bearer ${MISTRAL_API_KEY}`,
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ model: 'text-embedding-3-small', input: batchTexts }),
+                body: JSON.stringify({ model: process.env.MISTRAL_EMBED_MODEL || 'mistral-embed', input: batchTexts }),
             });
             if (!embResp.ok) {
                 const body = await embResp.text();
@@ -125,7 +125,17 @@ exports.avatarMemoryInsertV2 = (0, https_1.onRequest)({
                 return;
             }
             const embJson = await embResp.json();
-            const batchEmbeddings = (embJson.data || []).map((d) => d.embedding);
+            const rawEmbeddings = (embJson.data || []).map((d) => d.embedding);
+            const dim = Number(process.env.EMB_DIM || 1536);
+            const batchEmbeddings = rawEmbeddings.map((vec) => {
+                if (vec.length > dim) {
+                    return vec.slice(0, dim);
+                }
+                if (vec.length < dim) {
+                    return [...vec, ...new Array(dim - vec.length).fill(0)];
+                }
+                return vec;
+            });
             // 2) Vektoren für diesen Batch vorbereiten
             const batchVectors = batchChunks.map((chunk, idx) => {
                 const meta = {
