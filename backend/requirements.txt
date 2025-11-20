@@ -30,7 +30,8 @@ google-cloud-texttospeech>=2.16.3
 
 # Additional Utilities
 firebase-admin==6.4.0
-google-cloud-firestore>=2.16.0
+# Google Stack strikt auf lokal getestete Versionen pinnen, damit pip nicht backtracked
+google-cloud-firestore==2.21.0
 google-api-python-client==2.185.0
 google-api-core==2.27.0
 google-auth-httplib2==0.2.0
