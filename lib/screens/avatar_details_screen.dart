@@ -418,6 +418,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   bool _greetingDirty = false;
   String? _greetingBaseline;
   bool _hasNonGreetingDirty = false;
+  bool _personDataDirty = false;
   // Rect? _cropArea; // ungenutzt
   // Medien-Tab: 'images' oder 'videos'
   String _mediaTab = 'images';
@@ -927,6 +928,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           _isDirty = false;
           _greetingDirty = false;
           _hasNonGreetingDirty = false;
+          _personDataDirty = false;
         });
       }
       return;
@@ -934,31 +936,38 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
     bool dirty = false;
     bool nonGreetingDirty = false;
+    bool personDataChanged = false;
 
-    // Textfelder
+    // Textfelder (Personendaten)
     if (_firstNameController.text.trim() != current.firstName) {
       dirty = true;
       nonGreetingDirty = true;
+      personDataChanged = true;
     }
     if ((_nicknameController.text.trim()) != (current.nickname ?? '')) {
       dirty = true;
       nonGreetingDirty = true;
+      personDataChanged = true;
     }
     if ((_lastNameController.text.trim()) != (current.lastName ?? '')) {
       dirty = true;
       nonGreetingDirty = true;
+      personDataChanged = true;
     }
     if ((_cityController.text.trim()) != (current.city ?? '')) {
       dirty = true;
       nonGreetingDirty = true;
+      personDataChanged = true;
     }
     if ((_postalCodeController.text.trim()) != (current.postalCode ?? '')) {
       dirty = true;
       nonGreetingDirty = true;
+      personDataChanged = true;
     }
     if ((_countryController.text.trim()) != (current.country ?? '')) {
       dirty = true;
       nonGreetingDirty = true;
+      personDataChanged = true;
     }
     // Begrüßungstext (Baseline = initialer Text im Controller, sonst gespeicherter Wert)
     final baselineGreeting =
@@ -977,10 +986,12 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     if (!sameDate(_birthDate, current.birthDate)) {
       dirty = true;
       nonGreetingDirty = true;
+      personDataChanged = true;
     }
     if (!sameDate(_deathDate, current.deathDate)) {
       dirty = true;
       nonGreetingDirty = true;
+      personDataChanged = true;
     }
 
     // Hero-Image / Profilbild geändert
@@ -1008,6 +1019,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         _isDirty = dirty;
         _greetingDirty = greetingChanged;
         _hasNonGreetingDirty = nonGreetingDirty;
+        _personDataDirty = personDataChanged;
       });
     }
   }
@@ -1044,15 +1056,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         }
       }
     });
-    // Empfange AvatarData von der vorherigen Seite
-    _firstNameController.addListener(_updateDirty);
-    _nicknameController.addListener(_updateDirty);
-    _lastNameController.addListener(_updateDirty);
-    _cityController.addListener(_updateDirty);
-    _postalCodeController.addListener(_updateDirty);
-    _countryController.addListener(_updateDirty);
-    _textAreaController.addListener(_updateDirty);
-    _greetingController.addListener(_updateDirty);
+    // Textfilter-Listener (nicht dirty-relevant)
     _textFilterController.addListener(() {
       final v = _textFilterController.text.trim();
       if (v != _textFilter) {
@@ -1578,6 +1582,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // Hero-Video in Großansicht initialisieren
     _initInlineFromHero();
     // Kein Autogenerieren mehr – Generierung erfolgt nur auf Nutzeraktion
+    
+    // Listener registrieren (NACH initialem Befüllen)
+    _registerDirtyListeners();
+  }
+  
+  /// Registriert Dirty-Listener für Controller (nur einmal)
+  bool _listenersRegistered = false;
+  void _registerDirtyListeners() {
+    if (_listenersRegistered) return;
+    _listenersRegistered = true;
+    _firstNameController.addListener(_updateDirty);
+    _nicknameController.addListener(_updateDirty);
+    _lastNameController.addListener(_updateDirty);
+    _cityController.addListener(_updateDirty);
+    _postalCodeController.addListener(_updateDirty);
+    _countryController.addListener(_updateDirty);
+    _textAreaController.addListener(_updateDirty);
+    _greetingController.addListener(_updateDirty);
   }
 
   // Obsolet: Rundes Avatarbild oben wurde entfernt (Hintergrundbild reicht aus)
@@ -1812,6 +1834,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                       _greetingBaseline ?? _avatarData?.greetingText ?? '';
                   final showSave =
                       _avatarData != null &&
+                      _greetingBaseline != null &&
                       _greetingController.text.trim() != baselineGreeting;
                   return GreetingTextExpansionTile(
                     greetingController: _greetingController,
@@ -6829,6 +6852,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           _buildDeleteAvatarTile(),
         ],
       ),
+      onSavePersonData: () {
+        setState(() => _personDataDirty = false);
+        _saveAvatarDetails();
+      },
+      showSaveButton: _personDataDirty,
     );
   }
 
@@ -7084,14 +7112,23 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           deathDate: _deathDate,
           calculatedAge: _calculatedAge,
         );
-        final File profileTmp = await File(
-          '${Directory.systemTemp.path}/profile_${DateTime.now().millisecondsSinceEpoch}.txt',
-        ).create();
-        await profileTmp.writeAsString(profileContent);
-        await FirebaseStorageService.uploadTextFile(
-          profileTmp,
-          customPath: profilePath,
-        );
+        // Profiltext hochladen – Web ohne dart:io, Mobile mit temporärer Datei
+        if (kIsWeb) {
+          final bytes = Uint8List.fromList(utf8.encode(profileContent));
+          await FirebaseStorageService.uploadTextBytes(
+            bytes,
+            customPath: profilePath,
+          );
+        } else {
+          final File profileTmp = await File(
+            '${Directory.systemTemp.path}/profile_${DateTime.now().millisecondsSinceEpoch}.txt',
+          ).create();
+          await profileTmp.writeAsString(profileContent);
+          await FirebaseStorageService.uploadTextFile(
+            profileTmp,
+            customPath: profilePath,
+          );
+        }
 
         // b) Freitext als sichtbare Datei hochladen (in Liste aufnehmen)
         if (freeTextLocalFile != null && freeTextLocalFileName != null) {
@@ -7325,7 +7362,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             title: locSvc.t('avatars.details.savingTitle'),
             message: locSvc.t('avatars.details.textsTransferMessage'),
             task: () async {
+              // IMMER: profile.txt (Personendaten) an Pinecone senden
+              debugPrint('🟢 Sende Personendaten an Pinecone...');
+              try {
+                await _triggerMemoryInsert(
+                  userId: uid,
+                  avatarId: updated.id,
+                  fullText: profileContent,
+                  fileName: 'profile.txt',
+                  filePath: profilePath,
+                  source: 'profile',
+                );
+                debugPrint('✅ Personendaten an Pinecone gesendet');
+              } catch (e, stack) {
+                debugPrint('❌ Personendaten Pinecone-Fehler: $e');
+                debugPrint('Stack: $stack');
+              }
+              
+              // Optional: Freitext + neue Textdateien an Pinecone senden
               if (combinedText.trim().isNotEmpty) {
+                debugPrint('🟢 Sende Textdateien an Pinecone...');
                 try {
                   await _triggerMemoryInsert(
                     userId: uid,
@@ -7336,22 +7392,11 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                     filePath: freeTextUploadedPath,
                     source: 'app',
                   );
-                } catch (e) {
-                  // ignore
+                  debugPrint('✅ Textdateien an Pinecone gesendet');
+                } catch (e, stack) {
+                  debugPrint('❌ Textdateien Pinecone-Fehler: $e');
+                  debugPrint('Stack: $stack');
                 }
-              }
-              // Immer: profile.txt als Chunks in Pinecone aktualisieren (stable file)
-              try {
-                await _triggerMemoryInsert(
-                  userId: uid,
-                  avatarId: updated.id,
-                  fullText: profileContent,
-                  fileName: 'profile.txt',
-                  filePath: profilePath,
-                  source: 'profile',
-                );
-              } catch (e) {
-                // ignore
               }
             },
           );
@@ -7469,8 +7514,10 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     String? source,
   }) async {
     final base = _pineconeApiBaseUrl();
+    debugPrint('🔵 _pineconeApiBaseUrl(): "$base"');
     if (base.isEmpty) {
-      // Kein Backend: überspringen
+      debugPrint('❌ PINECONE_API_BASE_URL ist leer - Memory Insert übersprungen!');
+      debugPrint('💡 Setze PINECONE_API_BASE_URL in .env oder nutze Fallback Cloud Functions');
       return;
     }
     final uri = Uri.parse('$base/avatar/memory/insert');
@@ -7488,21 +7535,30 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       if (filePath != null) 'file_path': filePath,
     };
     try {
+      debugPrint('🔵 Memory Insert Request: $uri');
+      debugPrint('🔵 Payload: ${jsonEncode(payload)}');
       final res = await http
           .post(
             uri,
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode(payload),
           )
-          .timeout(const Duration(seconds: 30));
+          // Memory-Insert kann wegen Pinecone/Cold-Start länger dauern → großzügiger Timeout
+          .timeout(const Duration(seconds: 90));
+      debugPrint('🔵 Memory Insert Response: ${res.statusCode}');
+      debugPrint('🔵 Response Body: ${res.body}');
       if (res.statusCode < 200 || res.statusCode >= 300) {
         if (mounted) {
           _showSystemSnack(
             'Memory insert fehlgeschlagen (${res.statusCode}): ${res.body}',
           );
         }
+      } else {
+        debugPrint('✅ Memory insert erfolgreich');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('❌ Memory insert Exception: $e');
+      debugPrint('❌ StackTrace: $stackTrace');
       if (mounted) {
         _showSystemSnack('Memory insert Fehler: $e');
       }

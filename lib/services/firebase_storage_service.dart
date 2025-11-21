@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -394,6 +395,36 @@ class FirebaseStorageService {
       return downloadUrl;
     } catch (e) {
       debugPrint('Fehler beim Upload der Textdatei: $e');
+      return null;
+    }
+  }
+
+  /// Upload Textinhalt aus Bytes (z.B. Flutter Web / FilePicker)
+  static Future<String?> uploadTextBytes(
+    Uint8List bytes, {
+    String? customPath,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw Exception('Benutzer nicht angemeldet');
+
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final filePath = customPath ??
+          'users/${user.uid}/uploads/texts/${timestamp}_text.txt';
+
+      final ref = _storage.ref().child(filePath);
+      final uploadTask = ref.putData(
+        bytes,
+        SettableMetadata(contentType: 'text/plain'),
+      );
+
+      final snapshot = await uploadTask;
+      final downloadUrl = await snapshot.ref.getDownloadURL();
+
+      debugPrint('uploadTextBytes OK → $downloadUrl');
+      return downloadUrl;
+    } catch (e) {
+      debugPrint('Fehler beim Upload der Textbytes: $e');
       return null;
     }
   }

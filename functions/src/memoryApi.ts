@@ -32,8 +32,20 @@ export const avatarMemoryInsert = onRequest({
       return;
     }
 
+    // Per-Avatar Index ermitteln (wie Python-Backend)
+    const mode = (process.env.PINECONE_INDEX_MODE || 'per_avatar').toLowerCase();
+    const base = process.env.PINECONE_INDEX || 'avatars-index';
+    let indexName: string;
+    if (mode === 'per_avatar') {
+      const san = (s: string) => (s || '').toLowerCase().replace(/[^a-z0-9-]/g, '-');
+      indexName = `${base}-${san(user_id).slice(0, 24)}-${san(avatar_id).slice(0, 24)}`.slice(0, 45);
+    } else {
+      indexName = process.env.PINECONE_GLOBAL_INDEX || 'sunriza26-avatar-data';
+    }
+
     const pinecone = new PineconeService();
     const documentId = `${user_id}_${avatar_id}_${Date.now()}`;
+    const namespace = `${user_id}_${avatar_id}`;
     
     const metadata = {
       type: 'text' as const,
@@ -46,16 +58,13 @@ export const avatarMemoryInsert = onRequest({
       tags: [avatar_id],
     };
 
-    // Store in Pinecone
-    await pinecone.storeDocument(documentId, full_text, metadata);
-
-    const globalIndexName =
-      process.env.PINECONE_GLOBAL_INDEX || 'sunriza26-avatar-data';
+    // Store in Pinecone mit per-avatar Index
+    await pinecone.storeDocumentWithIndex(indexName, documentId, full_text, metadata, namespace);
 
     res.status(200).json({
       namespace: `${user_id}_${avatar_id}`,
       inserted: 1,
-      index_name: globalIndexName,
+      index_name: indexName,
       model: 'text-embedding-3-small',
     });
   } catch (error: any) {

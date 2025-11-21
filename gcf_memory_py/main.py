@@ -96,8 +96,18 @@ def memory_insert(request):  # entry-point: memory_insert
         if not MISTRAL_API_KEY or not PINECONE_API_KEY:
             return (json.dumps({"error": "Server secrets missing"}), 500, {**headers, "Content-Type": "application/json"})
 
-        # global avatar index (Bestand: sunriza26-avatar-data; via Env übersteuerbar)
-        index_name = os.getenv("PINECONE_GLOBAL_INDEX", "sunriza26-avatar-data")
+        # Per-Avatar Index (PINECONE_INDEX_MODE=per_avatar) oder globaler Index
+        mode = os.getenv("PINECONE_INDEX_MODE", "per_avatar").lower()
+        base = os.getenv("PINECONE_INDEX", "avatars-index")
+        if mode == "per_avatar":
+            def _san(s: str) -> str:
+                s = (s or "").lower()
+                s = __import__('re').sub(r"[^a-z0-9-]", "-", s)
+                return s
+            index_name = f"{base}-{_san(user_id)[:24]}-{_san(avatar_id)[:24]}"[:45]
+        else:
+            # Fallback: globaler Index (alter Weg)
+            index_name = os.getenv("PINECONE_GLOBAL_INDEX", "sunriza26-avatar-data")
         namespace = f"{user_id}_{avatar_id}"
 
         # Embeddings + Upsert strikt in Minibatches (Peak-RAM minimieren)

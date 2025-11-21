@@ -160,6 +160,7 @@ class AvatarData {
     if (firstNamePublic != null) map['firstNamePublic'] = firstNamePublic;
     if (nicknamePublic != null) map['nicknamePublic'] = nicknamePublic;
     if (lastNamePublic != null) map['lastNamePublic'] = lastNamePublic;
+    if (dynamics != null) map['dynamics'] = dynamics;
     if (liveAvatar != null) map['liveAvatar'] = liveAvatar;
     if (slug != null && slug!.isNotEmpty) map['slug'] = slug;
 

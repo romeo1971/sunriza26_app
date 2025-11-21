@@ -6,8 +6,15 @@ import '../../services/localization_service.dart';
 /// Personendaten ExpansionTile
 class PersonDataExpansionTile extends StatelessWidget {
   final Widget inputFieldsWidget;
+  final VoidCallback? onSavePersonData;
+  final bool showSaveButton;
 
-  const PersonDataExpansionTile({super.key, required this.inputFieldsWidget});
+  const PersonDataExpansionTile({
+    super.key,
+    required this.inputFieldsWidget,
+    this.onSavePersonData,
+    this.showSaveButton = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -24,11 +31,26 @@ class PersonDataExpansionTile extends StatelessWidget {
         backgroundColor: Colors.black.withValues(alpha: 0.95),
         collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
         iconColor: AppColors.lightBlue, // GMBC Arrow expanded
-        title: Text(
-          context.read<LocalizationService>().t(
-            'avatars.details.personDataTitle',
-          ),
-          style: const TextStyle(color: Colors.white),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                context.read<LocalizationService>().t(
+                  'avatars.details.personDataTitle',
+                ),
+                style: const TextStyle(color: Colors.white),
+              ),
+            ),
+            if (showSaveButton && onSavePersonData != null)
+              TextButton.icon(
+                onPressed: onSavePersonData,
+                icon: const Icon(Icons.save, size: 16, color: AppColors.lightBlue),
+                label: const Text(
+                  'Speichern',
+                  style: TextStyle(color: AppColors.lightBlue, fontSize: 13),
+                ),
+              ),
+          ],
         ),
         children: [
           Padding(

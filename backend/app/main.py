@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 import time, uuid, hashlib
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks, Request
+from fastapi.middleware.cors import CORSMiddleware
 import re
 import logging
 from pydantic import BaseModel
@@ -133,6 +134,15 @@ if not PINECONE_API_KEY:
     raise RuntimeError("PINECONE_API_KEY fehlt in .env")
 
 app = FastAPI(title="Avatar Memory API", version="0.1.0")
+
+# CORS für Browser-Clients (z.B. Flutter Web)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # bei Bedarf auf Deine Domains einschränken
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 logger = logging.getLogger("uvicorn.error")
 mistral_client = Mistral(api_key=MISTRAL_API_KEY)
 pc = get_pinecone(PINECONE_API_KEY)

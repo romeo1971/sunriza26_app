@@ -3,8 +3,21 @@ import 'dart:html' as html;
 // ignore: avoid_web_libraries_in_flutter
 import 'dart:ui_web' as ui;
 
-String? getSessionStorage(String key) => html.window.sessionStorage[key];
-void removeSessionStorage(String key) => html.window.sessionStorage.remove(key);
+String? getSessionStorage(String key) {
+  try {
+    return html.window.sessionStorage[key];
+  } catch (e) {
+    // Fallback bei Browser-Einschränkungen (Private Mode, etc.)
+    return null;
+  }
+}
+void removeSessionStorage(String key) {
+  try {
+    html.window.sessionStorage.remove(key);
+  } catch (_) {
+    // Ignore
+  }
+}
 
 Future<void> openNewTab(String url) async {
   try { html.window.open(url, '_blank'); } catch (_) {}

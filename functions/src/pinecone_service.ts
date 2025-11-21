@@ -156,16 +156,19 @@ export class PineconeService {
     return this.generateTextEmbedding(videoDescription);
   }
 
-  /// Speichert Dokument im Pinecone Index
-  async storeDocument(
+  /// Speichert Dokument mit explizitem Index-Namen (für per-avatar Indizes)
+  async storeDocumentWithIndex(
+    indexName: string,
     documentId: string,
     content: string,
-    metadata: DocumentMetadata
+    metadata: DocumentMetadata,
+    namespace?: string
   ): Promise<void> {
     try {
-      await this.initializeIndex();
+      // Sicherstellen dass Index existiert
+      await this.ensureIndexExists(indexName);
 
-      const index = this.pinecone.index(this.indexName);
+      const index = this.pinecone.index(indexName);
       
       // Embedding generieren basierend auf Content-Typ
       let embedding: number[];
@@ -176,22 +179,70 @@ export class PineconeService {
       } else if (metadata.type === 'video') {
         embedding = await this.generateVideoEmbedding(content);
       } else {
-        // Für Audio verwenden wir den Text-Content
         embedding = await this.generateTextEmbedding(content);
       }
 
-      // Vektor in Pinecone speichern
-      await index.upsert([
-        {
-          id: documentId,
-          values: embedding,
-          metadata: metadata as Record<string, any>,
-        },
-      ]);
+      // Vektor in Pinecone speichern (mit Namespace-Support)
+      if (namespace) {
+        await index.namespace(namespace).upsert([
+          {
+            id: documentId,
+            values: embedding,
+            metadata: metadata as Record<string, any>,
+          },
+        ]);
+      } else {
+        await index.upsert([
+          {
+            id: documentId,
+            values: embedding,
+            metadata: metadata as Record<string, any>,
+          },
+        ]);
+      }
 
-      console.log(`Document ${documentId} stored in Pinecone`);
+      console.log(`Document ${documentId} stored in Pinecone (index: ${indexName}, namespace: ${namespace || 'default'})`);
     } catch (error) {
       console.error('Error storing document in Pinecone:', error);
+      throw error;
+    }
+  }
+
+  /// Speichert Dokument im Pinecone Index (nutzt this.indexName)
+  async storeDocument(
+    documentId: string,
+    content: string,
+    metadata: DocumentMetadata,
+    namespace?: string
+  ): Promise<void> {
+    return this.storeDocumentWithIndex(this.indexName, documentId, content, metadata, namespace);
+  }
+
+  /// Stellt sicher dass ein Index existiert (idempotent)
+  private async ensureIndexExists(indexName: string): Promise<void> {
+    try {
+      const indexes = await this.pinecone.listIndexes();
+      const indexExists = indexes.indexes?.some(
+        (index) => index.name === indexName,
+      );
+
+      if (!indexExists) {
+        console.log(`Creating Pinecone index: ${indexName}`);
+        await this.pinecone.createIndex({
+          name: indexName,
+          dimension: 1536, // Mistral embed dimension
+          metric: 'cosine',
+          spec: {
+            serverless: {
+              cloud: 'aws',
+              region: 'us-east-1',
+            },
+          },
+        });
+        await this.waitForIndexReady(indexName);
+      }
+    } catch (error) {
+      console.error(`Error ensuring index ${indexName} exists:`, error);
       throw error;
     }
   }
