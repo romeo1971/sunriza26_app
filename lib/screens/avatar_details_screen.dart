@@ -5438,7 +5438,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           }
         }
 
-        if (mounted && uploadedCount > 0) {
+        // Nach allen Uploads: Hero-Image & imageUrls im Avatar-Dokument persistieren,
+        // damit Datawelt-Hero-Karten und Reloads sofort die korrekten URLs sehen.
+        if (uploadedCount > 0 && mounted) {
+          try {
+            await _saveHeroImageAndUrls();
+          } catch (e) {
+            debugPrint('❌ Web: _saveHeroImageAndUrls nach Upload fehlgeschlagen: $e');
+          }
+
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(

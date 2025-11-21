@@ -340,12 +340,18 @@ class FirebaseStorageService {
         SettableMetadata(contentType: contentType),
       );
 
+      // Fortschritt auch dann anzeigen, wenn totalBytes==0 (Browser kennt Größe nicht)
+      final totalBytesHint = bytes.length.toDouble();
       uploadTask.snapshotEvents.listen((snapshot) {
-        if (snapshot.totalBytes > 0) {
-          final progress =
-              snapshot.bytesTransferred / snapshot.totalBytes;
-          onProgress?.call(progress);
+        final total = snapshot.totalBytes > 0
+            ? snapshot.totalBytes.toDouble()
+            : totalBytesHint;
+        if (total <= 0) {
+          onProgress?.call(0.0);
+          return;
         }
+        final progress = snapshot.bytesTransferred / total;
+        onProgress?.call(progress.clamp(0.0, 1.0));
       });
 
       final snapshot = await uploadTask;

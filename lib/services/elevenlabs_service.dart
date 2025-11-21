@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'env_service.dart';
 
 class ElevenLabsService {
   static const String _baseUrl = 'https://api.elevenlabs.io/v1';
@@ -99,9 +100,10 @@ class ElevenLabsService {
   /// Holt verfügbare Voices über Backend-Proxy (umgeht Flutter SSL-Problem)
   static Future<List<Map<String, dynamic>>?> getVoices() async {
     try {
-      final base = (dotenv.env['MEMORY_API_BASE_URL'] ?? '').trim();
+      // Spezielle TTS-/ElevenLabs-Base-URL verwenden (kann von MEMORY_API_BASE_URL abweichen)
+      final base = EnvService.ttsApiBaseUrl().trim();
       if (base.isEmpty) {
-        debugPrint('❌ Backend URL fehlt: MEMORY_API_BASE_URL');
+        debugPrint('❌ Backend URL fehlt: ELEVENLABS_API_BASE_URL / TTS_API_BASE_URL / MEMORY_API_BASE_URL');
         return null;
       }
       

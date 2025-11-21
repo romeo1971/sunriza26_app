@@ -920,9 +920,17 @@ class DetailsVideoMediaSection extends StatelessWidget {
       );
     }
 
-    // 2) Fallback: neutraler Platzhalter (kein VideoPlayer, kein Dauernachladen)
-    debugPrint('🎬 _buildWebThumbnail: kein thumbUrl vorhanden für $url');
-    return _buildGeneratingPlaceholder();
+    // 2) Fallback: nutze Original-Video-URL als statisches Bild,
+    //    damit auch ohne thumbUrl IMMER etwas angezeigt wird.
+    debugPrint('🎬 _buildWebThumbnail: kein thumbUrl → nutze Original-URL für $url');
+    return Image.network(
+      url,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        // Letzter Fallback: neutraler Platzhalter
+        return _buildGeneratingPlaceholder();
+      },
+    );
   }
 
   /// Placeholder, wenn das Thumbnail im Backend noch generiert wird.

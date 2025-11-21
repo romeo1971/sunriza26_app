@@ -467,8 +467,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         final hasNull = head.any((b) => b == 0x00);
         return !hasNull;
       }
-      // Unbekannte, aber nicht leere Dokument-Typen erlauben
-      return true;
+      // Alle anderen Typen im Dokument-Upload explizit ablehnen
+      return false;
     } catch (_) {
       // Im Zweifel nicht blockieren, damit alle Dokument-Typen hochgeladen werden können
       return true;
@@ -515,7 +515,8 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         final hasNull = head.any((b) => b == 0x00);
         return !hasNull;
       }
-      return true;
+      // Alle anderen Typen im Dokument-Upload explizit ablehnen
+      return false;
     } catch (_) {
       return true;
     }
@@ -3474,8 +3475,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     try {
       final res = await FilePicker.platform.pickFiles(
         allowMultiple: true,
-        // Alle Dateitypen erlauben – die eigentliche Validierung erfolgt in _validateDocumentFile
-        type: FileType.any,
+        // Nur echte Dokument-Typen anbieten – Sicherheitscheck folgt zusätzlich per Magic Bytes
+        type: FileType.custom,
+        allowedExtensions: const ['pdf', 'docx', 'pptx', 'rtf', 'txt', 'md'],
       );
       if (res == null || res.files.isEmpty) return;
 
@@ -3978,54 +3980,20 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     : (it.type == AvatarMediaType.document)
                     ? _buildDocumentPreviewBackground(it)
                     : it.type == AvatarMediaType.video
-                    ? (it.thumbUrl != null
-                          ? Image.network(
-                              it.thumbUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stack) {
-                                // Fallback zu VideoPlayer wenn Thumb nicht lädt
-                                return FutureBuilder<VideoPlayerController?>(
-                                  future: _videoControllerForThumb(it.url),
-                                  builder: (context, snapshot) {
-                                    if (snapshot.connectionState ==
-                                            ConnectionState.done &&
-                                        snapshot.hasData &&
-                                        snapshot.data != null) {
-                                      final controller = snapshot.data!;
-                                      if (controller.value.isInitialized) {
-                                        final videoAR =
-                                            controller.value.aspectRatio;
-                                        return AspectRatio(
-                                          aspectRatio: videoAR,
-                                          child: VideoPlayer(controller),
-                                        );
-                                      }
-                                    }
-                                    return Container(color: Colors.black26);
-                                  },
-                                );
-                              },
-                            )
-                          : FutureBuilder<VideoPlayerController?>(
-                              future: _videoControllerForThumb(it.url),
-                              builder: (context, snapshot) {
-                                if (snapshot.connectionState ==
-                                        ConnectionState.done &&
-                                    snapshot.hasData &&
-                                    snapshot.data != null) {
-                                  final controller = snapshot.data!;
-                                  if (controller.value.isInitialized) {
-                                    final videoAR =
-                                        controller.value.aspectRatio;
-                                    return AspectRatio(
-                                      aspectRatio: videoAR,
-                                      child: VideoPlayer(controller),
-                                    );
-                                  }
-                                }
-                                return Container(color: Colors.black26);
-                              },
-                            ))
+                    ? Image.network(
+                        it.thumbUrl ?? it.url,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stack) {
+                          return Container(
+                            color: Colors.black26,
+                            child: const Icon(
+                              Icons.play_circle_outline,
+                              color: Colors.white54,
+                              size: 32,
+                            ),
+                          );
+                        },
+                      )
                     : Stack(
                         fit: StackFit.expand,
                         children: [
@@ -4564,26 +4532,18 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               height: h,
                               child: AspectRatio(
                                 aspectRatio: ar,
-                                child: (m.thumbUrl != null)
-                                    ? Image.network(
-                                        m.thumbUrl!,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stack) =>
-                                            Container(
-                                              color: Colors.black26,
-                                              child: const Icon(
-                                                Icons.play_circle,
-                                                color: Colors.white54,
-                                              ),
-                                            ),
-                                      )
-                                    : Container(
-                                        color: Colors.black26,
-                                        child: const Icon(
-                                          Icons.play_circle,
-                                          color: Colors.white54,
-                                        ),
+                              child: Image.network(
+                                m.thumbUrl ?? m.url,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stack) =>
+                                    Container(
+                                      color: Colors.black26,
+                                      child: const Icon(
+                                        Icons.play_circle,
+                                        color: Colors.white54,
                                       ),
+                                    ),
+                              ),
                               ),
                             );
                           } else if (m.type == AvatarMediaType.document) {
@@ -5038,32 +4998,21 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     child: SizedBox(
                       width: 54,
                       height: 96,
-                      child: media.thumbUrl != null
-                          ? Image.network(
-                              media.thumbUrl!,
-                              width: 54,
-                              height: 96,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                    width: 54,
-                                    height: 96,
-                                    color: Colors.grey.shade800,
-                                    child: const Icon(
-                                      Icons.videocam,
-                                      color: Colors.white54,
-                                    ),
-                                  ),
-                            )
-                          : Container(
-                              width: 54,
-                              height: 96,
-                              color: Colors.grey.shade800,
-                              child: const Icon(
-                                Icons.videocam,
-                                color: Colors.white54,
-                              ),
-                            ),
+                      child: Image.network(
+                        media.thumbUrl ?? media.url,
+                        width: 54,
+                        height: 96,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Container(
+                          width: 54,
+                          height: 96,
+                          color: Colors.grey.shade800,
+                          child: const Icon(
+                            Icons.videocam,
+                            color: Colors.white54,
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),

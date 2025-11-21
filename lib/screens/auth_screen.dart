@@ -289,9 +289,9 @@ class _AuthScreenState extends State<AuthScreen>
       Future.delayed(const Duration(seconds: 2), () {
         if (!mounted || _showContent) return;
         debugPrint('[INTRO] 2s vorbei → Content-Fade starten');
-        setState(() {
-          _showContent = true;
-        });
+              setState(() {
+                _showContent = true;
+              });
         _contentFadeController.forward(from: 0.0);
       });
       // Play starten
@@ -1072,80 +1072,80 @@ class _AuthScreenState extends State<AuthScreen>
           children: [
             // Top Navigation - Sprache + Login/Register
             if (_showContent)
-              SafeArea(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      // Landesflagge (aktuelle Sprache) - größerer Touch-Bereich
-                      InkWell(
-                        onTap: () {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => const LanguageScreen(),
-                            ),
-                          );
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Text(
-                            currentFlag,
-                            style: const TextStyle(fontSize: 28),
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // Landesflagge (aktuelle Sprache) - größerer Touch-Bereich
+                    InkWell(
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => const LanguageScreen(),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Textlinks für Login/Register - größere Touch-Bereiche
-                      TextButton(
-                        onPressed: _isAuthenticating ? null : () => _showAuthDialog(isLogin: true),
-                        style: TextButton.styleFrom(
-                          overlayColor: Colors.transparent,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          minimumSize: const Size(80, 44),
-                        ),
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.all(8.0),
                         child: Text(
-                          loc.t('auth.login'),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
+                          currentFlag,
+                          style: const TextStyle(fontSize: 28),
                         ),
                       ),
-                      const Text(
-                        '/',
-                        style: TextStyle(color: Color(0xFF444444), fontSize: 16),
-                      ),
-                      TextButton(
-                        onPressed: _isAuthenticating ? null : () => _showAuthDialog(isLogin: false),
-                        style: TextButton.styleFrom(
-                          overlayColor: Colors.transparent,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
-                          ),
-                          minimumSize: const Size(100, 44),
+                    ),
+                    const SizedBox(width: 12),
+                    // Textlinks für Login/Register - größere Touch-Bereiche
+                    TextButton(
+                      onPressed: _isAuthenticating ? null : () => _showAuthDialog(isLogin: true),
+                      style: TextButton.styleFrom(
+                        overlayColor: Colors.transparent,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
                         ),
-                        child: Text(
-                          loc.t('auth.register'),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 16,
-                          ),
+                        minimumSize: const Size(80, 44),
+                      ),
+                      child: Text(
+                        loc.t('auth.login'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const Text(
+                      '/',
+                      style: TextStyle(color: Color(0xFF444444), fontSize: 16),
+                    ),
+                    TextButton(
+                      onPressed: _isAuthenticating ? null : () => _showAuthDialog(isLogin: false),
+                      style: TextButton.styleFrom(
+                        overlayColor: Colors.transparent,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        minimumSize: const Size(100, 44),
+                      ),
+                      child: Text(
+                        loc.t('auth.register'),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
+            ),
             // Main Content - scrollable
             Expanded(
               child: Center(
@@ -1163,7 +1163,7 @@ class _AuthScreenState extends State<AuthScreen>
                                 position: _logoSlide,
                                 child: FadeTransition(
                                   opacity: _logoOpacity,
-                                  child: Image.asset(
+                        child: Image.asset(
                                     'assets/logo/logo_hauau.png',
                                     width: MediaQuery.of(context).size.width * 0.7,
                                     fit: BoxFit.contain,
@@ -1173,10 +1173,10 @@ class _AuthScreenState extends State<AuthScreen>
                                 ),
                               )
                             : Image.asset(
-                                'assets/logo/logo_hauau.png',
-                                width: MediaQuery.of(context).size.width * 0.7,
-                                fit: BoxFit.contain,
-                              ),
+                          'assets/logo/logo_hauau.png',
+                          width: MediaQuery.of(context).size.width * 0.7,
+                          fit: BoxFit.contain,
+                        ),
                       ),
                       const SizedBox(height: 32),
 
@@ -1369,7 +1369,7 @@ class _AuthScreenState extends State<AuthScreen>
                     opacity: 0.3 * _contentOpacity.value,
                     child: Container(
                       color: Colors.black,
-                    ),
+                      ),
                   );
                 },
               ),
@@ -1406,8 +1406,8 @@ class _AuthScreenState extends State<AuthScreen>
           if (_showContent)
             FadeTransition(
               opacity: _contentOpacity,
-              child: mainContent,
-            ),
+            child: mainContent,
+          ),
         ],
       ),
     );
