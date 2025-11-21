@@ -9,7 +9,6 @@ import 'dart:ui' as ui;
 import 'package:crop_your_image/crop_your_image.dart' as cyi;
 import 'package:file_picker/file_picker.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 import 'package:image/image.dart' as img;
@@ -136,7 +135,6 @@ class AvatarDetailsScreen extends StatefulWidget {
 class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final _formKey = GlobalKey<FormState>();
   final _mediaSvc = MediaService();
-  final _db = FirebaseDatabase.instance;
   final _firstNameController = TextEditingController();
   final _nicknameController = TextEditingController();
   final _lastNameController = TextEditingController();
@@ -417,6 +415,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   final Set<String> _selectedLocalVideos = {};
   bool _isDeleteMode = false;
   bool _isDirty = false;
+  bool _greetingDirty = false;
+  String? _greetingBaseline;
+  bool _hasNonGreetingDirty = false;
   // Rect? _cropArea; // ungenutzt
   // Medien-Tab: 'images' oder 'videos'
   String _mediaTab = 'images';
@@ -921,32 +922,50 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   void _updateDirty() {
     final current = _avatarData;
     if (current == null) {
-      if (mounted) setState(() => _isDirty = false);
+      if (mounted) {
+        setState(() {
+          _isDirty = false;
+          _greetingDirty = false;
+          _hasNonGreetingDirty = false;
+        });
+      }
       return;
     }
 
     bool dirty = false;
+    bool nonGreetingDirty = false;
 
     // Textfelder
-    if (_firstNameController.text.trim() != current.firstName) dirty = true;
+    if (_firstNameController.text.trim() != current.firstName) {
+      dirty = true;
+      nonGreetingDirty = true;
+    }
     if ((_nicknameController.text.trim()) != (current.nickname ?? '')) {
       dirty = true;
+      nonGreetingDirty = true;
     }
     if ((_lastNameController.text.trim()) != (current.lastName ?? '')) {
       dirty = true;
+      nonGreetingDirty = true;
     }
     if ((_cityController.text.trim()) != (current.city ?? '')) {
       dirty = true;
+      nonGreetingDirty = true;
     }
     if ((_postalCodeController.text.trim()) != (current.postalCode ?? '')) {
       dirty = true;
+      nonGreetingDirty = true;
     }
     if ((_countryController.text.trim()) != (current.country ?? '')) {
       dirty = true;
+      nonGreetingDirty = true;
     }
-    // Begrüßungstext
-    final currentGreeting = current.greetingText ?? '';
-    if (_greetingController.text.trim() != currentGreeting) dirty = true;
+    // Begrüßungstext (Baseline = initialer Text im Controller, sonst gespeicherter Wert)
+    final baselineGreeting =
+        _greetingBaseline ?? current.greetingText ?? '';
+    final greetingChanged =
+        _greetingController.text.trim() != baselineGreeting;
+    if (greetingChanged) dirty = true;
 
     // Dates (nur Datum vergleichen)
     bool sameDate(DateTime? a, DateTime? b) {
@@ -955,12 +974,21 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       return a.year == b.year && a.month == b.month && a.day == b.day;
     }
 
-    if (!sameDate(_birthDate, current.birthDate)) dirty = true;
-    if (!sameDate(_deathDate, current.deathDate)) dirty = true;
+    if (!sameDate(_birthDate, current.birthDate)) {
+      dirty = true;
+      nonGreetingDirty = true;
+    }
+    if (!sameDate(_deathDate, current.deathDate)) {
+      dirty = true;
+      nonGreetingDirty = true;
+    }
 
     // Hero-Image / Profilbild geändert
     final baselineHero = current.avatarImageUrl;
-    if ((_profileImageUrl ?? '') != (baselineHero ?? '')) dirty = true;
+    if ((_profileImageUrl ?? '') != (baselineHero ?? '')) {
+      dirty = true;
+      nonGreetingDirty = true;
+    }
 
     // Neue lokale Dateien oder Freitext
     if (_newImageFiles.isNotEmpty ||
@@ -968,10 +996,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         _newTextFiles.isNotEmpty ||
         _newAudioFiles.isNotEmpty) {
       dirty = true;
+      nonGreetingDirty = true;
     }
-    if (_textAreaController.text.trim().isNotEmpty) dirty = true;
+    if (_textAreaController.text.trim().isNotEmpty) {
+      dirty = true;
+      nonGreetingDirty = true;
+    }
 
-    if (mounted) setState(() => _isDirty = dirty);
+    if (mounted) {
+      setState(() {
+        _isDirty = dirty;
+        _greetingDirty = greetingChanged;
+        _hasNonGreetingDirty = nonGreetingDirty;
+      });
+    }
   }
 
   @override
@@ -1523,12 +1561,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // 🎬 Hero-Video Dauer prüfen (Max 10 Sek für Dynamics)
     await _checkHeroVideoDuration();
     if (!mounted) return;
-    // Greeting vorbelegen
+    // Greeting vorbelegen und Baseline setzen (Standard-Text gilt als "ungeändert")
     final locSvc = context.read<LocalizationService>();
-    _greetingController.text =
-        _avatarData?.greetingText?.trim().isNotEmpty == true
-        ? _avatarData!.greetingText!
+    _greetingBaseline = _avatarData?.greetingText?.trim().isNotEmpty == true
+        ? _avatarData!.greetingText!.trim()
         : locSvc.t('avatars.details.defaultGreeting');
+    _greetingController.text = _greetingBaseline ?? '';
+    // Nach dem Anwenden der Avatar-Daten ist der Begrüßungstext NICHT dirty
+    if (mounted) {
+      setState(() {
+        _greetingDirty = false;
+        _hasNonGreetingDirty = false;
+        _isDirty = false;
+      });
+    }
     // Hero-Video in Großansicht initialisieren
     _initInlineFromHero();
     // Kein Autogenerieren mehr – Generierung erfolgt nur auf Nutzeraktion
@@ -1760,15 +1806,26 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           child: Column(
             children: [
               // Begrüßungstext
-              GreetingTextExpansionTile(
-                greetingController: _greetingController,
-                currentVoiceId:
-                    _avatarData?.training?['voice']?['elevenVoiceId']
-                        as String?,
-                isTestingVoice: _isTestingVoice,
-                onTestVoice: _testVoicePlayback,
-                onChanged: _updateDirty,
-                roleDropdown: _buildRoleDropdown(),
+              Builder(
+                builder: (context) {
+                  final baselineGreeting =
+                      _greetingBaseline ?? _avatarData?.greetingText ?? '';
+                  final showSave =
+                      _avatarData != null &&
+                      _greetingController.text.trim() != baselineGreeting;
+                  return GreetingTextExpansionTile(
+                    greetingController: _greetingController,
+                    currentVoiceId:
+                        _avatarData?.training?['voice']?['elevenVoiceId']
+                            as String?,
+                    isTestingVoice: _isTestingVoice,
+                    onTestVoice: _testVoicePlayback,
+                    onSaveGreeting: _saveGreetingOnly,
+                    showSaveButton: showSave,
+                    onChanged: _updateDirty,
+                    roleDropdown: _buildRoleDropdown(),
+                  );
+                },
               ),
               const SizedBox(height: 12),
 
@@ -1777,26 +1834,36 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
               const SizedBox(height: 12),
               // Texte & Freitext
-              TextsExpansionTile(
-                onAddTexts: _onAddTexts,
-                textAreaController: _textAreaController,
-                onChanged: _updateDirty,
-                chunkingParams: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      context.read<LocalizationService>().t(
-                        'avatars.details.chunkingLabel',
+              Builder(
+                builder: (context) {
+                  final hasNewTextFiles = _newTextFiles.isNotEmpty;
+                  final hasFreeText =
+                      _textAreaController.text.trim().isNotEmpty;
+                  final showSaveTexts = hasNewTextFiles || hasFreeText;
+                  return TextsExpansionTile(
+                    onAddTexts: _onAddTexts,
+                    textAreaController: _textAreaController,
+                    onChanged: _updateDirty,
+                    chunkingParams: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          context.read<LocalizationService>().t(
+                                'avatars.details.chunkingLabel',
+                              ),
+                          style: const TextStyle(color: Colors.white70),
+                        ),
                       ),
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  _buildChunkingControls(),
-                  const SizedBox(height: 12),
-                  if (_textFileUrls.isNotEmpty || _newTextFiles.isNotEmpty)
-                    _buildTextFilesList(),
-                ],
+                      const SizedBox(height: 8),
+                      _buildChunkingControls(),
+                      const SizedBox(height: 12),
+                      if (_textFileUrls.isNotEmpty || _newTextFiles.isNotEmpty)
+                        _buildTextFilesList(),
+                    ],
+                    onSaveTexts: _saveAvatarDetails,
+                    showSaveButton: showSaveTexts,
+                  );
+                },
               ),
               const SizedBox(height: 12),
               // Audio (Stimmauswahl) inkl. Stimmeinstellungen
@@ -3260,13 +3327,25 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
                 final b64 = (data['audio_b64'] as String?) ?? '';
                 return base64Decode(b64);
               })();
-        final dir = await getTemporaryDirectory();
-        final file = File(
-          '${dir.path}/voice_test_${DateTime.now().millisecondsSinceEpoch}.mp3',
-        );
-        await file.writeAsBytes(bytes, flush: true);
-        await _voiceTestPlayer.setFilePath(file.path);
-        await _voiceTestPlayer.play();
+        
+        if (kIsWeb) {
+          // Web: Audio direkt aus Bytes abspielen (ohne File)
+          await _voiceTestPlayer.setAudioSource(
+            AudioSource.uri(
+              Uri.dataFromBytes(bytes, mimeType: 'audio/mpeg'),
+            ),
+          );
+          await _voiceTestPlayer.play();
+        } else {
+          // Mobile/Desktop: File speichern
+          final dir = await getTemporaryDirectory();
+          final file = File(
+            '${dir.path}/voice_test_${DateTime.now().millisecondsSinceEpoch}.mp3',
+          );
+          await file.writeAsBytes(bytes, flush: true);
+          await _voiceTestPlayer.setFilePath(file.path);
+          await _voiceTestPlayer.play();
+        }
         if (!mounted) return;
       } else {
         if (!mounted) return;
@@ -3421,7 +3500,9 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         ),
         task: () async {
           final uid = FirebaseAuth.instance.currentUser!.uid;
-          final base = (dotenv.env['MEMORY_API_BASE_URL'] ?? '').trim();
+          // Für ElevenLabs‑Calls immer die TTS‑/Orchestrator‑Base verwenden
+          final base = EnvService.ttsApiBaseUrl().trim();
+          debugPrint('🔍 VoiceClone Base URL: "$base"');
           if (base.isEmpty) {
             _showSystemSnack(
               context.read<LocalizationService>().t(
@@ -3439,6 +3520,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             // kanonischer Name wie im Backend: avatar_{avatar_id}
             'name': 'avatar_${_avatarData!.id}',
           };
+          debugPrint('🔍 VoiceClone Payload: ${jsonEncode(payload)}');
           // Dialekt/Tempo/Stability/Similarity mitsenden, wenn vorhanden
           try {
             final v = _avatarData?.training?['voice'] as Map<String, dynamic>?;
@@ -4260,6 +4342,20 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   Future<void> _autoCalculateSourceMaxDim(String dynamicsId) async {
     final heroImageUrl = _getHeroImageUrl();
     if (heroImageUrl == null) return;
+
+    // 💻 Flutter Web: NetworkImage-Aufrufe auf fremde Domains führen hier oft zu
+    // HTTP statusCode 0 / CORS-Issues, obwohl das Bild im Browser grundsätzlich lädt.
+    // Da wir nur einen sinnvollen Default brauchen, überspringen wir auf Web die
+    // dimensionale Berechnung komplett und nutzen einen stabilen Fallback-Wert.
+    if (kIsWeb) {
+      setState(() {
+        _sourceMaxDims[dynamicsId] = _sourceMaxDims[dynamicsId] ?? 1600;
+      });
+      debugPrint(
+        '📏 Web: source-max-dim ohne Remote-Image-Load gesetzt auf ${_sourceMaxDims[dynamicsId]} (Hero: $heroImageUrl)',
+      );
+      return;
+    }
 
     try {
       debugPrint('📏 Berechne optimalen source-max-dim für: $heroImageUrl');
@@ -6146,25 +6242,44 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         task: () async {
           for (int i = 0; i < result.files.length; i++) {
             final sel = result.files[i];
-            if (sel.path == null) continue;
-            final file = File(sel.path!);
-            final String base = p.basename(file.path);
+            final String origName = sel.name;
+            final String base =
+                origName.isNotEmpty ? origName : 'audio_$i.mp3';
             final String audioPath =
                 'avatars/$avatarId/audio/${DateTime.now().millisecondsSinceEpoch}_$i$base';
-            final url = await FirebaseStorageService.uploadWithProgress(
-              file,
-              'audio',
-              customPath: audioPath,
-              onProgress: (v) {
-                // Multi-Datei Fortschritt
-                final perFileWeight = 1.0 / result.files.length;
-                progress.value = (i * perFileWeight) + (v * perFileWeight);
-              },
-            );
+
+            String? url;
+            final perFileWeight = 1.0 / result.files.length;
+
+            if (kIsWeb) {
+              // Web: immer Bytes verwenden, kein dart:io File
+              final bytes = sel.bytes;
+              if (bytes == null) continue;
+              url = await FirebaseStorageService.uploadAudioBytes(
+                bytes,
+                fileName: base,
+                customPath: audioPath,
+                onProgress: (v) {
+                  progress.value = (i * perFileWeight) + (v * perFileWeight);
+                },
+              );
+            } else {
+              // Mobile/Desktop: File-basiert mit Fortschritt
+              if (sel.path == null) continue;
+              final file = File(sel.path!);
+              url = await FirebaseStorageService.uploadWithProgress(
+                file,
+                'audio',
+                customPath: audioPath,
+                onProgress: (v) {
+                  progress.value = (i * perFileWeight) + (v * perFileWeight);
+                },
+              );
+            }
+
             if (url != null) {
               uploaded.add(url);
               // Media-Doc anlegen mit originalFileName + voiceClone Flag
-              final origName = sel.name;
               await _addMediaDoc(
                 url,
                 AvatarMediaType.audio,
@@ -7301,6 +7416,45 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }();
   }
 
+  Future<void> _saveGreetingOnly() async {
+    if (_avatarData == null || _isSaving) return;
+    final avatar = _avatarData!;
+    final updated = avatar.copyWith(
+      greetingText: _greetingController.text.trim(),
+      updatedAt: DateTime.now(),
+    );
+    setState(() {
+      _isSaving = true;
+    });
+    try {
+      final ok = await _avatarService.updateAvatar(updated);
+      if (ok && mounted) {
+        setState(() {
+          _avatarData = updated;
+          _greetingBaseline = _greetingController.text.trim();
+          _greetingDirty = false;
+          _isDirty = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              context
+                  .read<LocalizationService>()
+                  .t('avatars.details.savedGreeting'),
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (_) {} finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
+    }
+  }
+
   String _pineconeApiBaseUrl() {
     return EnvService.pineconeApiBaseUrl();
   }
@@ -7755,7 +7909,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           },
         ),
         actions: [
-          if (_isDirty)
+          if (_isDirty && _hasNonGreetingDirty)
             IconButton(
               tooltip: context.read<LocalizationService>().t(
                 'avatars.details.saveTooltip',
@@ -8661,77 +8815,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     }
   }
 
-  Future<void> _restoreGeneratingTimer(String dynamicsId) async {
-    if (_avatarData == null) return;
-
-    try {
-      final snapshot = await _db
-          .ref('avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating')
-          .get();
-
-      if (!snapshot.exists) return;
-
-      final data = snapshot.value as Map?;
-      if (data == null) return;
-
-      final startTime = data['startTime'] as int?;
-      final duration = data['duration'] as int? ?? 210;
-
-      if (startTime == null) return;
-
-      // Berechne verbleibende Zeit
-      final now = DateTime.now().millisecondsSinceEpoch;
-      final elapsed = ((now - startTime) / 1000).floor(); // Sekunden
-      final remaining = duration - elapsed;
-
-      if (remaining <= 0) {
-        // Zeit ist abgelaufen - cleanup
-        _db
-            .ref('avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating')
-            .remove();
-        return;
-      }
-
-      // Stelle Timer wieder her
-      setState(() {
-        _generatingDynamics.add(dynamicsId);
-        _dynamicsTimeRemaining[dynamicsId] = remaining;
-      });
-
-      _dynamicsTimers[dynamicsId]?.cancel();
-      _dynamicsTimers[dynamicsId] = Timer.periodic(const Duration(seconds: 1), (
-        timer,
-      ) {
-        if (!mounted) {
-          timer.cancel();
-          return;
-        }
-
-        setState(() {
-          final rem = _dynamicsTimeRemaining[dynamicsId] ?? 0;
-          if (rem > 0) {
-            _dynamicsTimeRemaining[dynamicsId] = rem - 1;
-          }
-
-          if (rem <= 0) {
-            timer.cancel();
-            _generatingDynamics.remove(dynamicsId);
-            _db
-                .ref(
-                  'avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating',
-                )
-                .remove();
-            _loadDynamicsData(_avatarData!.id);
-          }
-        });
-      });
-
-      debugPrint('⏳ Timer für "$dynamicsId" wiederhergestellt: ${remaining}s');
-    } catch (e) {
-      debugPrint('❌ Fehler beim Wiederherstellen Timer: $e');
-    }
-  }
-
   Future<void> _deleteDynamicsVideo(String dynamicsId) async {
     if (_avatarData == null) return;
 
@@ -8807,13 +8890,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     // Timer stoppen
     _dynamicsTimers[dynamicsId]?.cancel();
     _dynamicsTimers.remove(dynamicsId);
-
-    // Lösche generating-Status aus Firebase
-    if (_avatarData != null) {
-      _db
-          .ref('avatars/${_avatarData!.id}/dynamics/$dynamicsId/generating')
-          .remove();
-    }
 
     // Status zurücksetzen
     setState(() {

@@ -81,21 +81,21 @@ class EnvService {
 
   /// Basis-URL für TTS-/ElevenLabs-Backend (z. B. FastAPI oder Cloud Function Proxy)
   /// Reihenfolge:
-  /// - Compile-time define: ELEVENLABS_API_BASE_URL oder TTS_API_BASE_URL
-  /// - Env-Datei (.env.dev / .env.prod): ELEVENLABS_API_BASE_URL oder TTS_API_BASE_URL
+  /// - Env-Datei (.env.dev / .env.prod): TTS_API_BASE_URL oder ELEVENLABS_API_BASE_URL
+  /// - Compile-time define: TTS_API_BASE_URL oder ELEVENLABS_API_BASE_URL
   /// - Fallback: memoryApiBaseUrl() → bestehendes Verhalten
   static String ttsApiBaseUrl() {
-    // Defines haben Vorrang (CI/Release)
-    const fromDefine1 = String.fromEnvironment('ELEVENLABS_API_BASE_URL', defaultValue: '');
-    if (fromDefine1.isNotEmpty) return _normalizeBase(fromDefine1.trim());
-    const fromDefine2 = String.fromEnvironment('TTS_API_BASE_URL', defaultValue: '');
-    if (fromDefine2.isNotEmpty) return _normalizeBase(fromDefine2.trim());
-
-    // Env-Datei
-    final fromEnv1 = _safeEnv('ELEVENLABS_API_BASE_URL');
-    if (fromEnv1.isNotEmpty) return _normalizeBase(fromEnv1);
+    // Env-Datei hat Vorrang (Runtime-Config)
     final fromEnv2 = _safeEnv('TTS_API_BASE_URL');
     if (fromEnv2.isNotEmpty) return _normalizeBase(fromEnv2);
+    final fromEnv1 = _safeEnv('ELEVENLABS_API_BASE_URL');
+    if (fromEnv1.isNotEmpty) return _normalizeBase(fromEnv1);
+
+    // Defines als zweiter Check (CI/Release)
+    const fromDefine2 = String.fromEnvironment('TTS_API_BASE_URL', defaultValue: '');
+    if (fromDefine2.isNotEmpty) return _normalizeBase(fromDefine2.trim());
+    const fromDefine1 = String.fromEnvironment('ELEVENLABS_API_BASE_URL', defaultValue: '');
+    if (fromDefine1.isNotEmpty) return _normalizeBase(fromDefine1.trim());
 
     // Fallback auf bisherige Logik
     final mem = memoryApiBaseUrl();

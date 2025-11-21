@@ -9,7 +9,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'firebase_options.dart';
+import 'firebase_options_dev.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'auth_gate.dart';
 import 'widgets/password_gate.dart';
@@ -125,10 +125,9 @@ Future<void> bootstrapHauauApp({
 }
 
 Future<void> main() async {
-  // Default-Einstieg nutzt Prod-Konfiguration; für explizite Dev/Prod-Builds
-  // bitte `main_dev.dart` bzw. `main_prod.dart` verwenden.
+  // Default-Einstieg nutzt DEV-Konfiguration; für Prod bitte `main_prod.dart` verwenden.
   await bootstrapHauauApp(
-    envFileName: '.env.prod',
+    envFileName: '.env.dev',
     firebaseOptions: DefaultFirebaseOptions.currentPlatform,
   );
 }

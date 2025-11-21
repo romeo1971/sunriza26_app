@@ -1,5 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.websockets import WebSocketState
 import os
 import json
@@ -18,6 +19,14 @@ except Exception:
     rtc = None
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 ELEVEN_BASE = os.getenv("ELEVENLABS_BASE", "api.elevenlabs.io")
 ELEVEN_MODEL = os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
@@ -548,6 +557,46 @@ async def stream_eleven(ws: WebSocket, voice_id: str, text: str, mp3_needed: boo
                 pass
         
         # MuseTalk entfernt – keine WS zu schließen
+
+
+@app.post("/avatar/tts")
+async def avatar_tts(req: Request):
+    """TTS Endpoint für Flutter (POST) - gibt MP3 als base64 zurück"""
+    if not ELEVEN_KEY:
+        raise HTTPException(status_code=500, detail="ELEVENLABS_API_KEY missing")
+    
+    try:
+        body = await req.json()
+        text = body.get("text", "").strip()
+        voice_id = body.get("voice_id", "").strip()
+        stability = body.get("stability", 0.5)
+        similarity = body.get("similarity_boost", 0.8)
+        
+        if not text:
+            raise HTTPException(status_code=400, detail="text required")
+        if not voice_id:
+            raise HTTPException(status_code=400, detail="voice_id required")
+        
+        import httpx
+        url = f"https://{ELEVEN_BASE}/v1/text-to-speech/{voice_id}"
+        headers = {"xi-api-key": ELEVEN_KEY, "Content-Type": "application/json"}
+        payload = {
+            "text": text,
+            "model_id": ELEVEN_MODEL,
+            "voice_settings": {
+                "stability": stability,
+                "similarity_boost": similarity
+            }
+        }
+        
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            resp.raise_for_status()
+            audio_bytes = resp.content
+            audio_b64 = base64.b64encode(audio_bytes).decode('utf-8')
+            return {"audio_b64": audio_b64}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/tts/stream")

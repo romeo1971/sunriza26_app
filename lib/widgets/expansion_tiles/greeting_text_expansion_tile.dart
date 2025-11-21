@@ -10,6 +10,8 @@ class GreetingTextExpansionTile extends StatelessWidget {
   final String? currentVoiceId;
   final bool isTestingVoice;
   final VoidCallback onTestVoice;
+  final VoidCallback onSaveGreeting;
+  final bool showSaveButton;
   final VoidCallback onChanged;
   final Widget roleDropdown;
 
@@ -19,6 +21,8 @@ class GreetingTextExpansionTile extends StatelessWidget {
     this.currentVoiceId,
     required this.isTestingVoice,
     required this.onTestVoice,
+    required this.onSaveGreeting,
+    required this.showSaveButton,
     required this.onChanged,
     required this.roleDropdown,
   });
@@ -47,6 +51,25 @@ class GreetingTextExpansionTile extends StatelessWidget {
               context.read<LocalizationService>().t('greetingText'),
               style: const TextStyle(color: Colors.white),
             ),
+            if (showSaveButton)
+              Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    minimumSize: Size.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: onSaveGreeting,
+                  icon: const Icon(Icons.save_outlined, size: 14),
+                  label: const Text(
+                    'Speichern',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                ),
+              ),
             if (hasVoice)
               IconButton(
                 icon: const Icon(

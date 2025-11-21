@@ -10,6 +10,8 @@ class TextsExpansionTile extends StatelessWidget {
   final TextEditingController textAreaController;
   final VoidCallback onChanged;
   final List<Widget> chunkingParams;
+  final VoidCallback onSaveTexts;
+  final bool showSaveButton;
 
   const TextsExpansionTile({
     super.key,
@@ -17,6 +19,8 @@ class TextsExpansionTile extends StatelessWidget {
     required this.textAreaController,
     required this.onChanged,
     required this.chunkingParams,
+    required this.onSaveTexts,
+    required this.showSaveButton,
   });
 
   @override
@@ -34,9 +38,33 @@ class TextsExpansionTile extends StatelessWidget {
         backgroundColor: Colors.black.withValues(alpha: 0.95),
         collapsedIconColor: AppColors.magenta, // GMBC Arrow collapsed
         iconColor: AppColors.lightBlue, // GMBC Arrow expanded
-        title: Text(
-          context.read<LocalizationService>().t('texts'),
-          style: const TextStyle(color: Colors.white),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              context.read<LocalizationService>().t('texts'),
+              style: const TextStyle(color: Colors.white),
+            ),
+            if (showSaveButton)
+              Padding(
+                padding: const EdgeInsets.only(left: 8.0),
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    minimumSize: Size.zero,
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  onPressed: onSaveTexts,
+                  icon: const Icon(Icons.save_outlined, size: 14),
+                  label: const Text(
+                    'Speichern',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                ),
+              ),
+          ],
         ),
         children: [
           Padding(
