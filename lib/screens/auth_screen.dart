@@ -38,6 +38,8 @@ class _AuthScreenState extends State<AuthScreen>
   bool _showIntro = false;
   bool _introMuted = false;
   bool _showContent = false;
+  late final AnimationController _contentFadeController;
+  late final Animation<double> _contentOpacity;
   VideoPlayerController? _introVideoController;
   late final AnimationController _logoAnimController;
   late final Animation<Offset> _logoSlide;
@@ -50,6 +52,19 @@ class _AuthScreenState extends State<AuthScreen>
   @override
   void initState() {
     super.initState();
+    _contentFadeController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 8), // Fade 2s → 10s
+    );
+    _contentOpacity = CurvedAnimation(
+      parent: _contentFadeController,
+      curve: Curves.linear,
+    );
+    _contentFadeController.addListener(() {
+      if (mounted) {
+        setState(() {});
+      }
+    });
     _logoAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 10000),
@@ -270,14 +285,14 @@ class _AuthScreenState extends State<AuthScreen>
           controller.play();
         }
       });
-      // Content nach 8 Sekunden einblenden
-      Future.delayed(const Duration(seconds: 8), () {
-        if (mounted && !_showContent) {
-          debugPrint('[INTRO] 8s vorbei → Content einblenden');
-          setState(() {
-            _showContent = true;
-          });
-        }
+      // Content-Fade von 2s bis 10s (linear)
+      Future.delayed(const Duration(seconds: 2), () {
+        if (!mounted || _showContent) return;
+        debugPrint('[INTRO] 2s vorbei → Content-Fade starten');
+        setState(() {
+          _showContent = true;
+        });
+        _contentFadeController.forward(from: 0.0);
       });
       // Play starten
       await controller.play();
@@ -308,6 +323,7 @@ class _AuthScreenState extends State<AuthScreen>
 
   @override
   void dispose() {
+    _contentFadeController.dispose();
     _logoAnimController.dispose();
     _introVideoController?.dispose();
     _authSubscription?.cancel();
@@ -1322,7 +1338,7 @@ class _AuthScreenState extends State<AuthScreen>
       );
     }
 
-    // Desktop-Web: Intro-Video im Hintergrund, Content blendet nach Ende ein
+    // Desktop-Web: Intro-Video im Hintergrund, Content blendet weich darüber ein
     debugPrint('[INTRO] build() Desktop: _showIntro=$_showIntro, _showContent=$_showContent, videoController=${_introVideoController != null ? "exists" : "null"}, videoInit=${_introVideoController?.value.isInitialized}');
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -1343,18 +1359,23 @@ class _AuthScreenState extends State<AuthScreen>
                 ),
               ),
             ),
-          // Schwarzer Overlay-Hintergrund für Content (über Video, unter Text)
+          // Schwarzer Overlay-Hintergrund für Content (über Video, unter Text) – linear einblenden
           if (_showContent)
             Positioned.fill(
-              child: Opacity(
-                opacity: 0.3,
-                child: Container(
-                  color: Colors.black,
-                ),
+              child: AnimatedBuilder(
+                animation: _contentOpacity,
+                builder: (context, _) {
+                  return Opacity(
+                    opacity: 0.3 * _contentOpacity.value,
+                    child: Container(
+                      color: Colors.black,
+                    ),
+                  );
+                },
               ),
             ),
           // Lautsprecher-Icon rechts unten während Intro
-          if (_showIntro && !_showContent)
+          if (_showIntro)
             Positioned(
               right: 24,
               bottom: 24,
@@ -1381,12 +1402,12 @@ class _AuthScreenState extends State<AuthScreen>
                 ),
               ),
             ),
-          // Inhalt wird eingeblendet wenn _showContent=true
-          AnimatedOpacity(
-            opacity: _showContent ? 1.0 : 0.0,
-            duration: const Duration(milliseconds: 800),
-            child: mainContent,
-          ),
+          // Inhalt wird von 2s bis 10s linear eingeblendet
+          if (_showContent)
+            FadeTransition(
+              opacity: _contentOpacity,
+              child: mainContent,
+            ),
         ],
       ),
     );
