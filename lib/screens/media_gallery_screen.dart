@@ -102,6 +102,11 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   final _picker = ImagePicker();
   final _searchController = TextEditingController();
 
+  // Einfacher globaler Cache pro Avatar, damit beim Screen-Wechsel nicht jedes Mal neu geladen wird
+  static String _lastAvatarCacheId = '';
+  static List<AvatarMedia> _lastAvatarCacheItems = [];
+  static Map<String, List<Playlist>> _lastAvatarCacheMediaToPlaylists = {};
+
   // Effektive avatarId (aus Route oder SessionStorage)
   String _effectiveAvatarId = '';
 
@@ -1042,7 +1047,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
 
     // Reload Medienliste
-    await _load();
+    await _load(force: true);
   }
 
   @override
@@ -1067,7 +1072,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool force = false}) async {
     // Audio-Player stoppen bei Screen-Refresh
     _disposeAudioPlayers();
     if (mounted) {
@@ -1080,54 +1085,90 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       });
     }
 
-    setState(() => _loading = true);
-    try {
-      // 1) Bevorzugt: avatarId aus Route
-      String effectiveAvatarId = _effectiveAvatarId;
+    // 1) Bevorzugt: avatarId aus Route
+    String effectiveAvatarId = _effectiveAvatarId;
 
-      // 2) Fallback: Wenn leer → versuche Avatar aus SessionStorage zu lesen
-      if (effectiveAvatarId.isEmpty && kIsWeb) {
-        try {
-          final raw = web.getSessionStorage('last_media_gallery_avatar');
-          if (raw != null && raw.isNotEmpty) {
-            effectiveAvatarId = raw;
+    // 2) Fallback: Wenn leer → versuche Avatar aus SessionStorage zu lesen
+    if (effectiveAvatarId.isEmpty && kIsWeb) {
+      try {
+        final raw = web.getSessionStorage('last_media_gallery_avatar');
+        if (raw != null && raw.isNotEmpty) {
+          effectiveAvatarId = raw;
+          debugPrint(
+            '🌐 MediaGallery Fallback: avatarId aus SessionStorage: $effectiveAvatarId',
+          );
+        }
+      } catch (_) {}
+    }
+
+    // 3) Letzter Fallback: nimm ersten Avatar des Users
+    if (effectiveAvatarId.isEmpty) {
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          final avatars = await AvatarService().getUserAvatars();
+          if (avatars.isNotEmpty) {
+            effectiveAvatarId = avatars.first.id;
             debugPrint(
-              '🌐 MediaGallery Fallback: avatarId aus SessionStorage: $effectiveAvatarId',
+              '🌐 MediaGallery Fallback: avatarId aus erstem Avatar des Users: $effectiveAvatarId',
             );
           }
-        } catch (_) {}
-      }
+        }
+      } catch (_) {}
+    }
 
-      // 3) Letzter Fallback: nimm ersten Avatar des Users
-      if (effectiveAvatarId.isEmpty) {
-        try {
-          final user = FirebaseAuth.instance.currentUser;
-          if (user != null) {
-            final avatars = await AvatarService().getUserAvatars();
-            if (avatars.isNotEmpty) {
-              effectiveAvatarId = avatars.first.id;
-              debugPrint(
-                '🌐 MediaGallery Fallback: avatarId aus erstem Avatar des Users: $effectiveAvatarId',
-              );
-            }
-          }
-        } catch (_) {}
-      }
+    if (effectiveAvatarId.isEmpty) {
+      debugPrint('⚠️ MediaGallery: avatarId endgültig leer – keine Medien geladen');
+      setState(() {
+        _effectiveAvatarId = '';
+        _items = [];
+        _mediaToPlaylists.clear();
+        _loading = false;
+      });
+      return;
+    }
 
-      if (effectiveAvatarId.isEmpty) {
-        debugPrint('⚠️ MediaGallery: avatarId endgültig leer – keine Medien geladen');
+    // Cache-Check: Nur laden wenn force=true, Daten leer oder avatarId geändert
+    final avatarIdChanged = _effectiveAvatarId.isNotEmpty && _effectiveAvatarId != effectiveAvatarId;
+    if (!force && _items.isNotEmpty && !avatarIdChanged) {
+      debugPrint('📦 MediaGallery: Cache-Hit (${_items.length} items) – skip reload');
+      // Setze trotzdem _effectiveAvatarId (falls vorher leer war)
+      if (_effectiveAvatarId.isEmpty) _effectiveAvatarId = effectiveAvatarId;
+      // WICHTIG: Setze _loading auf false, falls es noch true ist
+      if (_loading && mounted) {
+        setState(() => _loading = false);
+      }
+      return;
+    }
+
+    // NEU: Screen wurde neu gebaut (_items leer), aber wir haben noch einen globalen Cache
+    if (!force &&
+        _items.isEmpty &&
+        !avatarIdChanged &&
+        _lastAvatarCacheId == effectiveAvatarId &&
+        _lastAvatarCacheItems.isNotEmpty) {
+      debugPrint(
+        '📦 MediaGallery: Globaler Cache-Hit (${_lastAvatarCacheItems.length} items) – initial ohne Reload',
+      );
+      if (mounted) {
         setState(() {
-          _effectiveAvatarId = '';
-          _items = [];
-          _mediaToPlaylists.clear();
+          _effectiveAvatarId = effectiveAvatarId;
+          _items = List<AvatarMedia>.from(_lastAvatarCacheItems);
+          _mediaToPlaylists =
+              Map<String, List<Playlist>>.from(_lastAvatarCacheMediaToPlaylists);
           _loading = false;
         });
-        return;
+      } else {
+        _effectiveAvatarId = effectiveAvatarId;
       }
+      return;
+    }
 
-      // Setze _effectiveAvatarId für alle nachfolgenden Aufrufe
-      _effectiveAvatarId = effectiveAvatarId;
+    // Setze _effectiveAvatarId für alle nachfolgenden Aufrufe
+    _effectiveAvatarId = effectiveAvatarId;
 
+    setState(() => _loading = true);
+    try {
       final list = await _mediaSvc.list(_effectiveAvatarId);
 
       // Hero-URLs laden (imageUrls/videoUrls aus AvatarData) + Globale Preise
@@ -1187,8 +1228,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 m.voiceClone != true, // Filtere voiceClone-Audios
           )
           .toList();
+
+      // Nur für Debug: Aufschlüsselung, was gefiltert wurde
+      final heroCount = list.where((m) => heroUrls.contains(m.url)).length;
+      final voiceCloneCount =
+          list.where((m) => m.voiceClone == true).length;
       debugPrint(
-        '📦 Medien geladen: ${filtered.length} Objekte (${list.length - filtered.length} Hero-Medien + voiceClone-Audios gefiltert)',
+        '📦 Medien geladen: ${filtered.length} Objekte '
+        '(${heroCount} Hero-Medien, ${voiceCloneCount} voiceClone-Audios gefiltert)',
       );
       debugPrint(
         '  - Bilder: ${filtered.where((m) => m.type == AvatarMediaType.image).length}',
@@ -1254,6 +1301,12 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         _items = itemsWithCovers;
         _mediaToPlaylists = mediaToPlaylists;
       });
+
+      // Globalen Cache aktualisieren (pro Avatar)
+      _lastAvatarCacheId = _effectiveAvatarId;
+      _lastAvatarCacheItems = List<AvatarMedia>.from(itemsWithCovers);
+      _lastAvatarCacheMediaToPlaylists =
+          Map<String, List<Playlist>>.from(mediaToPlaylists);
     } catch (e) {
       if (!mounted) return;
       final loc = context.read<LocalizationService>();
@@ -1711,7 +1764,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         _uploadProgressNotifier.value = 0;
         _uploadStatusNotifier.value = '';
 
-        await _load();
+        await _load(force: true);
 
         if (mounted && uploadedCount > 0) {
           messenger.showSnackBar(
@@ -1822,7 +1875,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     _uploadProgressNotifier.value = 0;
     _uploadStatusNotifier.value = '';
 
-    await _load();
+    await _load(force: true);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1906,7 +1959,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       _uploadStatus = '';
     });
 
-    await _load();
+    await _load(force: true);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2210,7 +2263,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         originalFileName: originalFileName,
       );
       await _mediaSvc.add(_effectiveAvatarId, m);
-      await _load();
+      await _load(force: true);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -2258,7 +2311,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       originalFileName: originalFileName,
     );
     await _mediaSvc.add(_effectiveAvatarId, m);
-    await _load();
+    await _load(force: true);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2374,7 +2427,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     _uploadProgressNotifier.value = 0;
     _uploadStatusNotifier.value = '';
 
-    await _load();
+    await _load(force: true);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -2476,7 +2529,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       originalFileName: rawBase, // Original, nicht sanitized
     );
     await _mediaSvc.add(_effectiveAvatarId, m);
-    await _load();
+    await _load(force: true);
 
     if (mounted) {
       ScaffoldMessenger.of(
@@ -2752,7 +2805,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       _uploadProgressNotifier.value = 0;
       _uploadStatusNotifier.value = '';
 
-      await _load();
+      await _load(force: true);
 
       if (mounted && uploaded > 0) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -4440,7 +4493,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           _thumbControllers.clear();
 
           // Reload nach erfolgreichem Thumbnail-Update
-          await _load();
+          await _load(force: true);
 
           // Extra: Force rebuild um neue Thumbs anzuzeigen
           if (mounted) setState(() {});
@@ -4509,7 +4562,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         pl.id,
                         itemToRemove.id,
                       );
-                      await _load();
+                      await _load(force: true);
                       if (!mounted) return;
                       nav.pop();
                       messenger.showSnackBar(
@@ -6396,7 +6449,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           debugPrint('RECROP: Avatar-Update-Fehler: $e');
         }
 
-        await _load();
+        await _load(force: true);
         if (!mounted) return;
         final mediaTypeName = media.type == AvatarMediaType.image
             ? 'Bild'
@@ -7897,7 +7950,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                             media.type,
                                             tags: newTags,
                                           );
-                                          await _load();
+                                          await _load(force: true);
                                           if (!mounted) return;
                                           nav.pop();
                                           messenger.showSnackBar(
@@ -8827,7 +8880,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
 
       // Lade Daten neu
-      await _load();
+      await _load(force: true);
       debugPrint(
         '🎉 Tag-Update abgeschlossen! ${_items.where((i) => i.tags != null && i.tags!.isNotEmpty).length} Bilder haben jetzt Tags',
       );

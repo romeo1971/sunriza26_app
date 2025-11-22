@@ -1090,8 +1090,6 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
           await prefs.setString('lastAvatarDetailsId', avatarIdFromArgs);
         } catch (_) {}
       }
-
-      _loadElevenVoices();
     });
     // Einfacher Puls-Effekt (Opacity/Scale) für den Slug-Link
     _slugPulseTimer = Timer.periodic(const Duration(milliseconds: 900), (_) {
@@ -1548,6 +1546,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       }
       _isDirty = false;
     });
+
+    // ElevenLabs Voices nur laden, wenn externe Stimme aktiv ist UND noch keine Voices im Cache sind.
+    // Eigene Stimme (cloneVoice) → KEIN Backend-Call, damit der nervige Fehler verschwindet.
+    if (!_useOwnVoice && _elevenVoices.isEmpty) {
+      await _loadElevenVoices();
+    }
+
     // OriginalFileNames aus Firestore laden - AWAIT!
     await _loadMediaOriginalNames(data.id);
     // Timeline-Daten laden

@@ -51,30 +51,42 @@ class _BolScreenState extends State<BolScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool force = false}) async {
+    String effectiveAvatarId = _effectiveAvatarId;
+    if (effectiveAvatarId.isEmpty && kIsWeb) {
+      try {
+        final raw = web.getSessionStorage('last_bol_avatar');
+        if (raw != null && raw.isNotEmpty) {
+          effectiveAvatarId = raw;
+        }
+      } catch (_) {}
+    }
+    if (effectiveAvatarId.isEmpty) {
+      setState(() {
+        _effectiveAvatarId = '';
+        _items = [];
+        _media = {};
+        _loading = false;
+      });
+      return;
+    }
+
+    // Cache-Check: Nur laden wenn force=true oder Daten leer
+    final avatarIdChanged = _effectiveAvatarId.isNotEmpty && _effectiveAvatarId != effectiveAvatarId;
+    if (!force && _items.isNotEmpty && !avatarIdChanged) {
+      debugPrint('📦 BOL: Cache-Hit (${_items.length} items) – skip reload');
+      if (_effectiveAvatarId.isEmpty) _effectiveAvatarId = effectiveAvatarId;
+      // WICHTIG: Setze _loading auf false, falls es noch true ist
+      if (_loading && mounted) {
+        setState(() => _loading = false);
+      }
+      return;
+    }
+
+    _effectiveAvatarId = effectiveAvatarId;
+
     setState(() => _loading = true);
     try {
-      String effectiveAvatarId = _effectiveAvatarId;
-      if (effectiveAvatarId.isEmpty && kIsWeb) {
-        try {
-          final raw = web.getSessionStorage('last_bol_avatar');
-          if (raw != null && raw.isNotEmpty) {
-            effectiveAvatarId = raw;
-          }
-        } catch (_) {}
-      }
-      if (effectiveAvatarId.isEmpty) {
-        setState(() {
-          _effectiveAvatarId = '';
-          _items = [];
-          _media = {};
-          _loading = false;
-        });
-        return;
-      }
-
-      _effectiveAvatarId = effectiveAvatarId;
-
       final list = await _svc.list(_effectiveAvatarId);
       final medias = await _mediaSvc.list(_effectiveAvatarId);
       if (!mounted) return;

@@ -147,27 +147,37 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       messenger.showSnackBar(
         const SnackBar(content: Text('Playlist gelöscht.')),
       );
-      await _load();
+      await _load(force: true);
     } catch (e) {
       if (!mounted) return;
       messenger.showSnackBar(SnackBar(content: Text('Lösch-Fehler: $e')));
     }
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool force = false}) async {
+    final effectiveAvatarId = _getEffectiveAvatarId();
+    if (effectiveAvatarId.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _items = [];
+          _loading = false;
+        });
+      }
+      return;
+    }
+
+    // Cache-Check: Nur laden wenn force=true oder Daten leer
+    if (!force && _items.isNotEmpty) {
+      debugPrint('📦 PlaylistList: Cache-Hit (${_items.length} items) – skip reload');
+      // WICHTIG: Setze _loading auf false, falls es noch true ist
+      if (_loading && mounted) {
+        setState(() => _loading = false);
+      }
+      return;
+    }
+
     if (mounted) setState(() => _loading = true);
     try {
-      final effectiveAvatarId = _getEffectiveAvatarId();
-      if (effectiveAvatarId.isEmpty) {
-        if (mounted) {
-          setState(() {
-            _items = [];
-            _loading = false;
-          });
-        }
-        return;
-      }
-
       final items = await _svc.list(effectiveAvatarId);
       if (!mounted) return;
       setState(() {
@@ -197,7 +207,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     if (avatarId.isEmpty) return;
     
     await _svc.create(avatarId, name: name.trim(), showAfterSec: 0);
-    await _load();
+    await _load(force: true);
   }
 
   Future<String?> _promptName() async {
@@ -714,7 +724,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
         );
 
         await _svc.update(updated);
-        await _load();
+        await _load(force: true);
 
         if (mounted) Navigator.pop(context);
         if (mounted) {
@@ -830,7 +840,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       );
 
       await _svc.update(updated);
-      await _load(); // Reload list
+      await _load(force: true); // Reload list
 
       // Loading-Dialog schließen
       if (mounted) Navigator.pop(context);
@@ -917,7 +927,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       );
 
       await _svc.update(updated);
-      await _load(); // Reload list
+      await _load(force: true); // Reload list
 
       if (mounted) {
         ScaffoldMessenger.of(
@@ -1065,7 +1075,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                               ),
                                             );
                                             nav.pop();
-                                            await _load();
+                                            await _load(force: true);
                                           } catch (e) {
                                             if (!mounted) return;
                                             messenger.showSnackBar(
@@ -1165,7 +1175,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                                 ),
                                               );
                                               nav.pop();
-                                              await _load();
+                                              await _load(force: true);
                                             } catch (e) {
                                               if (!mounted) return;
                                               messenger.showSnackBar(
