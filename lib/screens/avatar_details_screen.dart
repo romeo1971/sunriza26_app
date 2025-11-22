@@ -875,16 +875,25 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
     try {
       final mediaList = await _mediaSvc.list(avatarId);
       if (!mounted) return;
+      
+      String stripQuery(String u) {
+        final i = u.indexOf('?');
+        return i == -1 ? u : u.substring(0, i);
+      }
+      
       setState(() {
         _mediaOriginalNames.clear();
         _mediaThumbUrls.clear();
         for (final media in mediaList) {
+          // originalFileName mit Basis-URL (ohne Token) speichern
+          final baseUrl = stripQuery(media.url);
           if (media.originalFileName != null &&
               media.originalFileName!.isNotEmpty) {
-            _mediaOriginalNames[media.url] = media.originalFileName!;
+            _mediaOriginalNames[baseUrl] = media.originalFileName!;
           }
+          // thumbUrl ebenfalls unter Basis-URL (ohne Token) speichern
           if (media.thumbUrl != null && media.thumbUrl!.isNotEmpty) {
-            _mediaThumbUrls[media.url] = media.thumbUrl!;
+            _mediaThumbUrls[baseUrl] = media.thumbUrl!;
           }
         }
         _mediaOriginalNamesLoaded = true;
@@ -897,27 +906,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
   /// Gibt – falls vorhanden – die vom Backend generierte Thumbnail-URL
   /// für ein Media-Item zurück (genutzt v.a. für Video-Thumbnails im Web).
   String? _thumbUrlForMedia(String url) {
-    if (!_mediaOriginalNamesLoaded) return null;
-    if (_mediaThumbUrls.isEmpty) return null;
-
-    // Direktes Mapping versuchen
-    if (_mediaThumbUrls.containsKey(url)) {
-      return _mediaThumbUrls[url];
-    }
-
-    // Fallback: URL ohne Query-Parameter vergleichen (Token können sich unterscheiden)
     String stripQuery(String u) {
       final i = u.indexOf('?');
       return i == -1 ? u : u.substring(0, i);
     }
-
+    
     final base = stripQuery(url);
-    for (final entry in _mediaThumbUrls.entries) {
-      if (stripQuery(entry.key) == base) {
-        return entry.value;
-      }
-    }
-    return null;
+    return _mediaThumbUrls[base];
   }
 
   void _updateDirty() {
@@ -3677,9 +3672,16 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
       return '';
     }
 
+    // Basis-URL ohne Query-Parameter (Tokens ändern sich, Pfad bleibt gleich)
+    String stripQuery(String u) {
+      final i = u.indexOf('?');
+      return i == -1 ? u : u.substring(0, i);
+    }
+    final base = stripQuery(url);
+
     // 1. Prüfe ob OriginalFileName in Map vorhanden (aus Firestore Media-Docs)
-    if (_mediaOriginalNames.containsKey(url)) {
-      return _mediaOriginalNames[url]!;
+    if (_mediaOriginalNames.containsKey(base)) {
+      return _mediaOriginalNames[base]!;
     }
     // 2. Fallback: Aus URL extrahieren
     try {

@@ -79,6 +79,7 @@ class FirebaseStorageService {
     Uint8List bytes, {
     String fileName = 'image.jpg',
     String? customPath,
+    void Function(double progress)? onProgress,
   }) async {
     try {
       debugPrint('📤 uploadImageBytes START (size=${bytes.lengthInBytes} bytes)');
@@ -111,9 +112,15 @@ class FirebaseStorageService {
       );
 
       uploadTask.snapshotEvents.listen((snapshot) {
-        final progress = (snapshot.bytesTransferred / snapshot.totalBytes * 100)
-            .toStringAsFixed(1);
-        debugPrint('📊 uploadImageBytes Fortschritt: $progress%');
+        final total = snapshot.totalBytes > 0
+            ? snapshot.totalBytes.toDouble()
+            : bytes.lengthInBytes.toDouble();
+        if (total > 0) {
+          final p = (snapshot.bytesTransferred / total).clamp(0.0, 1.0);
+          onProgress?.call(p);
+          final percent = (p * 100).toStringAsFixed(1);
+          debugPrint('📊 uploadImageBytes Fortschritt: $percent%');
+        }
       });
 
       final snapshot = await uploadTask;

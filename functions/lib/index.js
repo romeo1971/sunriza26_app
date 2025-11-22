@@ -867,20 +867,7 @@ exports.onMediaObjectDelete = functionsStorage.onObjectDeleted({ region: 'us-cen
     }
 });
 // Video: Vorhandenes Poster/Platzhalterbild in Storage kopieren und als Thumb setzen
-async function copyExistingVideoThumbToStorage(avatarId, mediaId, imageUrl) {
-    const res = await node_fetch_1.default(imageUrl);
-    if (!res.ok)
-        throw new Error(`download image failed ${res.status}`);
-    const buf = Buffer.from(await res.arrayBuffer());
-    const bucket = admin.storage().bucket();
-    const dest = `avatars/${avatarId}/videos/thumbs/${mediaId}_${Date.now()}.jpg`;
-    await bucket.file(dest).save(buf, { contentType: 'image/jpeg', metadata: { cacheControl: 'public,max-age=31536000,immutable' } });
-    const [signed] = await bucket.file(dest).getSignedUrl({ action: 'read', expires: Date.now() + 365 * 24 * 3600 * 1000 });
-    await admin.firestore().collection('avatars').doc(avatarId)
-        .collection('videos').doc(mediaId)
-        .set({ thumbUrl: signed }, { merge: true });
-    return signed;
-}
+// Hinweis: aktuell ungenutzt, aber bewusst als Helper entfernt, um TS "unused" Fehler zu vermeiden.
 // Firestore Trigger: Wenn erstes Bild hochgeladen wird, setze es als avatarImageUrl
 // Helper: prüft ob Collection eine Media-Collection ist
 function isMediaCollection(collectionId) {
@@ -1061,29 +1048,14 @@ exports.onMediaCreateSetVideoThumb = functions
             return;
         const avatarId = ctx.params.avatarId;
         const mediaId = ctx.params.mediaId;
-        const bucket = admin.storage().bucket();
-        const prefix = `avatars/${avatarId}/videos/thumbs/${mediaId}`;
-        const [items] = await bucket.getFiles({ prefix });
-        if (items.length > 0) {
-            const f = items[0];
-            const [signed] = await f.getSignedUrl({ action: 'read', expires: Date.now() + 365 * 24 * 3600 * 1000 });
-            await snap.ref.set({ thumbUrl: signed }, { merge: true });
+        // Immer: JPEG-Thumbnail aus dem Video erzeugen (kein mp4-Fallback in thumbUrl!)
+        const videoUrl = typeof data.url === 'string' ? data.url.trim() : '';
+        if (!videoUrl) {
+            console.warn(`onMediaCreateSetVideoThumb: missing video url for ${avatarId}/${mediaId}`);
             return;
         }
-        // Wenn bereits ein externes Poster/Platzhalterbild existiert → in Storage übernehmen
-        if (typeof data.thumbUrl === 'string' && data.thumbUrl.length > 0) {
-            try {
-                await copyExistingVideoThumbToStorage(avatarId, mediaId, data.thumbUrl);
-                return;
-            }
-            catch (e) {
-                console.warn('copyExistingVideoThumbToStorage failed, fallback to frame grab', e);
-            }
-        }
-        // Falls kein Storage-Thumb existiert: generiere aus erstem Frame
-        if (typeof data.url === 'string' && data.url.length > 0) {
-            await createVideoThumbFromFirstFrame(avatarId, mediaId, data.url);
-        }
+        await createVideoThumbFromFirstFrame(avatarId, mediaId, videoUrl);
+        console.log(`onMediaCreateSetVideoThumb: created frame-grab thumb for ${avatarId}/${mediaId}`);
     }
     catch (e) {
         console.warn('onMediaCreateSetVideoThumb error', e);

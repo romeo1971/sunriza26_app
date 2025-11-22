@@ -51,7 +51,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
   final Set<String> selectedRemoteVideos;
   final Set<String> selectedLocalVideos;
 
-  // Web-Only: frisch getrimmte Video-URLs, für die „Fertig stellen“ angezeigt wird
+  // Web-Only: frisch getrimmte Video-URLs, für die „Fertig stellen" angezeigt wird
   final Set<String> recentlyTrimmedVideoUrls;
 
   // Callbacks
@@ -72,7 +72,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
 
   // Video Controller Helper
   final Future<VideoPlayerController?> Function(String url)
-  videoControllerForThumb;
+      videoControllerForThumb;
 
   // Optional: Mapping URL -> thumbUrl aus Media-Dokumenten (Backend-Thumbs)
   final String? Function(String url)? thumbUrlForMedia;
@@ -201,34 +201,34 @@ class DetailsVideoMediaSection extends StatelessWidget {
                                                   inlineVideoController!,
                                               builder:
                                                   (
-                                                    context,
-                                                    VideoPlayerValue value,
-                                                    child,
-                                                  ) {
-                                                    return MouseRegion(
-                                                      cursor: SystemMouseCursors
-                                                          .click,
-                                                      child: Container(
-                                                        width: 24,
-                                                        height: 24,
-                                                        decoration:
-                                                            BoxDecoration(
-                                                              color: Colors
-                                                                  .black54,
-                                                              shape: BoxShape
-                                                                  .circle,
-                                                            ),
-                                                        child: Icon(
-                                                          value.isPlaying
-                                                              ? Icons.pause
-                                                              : Icons
-                                                                    .play_arrow,
-                                                          color: Colors.white,
-                                                          size: 16,
-                                                        ),
-                                                      ),
-                                                    );
-                                                  },
+                                                context,
+                                                VideoPlayerValue value,
+                                                child,
+                                              ) {
+                                                return MouseRegion(
+                                                  cursor: SystemMouseCursors
+                                                      .click,
+                                                  child: Container(
+                                                    width: 24,
+                                                    height: 24,
+                                                    decoration:
+                                                        BoxDecoration(
+                                                      color: Colors
+                                                          .black54,
+                                                      shape: BoxShape
+                                                          .circle,
+                                                    ),
+                                                    child: Icon(
+                                                      value.isPlaying
+                                                          ? Icons.pause
+                                                          : Icons
+                                                              .play_arrow,
+                                                      color: Colors.white,
+                                                      size: 16,
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                             ),
                                           ),
                                           // Zeitanzeige unten rechts (läuft hoch)
@@ -240,40 +240,40 @@ class DetailsVideoMediaSection extends StatelessWidget {
                                                   inlineVideoController!,
                                               builder:
                                                   (
-                                                    context,
-                                                    VideoPlayerValue value,
-                                                    child,
-                                                  ) {
-                                                    return Container(
-                                                      width: 50,
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                            horizontal: 6,
-                                                            vertical: 4,
-                                                          ),
-                                                      decoration: BoxDecoration(
-                                                        color: Colors.black54,
-                                                        borderRadius:
-                                                            BorderRadius.circular(
-                                                              4,
-                                                            ),
+                                                context,
+                                                VideoPlayerValue value,
+                                                child,
+                                              ) {
+                                                return Container(
+                                                  width: 50,
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                    horizontal: 6,
+                                                    vertical: 4,
+                                                  ),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.black54,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                      4,
+                                                    ),
+                                                  ),
+                                                  child: Center(
+                                                    child: Text(
+                                                      _formatDuration(
+                                                        value.position,
                                                       ),
-                                                      child: Center(
-                                                        child: Text(
-                                                          _formatDuration(
-                                                            value.position,
-                                                          ),
-                                                          style: const TextStyle(
-                                                            color: Colors.white,
-                                                            fontSize: 11,
-                                                            fontFeatures: [
-                                                              FontFeature.tabularFigures(),
-                                                            ],
-                                                          ),
-                                                        ),
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontSize: 11,
+                                                        fontFeatures: [
+                                                          FontFeature.tabularFigures(),
+                                                        ],
                                                       ),
-                                                    );
-                                                  },
+                                                    ),
+                                                  ),
+                                                );
+                                              },
                                             ),
                                           ),
                                         ],
@@ -485,7 +485,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
     final bool lockOtherInteractions = kIsWeb &&
         recentlyTrimmedVideoUrls.isNotEmpty &&
         !recentlyTrimmedVideoUrls.contains(url);
-    // Web: Button "Fertig stellen" erst zeigen, wenn ein echtes Thumbnail vorliegt
+    
     return Stack(
       children: [
         Positioned.fill(
@@ -661,7 +661,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
                   ),
                 ),
                 // Trim Icon (unten links) - nur für Hero-Video in Galerie,
-                // solange kein frisch getrimmtes Video auf „Fertig stellen“ wartet.
+                // solange kein frisch getrimmtes Video auf „Fertig stellen" wartet.
                 if (onTrimVideo != null &&
                     recentlyTrimmedVideoUrls.isEmpty &&
                     !url.contains('_trim') &&
@@ -766,13 +766,12 @@ class DetailsVideoMediaSection extends StatelessWidget {
               ),
             // Tap: setzt Hero-Video (nur wenn nicht bereits Hero)
             // Web: Kachel erst klickbar, wenn JPEG-Thumbnail vorhanden ist
-            // UND keine andere frisch getrimmte Kachel gerade auf „Fertig stellen“ wartet
+            // UND keine andere frisch getrimmte Kachel gerade auf „Fertig stellen" wartet
             if (!isHero &&
                 (!kIsWeb ||
-                    ((thumbUrlForMedia?.call(url)?.isNotEmpty ?? false) &&
-                        !(kIsWeb &&
-                            recentlyTrimmedVideoUrls.isNotEmpty &&
-                            !recentlyTrimmedVideoUrls.contains(url)))))
+                    !(kIsWeb &&
+                        recentlyTrimmedVideoUrls.isNotEmpty &&
+                        !recentlyTrimmedVideoUrls.contains(url))))
               Positioned.fill(
                 child: MouseRegion(
                   cursor: (kIsWeb &&
@@ -793,7 +792,7 @@ class DetailsVideoMediaSection extends StatelessWidget {
                 ),
               ),
             // Trash Icon (unten rechts) mit Cursor Pointer
-            // Web: bleibt sichtbar, außer auf der einen „Fertig stellen“-Kachel (hideTrash=true)
+            // Web: bleibt sichtbar, außer auf der einen „Fertig stellen"-Kachel (hideTrash=true)
             if (!hideTrash)
               Positioned(
                 right: 6,
@@ -839,10 +838,10 @@ class DetailsVideoMediaSection extends StatelessWidget {
               ),
             // Web-Only: kleiner "Fertig stellen"-Button auf der Kachel,
             // der exakt denselben Tap auslöst wie ein Klick auf die ganze Kachel.
-            // Variante A: nur auf der „hängenden“ Trim-Kachel anzeigen:
+            // Variante A: nur auf der „hängenden" Trim-Kachel anzeigen:
             //  - Web
             //  - nicht Hero
-            //  - URL ist als „frisch getrimmt“ markiert (recentlyTrimmedVideoUrls)
+            //  - URL ist als „frisch getrimmt" markiert (recentlyTrimmedVideoUrls)
             //  - JPEG-Thumbnail ist bereits vorhanden
             if (!isHero &&
                 kIsWeb &&
@@ -895,70 +894,52 @@ class DetailsVideoMediaSection extends StatelessWidget {
 
   Widget _buildWebThumbnail(String url) {
     final thumbUrl = thumbUrlForMedia?.call(url);
-
-    // 1) Bevorzugt: JPEG-Thumb aus Storage/Media-Docs
+    // 1) Bevorzugt: JPEG-Thumb aus Firestore (Backend)
     if (thumbUrl != null && thumbUrl.isNotEmpty) {
-      debugPrint('🎬 _buildWebThumbnail: benutze thumbUrl für $url');
       return Image.network(
         thumbUrl,
         fit: BoxFit.cover,
-        loadingBuilder: (context, child, progress) {
-          if (progress == null) return child;
-          return Center(
-            child: CircularProgressIndicator(
-              value: progress.expectedTotalBytes != null
-                  ? progress.cumulativeBytesLoaded /
-                      progress.expectedTotalBytes!
-                  : null,
-              color: AppColors.lightBlue,
+        errorBuilder: (context, error, stackTrace) {
+          return Container(
+            color: Colors.black26,
+            child: const Icon(
+              Icons.play_circle_outline,
+              color: Colors.white70,
+              size: 48,
             ),
           );
-        },
-        errorBuilder: (context, error, stackTrace) {
-          return _buildGeneratingPlaceholder();
         },
       );
     }
 
-    // 2) Fallback: nutze Original-Video-URL als statisches Bild,
-    //    damit auch ohne thumbUrl IMMER etwas angezeigt wird.
-    debugPrint('🎬 _buildWebThumbnail: kein thumbUrl → nutze Original-URL für $url');
-    return Image.network(
-      url,
-      fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) {
-        // Letzter Fallback: neutraler Platzhalter
-        return _buildGeneratingPlaceholder();
-      },
-    );
-  }
-
-  /// Placeholder, wenn das Thumbnail im Backend noch generiert wird.
-  /// Zeigt Icon + kleinen Spinner, damit der User versteht, dass noch gearbeitet wird.
-  Widget _buildGeneratingPlaceholder() {
-    return Container(
-      color: Colors.black26,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          const Icon(
-            Icons.play_circle_outline,
-            color: Colors.white70,
-            size: 64,
-          ),
-          const Positioned(
-            bottom: 8,
-            child: SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.lightBlue,
+    // 2) Fallback: wie im Delete-Dialog – echten Video-Frame über VideoPlayer zeigen
+    return FutureBuilder<VideoPlayerController?>(
+      future: videoControllerForThumb(url),
+      builder: (context, snapshot) {
+        final ctrl = snapshot.data;
+        if (snapshot.hasData && ctrl != null && ctrl.value.isInitialized) {
+          return ClipRect(
+            child: FittedBox(
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+              child: SizedBox(
+                width: ctrl.value.size.width,
+                height: ctrl.value.size.height,
+                child: VideoPlayer(ctrl),
               ),
             ),
+          );
+        }
+        // 3) Letzter Fallback: neutrale Placeholder-Kachel
+        return Container(
+          color: Colors.black26,
+          child: const Icon(
+            Icons.videocam,
+            color: Colors.white70,
+            size: 48,
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

@@ -3964,7 +3964,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 borderRadius: BorderRadius.circular(8),
                 child: (it.type == AvatarMediaType.image)
                     ? Image.network(
-                        it.url,
+                        _effectiveMediaUrl(it),
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stack) {
                           return Container(
@@ -3981,7 +3981,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     ? _buildDocumentPreviewBackground(it)
                     : it.type == AvatarMediaType.video
                     ? Image.network(
-                        it.thumbUrl ?? it.url,
+                        _effectiveMediaUrl(it),
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stack) {
                           return Container(
@@ -4533,7 +4533,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                               child: AspectRatio(
                                 aspectRatio: ar,
                               child: Image.network(
-                                m.thumbUrl ?? m.url,
+                                _effectiveMediaUrl(m),
                                 fit: BoxFit.cover,
                                 errorBuilder: (context, error, stack) =>
                                     Container(
@@ -4831,116 +4831,146 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
   }
 
-  /// Minimaler Delete-Flow ohne jegliche Dialog-Previews/Timer/Player-Bezüge
+  /// Minimaler Delete-Flow ohne Previews – Dialog bleibt offen, bis das Löschen fertig ist
   Future<void> _confirmDeleteSelectedMinimal() async {
     final count = _selectedMediaIds.length;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Medien löschen?'),
-        content: Text(
-          'Möchtest du $count ${count == 1 ? 'Medium' : 'Medien'} wirklich löschen?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: Text(
-              'Abbrechen',
-              style: TextStyle(color: Colors.grey.shade300),
-            ),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(
-              backgroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+    if (count == 0) return;
+
+    Future<void> _performDelete() async {
+      try {
+        bool playerTouched = false;
+        for (final mediaId in _selectedMediaIds.toList()) {
+          final int mediaIndex = _items.indexWhere((m) => m.id == mediaId);
+          if (mediaIndex == -1) {
+            continue;
+          }
+          final media = _items[mediaIndex];
+          if (_playingAudioUrl == media.url || _currentAudioUrl == media.url) {
+            playerTouched = true;
+            setState(() {
+              _playingAudioUrl = null;
+              _currentAudioUrl = null;
+              _audioProgress.remove(media.url);
+              _audioCurrentTime.remove(media.url);
+              _audioTotalTime.remove(media.url);
+            });
+          }
+          try {
+            await _mediaSvc.delete(widget.avatarId, mediaId, media.type);
+          } catch (_) {}
+          _items.removeWhere((m) => m.id == mediaId);
+          _mediaToPlaylists.remove(mediaId);
+        }
+        if (playerTouched) {
+          await _disposeAudioPlayers();
+        }
+        setState(() {
+          _selectedMediaIds.clear();
+          _isDeleteMode = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '$count ${count == 1 ? 'Medium' : 'Medien'} erfolgreich gelöscht',
               ),
             ),
-            child: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [
-                  Color(0xFFE91E63),
-                  AppColors.lightBlue,
-                  Color(0xFF00E5FF),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Fehler beim Löschen: $e')));
+        }
+      }
+    }
+
+    bool isDeleting = false;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setStateDialog) => AlertDialog(
+            title: const Text('Medien löschen?'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  'Möchtest du $count ${count == 1 ? 'Medium' : 'Medien'} wirklich löschen?',
+                ),
+                if (isDeleting) ...[
+                  const SizedBox(height: 16),
+                  const SizedBox(
+                    height: 20,
+                    width: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
                 ],
-              ).createShader(bounds),
-              child: const Text(
-                'Löschen',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isDeleting
+                    ? null
+                    : () {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          _isDeleteMode = false;
+                          _selectedMediaIds.clear();
+                        });
+                      },
+                child: Text(
+                  'Abbrechen',
+                  style: TextStyle(color: Colors.grey.shade300),
                 ),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) {
-      setState(() {
-        _isDeleteMode = false;
-        _selectedMediaIds.clear();
-      });
-      return;
-    }
-
-    try {
-      bool playerTouched = false;
-      for (final mediaId in _selectedMediaIds.toList()) {
-        final int mediaIndex = _items.indexWhere((m) => m.id == mediaId);
-        if (mediaIndex == -1) {
-          continue;
-        }
-        final media = _items[mediaIndex];
-        if (_playingAudioUrl == media.url || _currentAudioUrl == media.url) {
-          playerTouched = true;
-          setState(() {
-            _playingAudioUrl = null;
-            _currentAudioUrl = null;
-            _audioProgress.remove(media.url);
-            _audioCurrentTime.remove(media.url);
-            _audioTotalTime.remove(media.url);
-          });
-        }
-        try {
-          await _mediaSvc.delete(widget.avatarId, mediaId, media.type);
-        } catch (_) {}
-        _items.removeWhere((m) => m.id == mediaId);
-        _mediaToPlaylists.remove(mediaId);
-      }
-      if (playerTouched) {
-        await _disposeAudioPlayers();
-      }
-      setState(() {
-        _selectedMediaIds.clear();
-        _isDeleteMode = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '$count ${count == 1 ? 'Medium' : 'Medien'} erfolgreich gelöscht',
-            ),
+              TextButton(
+                onPressed: isDeleting
+                    ? null
+                    : () async {
+                        setStateDialog(() {
+                          isDeleting = true;
+                        });
+                        await _performDelete();
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                        }
+                      },
+                style: TextButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [
+                      Color(0xFFE91E63),
+                      AppColors.lightBlue,
+                      Color(0xFF00E5FF),
+                    ],
+                  ).createShader(bounds),
+                  child: const Text(
+                    'Löschen',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Fehler beim Löschen: $e')));
-      }
-    }
+      },
+    );
   }
-  /// Neue gekapselte Delete-Funktion für Bilder und Videos (wie in details_screen)
-  /// - Zeigt Media-Vorschau im Dialog
-  /// - Löscht Thumbnails aus Storage
-  /// - Löscht Firestore-Dokumente
-  /// - Löscht Originale aus Storage
-  /// - Aktualisiert Avatar-Daten (imageUrls, videoUrls, heroVideoUrl)
+  /// Neue gekapselte Delete-Funktion für Bilder/Videos/Dokumente
+  /// Dialog bleibt offen, bis das komplette Löschen (inkl. Storage/Cleanup) fertig ist.
   Future<void> _confirmDeleteSelectedComplete() async {
     // Selektierte Medien sammeln
     final selectedMedia = _items
@@ -4961,379 +4991,419 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     final loc = context.read<LocalizationService>();
 
-    // Bestätigungsdialog MIT Media-Vorschau (wie in details_screen)
-    final confirmed = await showDialog<bool>(
+    Future<void> _performDelete() async {
+      try {
+        // Avatar-Daten laden
+        final avatarService = AvatarService();
+        final avatar = await avatarService.getAvatar(widget.avatarId);
+        if (avatar == null) {
+          throw Exception('Avatar nicht gefunden');
+        }
+
+        List<String> imageUrls = List.from(avatar.imageUrls);
+        List<String> videoUrls = List.from(avatar.videoUrls);
+
+        // BILDER löschen
+        for (final media in images) {
+          try {
+            debugPrint('DEL img start: ${media.url}');
+            // ERST: thumbUrl aus Firestore holen und löschen
+            String? thumbUrl;
+            try {
+              debugPrint('DEL images query for avatar=${widget.avatarId}');
+              final qs = await FirebaseFirestore.instance
+                  .collection('avatars')
+                  .doc(widget.avatarId)
+                  .collection('images')
+                  .where('url', isEqualTo: media.url)
+                  .get();
+              debugPrint('DEL images docs: ${qs.docs.length}');
+              for (final d in qs.docs) {
+                final data = d.data();
+                thumbUrl = (data['thumbUrl'] as String?);
+                if (thumbUrl != null && thumbUrl.isNotEmpty) {
+                  debugPrint('DEL: Lösche Thumbnail: $thumbUrl');
+                  try {
+                    await FirebaseStorageService.deleteFile(thumbUrl);
+                    debugPrint('DEL: Thumbnail gelöscht ✓');
+                  } catch (e) {
+                    debugPrint('DEL: Thumbnail-Fehler: $e');
+                  }
+                }
+                await d.reference.delete();
+              }
+            } catch (e) {
+              debugPrint('DEL: Firestore-Fehler: $e');
+            }
+            // Original löschen
+            await FirebaseStorageService.deleteFile(media.url);
+            debugPrint('DEL img storage OK');
+          } catch (e) {
+            debugPrint('DEL img error: $e');
+          }
+          imageUrls.remove(media.url);
+        }
+
+        // VIDEOS löschen
+        for (final media in videos) {
+          try {
+            debugPrint('🗑️ Lösche Video: ${media.url}');
+            await FirebaseStorageService.deleteFile(media.url);
+            final originalPath = FirebaseStorageService.pathFromUrl(media.url);
+            if (originalPath.isNotEmpty) {
+              final dir = p.dirname(originalPath); // avatars/<id>/videos
+              final base = p.basenameWithoutExtension(originalPath);
+              final prefix = '$dir/thumbs/${base}_';
+              debugPrint('🗑️ Video-Thumbs Prefix: $prefix');
+              try {
+                await FirebaseStorageService.deleteByPrefix(prefix);
+                debugPrint('🗑️ Video-Thumbs gelöscht: $prefix');
+              } catch (e) {
+                debugPrint('⚠️ Fehler beim Löschen der Video-Thumbs: $e');
+              }
+            }
+            try {
+              final qs = await FirebaseFirestore.instance
+                  .collection('avatars')
+                  .doc(widget.avatarId)
+                  .collection('videos')
+                  .where('url', isEqualTo: media.url)
+                  .get();
+              for (final d in qs.docs) {
+                await d.reference.delete();
+                debugPrint('🗑️ Firestore Video-Doc gelöscht: ${d.id}');
+              }
+            } catch (e) {
+              debugPrint('⚠️ Fehler beim Löschen des Video-Docs: $e');
+            }
+          } catch (e) {
+            debugPrint('❌ Fehler beim Löschen des Videos: $e');
+          }
+          videoUrls.remove(media.url);
+        }
+
+        // DOKUMENTE löschen
+        for (final media in documents) {
+          try {
+            debugPrint('📄 Lösche Dokument: ${media.url}');
+            // Thumbnail löschen
+            if (media.thumbUrl != null && media.thumbUrl!.isNotEmpty) {
+              try {
+                await FirebaseStorageService.deleteFile(media.thumbUrl!);
+                debugPrint('📄 Dokument-Thumb gelöscht ✓');
+              } catch (e) {
+                debugPrint('⚠️ Fehler beim Löschen des Dokument-Thumbs: $e');
+              }
+            }
+            // Original löschen
+            await FirebaseStorageService.deleteFile(media.url);
+            debugPrint('📄 Dokument Storage gelöscht ✓');
+            // Firestore löschen
+            try {
+              final qs = await FirebaseFirestore.instance
+                  .collection('avatars')
+                  .doc(widget.avatarId)
+                  .collection('documents')
+                  .where('url', isEqualTo: media.url)
+                  .get();
+              for (final d in qs.docs) {
+                await d.reference.delete();
+                debugPrint('📄 Firestore Dokument-Doc gelöscht: ${d.id}');
+              }
+            } catch (e) {
+              debugPrint('⚠️ Fehler beim Löschen des Dokument-Docs: $e');
+            }
+          } catch (e) {
+            debugPrint('❌ Fehler beim Löschen des Dokuments: $e');
+          }
+        }
+
+        // Hero-Video prüfen und aktualisieren
+        String? newHeroVideoUrl;
+        try {
+          final currentHero = avatar.training?['heroVideoUrl'] as String?;
+          debugPrint(
+            '🎬 Hero-Video-Check: currentHero=$currentHero, videoUrls=${videoUrls.length}',
+          );
+
+          // Prüfe ob Hero noch existiert
+          final heroExists =
+              currentHero != null && videoUrls.contains(currentHero);
+
+          if (!heroExists) {
+            if (videoUrls.isNotEmpty) {
+              // Hero fehlt, aber Videos da → erstes Video als neues Hero merken
+              newHeroVideoUrl = videoUrls.first;
+              debugPrint('🎬 Neues Hero-Video wird gesetzt: $newHeroVideoUrl');
+            } else {
+              // Keine Videos mehr → heroVideoUrl wird gelöscht (null)
+              newHeroVideoUrl = null;
+              debugPrint('🎬 HeroVideoUrl wird gelöscht (keine Videos mehr)');
+            }
+          } else {
+            // Hero existiert noch → behalten
+            newHeroVideoUrl = currentHero;
+          }
+        } catch (e) {
+          debugPrint('❌ Fehler bei Hero-Video-Check: $e');
+        }
+
+        // Avatar-Daten aktualisieren
+        final tr = Map<String, dynamic>.from(avatar.training ?? {});
+        if (newHeroVideoUrl != null) {
+          tr['heroVideoUrl'] = newHeroVideoUrl;
+          debugPrint(
+            '🎬 Training: heroVideoUrl wird gesetzt auf $newHeroVideoUrl',
+          );
+        } else {
+          // newHeroVideoUrl ist null → heroVideoUrl muss gelöscht werden
+          tr.remove('heroVideoUrl');
+          debugPrint('🎬 Training: heroVideoUrl wird entfernt');
+        }
+
+        // Profilbild prüfen (falls ein Bild gelöscht wurde, das als avatarImageUrl verwendet wird)
+        String? newAvatarImageUrl = avatar.avatarImageUrl;
+        if (newAvatarImageUrl != null &&
+            !imageUrls.contains(newAvatarImageUrl)) {
+          newAvatarImageUrl = imageUrls.isNotEmpty ? imageUrls.first : null;
+          debugPrint('🖼️ AvatarImageUrl wird aktualisiert: $newAvatarImageUrl');
+        }
+
+        final updated = avatar.copyWith(
+          imageUrls: imageUrls,
+          videoUrls: videoUrls,
+          avatarImageUrl: newAvatarImageUrl,
+          clearAvatarImageUrl: newAvatarImageUrl == null && imageUrls.isEmpty,
+          training: tr,
+          updatedAt: DateTime.now(),
+        );
+        final success = await avatarService.updateAvatar(updated);
+        if (success) {
+          debugPrint(
+            '✅ Avatar nach Delete aktualisiert: ${videoUrls.length} Videos, heroVideoUrl=$newHeroVideoUrl',
+          );
+        }
+
+        // Audio-Player aufräumen falls nötig
+        bool playerTouched = false;
+        for (final media in selectedMedia) {
+          if (_playingAudioUrl == media.url ||
+              _currentAudioUrl == media.url) {
+            playerTouched = true;
+            setState(() {
+              _playingAudioUrl = null;
+              _currentAudioUrl = null;
+              _audioProgress.remove(media.url);
+              _audioCurrentTime.remove(media.url);
+              _audioTotalTime.remove(media.url);
+            });
+          }
+        }
+        if (playerTouched) {
+          await _disposeAudioPlayers();
+        }
+
+        // Lokale Listen aktualisieren
+        _items.removeWhere((m) => _selectedMediaIds.contains(m.id));
+        for (final mediaId in _selectedMediaIds) {
+          _mediaToPlaylists.remove(mediaId);
+        }
+
+        setState(() {
+          _selectedMediaIds.clear();
+          _isDeleteMode = false;
+        });
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                '$count ${count == 1 ? 'Medium' : 'Medien'} erfolgreich gelöscht',
+              ),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Fehler beim Löschen: $e')));
+        }
+      }
+    }
+
+    bool isDeleting = false;
+    await showDialog<void>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: Text('$count ${count == 1 ? 'Medium' : 'Medien'} löschen?'),
-        content: SizedBox(
-          width: 360,
-          child: SingleChildScrollView(
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                // Bilder
-                ...images.map(
-                  (media) => ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      media.thumbUrl ?? media.url,
-                      width: 54,
-                      height: 96,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        width: 54,
-                        height: 96,
-                        color: Colors.grey.shade800,
-                        child: const Icon(Icons.image, color: Colors.white54),
-                      ),
-                    ),
-                  ),
-                ),
-                // Videos
-                ...videos.map(
-                  (media) => ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: SizedBox(
-                      width: 54,
-                      height: 96,
-                      child: Image.network(
-                        media.thumbUrl ?? media.url,
-                        width: 54,
-                        height: 96,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) => Container(
-                          width: 54,
-                          height: 96,
-                          color: Colors.grey.shade800,
-                          child: const Icon(
-                            Icons.videocam,
-                            color: Colors.white54,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Dokumente
-                ...documents.map(
-                  (media) => ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: SizedBox(
-                      width: 54,
-                      height: 96,
-                      child: media.thumbUrl != null
-                          ? Image.network(
-                              media.thumbUrl!,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setStateDialog) => AlertDialog(
+            title: Text('$count ${count == 1 ? 'Medium' : 'Medien'} löschen?'),
+            content: SizedBox(
+              width: 360,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        // Bilder
+                        ...images.map(
+                          (media) => ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              _effectiveMediaUrl(media),
                               width: 54,
                               height: 96,
                               fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) =>
-                                  Container(
-                                    width: 54,
-                                    height: 96,
-                                    color: Colors.grey.shade800,
-                                    child: const Icon(
-                                      Icons.description,
-                                      color: Colors.white54,
-                                    ),
-                                  ),
-                            )
-                          : Container(
-                              width: 54,
-                              height: 96,
-                              color: Colors.grey.shade800,
-                              child: const Icon(
-                                Icons.description,
-                                color: Colors.white54,
+                              errorBuilder:
+                                  (context, error, stackTrace) => Container(
+                                width: 54,
+                                height: 96,
+                                color: Colors.grey.shade800,
+                                child: const Icon(
+                                  Icons.image,
+                                  color: Colors.white54,
+                                ),
                               ),
                             ),
+                          ),
+                        ),
+                        // Videos
+                        ...videos.map(
+                          (media) => ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: SizedBox(
+                              width: 54,
+                              height: 96,
+                              child: Image.network(
+                                _effectiveMediaUrl(media),
+                                width: 54,
+                                height: 96,
+                                fit: BoxFit.cover,
+                                errorBuilder:
+                                    (context, error, stackTrace) => Container(
+                                  width: 54,
+                                  height: 96,
+                                  color: Colors.grey.shade800,
+                                  child: const Icon(
+                                    Icons.videocam,
+                                    color: Colors.white54,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        // Dokumente
+                        ...documents.map(
+                          (media) => ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: SizedBox(
+                              width: 54,
+                              height: 96,
+                              child: media.thumbUrl != null
+                                  ? Image.network(
+                                      media.thumbUrl!,
+                                      width: 54,
+                                      height: 96,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error,
+                                              stackTrace) =>
+                                          Container(
+                                            width: 54,
+                                            height: 96,
+                                            color: Colors.grey.shade800,
+                                            child: const Icon(
+                                              Icons.description,
+                                              color: Colors.white54,
+                                            ),
+                                          ),
+                                    )
+                                  : Container(
+                                      width: 54,
+                                      height: 96,
+                                      color: Colors.grey.shade800,
+                                      child: const Icon(
+                                        Icons.description,
+                                        color: Colors.white54,
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (isDeleting) ...[
+                      const SizedBox(height: 16),
+                      const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isDeleting
+                    ? null
+                    : () {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          _isDeleteMode = false;
+                          _selectedMediaIds.clear();
+                        });
+                      },
+                style:
+                    TextButton.styleFrom(foregroundColor: Colors.white70),
+                child: Text(loc.t('buttons.cancel')),
+              ),
+              ElevatedButton(
+                onPressed: isDeleting
+                    ? null
+                    : () async {
+                        setStateDialog(() {
+                          isDeleting = true;
+                        });
+                        await _performDelete();
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                        }
+                      },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.white,
+                  shadowColor: Colors.transparent,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [AppColors.magenta, AppColors.lightBlue],
+                  ).createShader(bounds),
+                  child: const Text(
+                    'Löschen',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
                 ),
-              ],
-            ),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            style: TextButton.styleFrom(foregroundColor: Colors.white70),
-            child: Text(loc.t('buttons.cancel')),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: Colors.white,
-              shadowColor: Colors.transparent,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
               ),
-            ),
-            child: ShaderMask(
-              shaderCallback: (bounds) => const LinearGradient(
-                colors: [AppColors.magenta, AppColors.lightBlue],
-              ).createShader(bounds),
-              child: const Text(
-                'Löschen',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
-
-    if (confirmed != true) {
-      setState(() {
-        _isDeleteMode = false;
-        _selectedMediaIds.clear();
-      });
-      return;
-    }
-
-    try {
-      // Avatar-Daten laden
-      final avatarService = AvatarService();
-      final avatar = await avatarService.getAvatar(widget.avatarId);
-      if (avatar == null) {
-        throw Exception('Avatar nicht gefunden');
-      }
-
-      List<String> imageUrls = List.from(avatar.imageUrls);
-      List<String> videoUrls = List.from(avatar.videoUrls);
-
-      // BILDER löschen
-      for (final media in images) {
-        try {
-          debugPrint('DEL img start: ${media.url}');
-          // ERST: thumbUrl aus Firestore holen und löschen
-          String? thumbUrl;
-          try {
-            debugPrint('DEL images query for avatar=${widget.avatarId}');
-            final qs = await FirebaseFirestore.instance
-                .collection('avatars')
-                .doc(widget.avatarId)
-                .collection('images')
-                .where('url', isEqualTo: media.url)
-                .get();
-            debugPrint('DEL images docs: ${qs.docs.length}');
-            for (final d in qs.docs) {
-              final data = d.data();
-              thumbUrl = (data['thumbUrl'] as String?);
-              if (thumbUrl != null && thumbUrl.isNotEmpty) {
-                debugPrint('DEL: Lösche Thumbnail: $thumbUrl');
-                try {
-                  await FirebaseStorageService.deleteFile(thumbUrl);
-                  debugPrint('DEL: Thumbnail gelöscht ✓');
-                } catch (e) {
-                  debugPrint('DEL: Thumbnail-Fehler: $e');
-                }
-              }
-              await d.reference.delete();
-            }
-          } catch (e) {
-            debugPrint('DEL: Firestore-Fehler: $e');
-          }
-          // Original löschen
-          await FirebaseStorageService.deleteFile(media.url);
-          debugPrint('DEL img storage OK');
-        } catch (e) {
-          debugPrint('DEL img error: $e');
-        }
-        imageUrls.remove(media.url);
-      }
-
-      // VIDEOS löschen
-      for (final media in videos) {
-        try {
-          debugPrint('🗑️ Lösche Video: ${media.url}');
-          await FirebaseStorageService.deleteFile(media.url);
-          final originalPath = FirebaseStorageService.pathFromUrl(media.url);
-          if (originalPath.isNotEmpty) {
-            final dir = p.dirname(originalPath); // avatars/<id>/videos
-            final base = p.basenameWithoutExtension(originalPath);
-            final prefix = '$dir/thumbs/${base}_';
-            debugPrint('🗑️ Video-Thumbs Prefix: $prefix');
-            try {
-              await FirebaseStorageService.deleteByPrefix(prefix);
-              debugPrint('🗑️ Video-Thumbs gelöscht: $prefix');
-            } catch (e) {
-              debugPrint('⚠️ Fehler beim Löschen der Video-Thumbs: $e');
-            }
-          }
-          try {
-            final qs = await FirebaseFirestore.instance
-                .collection('avatars')
-                .doc(widget.avatarId)
-                .collection('videos')
-                .where('url', isEqualTo: media.url)
-                .get();
-            for (final d in qs.docs) {
-              await d.reference.delete();
-              debugPrint('🗑️ Firestore Video-Doc gelöscht: ${d.id}');
-            }
-          } catch (e) {
-            debugPrint('⚠️ Fehler beim Löschen des Video-Docs: $e');
-          }
-        } catch (e) {
-          debugPrint('❌ Fehler beim Löschen des Videos: $e');
-        }
-        videoUrls.remove(media.url);
-      }
-
-      // DOKUMENTE löschen
-      for (final media in documents) {
-        try {
-          debugPrint('📄 Lösche Dokument: ${media.url}');
-          // Thumbnail löschen
-          if (media.thumbUrl != null && media.thumbUrl!.isNotEmpty) {
-            try {
-              await FirebaseStorageService.deleteFile(media.thumbUrl!);
-              debugPrint('📄 Dokument-Thumb gelöscht ✓');
-            } catch (e) {
-              debugPrint('⚠️ Fehler beim Löschen des Dokument-Thumbs: $e');
-            }
-          }
-          // Original löschen
-          await FirebaseStorageService.deleteFile(media.url);
-          debugPrint('📄 Dokument Storage gelöscht ✓');
-          // Firestore löschen
-          try {
-            final qs = await FirebaseFirestore.instance
-                .collection('avatars')
-                .doc(widget.avatarId)
-                .collection('documents')
-                .where('url', isEqualTo: media.url)
-                .get();
-            for (final d in qs.docs) {
-              await d.reference.delete();
-              debugPrint('📄 Firestore Dokument-Doc gelöscht: ${d.id}');
-            }
-          } catch (e) {
-            debugPrint('⚠️ Fehler beim Löschen des Dokument-Docs: $e');
-          }
-        } catch (e) {
-          debugPrint('❌ Fehler beim Löschen des Dokuments: $e');
-        }
-      }
-
-      // Hero-Video prüfen und aktualisieren
-      String? newHeroVideoUrl;
-      try {
-        final currentHero = avatar.training?['heroVideoUrl'] as String?;
-        debugPrint(
-          '🎬 Hero-Video-Check: currentHero=$currentHero, videoUrls=${videoUrls.length}',
-        );
-
-        // Prüfe ob Hero noch existiert
-        final heroExists =
-            currentHero != null && videoUrls.contains(currentHero);
-
-        if (!heroExists) {
-          if (videoUrls.isNotEmpty) {
-            // Hero fehlt, aber Videos da → erstes Video als neues Hero merken
-            newHeroVideoUrl = videoUrls.first;
-            debugPrint('🎬 Neues Hero-Video wird gesetzt: $newHeroVideoUrl');
-          } else {
-            // Keine Videos mehr → heroVideoUrl wird gelöscht (null)
-            newHeroVideoUrl = null;
-            debugPrint('🎬 HeroVideoUrl wird gelöscht (keine Videos mehr)');
-          }
-        } else {
-          // Hero existiert noch → behalten
-          newHeroVideoUrl = currentHero;
-        }
-      } catch (e) {
-        debugPrint('❌ Fehler bei Hero-Video-Check: $e');
-      }
-
-      // Avatar-Daten aktualisieren
-      final tr = Map<String, dynamic>.from(avatar.training ?? {});
-      if (newHeroVideoUrl != null) {
-        tr['heroVideoUrl'] = newHeroVideoUrl;
-        debugPrint(
-          '🎬 Training: heroVideoUrl wird gesetzt auf $newHeroVideoUrl',
-        );
-      } else {
-        // newHeroVideoUrl ist null → heroVideoUrl muss gelöscht werden
-        tr.remove('heroVideoUrl');
-        debugPrint('🎬 Training: heroVideoUrl wird entfernt');
-      }
-
-      // Profilbild prüfen (falls ein Bild gelöscht wurde, das als avatarImageUrl verwendet wird)
-      String? newAvatarImageUrl = avatar.avatarImageUrl;
-      if (newAvatarImageUrl != null && !imageUrls.contains(newAvatarImageUrl)) {
-        newAvatarImageUrl = imageUrls.isNotEmpty ? imageUrls.first : null;
-        debugPrint('🖼️ AvatarImageUrl wird aktualisiert: $newAvatarImageUrl');
-      }
-
-      final updated = avatar.copyWith(
-        imageUrls: imageUrls,
-        videoUrls: videoUrls,
-        avatarImageUrl: newAvatarImageUrl,
-        clearAvatarImageUrl: newAvatarImageUrl == null && imageUrls.isEmpty,
-        training: tr,
-        updatedAt: DateTime.now(),
-      );
-      final success = await avatarService.updateAvatar(updated);
-      if (success) {
-        debugPrint(
-          '✅ Avatar nach Delete aktualisiert: ${videoUrls.length} Videos, heroVideoUrl=$newHeroVideoUrl',
-        );
-      }
-
-      // Audio-Player aufräumen falls nötig
-      bool playerTouched = false;
-      for (final media in selectedMedia) {
-        if (_playingAudioUrl == media.url || _currentAudioUrl == media.url) {
-          playerTouched = true;
-          setState(() {
-            _playingAudioUrl = null;
-            _currentAudioUrl = null;
-            _audioProgress.remove(media.url);
-            _audioCurrentTime.remove(media.url);
-            _audioTotalTime.remove(media.url);
-          });
-        }
-      }
-      if (playerTouched) {
-        await _disposeAudioPlayers();
-      }
-
-      // Lokale Listen aktualisieren
-      _items.removeWhere((m) => _selectedMediaIds.contains(m.id));
-      for (final mediaId in _selectedMediaIds) {
-        _mediaToPlaylists.remove(mediaId);
-      }
-
-      setState(() {
-        _selectedMediaIds.clear();
-        _isDeleteMode = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '$count ${count == 1 ? 'Medium' : 'Medien'} erfolgreich gelöscht',
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Fehler beim Löschen: $e')));
-      }
-    }
   }
 
   Future<File?> _downloadToTemp(String url, {String? suffix}) async {
@@ -5646,7 +5716,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         if (kIsWeb) {
           // 🔹 Web: direkt Bytes über HTTP laden (kein dart:io / temp File)
           try {
-            final resp = await http.get(Uri.parse(media.thumbUrl ?? media.url));
+        final resp = await http.get(Uri.parse(_effectiveMediaUrl(media)));
             if (resp.statusCode == 200) {
               bytes = resp.bodyBytes;
             }
@@ -6325,6 +6395,36 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     }
     // Standard: Landscape (wenn keine Info verfügbar)
     return false;
+  }
+
+  /// Liefert die effektiv zu ladende URL für ein Media-Item.
+  /// Nutzt bevorzugt `thumbUrl` und wandelt gs://-Pfade in HTTPS-URLs um,
+  /// damit Web-Clients Thumbnails nach dem Bucket-Wechsel sicher laden können.
+  String _effectiveMediaUrl(AvatarMedia media) {
+    final raw =
+        (media.thumbUrl != null && media.thumbUrl!.isNotEmpty) ? media.thumbUrl! : media.url;
+    return _resolveStorageUrl(raw);
+  }
+
+  /// Konvertiert gs://- oder alte Storage-URLs in direkt abrufbare HTTPS-URLs.
+  String _resolveStorageUrl(String rawUrl) {
+    try {
+      if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+        return rawUrl;
+      }
+      if (rawUrl.startsWith('gs://')) {
+        final withoutScheme = rawUrl.substring('gs://'.length);
+        final firstSlash = withoutScheme.indexOf('/');
+        if (firstSlash == -1) return rawUrl;
+        final bucket = withoutScheme.substring(0, firstSlash);
+        final objectPath = withoutScheme.substring(firstSlash + 1);
+        final encodedPath = Uri.encodeComponent(objectPath);
+        return 'https://firebasestorage.googleapis.com/v0/b/$bucket/o/$encodedPath?alt=media';
+      }
+      return rawUrl;
+    } catch (_) {
+      return rawUrl;
+    }
   }
   /// Preis-Setup Container: Klickbar, zeigt Input-Ansicht
   Widget _buildPriceSetupContainer(AvatarMedia media) {
@@ -8039,7 +8139,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   child: Stack(
                     children: [
                       // Waveform Thumbnail aus DB (0.5 opacity)
-                      if (it.thumbUrl != null)
+                      if (it.thumbUrl != null && it.thumbUrl!.isNotEmpty)
                         Positioned.fill(
                           left: 8,
                           right: 8,
@@ -8048,7 +8148,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                             child: Opacity(
                               opacity: 0.5,
                               child: Image.network(
-                                it.thumbUrl!,
+                                _resolveStorageUrl(it.thumbUrl!),
                                 fit: BoxFit.contain,
                                 errorBuilder: (context, error, stackTrace) =>
                                     Container(
