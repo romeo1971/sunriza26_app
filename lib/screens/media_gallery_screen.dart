@@ -37,6 +37,7 @@ import '../theme/app_theme.dart';
 import '../widgets/video_player_widget.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
+import '../web/web_helpers.dart' as web;
 import '../widgets/custom_text_field.dart';
 import '../widgets/gmbc_buttons.dart';
 import '../widgets/media/audio_cover_icon_stack.dart';
@@ -557,6 +558,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // WICHTIG: Stoppe evtl. laufenden Player (Hot-Restart)
     _stopAllPlayers();
 
+    // Web: Merke die aktuelle avatarId als "zuletzt verwendete Gallery"
+    if (kIsWeb && widget.avatarId.isNotEmpty) {
+      try {
+        web.setSessionStorage('last_media_gallery_avatar', widget.avatarId);
+      } catch (_) {}
+    }
+
     _load();
     _searchController.addListener(() {
       setState(() {
@@ -1071,14 +1079,56 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     setState(() => _loading = true);
     try {
-      final list = await _mediaSvc.list(widget.avatarId);
+      // 1) Bevorzugt: avatarId aus Route
+      String effectiveAvatarId = widget.avatarId;
+
+      // 2) Fallback: Wenn leer → versuche Avatar aus SessionStorage zu lesen
+      if (effectiveAvatarId.isEmpty && kIsWeb) {
+        try {
+          final raw = web.getSessionStorage('last_media_gallery_avatar');
+          if (raw != null && raw.isNotEmpty) {
+            effectiveAvatarId = raw;
+            debugPrint(
+              '🌐 MediaGallery Fallback: avatarId aus SessionStorage: $effectiveAvatarId',
+            );
+          }
+        } catch (_) {}
+      }
+
+      // 3) Letzter Fallback: nimm ersten Avatar des Users
+      if (effectiveAvatarId.isEmpty) {
+        try {
+          final user = FirebaseAuth.instance.currentUser;
+          if (user != null) {
+            final avatars = await AvatarService().getUserAvatars();
+            if (avatars.isNotEmpty) {
+              effectiveAvatarId = avatars.first.id;
+              debugPrint(
+                '🌐 MediaGallery Fallback: avatarId aus erstem Avatar des Users: $effectiveAvatarId',
+              );
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (effectiveAvatarId.isEmpty) {
+        debugPrint('⚠️ MediaGallery: avatarId endgültig leer – keine Medien geladen');
+        setState(() {
+          _items = [];
+          _mediaToPlaylists.clear();
+          _loading = false;
+        });
+        return;
+      }
+
+      final list = await _mediaSvc.list(effectiveAvatarId);
 
       // Hero-URLs laden (imageUrls/videoUrls aus AvatarData) + Globale Preise
       Set<String> heroUrls = {};
       try {
         final doc = await FirebaseFirestore.instance
             .collection('avatars')
-            .doc(widget.avatarId)
+            .doc(effectiveAvatarId)
             .get();
         final data = doc.data();
         if (data != null) {
@@ -3965,6 +4015,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 child: (it.type == AvatarMediaType.image)
                     ? Image.network(
                         _effectiveMediaUrl(it),
+                        key: ValueKey(it.url),
                         fit: BoxFit.cover,
                         errorBuilder: (context, error, stack) {
                           return Container(
@@ -3978,23 +4029,42 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         },
                       )
                     : (it.type == AvatarMediaType.document)
-                    ? _buildDocumentPreviewBackground(it)
-                    : it.type == AvatarMediaType.video
-                    ? Image.network(
-                        _effectiveMediaUrl(it),
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stack) {
-                          return Container(
-                            color: Colors.black26,
-                            child: const Icon(
-                              Icons.play_circle_outline,
-                              color: Colors.white54,
-                              size: 32,
-                            ),
-                          );
-                        },
-                      )
-                    : Stack(
+                        ? _buildDocumentPreviewBackground(it)
+                        : it.type == AvatarMediaType.video
+                            // Web: Zeige echten Video-Frame (wie im Hero/Delete-Dialog),
+                            // fallback auf Image.network, wenn Controller nicht da ist.
+                            ? (kIsWeb &&
+                                    videoController != null &&
+                                    videoController.value.isInitialized
+                                ? ClipRect(
+                                    child: FittedBox(
+                                      fit: BoxFit.cover,
+                                      alignment: Alignment.center,
+                                      child: SizedBox(
+                                        width:
+                                            videoController.value.size.width,
+                                        height:
+                                            videoController.value.size.height,
+                                        child: VideoPlayer(videoController),
+                                      ),
+                                    ),
+                                  )
+                                : Image.network(
+                                    _effectiveMediaUrl(it),
+                                    key: ValueKey(it.url),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stack) {
+                                      return Container(
+                                        color: Colors.black26,
+                                        child: const Icon(
+                                          Icons.play_circle_outline,
+                                          color: Colors.white54,
+                                          size: 32,
+                                        ),
+                                      );
+                                    },
+                                  ))
+                            : Stack(
                         fit: StackFit.expand,
                         children: [
                           // Dark gradient background

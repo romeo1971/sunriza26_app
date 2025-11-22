@@ -11,6 +11,7 @@ import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
 import '../widgets/custom_text_field.dart';
 import '../theme/app_theme.dart';
+import '../web/web_helpers.dart' as web;
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
@@ -40,29 +41,21 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   final _svc = PlaylistService();
   List<Playlist> _items = [];
   bool _loading = true;
-  StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? _sub;
 
   @override
   void initState() {
     super.initState();
-    // Lade erst nach dem ersten Frame, damit die Seite sicher rendert
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _load();
-    });
-    // Live-Listener: aktualisiert Liste sofort bei Änderungen (Auto‑Save etc.)
-    _sub = FirebaseFirestore.instance
-        .collection('avatars')
-        .doc(widget.avatarId)
-        .collection('playlists')
-        .snapshots()
-        .listen((_) {
-      if (mounted) _load();
-    });
+    // Web: aktuelle avatarId für Refresh merken
+    if (kIsWeb && widget.avatarId.isNotEmpty) {
+      try {
+        web.setSessionStorage('last_playlist_avatar', widget.avatarId);
+      } catch (_) {}
+    }
+    _load();
   }
 
   @override
   void dispose() {
-    _sub?.cancel();
     super.dispose();
   }
 
@@ -149,7 +142,26 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
     try {
-      final items = await _svc.list(widget.avatarId);
+      String effectiveAvatarId = widget.avatarId;
+      if (effectiveAvatarId.isEmpty && kIsWeb) {
+        try {
+          final raw = web.getSessionStorage('last_playlist_avatar');
+          if (raw != null && raw.isNotEmpty) {
+            effectiveAvatarId = raw;
+          }
+        } catch (_) {}
+      }
+      if (effectiveAvatarId.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _items = [];
+            _loading = false;
+          });
+        }
+        return;
+      }
+
+      final items = await _svc.list(effectiveAvatarId);
       if (!mounted) return;
       setState(() {
         _items = items;

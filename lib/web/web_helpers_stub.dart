@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 String? getSessionStorage(String key) => null;
+void setSessionStorage(String key, String value) {}
 void removeSessionStorage(String key) {}
 
 Future<void> openNewTab(String url) async {

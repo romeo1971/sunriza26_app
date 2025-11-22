@@ -11,6 +11,13 @@ String? getSessionStorage(String key) {
     return null;
   }
 }
+void setSessionStorage(String key, String value) {
+  try {
+    html.window.sessionStorage[key] = value;
+  } catch (_) {
+    // Ignore
+  }
+}
 void removeSessionStorage(String key) {
   try {
     html.window.sessionStorage.remove(key);

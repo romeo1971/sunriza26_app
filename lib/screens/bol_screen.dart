@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import '../services/shared_moments_service.dart';
 import '../models/shared_moment.dart';
 import '../services/media_service.dart';
@@ -7,6 +8,7 @@ import '../services/localization_service.dart';
 import 'package:provider/provider.dart';
 import '../widgets/avatar_bottom_nav_bar.dart';
 import '../services/avatar_service.dart';
+import '../web/web_helpers.dart' as web;
 
 class BolScreen extends StatefulWidget {
   final String avatarId;
@@ -32,6 +34,12 @@ class _BolScreenState extends State<BolScreen> {
   @override
   void initState() {
     super.initState();
+    // Web: aktuelle avatarId für Refresh merken
+    if (kIsWeb && widget.avatarId.isNotEmpty) {
+      try {
+        web.setSessionStorage('last_bol_avatar', widget.avatarId);
+      } catch (_) {}
+    }
     _load();
   }
 
@@ -44,8 +52,26 @@ class _BolScreenState extends State<BolScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final list = await _svc.list(widget.avatarId);
-      final medias = await _mediaSvc.list(widget.avatarId);
+      String effectiveAvatarId = widget.avatarId;
+      if (effectiveAvatarId.isEmpty && kIsWeb) {
+        try {
+          final raw = web.getSessionStorage('last_bol_avatar');
+          if (raw != null && raw.isNotEmpty) {
+            effectiveAvatarId = raw;
+          }
+        } catch (_) {}
+      }
+      if (effectiveAvatarId.isEmpty) {
+        setState(() {
+          _items = [];
+          _media = {};
+          _loading = false;
+        });
+        return;
+      }
+
+      final list = await _svc.list(effectiveAvatarId);
+      final medias = await _mediaSvc.list(effectiveAvatarId);
       if (!mounted) return;
       setState(() {
         _items = list;

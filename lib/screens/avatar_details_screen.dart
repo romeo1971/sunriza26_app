@@ -17,6 +17,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
+import '../web/web_helpers.dart' as web;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
@@ -2100,6 +2101,13 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             icon: Icons.photo_library,
             label: context.read<LocalizationService>().t('gallery.title'),
             onTap: () {
+              // Web: avatarId zusätzlich in sessionStorage ablegen, damit Refresh funktioniert
+              try {
+                if (kIsWeb) {
+                  // Einfach nur die avatarId als plain String speichern
+                  web.setSessionStorage('last_media_gallery_avatar', id);
+                }
+              } catch (_) {}
               Navigator.pushNamed(
                 context,
                 '/media-gallery',
