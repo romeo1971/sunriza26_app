@@ -30,11 +30,13 @@ class _BolScreenState extends State<BolScreen> {
   List<SharedMoment> _items = [];
   Map<String, AvatarMedia> _media = {};
   bool _loading = true;
+  
+  String _effectiveAvatarId = '';
 
   @override
   void initState() {
     super.initState();
-    // Web: aktuelle avatarId für Refresh merken
+    // Web: aktuelle avatarId für Refresh merken (nur wenn von Route übergeben)
     if (kIsWeb && widget.avatarId.isNotEmpty) {
       try {
         web.setSessionStorage('last_bol_avatar', widget.avatarId);
@@ -52,7 +54,7 @@ class _BolScreenState extends State<BolScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      String effectiveAvatarId = widget.avatarId;
+      String effectiveAvatarId = _effectiveAvatarId;
       if (effectiveAvatarId.isEmpty && kIsWeb) {
         try {
           final raw = web.getSessionStorage('last_bol_avatar');
@@ -63,6 +65,7 @@ class _BolScreenState extends State<BolScreen> {
       }
       if (effectiveAvatarId.isEmpty) {
         setState(() {
+          _effectiveAvatarId = '';
           _items = [];
           _media = {};
           _loading = false;
@@ -70,8 +73,10 @@ class _BolScreenState extends State<BolScreen> {
         return;
       }
 
-      final list = await _svc.list(effectiveAvatarId);
-      final medias = await _mediaSvc.list(effectiveAvatarId);
+      _effectiveAvatarId = effectiveAvatarId;
+
+      final list = await _svc.list(_effectiveAvatarId);
+      final medias = await _mediaSvc.list(_effectiveAvatarId);
       if (!mounted) return;
       setState(() {
         _items = list;
@@ -103,7 +108,7 @@ class _BolScreenState extends State<BolScreen> {
     } else {
       final nav = Navigator.of(context);
       final avatarService = AvatarService();
-      final avatar = await avatarService.getAvatar(widget.avatarId);
+      final avatar = await avatarService.getAvatar(_effectiveAvatarId);
       if (!mounted) return;
       if (avatar != null) {
         nav.pushReplacementNamed('/avatar-details', arguments: avatar);
@@ -169,7 +174,7 @@ class _BolScreenState extends State<BolScreen> {
         ],
       ),
       bottomNavigationBar: AvatarBottomNavBar(
-        avatarId: widget.avatarId,
+        avatarId: _effectiveAvatarId,
         currentScreen: 'bol',
       ),
       backgroundColor: Colors.black,

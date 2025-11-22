@@ -102,6 +102,9 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
   final _picker = ImagePicker();
   final _searchController = TextEditingController();
 
+  // Effektive avatarId (aus Route oder SessionStorage)
+  String _effectiveAvatarId = '';
+
   // Multi-Upload Variablen
   List<File> _uploadQueue = [];
   final ValueNotifier<bool> _isUploadingNotifier = ValueNotifier(false);
@@ -375,7 +378,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       // 5) Upload Thumb
       final ts = DateTime.now().millisecondsSinceEpoch;
       final ref = FirebaseStorage.instance.ref().child(
-        'avatars/${widget.avatarId}/documents/thumbs/${media.id}_$ts.png',
+        'avatars/${_effectiveAvatarId}/documents/thumbs/${media.id}_$ts.png',
       );
       final task = await ref.putData(
         out,
@@ -386,7 +389,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       // 6) Firestore aktualisieren
       await FirebaseFirestore.instance
           .collection('avatars')
-          .doc(widget.avatarId)
+          .doc(_effectiveAvatarId)
           .collection(_getCollectionNameForMediaType(media.type))
           .doc(media.id)
           .update({'thumbUrl': thumbUrl, 'aspectRatio': targetAR});
@@ -558,7 +561,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // WICHTIG: Stoppe evtl. laufenden Player (Hot-Restart)
     _stopAllPlayers();
 
-    // Web: Merke die aktuelle avatarId als "zuletzt verwendete Gallery"
+    // Web: Merke die aktuelle avatarId als "zuletzt verwendete Gallery" (nur wenn von Route übergeben)
     if (kIsWeb && widget.avatarId.isNotEmpty) {
       try {
         web.setSessionStorage('last_media_gallery_avatar', widget.avatarId);
@@ -809,7 +812,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
                   await FirebaseFirestore.instance
                       .collection('avatars')
-                      .doc(widget.avatarId)
+                      .doc(_effectiveAvatarId)
                       .set(payload, SetOptions(merge: true));
 
                   setState(() {
@@ -1023,7 +1026,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final newVideoUrl = await VideoTrimService.showTrimDialogAndTrim(
       context: context,
       videoUrl: media.url,
-      avatarId: widget.avatarId,
+      avatarId: _effectiveAvatarId,
     );
 
     if (newVideoUrl == null) return; // Abbruch oder Fehler
@@ -1032,7 +1035,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     try {
       await VideoTrimService.deleteVideo(
         videoUrl: media.url,
-        avatarId: widget.avatarId,
+        avatarId: _effectiveAvatarId,
       );
     } catch (e) {
       debugPrint('⚠️ Fehler beim Löschen des alten Videos: $e');
@@ -1080,7 +1083,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     setState(() => _loading = true);
     try {
       // 1) Bevorzugt: avatarId aus Route
-      String effectiveAvatarId = widget.avatarId;
+      String effectiveAvatarId = _effectiveAvatarId;
 
       // 2) Fallback: Wenn leer → versuche Avatar aus SessionStorage zu lesen
       if (effectiveAvatarId.isEmpty && kIsWeb) {
@@ -1114,6 +1117,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       if (effectiveAvatarId.isEmpty) {
         debugPrint('⚠️ MediaGallery: avatarId endgültig leer – keine Medien geladen');
         setState(() {
+          _effectiveAvatarId = '';
           _items = [];
           _mediaToPlaylists.clear();
           _loading = false;
@@ -1121,7 +1125,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         return;
       }
 
-      final list = await _mediaSvc.list(effectiveAvatarId);
+      // Setze _effectiveAvatarId für alle nachfolgenden Aufrufe
+      _effectiveAvatarId = effectiveAvatarId;
+
+      final list = await _mediaSvc.list(_effectiveAvatarId);
 
       // Hero-URLs laden (imageUrls/videoUrls aus AvatarData) + Globale Preise
       Set<String> heroUrls = {};
@@ -1189,7 +1196,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       debugPrint(
         '  - Videos: ${filtered.where((m) => m.type == AvatarMediaType.video).length}',
       );
-      final pls = await _playlistSvc.list(widget.avatarId);
+      final pls = await _playlistSvc.list(_effectiveAvatarId);
 
       // Für jedes Medium prüfen, in welchen Playlists es vorkommt
       final Map<String, List<Playlist>> mediaToPlaylists = {};
@@ -1197,7 +1204,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         final usedInPlaylists = <Playlist>[];
         for (final playlist in pls) {
           final items = await _playlistSvc.listItems(
-            widget.avatarId,
+            _effectiveAvatarId,
             playlist.id,
           );
           if (items.any((item) => item.mediaId == media.id)) {
@@ -1637,7 +1644,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           final safeBase = _sanitizeName(rawBase);
           final timestamp = baseTimestamp + i;
           final videoPath =
-              'avatars/${widget.avatarId}/videos/${timestamp}_$safeBase';
+              'avatars/${_effectiveAvatarId}/videos/${timestamp}_$safeBase';
 
           final url = await FirebaseStorageService.uploadVideoBytes(
             bytes,
@@ -1677,7 +1684,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           final mediaId = timestamp.toString();
           final media = AvatarMedia(
             id: mediaId,
-            avatarId: widget.avatarId,
+            avatarId: _effectiveAvatarId,
             type: AvatarMediaType.video,
             url: url,
             createdAt: timestamp,
@@ -1685,7 +1692,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             tags: const ['video'],
             originalFileName: rawBase,
           );
-          await _mediaSvc.add(widget.avatarId, media);
+          await _mediaSvc.add(_effectiveAvatarId, media);
           newlyCreatedVideoIds.add(mediaId);
           uploadedCount++;
         }
@@ -1693,7 +1700,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         // Auf Thumbnails warten (Cloud Function) wie beim bestehenden Flow
         try {
           await _waitForUploadedVideoThumbs(
-            widget.avatarId,
+            _effectiveAvatarId,
             newlyCreatedVideoIds,
           );
         } catch (_) {
@@ -1783,7 +1790,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         // Upload
         final url = await FirebaseStorageService.uploadImage(
           file,
-          customPath: 'avatars/${widget.avatarId}/images/$timestamp$ext',
+          customPath: 'avatars/${_effectiveAvatarId}/images/$timestamp$ext',
         );
 
         if (url != null) {
@@ -1793,7 +1800,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
           final media = AvatarMedia(
             id: timestamp.toString(),
-            avatarId: widget.avatarId,
+            avatarId: _effectiveAvatarId,
             type: AvatarMediaType.image,
             url: url,
             createdAt: timestamp,
@@ -1801,7 +1808,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             tags: tags.isNotEmpty ? tags : null,
             originalFileName: p.basename(file.path),
           );
-          await _mediaSvc.add(widget.avatarId, media);
+          await _mediaSvc.add(_effectiveAvatarId, media);
           debugPrint('✅ Bild ${i + 1} hochgeladen mit ${tags.length} Tags');
         }
       } catch (e) {
@@ -2175,7 +2182,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final safeExt = (ext.isNotEmpty ? ext : '.jpg');
-    final storagePath = 'avatars/${widget.avatarId}/images/$timestamp$safeExt';
+    final storagePath = 'avatars/${_effectiveAvatarId}/images/$timestamp$safeExt';
 
     // Web: direkt Bytes hochladen (kein dart:io / temp File)
     if (kIsWeb) {
@@ -2195,14 +2202,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       final m = AvatarMedia(
         id: timestamp.toString(),
-        avatarId: widget.avatarId,
+        avatarId: _effectiveAvatarId,
         type: AvatarMediaType.image,
         url: url,
         createdAt: timestamp,
         aspectRatio: _cropAspect,
         originalFileName: originalFileName,
       );
-      await _mediaSvc.add(widget.avatarId, m);
+      await _mediaSvc.add(_effectiveAvatarId, m);
       await _load();
 
       if (mounted) {
@@ -2242,7 +2249,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final url = await task.ref.getDownloadURL();
     final m = AvatarMedia(
       id: timestamp.toString(),
-      avatarId: widget.avatarId,
+      avatarId: _effectiveAvatarId,
       type: AvatarMediaType.image,
       url: url,
       createdAt: timestamp,
@@ -2250,7 +2257,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       tags: tags.isNotEmpty ? tags : null,
       originalFileName: originalFileName,
     );
-    await _mediaSvc.add(widget.avatarId, m);
+    await _mediaSvc.add(_effectiveAvatarId, m);
     await _load();
 
     if (mounted) {
@@ -2304,7 +2311,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         // Upload mit Echtzeit-Progress
         final rawBase = p.basename(file.path);
         final videoPath =
-            'avatars/${widget.avatarId}/videos/${timestamp}_${_sanitizeName(rawBase)}';
+            'avatars/${_effectiveAvatarId}/videos/${timestamp}_${_sanitizeName(rawBase)}';
 
         final url = await FirebaseStorageService.uploadWithProgress(
           file,
@@ -2327,7 +2334,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
         final media = AvatarMedia(
           id: timestamp.toString(),
-          avatarId: widget.avatarId,
+          avatarId: _effectiveAvatarId,
           type: AvatarMediaType.video,
           url: url,
           createdAt: timestamp,
@@ -2335,7 +2342,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           tags: tags,
           originalFileName: rawBase, // Original, nicht sanitized
         );
-        await _mediaSvc.add(widget.avatarId, media);
+        await _mediaSvc.add(_effectiveAvatarId, media);
         newlyCreatedVideoIds.add(media.id);
 
         // Nach Upload: "Verarbeitung läuft..." anzeigen
@@ -2353,7 +2360,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     // Auf Thumbnails für alle neu hochgeladenen Videos warten (Cloud Functions)
     try {
       await _waitForUploadedVideoThumbs(
-        widget.avatarId,
+        _effectiveAvatarId,
         newlyCreatedVideoIds,
       );
     } catch (_) {
@@ -2448,7 +2455,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final rawBase = p.basename(x.path);
     final base = _sanitizeName(rawBase);
     final ref = FirebaseStorage.instance.ref().child(
-      'avatars/${widget.avatarId}/videos/${timestamp}_$base',
+      'avatars/${_effectiveAvatarId}/videos/${timestamp}_$base',
     );
     final task = await ref.putFile(
       File(x.path),
@@ -2460,7 +2467,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     final url = await task.ref.getDownloadURL();
     final m = AvatarMedia(
       id: timestamp.toString(),
-      avatarId: widget.avatarId,
+      avatarId: _effectiveAvatarId,
       type: AvatarMediaType.video,
       url: url,
       createdAt: timestamp,
@@ -2468,7 +2475,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       tags: tags,
       originalFileName: rawBase, // Original, nicht sanitized
     );
-    await _mediaSvc.add(widget.avatarId, m);
+    await _mediaSvc.add(_effectiveAvatarId, m);
     await _load();
 
     if (mounted) {
@@ -2497,7 +2504,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
     } else {
       // Von anderen Screens → zurück zu Avatar Details
       final avatarService = AvatarService();
-      final avatar = await avatarService.getAvatar(widget.avatarId);
+      final avatar = await avatarService.getAvatar(_effectiveAvatarId);
       if (!mounted) return;
       if (avatar != null) {
         nav.pushReplacementNamed('/avatar-details', arguments: avatar);
@@ -2676,7 +2683,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
         final timestamp = DateTime.now().millisecondsSinceEpoch;
         final audioPath =
-            'avatars/${widget.avatarId}/audio/${timestamp}_$safeBase';
+            'avatars/${_effectiveAvatarId}/audio/${timestamp}_$safeBase';
 
         // Upload mit Echtzeit-Progress – Web nutzt Bytes, Mobile/Desktop File
         String? url;
@@ -2712,14 +2719,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         final mediaId = '${baseTimestamp + i}';
         final m = AvatarMedia(
           id: mediaId,
-          avatarId: widget.avatarId,
+          avatarId: _effectiveAvatarId,
           type: AvatarMediaType.audio,
           url: url,
           createdAt: baseTimestamp + i,
           tags: ['audio', file.name],
           originalFileName: file.name,
         );
-        await _mediaSvc.add(widget.avatarId, m);
+        await _mediaSvc.add(_effectiveAvatarId, m);
 
         // Nach Upload: "Verarbeitung läuft..." anzeigen
         _uploadProgressNotifier.value = 100;
@@ -2730,7 +2737,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           await Future.delayed(const Duration(milliseconds: 300));
           final doc = await FirebaseFirestore.instance
               .collection('avatars')
-              .doc(widget.avatarId)
+              .doc(_effectiveAvatarId)
               .collection('audios')
               .doc(mediaId)
               .get();
@@ -3451,7 +3458,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               ],
             ),
       bottomNavigationBar: AvatarBottomNavBar(
-        avatarId: widget.avatarId,
+        avatarId: _effectiveAvatarId,
         currentScreen: 'media',
       ),
     );
@@ -3673,7 +3680,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       }
       final ts = DateTime.now().millisecondsSinceEpoch;
       final storageRef = FirebaseStorage.instance.ref().child(
-        'avatars/${widget.avatarId}/documents/${ts}_$base',
+        'avatars/${_effectiveAvatarId}/documents/${ts}_$base',
       );
       debugPrint('📤 Lade $base nach Storage hoch...');
 
@@ -3701,16 +3708,16 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       // Firestore OHNE Thumbnail erstellen (User croppt manuell!)
       final doc = FirebaseFirestore.instance
           .collection('avatars')
-          .doc(widget.avatarId)
+          .doc(_effectiveAvatarId)
           .collection('documents')
           .doc();
 
       debugPrint(
-        '💾 Speichere in Firestore: avatars/${widget.avatarId}/documents/${doc.id}',
+        '💾 Speichere in Firestore: avatars/${_effectiveAvatarId}/documents/${doc.id}',
       );
       await doc.set({
         'id': doc.id,
-        'avatarId': widget.avatarId,
+        'avatarId': _effectiveAvatarId,
         'type': 'document',
         'url': url,
         'thumbUrl': null, // User croppt manuell!
@@ -3723,7 +3730,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       debugPrint('✅ Firestore-Eintrag erstellt (ohne Thumbnail): ${doc.id}');
       return AvatarMedia(
         id: doc.id,
-        avatarId: widget.avatarId,
+        avatarId: _effectiveAvatarId,
         type: AvatarMediaType.document,
         url: url,
         thumbUrl: null,
@@ -3802,7 +3809,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       final ts = DateTime.now().millisecondsSinceEpoch;
       final storageRef = FirebaseStorage.instance.ref().child(
-        'avatars/${widget.avatarId}/documents/${ts}_$base',
+        'avatars/${_effectiveAvatarId}/documents/${ts}_$base',
       );
       debugPrint('📤 (Web) Lade $base nach Storage hoch...');
 
@@ -3828,13 +3835,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       final doc = FirebaseFirestore.instance
           .collection('avatars')
-          .doc(widget.avatarId)
+          .doc(_effectiveAvatarId)
           .collection('documents')
           .doc();
 
       await doc.set({
         'id': doc.id,
-        'avatarId': widget.avatarId,
+        'avatarId': _effectiveAvatarId,
         'type': 'document',
         'url': url,
         'thumbUrl': null,
@@ -3847,7 +3854,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
       return AvatarMedia(
         id: doc.id,
-        avatarId: widget.avatarId,
+        avatarId: _effectiveAvatarId,
         type: AvatarMediaType.document,
         url: url,
         thumbUrl: null,
@@ -4423,7 +4430,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       barrierDismissible: false,
       builder: (ctx) => _VideoThumbnailSelectorDialog(
         videoUrl: media.url,
-        avatarId: widget.avatarId,
+        avatarId: _effectiveAvatarId,
         mediaId: media.id,
         onComplete: () async {
           // WICHTIG: Video-Controller clearen damit neue Thumbs geladen werden
@@ -4491,14 +4498,14 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     if (confirmed != true) return;
                     try {
                       final items = await _playlistSvc.listItems(
-                        widget.avatarId,
+                        _effectiveAvatarId,
                         pl.id,
                       );
                       final itemToRemove = items.firstWhere(
                         (item) => item.mediaId == media.id,
                       );
                       await _playlistSvc.deleteItem(
-                        widget.avatarId,
+                        _effectiveAvatarId,
                         pl.id,
                         itemToRemove.id,
                       );
@@ -4811,13 +4818,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         }
 
         try {
-          await _mediaSvc.delete(widget.avatarId, mediaId, media.type);
+          await _mediaSvc.delete(_effectiveAvatarId, mediaId, media.type);
         } catch (_) {}
         // Konsistenz: Entferne Referenzen in allen Playlists (Assets + Items)
         try {
           final pls = await FirebaseFirestore.instance
               .collection('avatars')
-              .doc(widget.avatarId)
+              .doc(_effectiveAvatarId)
               .collection('playlists')
               .get();
           for (final p in pls.docs) {
@@ -4825,7 +4832,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             // 1) timelineAssets mit mediaId == mediaId löschen und zugehörige timelineItems entfernen
             final assetsQs = await FirebaseFirestore.instance
                 .collection('avatars')
-                .doc(widget.avatarId)
+                .doc(_effectiveAvatarId)
                 .collection('playlists')
                 .doc(pid)
                 .collection('timelineAssets')
@@ -4837,7 +4844,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                 // zugehörige timelineItems mit assetId == a.id
                 final itemsQs = await FirebaseFirestore.instance
                     .collection('avatars')
-                    .doc(widget.avatarId)
+                    .doc(_effectiveAvatarId)
                     .collection('playlists')
                     .doc(pid)
                     .collection('timelineItems')
@@ -4853,7 +4860,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             // 2) Direkte timelineItems mit mediaId == mediaId (falls vorhanden)
             final directItems = await FirebaseFirestore.instance
                 .collection('avatars')
-                .doc(widget.avatarId)
+                .doc(_effectiveAvatarId)
                 .collection('playlists')
                 .doc(pid)
                 .collection('timelineItems')
@@ -4926,7 +4933,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             });
           }
           try {
-            await _mediaSvc.delete(widget.avatarId, mediaId, media.type);
+            await _mediaSvc.delete(_effectiveAvatarId, mediaId, media.type);
           } catch (_) {}
           _items.removeWhere((m) => m.id == mediaId);
           _mediaToPlaylists.remove(mediaId);
@@ -5065,7 +5072,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       try {
         // Avatar-Daten laden
         final avatarService = AvatarService();
-        final avatar = await avatarService.getAvatar(widget.avatarId);
+        final avatar = await avatarService.getAvatar(_effectiveAvatarId);
         if (avatar == null) {
           throw Exception('Avatar nicht gefunden');
         }
@@ -5080,10 +5087,10 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             // ERST: thumbUrl aus Firestore holen und löschen
             String? thumbUrl;
             try {
-              debugPrint('DEL images query for avatar=${widget.avatarId}');
+              debugPrint('DEL images query for avatar=${_effectiveAvatarId}');
               final qs = await FirebaseFirestore.instance
                   .collection('avatars')
-                  .doc(widget.avatarId)
+                  .doc(_effectiveAvatarId)
                   .collection('images')
                   .where('url', isEqualTo: media.url)
                   .get();
@@ -5135,7 +5142,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             try {
               final qs = await FirebaseFirestore.instance
                   .collection('avatars')
-                  .doc(widget.avatarId)
+                  .doc(_effectiveAvatarId)
                   .collection('videos')
                   .where('url', isEqualTo: media.url)
                   .get();
@@ -5172,7 +5179,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             try {
               final qs = await FirebaseFirestore.instance
                   .collection('avatars')
-                  .doc(widget.avatarId)
+                  .doc(_effectiveAvatarId)
                   .collection('documents')
                   .where('url', isEqualTo: media.url)
                   .get();
@@ -5813,7 +5820,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             try {
               await FirebaseFirestore.instance
                   .collection('avatars')
-                  .doc(widget.avatarId)
+                  .doc(_effectiveAvatarId)
                   .collection('documents')
                   .doc(media.id)
                   .set(
@@ -6064,7 +6071,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       if (media.type == AvatarMediaType.document) {
         // Upload als Thumb speichern und in Firestore verknüpfen
         final ref = FirebaseStorage.instance.ref().child(
-          'avatars/${widget.avatarId}/documents/thumbs/${media.id}_$timestamp.jpg',
+          'avatars/${_effectiveAvatarId}/documents/thumbs/${media.id}_$timestamp.jpg',
         );
         final task = await ref.putData(
           croppedBytes!,
@@ -6074,7 +6081,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
 
         await FirebaseFirestore.instance
             .collection('avatars')
-            .doc(widget.avatarId)
+            .doc(_effectiveAvatarId)
             .collection('documents')
             .doc(media.id)
             .set({
@@ -6137,7 +6144,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             : 'videos';
         final doc = await FirebaseFirestore.instance
             .collection('avatars')
-            .doc(widget.avatarId)
+            .doc(_effectiveAvatarId)
             .collection(collectionName)
             .doc(media.id)
             .get();
@@ -6221,7 +6228,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             final mediaFolder =
                 media.type == AvatarMediaType.image ? 'images' : 'videos';
             final thumbPath =
-                'avatars/${widget.avatarId}/$mediaFolder/thumbs/recrop_$timestamp.jpg';
+                'avatars/${_effectiveAvatarId}/$mediaFolder/thumbs/recrop_$timestamp.jpg';
 
             final decoded = img.decodeImage(croppedBytes!);
             if (decoded != null) {
@@ -6263,7 +6270,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
             final mediaFolder =
                 media.type == AvatarMediaType.image ? 'images' : 'videos';
             final thumbPath =
-                'avatars/${widget.avatarId}/$mediaFolder/thumbs/recrop_$timestamp.jpg';
+                'avatars/${_effectiveAvatarId}/$mediaFolder/thumbs/recrop_$timestamp.jpg';
             final imgBytes = await tempFile.readAsBytes();
             final decoded = img.decodeImage(imgBytes);
             if (decoded != null) {
@@ -6295,7 +6302,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
               : 'videos';
           final docRef = FirebaseFirestore.instance
               .collection('avatars')
-              .doc(widget.avatarId)
+              .doc(_effectiveAvatarId)
               .collection(collectionName)
               .doc(media.id);
 
@@ -6320,7 +6327,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           } catch (_) {}
 
           await docRef.set({
-            'avatarId': widget.avatarId,
+            'avatarId': _effectiveAvatarId,
             'type': media.type == AvatarMediaType.image ? 'image' : 'video',
             'url': upload,
             'thumbUrl': newThumbUrl, // Direkt das neue Thumbnail setzen!
@@ -6346,7 +6353,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         try {
           final avatarRef = FirebaseFirestore.instance
               .collection('avatars')
-              .doc(widget.avatarId);
+              .doc(_effectiveAvatarId);
           final snap = await avatarRef.get();
           final data = snap.data();
 
@@ -6536,7 +6543,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                     try {
                       await FirebaseFirestore.instance
                           .collection('avatars')
-                          .doc(widget.avatarId)
+                          .doc(_effectiveAvatarId)
                           .collection(
                             _getCollectionNameForMediaType(media.type),
                           )
@@ -6659,7 +6666,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                       try {
                         await FirebaseFirestore.instance
                             .collection('avatars')
-                            .doc(widget.avatarId)
+                            .doc(_effectiveAvatarId)
                             .collection(
                               _getCollectionNameForMediaType(media.type),
                             )
@@ -6786,7 +6793,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                   try {
                     await FirebaseFirestore.instance
                         .collection('avatars')
-                        .doc(widget.avatarId)
+                        .doc(_effectiveAvatarId)
                         .collection(_getCollectionNameForMediaType(media.type))
                         .doc(media.id)
                         .update({'isFree': newIsFree});
@@ -7165,7 +7172,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         try {
                           await FirebaseFirestore.instance
                               .collection('avatars')
-                              .doc(widget.avatarId)
+                              .doc(_effectiveAvatarId)
                               .collection(
                                 _getCollectionNameForMediaType(
                                   currentMedia.type,
@@ -7256,7 +7263,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                           debugPrint('💰 Firestore update STARTING...');
                           await FirebaseFirestore.instance
                               .collection('avatars')
-                              .doc(widget.avatarId)
+                              .doc(_effectiveAvatarId)
                               .collection(collectionName)
                               .doc(currentMedia.id)
                               .update({
@@ -7347,7 +7354,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                         try {
                           await FirebaseFirestore.instance
                               .collection('avatars')
-                              .doc(widget.avatarId)
+                              .doc(_effectiveAvatarId)
                               .collection(
                                 _getCollectionNameForMediaType(
                                   currentMedia.type,
@@ -7885,7 +7892,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
                                               .toList();
 
                                           await _mediaSvc.update(
-                                            widget.avatarId,
+                                            _effectiveAvatarId,
                                             media.id,
                                             media.type,
                                             tags: newTags,
@@ -8799,7 +8806,7 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
           if (tags.isNotEmpty) {
             // Aktualisiere in Firestore
             await _mediaSvc.update(
-              widget.avatarId,
+              _effectiveAvatarId,
               image.id,
               image.type,
               tags: tags,

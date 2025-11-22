@@ -21,7 +21,6 @@ import 'package:path/path.dart' as p;
 import 'dart:io';
 import '../services/firebase_storage_service.dart';
 import 'package:image/image.dart' as img;
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
 
 class PlaylistListScreen extends StatefulWidget {
@@ -41,6 +40,20 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   final _svc = PlaylistService();
   List<Playlist> _items = [];
   bool _loading = true;
+
+  /// Gibt die effektive avatarId zurück (Route-Argument oder SessionStorage-Fallback)
+  String _getEffectiveAvatarId() {
+    String effectiveAvatarId = widget.avatarId;
+    if (effectiveAvatarId.isEmpty && kIsWeb) {
+      try {
+        final raw = web.getSessionStorage('last_playlist_avatar');
+        if (raw != null && raw.isNotEmpty) {
+          effectiveAvatarId = raw;
+        }
+      } catch (_) {}
+    }
+    return effectiveAvatarId;
+  }
 
   @override
   void initState() {
@@ -127,7 +140,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
 
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await _svc.deleteDeep(widget.avatarId, p.id);
+      final avatarId = _getEffectiveAvatarId();
+      if (avatarId.isEmpty) return;
+      await _svc.deleteDeep(avatarId, p.id);
       if (!mounted) return;
       messenger.showSnackBar(
         const SnackBar(content: Text('Playlist gelöscht.')),
@@ -142,15 +157,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
     try {
-      String effectiveAvatarId = widget.avatarId;
-      if (effectiveAvatarId.isEmpty && kIsWeb) {
-        try {
-          final raw = web.getSessionStorage('last_playlist_avatar');
-          if (raw != null && raw.isNotEmpty) {
-            effectiveAvatarId = raw;
-          }
-        } catch (_) {}
-      }
+      final effectiveAvatarId = _getEffectiveAvatarId();
       if (effectiveAvatarId.isEmpty) {
         if (mounted) {
           setState(() {
@@ -185,7 +192,11 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
   Future<void> _create() async {
     final name = await _promptName();
     if (name == null || name.trim().isEmpty) return;
-    await _svc.create(widget.avatarId, name: name.trim(), showAfterSec: 0);
+    
+    final avatarId = _getEffectiveAvatarId();
+    if (avatarId.isEmpty) return;
+    
+    await _svc.create(avatarId, name: name.trim(), showAfterSec: 0);
     await _load();
   }
 
@@ -922,128 +933,6 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
     }
   }
 
-  Widget _buildDeletePlaylistButton(Playlist p) {
-    const Color baseTextColor = Colors.white54; // dezentes Hellgrau
-    const Color baseBorderColor = Colors.white30; // sehr dezenter Rand
-    const Color dangerColor = Colors.redAccent;
-    return OutlinedButton(
-      onPressed: () async {
-        final first = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Playlist löschen?'),
-            content: const Text(
-              'Dieser Vorgang löscht die Playlist, alle zugehörigen Timeline-Einträge, Timeline-Assets und Scheduler-Einträge. Medien selbst werden nicht gelöscht. Fortfahren?',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                style: TextButton.styleFrom(foregroundColor: Colors.white70),
-                child: const Text('Abbrechen'),
-              ),
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
-                child: const Text('Ja, löschen'),
-              ),
-            ],
-          ),
-        );
-        if (first != true) return;
-
-        final second = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Wirklich endgültig löschen?'),
-            content: const Text(
-              'Letzte Bestätigung: Die Playlist und alle zugehörigen Verlinkungen werden entfernt. Dieser Schritt kann nicht rückgängig gemacht werden.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx, false),
-                style: TextButton.styleFrom(foregroundColor: Colors.white70),
-                child: const Text('Abbrechen'),
-              ),
-              ElevatedButton(
-                onPressed: () => Navigator.pop(ctx, true),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.white,
-                  shadowColor: Colors.transparent,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: ShaderMask(
-                  shaderCallback: (bounds) => Theme.of(
-                    context,
-                  ).extension<AppGradients>()!.magentaBlue.createShader(bounds),
-                  child: const Text(
-                    'Endgültig löschen',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-        if (second != true) return;
-
-        final messenger = ScaffoldMessenger.of(context);
-        try {
-          await _svc.deleteDeep(widget.avatarId, p.id);
-          if (!mounted) return;
-          messenger.showSnackBar(
-            const SnackBar(content: Text('Playlist gelöscht.')),
-          );
-          await _load();
-        } catch (e) {
-          if (!mounted) return;
-          messenger.showSnackBar(SnackBar(content: Text('Lösch-Fehler: $e')));
-        }
-      },
-      style: ButtonStyle(
-        side: WidgetStateProperty.resolveWith<BorderSide>((states) {
-          final isHover =
-              states.contains(WidgetState.hovered) ||
-              states.contains(WidgetState.pressed);
-          return BorderSide(
-            color: isHover ? dangerColor : baseBorderColor,
-            width: 1,
-          );
-        }),
-        foregroundColor: WidgetStateProperty.resolveWith<Color>((states) {
-          final isHover =
-              states.contains(WidgetState.hovered) ||
-              states.contains(WidgetState.pressed);
-          return isHover ? dangerColor : baseTextColor;
-        }),
-        padding: const WidgetStatePropertyAll(
-          EdgeInsets.symmetric(horizontal: 2, vertical: 2),
-        ),
-        minimumSize: const WidgetStatePropertyAll(Size(0, 24)),
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-        visualDensity: const VisualDensity(horizontal: -3, vertical: -3),
-        textStyle: const WidgetStatePropertyAll(
-          TextStyle(fontSize: 9, fontWeight: FontWeight.w400),
-        ),
-        shape: WidgetStatePropertyAll(
-          RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
-        ),
-      ),
-      child: const Padding(
-        padding: EdgeInsets.all(2),
-        child: Text('Playlist löschen'),
-      ),
-    );
-  }
 
   Widget _buildScheduleSummary(Playlist p) {
     return PlaylistScheduleSummary(playlist: p);
@@ -1074,7 +963,12 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
       // Von anderen Screens → zurück zu Avatar Details
       final nav = Navigator.of(context);
       final avatarService = AvatarService();
-      final avatar = await avatarService.getAvatar(widget.avatarId);
+      final avatarId = _getEffectiveAvatarId();
+      if (avatarId.isEmpty) {
+        nav.pop();
+        return;
+      }
+      final avatar = await avatarService.getAvatar(avatarId);
       if (!mounted) return;
       if (avatar != null) {
         nav.pushReplacementNamed('/avatar-details', arguments: avatar);
@@ -1100,7 +994,9 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
             onPressed: () async {
               final messenger = ScaffoldMessenger.of(context);
               try {
-                final issues = await _svc.validate(widget.avatarId);
+                final avatarId = _getEffectiveAvatarId();
+                if (avatarId.isEmpty) return;
+                final issues = await _svc.validate(avatarId);
                 if (!mounted) return;
                 if (issues.isEmpty) {
                   messenger.showSnackBar(
@@ -1154,8 +1050,10 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                               ScaffoldMessenger.of(context);
                                           final nav = Navigator.of(ctx);
                                           try {
+                                            final avatarId = _getEffectiveAvatarId();
+                                            if (avatarId.isEmpty) return;
                                             final res = await _svc.repair(
-                                              widget.avatarId,
+                                              avatarId,
                                               docId,
                                             );
                                             if (!mounted) return;
@@ -1254,8 +1152,10 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
                                           );
                                           if (confirm == true) {
                                             try {
+                                              final avatarId = _getEffectiveAvatarId();
+                                              if (avatarId.isEmpty) return;
                                               await _svc.delete(
-                                                widget.avatarId,
+                                                avatarId,
                                                 docId,
                                               );
                                               if (!mounted) return;
@@ -1834,7 +1734,7 @@ class _PlaylistListScreenState extends State<PlaylistListScreen> {
               ],
             ),
       bottomNavigationBar: AvatarBottomNavBar(
-        avatarId: widget.avatarId,
+        avatarId: _getEffectiveAvatarId(),
         currentScreen: 'playlists',
       ),
     );
