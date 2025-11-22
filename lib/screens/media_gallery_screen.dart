@@ -2263,9 +2263,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
         originalFileName: originalFileName,
       );
       await _mediaSvc.add(_effectiveAvatarId, m);
-      await _load(force: true);
 
+      // Optimistisches UI-Update: Kein kompletter Reload, sondern lokal anhängen
       if (mounted) {
+        setState(() {
+          _items = List<AvatarMedia>.from(_items)..add(m);
+          _imageAspectRatios[m.url] = _cropAspect;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Bild erfolgreich hochgeladen')),
         );
@@ -2311,9 +2315,13 @@ class _MediaGalleryScreenState extends State<MediaGalleryScreen> {
       originalFileName: originalFileName,
     );
     await _mediaSvc.add(_effectiveAvatarId, m);
-    await _load(force: true);
 
+    // Optimistisches UI-Update auch für Mobile/Desktop
     if (mounted) {
+      setState(() {
+        _items = List<AvatarMedia>.from(_items)..add(m);
+        _imageAspectRatios[m.url] = _cropAspect;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(

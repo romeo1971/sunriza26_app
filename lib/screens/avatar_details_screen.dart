@@ -7010,7 +7010,7 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
 
     () async {
       try {
-        // 0) Freitext lokal als Datei anlegen (nicht in der Liste anzeigen)
+        // 0) Freitext vorbereiten; auf Mobile als temporäre Datei, auf Web nur als Bytes
         final locSvc = context.read<LocalizationService>();
         final freeText = _textAreaController.text.trim();
         String? freeTextLocalFileName;
@@ -7026,11 +7026,15 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
             ..._newTextFiles.map((f) => pathFromLocalFile(f.path)),
           };
           filename = _uniqueFileName(filename, existingNames);
-          final tmp = await File(
-            '${Directory.systemTemp.path}/$filename',
-          ).create();
-          await tmp.writeAsString(freeText);
-          freeTextLocalFile = tmp;
+
+          // Auf nicht-Web-Plattformen als temporäre Datei anlegen; auf Web kein dart:io verwenden
+          if (!kIsWeb) {
+            final tmp = await File(
+              '${Directory.systemTemp.path}/$filename',
+            ).create();
+            await tmp.writeAsString(freeText);
+            freeTextLocalFile = tmp;
+          }
           freeTextLocalFileName = filename;
           _textAreaController.clear();
         }
@@ -7146,13 +7150,24 @@ class _AvatarDetailsScreenState extends State<AvatarDetailsScreen> {
         }
 
         // b) Freitext als sichtbare Datei hochladen (in Liste aufnehmen)
-        if (freeTextLocalFile != null && freeTextLocalFileName != null) {
+        if (freeText.isNotEmpty && freeTextLocalFileName != null) {
           final storageCopyPath =
               'avatars/$avatarId/texts/$freeTextLocalFileName';
-          final copyUrl = await FirebaseStorageService.uploadTextFile(
-            freeTextLocalFile,
-            customPath: storageCopyPath,
-          );
+          String? copyUrl;
+          if (kIsWeb) {
+            // Auf Web: Inhalte direkt als Bytes hochladen (kein File/Namespace-Fehler)
+            final bytes = Uint8List.fromList(utf8.encode(freeText));
+            copyUrl = await FirebaseStorageService.uploadTextBytes(
+              bytes,
+              customPath: storageCopyPath,
+            );
+          } else if (freeTextLocalFile != null) {
+            // Mobile/Desktop: temporäre Datei hochladen
+            copyUrl = await FirebaseStorageService.uploadTextFile(
+              freeTextLocalFile,
+              customPath: storageCopyPath,
+            );
+          }
           if (copyUrl != null) {
             allTexts.add(copyUrl);
             freeTextUploadedUrl = copyUrl;
